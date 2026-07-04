@@ -10,7 +10,7 @@ import {
 } from "@/lib/generated/prisma";
 import type { LineWebhookProcessorDependencies, LineWebhookProcessorConfig } from "@/lib/line-webhook-processor";
 import type { LineImageClassification } from "@/lib/line-image-service";
-import type { LineSearchIntent } from "@/lib/chat-core/ai-service";
+import type { ChatSearchIntent } from "@/lib/chat-core/ai-service";
 
 type StoredInquiryFrame = {
   partType: string | null;
@@ -45,8 +45,8 @@ function createCoalesceHarness(options?: {
   /** Per-image classification overrides keyed by lineMessageId (`m-<eventId>`),
    *  so a burst can spread brand/part type across different photos. */
   imageClassByMessageId?: Record<string, Partial<LineImageClassification>>;
-  /** Stand-in for the text intent classifier (extractLineSearchIntent). */
-  textIntent?: LineSearchIntent | null;
+  /** Stand-in for the text intent classifier (extractChatSearchIntent). */
+  textIntent?: ChatSearchIntent | null;
   lockAcquirable?: boolean;
   /** Bumps the inbound seq once during the FIRST pipeline pass to force one abort. */
   bumpDuringFirstPass?: boolean;
@@ -116,7 +116,7 @@ function createCoalesceHarness(options?: {
     updateLineAiJob: async () => ({}) as Awaited<ReturnType<LineWebhookProcessorDependencies["updateLineAiJob"]>>,
     markOutboundLineMessageSent: async () =>
       ({}) as Awaited<ReturnType<LineWebhookProcessorDependencies["markOutboundLineMessageSent"]>>,
-    searchLineProductInquiry: async (input) => {
+    searchChatProductInquiry: async (input) => {
       calls.searches.push(input.text ?? (input.extractedImageHints ?? []).join(" "));
       if (options?.bumpDuringFirstPass && !firstPassBumped) {
         firstPassBumped = true;
@@ -140,7 +140,7 @@ function createCoalesceHarness(options?: {
         droppedImageCodes: [],
       };
     },
-    getLineProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100 }],
+    getChatProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100 }],
     replyLineMessage: async (input) => {
       calls.replies.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
       return { sent: true, replyToken: input.replyToken };
@@ -179,10 +179,10 @@ function createCoalesceHarness(options?: {
     countConsecutiveFailedLineSearches: async () => 0,
     countPendingPaymentSlipsForConversation: async () => 0,
     classifyPurchaseIntent: async () => false,
-    answerFromLineFaq: async () => ({ answered: false, reply: "" }),
-    extractLineSearchIntent: async () => options?.textIntent ?? null,
-    resolveLineFitmentFilters: async () => ({}),
-    generateLineSuggestion: async () => ({
+    answerFromChatFaq: async () => ({ answered: false, reply: "" }),
+    extractChatSearchIntent: async () => options?.textIntent ?? null,
+    resolveChatFitmentFilters: async () => ({}),
+    generateChatSuggestion: async () => ({
       suggestedReply: "เบื้องต้นพบรายการที่ใกล้เคียงค่ะ",
       confidence: LineAiConfidence.POSSIBLE_MATCH,
       reasoningSummary: "test",
@@ -291,7 +291,7 @@ function textEvent(id: string, text: string) {
   };
 }
 
-function productIntent(fields: Partial<LineSearchIntent>): LineSearchIntent {
+function productIntent(fields: Partial<ChatSearchIntent>): ChatSearchIntent {
   return {
     group: "product",
     query: fields.query ?? "",
@@ -661,7 +661,7 @@ test("post-search budget fallback sends searched products and flex without start
     calls.pushes.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
     return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
   };
-  dependencies.generateLineSuggestion = async () => {
+  dependencies.generateChatSuggestion = async () => {
     throw new Error("Gemini prose should not start after post-search budget fallback");
   };
 
@@ -698,9 +698,9 @@ test("post-search budget fallback sends searched products and flex without start
 });
 
 function multiIntent(
-  primary: Partial<LineSearchIntent>,
-  subjects: LineSearchIntent["subjects"],
-): LineSearchIntent {
+  primary: Partial<ChatSearchIntent>,
+  subjects: ChatSearchIntent["subjects"],
+): ChatSearchIntent {
   return { ...productIntent(primary), subjects };
 }
 
@@ -712,7 +712,7 @@ test("B2c: two distinct part categories → multi-subject answer (2 searches), n
     auditActions.push(input.action);
     return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
   };
-  dependencies.extractLineSearchIntent = async () =>
+  dependencies.extractChatSearchIntent = async () =>
     multiIntent({ partType: "คอมแอร์", carModel: "D-Max" }, [
       { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
       { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
@@ -740,7 +740,7 @@ test("B2c: same part type for two cars → NOT split (single path, no multi audi
   };
   // Classifier (defensively) returned two entries with the SAME part type — after
   // resolving they collapse to one category, so it must fall back to single path.
-  dependencies.extractLineSearchIntent = async () =>
+  dependencies.extractChatSearchIntent = async () =>
     multiIntent({ partType: "คอยเย็น", carModel: "D-Max" }, [
       { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
       { partType: "คอยเย็น", carBrand: null, carModel: "Vigo", year: null, partKind: "fitment", query: "คอยเย็น Vigo" },
@@ -774,7 +774,7 @@ test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", a
     return { sentCount: input.recipientIds.length, recipientIds: input.recipientIds };
   };
   // คอมแอร์ found, คอยเย็น not found.
-  dependencies.searchLineProductInquiry = async (input) => {
+  dependencies.searchChatProductInquiry = async (input) => {
     calls.searches.push(input.text ?? "");
     const notFound = (input.text ?? "").includes("คอยเย็น");
     return {
@@ -787,7 +787,7 @@ test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", a
       droppedImageCodes: [],
     };
   };
-  dependencies.extractLineSearchIntent = async () =>
+  dependencies.extractChatSearchIntent = async () =>
     multiIntent({ partType: "คอมแอร์", carModel: "D-Max" }, [
       { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
       { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },

@@ -1,10 +1,10 @@
 import { unstable_cache } from "next/cache";
 import { LineIntent } from "@/lib/generated/prisma";
-import { extractLineSearchIntent } from "@/lib/chat-core/ai-service";
-import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/chat-core/search-guards";
-import { resolveLineFitmentFilters, type LineFitmentFilters } from "@/lib/chat-core/fitment-resolve";
+import { extractChatSearchIntent } from "@/lib/chat-core/ai-service";
+import { extractChatRequiredSearchTokens, guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { normalizeInboundLineQuery } from "@/lib/chat-core/text-normalize";
+import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { normalizeSearchText } from "@/lib/search-normalization";
 import { resolveKnownQueryIntent } from "@/lib/chat-core/known-query-intent";
 import { PRODUCT_SEARCH_TAG } from "@/lib/product-search-cache";
@@ -13,10 +13,10 @@ import { PRODUCT_SEARCH_TAG } from "@/lib/product-search-cache";
  * Shared "search precision" pipeline used by BOTH the storefront results page and
  * the LINE OA bot, so a typed query is interpreted the same way in both channels:
  *
- *   1. LLM classify (extractLineSearchIntent) → part type / car brand / model / year
- *   2. guardLineSearchIntent → keep ONLY the brand/model/year the customer actually
+ *   1. LLM classify (extractChatSearchIntent) → part type / car brand / model / year
+ *   2. guardChatSearchIntent → keep ONLY the brand/model/year the customer actually
  *      typed (drops hallucinated/stale fitment), plus required code anchors
- *   3. resolveLineFitmentFilters → map grounded hints to EXACT master-data names
+ *   3. resolveChatFitmentFilters → map grounded hints to EXACT master-data names
  *      (a hint becomes a hard filter only when it resolves to a real active row)
  *
  * The result is a set of hard filters + required tokens that make the submit
@@ -45,7 +45,7 @@ const SEARCH_INTENT_CACHE_TTL_SECONDS = 60 * 60 * 24; // 1 day
 
 const literalFallback = (query: string): ResolvedStorefrontSearchIntent => ({
   query,
-  requiredTokens: extractLineRequiredSearchTokens(query),
+  requiredTokens: extractChatRequiredSearchTokens(query),
   categoryName: null,
   carBrandName: null,
   carModelName: null,
@@ -57,11 +57,11 @@ const literalFallback = (query: string): ResolvedStorefrontSearchIntent => ({
  *  part-number lookups instant. */
 const isPureCodeQuery = (query: string): boolean => {
   const tokens = query.trim().split(/\s+/).filter(Boolean);
-  return tokens.length === 1 && extractLineRequiredSearchTokens(query).length > 0;
+  return tokens.length === 1 && extractChatRequiredSearchTokens(query).length > 0;
 };
 
 async function resolveUncached(rawQuery: string): Promise<ResolvedStorefrontSearchIntent> {
-  const processText = normalizeInboundLineQuery(rawQuery) || rawQuery;
+  const processText = normalizeInboundChatQuery(rawQuery) || rawQuery;
 
   if (isPureCodeQuery(rawQuery)) {
     return literalFallback(rawQuery);
@@ -82,7 +82,7 @@ async function resolveUncached(rawQuery: string): Promise<ResolvedStorefrontSear
     };
   }
 
-  const intent = await extractLineSearchIntent({
+  const intent = await extractChatSearchIntent({
     intent: LineIntent.PRODUCT_INQUIRY_TEXT,
     latestText: processText,
     history: [],
@@ -94,7 +94,7 @@ async function resolveUncached(rawQuery: string): Promise<ResolvedStorefrontSear
   }
 
   const brandLookup = await loadCarBrandVariantLookup().catch(() => null);
-  const guarded = guardLineSearchIntent({
+  const guarded = guardChatSearchIntent({
     intent,
     latestText: processText,
     history: [],
@@ -107,20 +107,20 @@ async function resolveUncached(rawQuery: string): Promise<ResolvedStorefrontSear
   const requiredTokens =
     guarded.requiredTokens.length > 0
       ? guarded.requiredTokens
-      : extractLineRequiredSearchTokens(rawQuery);
+      : extractChatRequiredSearchTokens(rawQuery);
 
   // When the guard distrusts the AI rewrite, search the literal customer text.
   const query = guarded.forceLiteralQuery
     ? rawQuery.trim() || processText
     : guardedIntent?.query?.trim() || rawQuery.trim() || processText;
 
-  const fitment = await resolveLineFitmentFilters({
+  const fitment = await resolveChatFitmentFilters({
     partType: guardedIntent?.partType ?? null,
     carBrand: guardedIntent?.carBrand ?? null,
     carModel: guardedIntent?.carModel ?? null,
     queryText: query,
     rawText: rawQuery,
-  }).catch((): LineFitmentFilters => ({}));
+  }).catch((): ChatFitmentFilters => ({}));
 
   return {
     query,

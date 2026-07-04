@@ -1,12 +1,12 @@
 import { LineIntent } from "@/lib/generated/prisma";
-import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
+import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 
 /**
  * The intent groups the AI classifier sorts a customer message into (Phase:
  * AI intent classification). Each group maps to a concrete action — answer from a
  * template/FAQ, search products, or acknowledge + hand off to an admin.
  */
-export type LineMessageGroup =
+export type ChatMessageGroup =
   | "product"
   | "shop_info"
   | "general_faq"
@@ -22,7 +22,7 @@ export type LineMessageGroup =
   | "out_of_scope"
   | "other";
 
-export const LINE_MESSAGE_GROUPS: readonly LineMessageGroup[] = [
+export const LINE_MESSAGE_GROUPS: readonly ChatMessageGroup[] = [
   "product",
   "shop_info",
   "general_faq",
@@ -39,7 +39,7 @@ export const LINE_MESSAGE_GROUPS: readonly LineMessageGroup[] = [
   "other",
 ];
 
-export function isLineMessageGroup(value: unknown): value is LineMessageGroup {
+export function isChatMessageGroup(value: unknown): value is ChatMessageGroup {
   return typeof value === "string" && (LINE_MESSAGE_GROUPS as readonly string[]).includes(value);
 }
 
@@ -49,7 +49,7 @@ export function isLineMessageGroup(value: unknown): value is LineMessageGroup {
  * payment/claim/price/purchase message to a self-answer), and they always hand off
  * to a human — never auto-answered.
  */
-export const GUARD_GROUPS: ReadonlySet<LineMessageGroup> = new Set<LineMessageGroup>([
+export const GUARD_GROUPS: ReadonlySet<ChatMessageGroup> = new Set<ChatMessageGroup>([
   "payment",
   "price_negotiation",
   "claim_or_return",
@@ -57,7 +57,7 @@ export const GUARD_GROUPS: ReadonlySet<LineMessageGroup> = new Set<LineMessageGr
 ]);
 
 /** Groups answered/served without a product search (no cards). */
-export const NON_PRODUCT_GROUPS: ReadonlySet<LineMessageGroup> = new Set<LineMessageGroup>([
+export const NON_PRODUCT_GROUPS: ReadonlySet<ChatMessageGroup> = new Set<ChatMessageGroup>([
   "shop_info",
   "general_faq",
   "payment",
@@ -75,8 +75,8 @@ export const NON_PRODUCT_GROUPS: ReadonlySet<LineMessageGroup> = new Set<LineMes
 
 const buildRoute = (
   intent: LineIntent,
-  overrides: Partial<LineIntentRouteResult>,
-): LineIntentRouteResult => ({
+  overrides: Partial<ChatIntentRouteResult>,
+): ChatIntentRouteResult => ({
   intent,
   allowsSearch: false,
   requiresAdmin: false,
@@ -87,12 +87,12 @@ const buildRoute = (
 });
 
 /**
- * Translates a group into the existing `LineIntentRouteResult` so the downstream
+ * Translates a group into the existing `ChatIntentRouteResult` so the downstream
  * pipeline (forced-response cascade, hand-off acks, send-decision policy) keeps
  * working unchanged. Returns null for groups handled by dedicated flags in the
  * processor (`general_faq` / `other` → FAQ-then-ask, `social` → brief/silent).
  */
-export function groupToRoute(group: LineMessageGroup): LineIntentRouteResult | null {
+export function groupToRoute(group: ChatMessageGroup): ChatIntentRouteResult | null {
   switch (group) {
     case "product":
       return buildRoute(LineIntent.PRODUCT_INQUIRY_TEXT, { allowsSearch: true });
@@ -123,7 +123,7 @@ export function groupToRoute(group: LineMessageGroup): LineIntentRouteResult | n
 
 /** Maps the Layer-1 regex intent back to a group (for guard detection + the
  *  classify-failure fallback that reuses the deterministic regex result). */
-export function intentToGroup(intent: LineIntent): LineMessageGroup {
+export function intentToGroup(intent: LineIntent): ChatMessageGroup {
   switch (intent) {
     case LineIntent.PAYMENT_SLIP_IMAGE:
       return "payment";

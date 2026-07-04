@@ -12,7 +12,7 @@ import { matchCategoryAliasRows } from "@/lib/category-alias-resolver";
  * so a typo or an unknown brand can never zero-out an otherwise valid search.
  */
 
-export type LineFitmentFilterInput = {
+export type ChatFitmentFilterInput = {
   partType?: string | null;
   carBrand?: string | null;
   carModel?: string | null;
@@ -33,7 +33,7 @@ export type LineFitmentFilterInput = {
   rawText?: string | null;
 };
 
-export type LineFitmentFilters = {
+export type ChatFitmentFilters = {
   categoryName?: string;
   carBrandName?: string;
   carModelName?: string;
@@ -321,16 +321,16 @@ async function resolveModelExact(
  * exact (insensitive) name match; for car models, scopes to the resolved brand and
  * falls back to a `contains` match (e.g. AI "Mazda 2" vs master "2").
  */
-export async function resolveLineFitmentFilters(
-  input: LineFitmentFilterInput,
-): Promise<LineFitmentFilters> {
+export async function resolveChatFitmentFilters(
+  input: ChatFitmentFilterInput,
+): Promise<ChatFitmentFilters> {
   const carBrand = trimOrNull(input.carBrand);
   const carModel = trimOrNull(input.carModel);
   const partType = trimOrNull(input.partType);
   const queryText = trimOrNull(input.queryText);
   const rawText = trimOrNull(input.rawText);
 
-  const filters: LineFitmentFilters = {};
+  const filters: ChatFitmentFilters = {};
   const colloquialModel = resolveColloquialCarModelAlias({
     carBrand,
     carModel,

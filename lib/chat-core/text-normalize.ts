@@ -20,7 +20,7 @@
 const THAI_DIGIT_BOUNDARY = /([฀-๿])(\d)/g;
 const DIGIT_THAI_BOUNDARY = /(\d)([฀-๿])/g;
 
-export const normalizeInboundLineQuery = (text?: string | null): string =>
+export const normalizeInboundChatQuery = (text?: string | null): string =>
   (text ?? "")
     .replace(THAI_DIGIT_BOUNDARY, "$1 $2")
     .replace(DIGIT_THAI_BOUNDARY, "$1 $2")

@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
 test("parses a product classification with consolidated query", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent(
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
     '{"group":"product","query":"หม้อน้ำ mazda 2","partType":"หม้อน้ำ","carBrand":"Mazda","carModel":"Mazda 2","year":2015,"partKind":"fitment","tooBroad":false}',
   );
   assert.deepEqual(intent, {
@@ -22,8 +22,8 @@ test("parses a product classification with consolidated query", async () => {
 });
 
 test("parses partKind=universal and tooBroad flag", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent(
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
     '{"group":"product","query":"น้ำยาล้างคอยล์","partType":"น้ำยาล้างคอยล์","partKind":"universal","tooBroad":false}',
   );
   assert.equal(intent?.partKind, "universal");
@@ -31,42 +31,42 @@ test("parses partKind=universal and tooBroad flag", async () => {
 });
 
 test("partKind/tooBroad ignored for non-product groups", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent('{"group":"shop_info","partKind":"fitment","tooBroad":true}');
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent('{"group":"shop_info","partKind":"fitment","tooBroad":true}');
   assert.equal(intent?.partKind, null);
   assert.equal(intent?.tooBroad, false);
 });
 
 test("non-product group is valid with no query (isProductQuery false)", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent('{"group":"shop_info","query":null}');
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent('{"group":"shop_info","query":null}');
   assert.equal(intent?.group, "shop_info");
   assert.equal(intent?.isProductQuery, false);
   assert.equal(intent?.query, "");
 });
 
 test("unknown/missing group falls back to 'other' (never guessed as product)", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  assert.equal(parseLineSearchIntent('{"query":"อะไรสักอย่าง"}')?.group, "other");
-  assert.equal(parseLineSearchIntent('{"group":"weird"}')?.group, "other");
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  assert.equal(parseChatSearchIntent('{"query":"อะไรสักอย่าง"}')?.group, "other");
+  assert.equal(parseChatSearchIntent('{"group":"weird"}')?.group, "other");
 });
 
 test("back-compat: isProductQuery true → product, false → other", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  assert.equal(parseLineSearchIntent('{"isProductQuery":true,"query":"คอยล์เย็น vios"}')?.group, "product");
-  assert.equal(parseLineSearchIntent('{"isProductQuery":false}')?.group, "other");
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  assert.equal(parseChatSearchIntent('{"isProductQuery":true,"query":"คอยล์เย็น vios"}')?.group, "product");
+  assert.equal(parseChatSearchIntent('{"isProductQuery":false}')?.group, "other");
 });
 
 test("tolerates markdown fences and surrounding prose", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent('```json\n{"group":"product","query":"คอยล์เย็น vios","year":null}\n```');
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent('```json\n{"group":"product","query":"คอยล์เย็น vios","year":null}\n```');
   assert.equal(intent?.query, "คอยล์เย็น vios");
   assert.equal(intent?.year, null);
 });
 
 test("normalizes 'null' strings and out-of-range years to null", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent(
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
     '{"group":"product","query":"กรองแอร์ vigo","carBrand":"null","carModel":"","year":"99"}',
   );
   assert.equal(intent?.carBrand, null);
@@ -75,14 +75,14 @@ test("normalizes 'null' strings and out-of-range years to null", async () => {
 });
 
 test("returns null only when the reply isn't parseable JSON", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  assert.equal(parseLineSearchIntent("not json at all"), null);
-  assert.equal(parseLineSearchIntent(""), null);
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  assert.equal(parseChatSearchIntent("not json at all"), null);
+  assert.equal(parseChatSearchIntent(""), null);
 });
 
 test("parses subjects[] when ≥2 distinct part types are listed (B2c)", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const intent = parseLineSearchIntent(
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
     '{"group":"product","query":"คอมแอร์ คอยเย็น d-max","partType":"คอมแอร์","carModel":"D-Max","subjects":[{"partType":"คอมแอร์","carModel":"D-Max","query":"คอมแอร์ D-Max","partKind":"fitment"},{"partType":"คอยเย็น","carModel":"D-Max","query":"คอยเย็น D-Max","partKind":"fitment"}]}',
   );
   assert.equal(intent?.subjects?.length, 2);
@@ -93,11 +93,11 @@ test("parses subjects[] when ≥2 distinct part types are listed (B2c)", async (
 });
 
 test("ignores subjects[] with fewer than 2 real entries (single subject)", async () => {
-  const { parseLineSearchIntent } = await import("@/lib/chat-core/ai-service");
-  const single = parseLineSearchIntent('{"group":"product","query":"คอยเย็น d-max","partType":"คอยเย็น","subjects":[]}');
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const single = parseChatSearchIntent('{"group":"product","query":"คอยเย็น d-max","partType":"คอยเย็น","subjects":[]}');
   assert.equal(single?.subjects, undefined);
   // entries without a partType are noise and don't count toward the ≥2 threshold
-  const noisy = parseLineSearchIntent(
+  const noisy = parseChatSearchIntent(
     '{"group":"product","query":"คอยเย็น","partType":"คอยเย็น","subjects":[{"partType":"คอยเย็น","query":"คอยเย็น"},{"partType":null,"query":"อันนี้"}]}',
   );
   assert.equal(noisy?.subjects, undefined);

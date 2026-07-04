@@ -1,11 +1,11 @@
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
 
-export type LineIntentRouteInput = {
+export type ChatIntentRouteInput = {
   messageType: LineMessageType;
   text?: string | null;
 };
 
-export type LineIntentRouteResult = {
+export type ChatIntentRouteResult = {
   intent: LineIntent;
   allowsSearch: boolean;
   requiresAdmin: boolean;
@@ -29,7 +29,7 @@ const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
 const SHOP_INFO_RE =
   /(เวลาทำการ|เวลาเปิด|เปิดกี่โมง|กี่โมง|ปิดกี่โมง|เปิดไหม|ปิดไหม|หยุดไหม|วันหยุด|ติดต่อร้าน|ติดต่อสอบถาม|ขอสอบถามข้อมูล|เบอร์โทร|เบอร์ร้าน|ร้านอยู่ไหน|ร้านอยู่ที่ไหน|อยู่ที่ไหน|อยู่ตรงไหน|อยู่ไหน|ที่ตั้งร้าน|ที่ตั้ง|พิกัด|แผนที่|ไปร้าน|ไปยังไง|ไปไง|มีหน้าร้าน|มีสาขา|สาขา|location|map)/i;
-function routeText(text: string): LineIntentRouteResult {
+function routeText(text: string): ChatIntentRouteResult {
   const normalized = text.trim();
   if (!normalized) {
     return {
@@ -158,7 +158,7 @@ function routeText(text: string): LineIntentRouteResult {
   };
 }
 
-export function routeLineIntent(input: LineIntentRouteInput): LineIntentRouteResult {
+export function routeChatIntent(input: ChatIntentRouteInput): ChatIntentRouteResult {
   if (input.messageType === LineMessageType.IMAGE) {
     return {
       intent: LineIntent.PART_IMAGE_INQUIRY,

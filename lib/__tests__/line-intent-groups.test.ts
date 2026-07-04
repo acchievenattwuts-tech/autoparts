@@ -6,7 +6,7 @@ import {
   GUARD_GROUPS,
   groupToRoute,
   intentToGroup,
-  isLineMessageGroup,
+  isChatMessageGroup,
 } from "@/lib/chat-core/intent-groups";
 
 test("guard groups are exactly the money/commitment intents", () => {
@@ -38,8 +38,8 @@ test("flag-driven groups have no 1:1 route", () => {
 });
 
 test("smalltalk and out_of_scope are valid non-product groups", () => {
-  assert.equal(isLineMessageGroup("smalltalk"), true);
-  assert.equal(isLineMessageGroup("out_of_scope"), true);
+  assert.equal(isChatMessageGroup("smalltalk"), true);
+  assert.equal(isChatMessageGroup("out_of_scope"), true);
 });
 
 test("intentToGroup round-trips the regex intents (UNKNOWN → other)", () => {
@@ -50,9 +50,9 @@ test("intentToGroup round-trips the regex intents (UNKNOWN → other)", () => {
   assert.equal(intentToGroup(LineIntent.UNKNOWN), "other");
 });
 
-test("isLineMessageGroup validates membership", () => {
-  assert.equal(isLineMessageGroup("product"), true);
-  assert.equal(isLineMessageGroup("other"), true);
-  assert.equal(isLineMessageGroup("nope"), false);
-  assert.equal(isLineMessageGroup(123), false);
+test("isChatMessageGroup validates membership", () => {
+  assert.equal(isChatMessageGroup("product"), true);
+  assert.equal(isChatMessageGroup("other"), true);
+  assert.equal(isChatMessageGroup("nope"), false);
+  assert.equal(isChatMessageGroup(123), false);
 });

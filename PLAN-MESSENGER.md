@@ -68,8 +68,9 @@
   - [x] diff review: pure move + import-path เท่านั้น ไม่มี logic เปลี่ยน
 - [x] B5. commit (pure move)
 
-### Stage 2 — Rename symbol เป็นชื่อกลาง (commit ถัดไป, ยังไม่ทำ)
-- [ ] B2. Rename function/type (`generateLineSuggestion`→`generateChatSuggestion`, `searchLineProductInquiry`→`searchProductInquiry`, `LineProductSummary`→`ChatProductSummary` ฯลฯ) + แก้ call site ทั้ง repo → gate เดิม (tsc/test/lint เขียว) ก่อน commit
+### Stage 2 — Rename symbol เป็นชื่อกลาง ✅ DONE 2026-07-04
+- [x] B2. Rename 34 export symbol `Line*`→`Chat*` (function/type) + แก้ call site ทั้ง repo (26 ไฟล์) ด้วย whole-word regex — **คง Prisma enum `LineIntent`/`LineAiConfidence` ไว้**
+  - [x] tsc 0 error · `node:test` 313/314 (1 fail pre-existing เดิม) · eslint ผ่าน · ไม่มี symbol เก่าตกค้าง · line-ending ไม่พัง (แก้เฉพาะ 26 ไฟล์ที่มี symbol จริง)
 
 ---
 
@@ -128,4 +129,5 @@
 ## Status Log
 
 - 2026-07-04: ยืนยัน decisions + domain, เริ่ม Phase B
-- 2026-07-04: Phase B Stage 1 เสร็จ — ย้าย 13 ไฟล์สมอง → `lib/chat-core/`, แก้ import 37 ไฟล์, tsc/lint เขียว, tests 313/314 (1 fail pre-existing). ค้าง Stage 2 (rename symbol เป็นชื่อกลาง)
+- 2026-07-04: Phase B Stage 1 เสร็จ — ย้าย 13 ไฟล์สมอง → `lib/chat-core/`, แก้ import 37 ไฟล์, tsc/lint เขียว, tests 313/314 (1 fail pre-existing)
+- 2026-07-04: Phase B Stage 2 เสร็จ — rename 34 export symbol `Line*`→`Chat*` (26 ไฟล์), คง Prisma enum, tsc/lint เขียว, tests 313/314. **Phase B ครบทั้ง Stage → พร้อมไป Phase C (schema)**

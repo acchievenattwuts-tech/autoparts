@@ -1,12 +1,12 @@
 import { LineAiConfidence, LineConversationAiStatus, LineDeliveryMode, LineIntent } from "@/lib/generated/prisma";
 import type { LineSendDecision } from "@/lib/line-conversation-types";
-import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
+import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 
 export type LineAiPolicyInput = {
   autoReplyEnabled: boolean;
   dryRun: boolean;
   conversationStatus: LineConversationAiStatus;
-  route: LineIntentRouteResult;
+  route: ChatIntentRouteResult;
   confidence: LineAiConfidence;
   hasReplyToken: boolean;
   allowPushFallback?: boolean;

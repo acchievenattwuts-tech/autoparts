@@ -27,11 +27,11 @@ const FAQ_SYSTEM_INSTRUCTION = [
   FAQ_CONTEXT,
 ].join("\n");
 
-export type LineFaqAnswer = { answered: boolean; reply: string };
+export type ChatFaqAnswer = { answered: boolean; reply: string };
 
-const NOT_ANSWERED: LineFaqAnswer = { answered: false, reply: "" };
+const NOT_ANSWERED: ChatFaqAnswer = { answered: false, reply: "" };
 
-export async function answerFromLineFaq(input: { text?: string | null }): Promise<LineFaqAnswer> {
+export async function answerFromChatFaq(input: { text?: string | null }): Promise<ChatFaqAnswer> {
   const question = input.text?.trim();
   if (!question || !hasGeminiKeysConfigured()) return NOT_ANSWERED;
 

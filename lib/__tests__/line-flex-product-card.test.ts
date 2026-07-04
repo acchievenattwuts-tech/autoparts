@@ -3,15 +3,15 @@ import assert from "node:assert/strict";
 
 import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
 import {
-  applyLinePriceVisibility,
-  type LineMatchedProductSummary,
+  applyChatPriceVisibility,
+  type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
 
 process.env.NEXTAUTH_URL = "https://shop.example.com";
 delete process.env.APP_BASE_URL;
 delete process.env.LINE_FLEX_PLACEHOLDER_IMAGE_URL;
 
-const product = (over: Partial<LineMatchedProductSummary> = {}): LineMatchedProductSummary => ({
+const product = (over: Partial<ChatMatchedProductSummary> = {}): ChatMatchedProductSummary => ({
   id: "p1",
   name: "คอยล์เย็น วีออส",
   code: "CL-001",
@@ -66,18 +66,18 @@ test("price shows 'สอบถามราคา' when salePrice is zero", () =
   assert.match(JSON.stringify(msg), /สอบถามราคา/);
 });
 
-test("applyLinePriceVisibility keeps real prices when showPrice is true (e.g. garage)", () => {
+test("applyChatPriceVisibility keeps real prices when showPrice is true (e.g. garage)", () => {
   const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
-  const visible = applyLinePriceVisibility(products, true);
+  const visible = applyChatPriceVisibility(products, true);
   assert.deepEqual(
     visible.map((p) => p.salePrice),
     [1200, 350],
   );
 });
 
-test("applyLinePriceVisibility zeroes prices when showPrice is false (general customer)", () => {
+test("applyChatPriceVisibility zeroes prices when showPrice is false (general customer)", () => {
   const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
-  const hidden = applyLinePriceVisibility(products, false);
+  const hidden = applyChatPriceVisibility(products, false);
   assert.deepEqual(
     hidden.map((p) => p.salePrice),
     [0, 0],

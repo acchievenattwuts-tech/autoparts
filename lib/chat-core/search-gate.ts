@@ -1,4 +1,4 @@
-import type { LinePartKind } from "@/lib/chat-core/ai-service";
+import type { ChatPartKind } from "@/lib/chat-core/ai-service";
 
 /**
  * Pre-search completeness gate for LINE product turns.
@@ -13,20 +13,20 @@ import type { LinePartKind } from "@/lib/chat-core/ai-service";
  * Every "ask" path is a non-handoff reply (the AI stays active and keeps the
  * conversation moving — it must never freeze the room).
  */
-export type LineSearchGateFields = {
+export type ChatSearchGateFields = {
   partType: string | null;
   carBrand: string | null;
   carModel: string | null;
   year: number | null;
-  partKind: LinePartKind | null;
+  partKind: ChatPartKind | null;
   tooBroad: boolean;
 };
 
-export type LineSearchGateDecision =
+export type ChatSearchGateDecision =
   | { action: "search"; followUp: "ask_year" | "ask_part" | null; reason: string }
   | { action: "ask"; ask: "need_car" | "need_part" | "need_both" | "too_broad"; reason: string };
 
-export function decideLineSearchGate(fields: LineSearchGateFields): LineSearchGateDecision {
+export function decideChatSearchGate(fields: ChatSearchGateFields): ChatSearchGateDecision {
   const hasPart = Boolean(fields.partType);
   const hasCar = Boolean(fields.carBrand || fields.carModel);
   const hasYear = fields.year !== null && fields.year !== undefined;
@@ -66,7 +66,7 @@ export function decideLineSearchGate(fields: LineSearchGateFields): LineSearchGa
 
 /** Follow-up bubble sent AFTER the product flex cards (customer already saw the
  *  matches; we ask for one more detail to pin the exact fit). */
-export function buildLineSearchFollowUp(followUp: "ask_year" | "ask_part"): string {
+export function buildChatSearchFollowUp(followUp: "ask_year" | "ask_part"): string {
   if (followUp === "ask_year") {
     return "นี่เป็นรายการที่ใกล้เคียงเบื้องต้นนะคะ 😊 ถ้าแจ้งปีรถมาเพิ่ม จูนจะช่วยกรองให้ตรงรุ่นยิ่งขึ้นค่ะ 🚗";
   }
@@ -74,7 +74,7 @@ export function buildLineSearchFollowUp(followUp: "ask_year" | "ask_part"): stri
 }
 
 /** Reply used when the gate blocks the search and asks for the missing detail. */
-export function buildLineSearchAskReply(ask: "need_car" | "need_part" | "need_both" | "too_broad"): string {
+export function buildChatSearchAskReply(ask: "need_car" | "need_part" | "need_both" | "too_broad"): string {
   switch (ask) {
     case "need_car":
       return "ได้เลยค่ะ 😊 รบกวนแจ้งยี่ห้อ/รุ่นรถด้วยนะคะ (เช่น D-Max, Vios, แจ๊ส) จะได้ช่วยหาอะไหล่ให้ตรงรุ่นค่ะ 🚗";

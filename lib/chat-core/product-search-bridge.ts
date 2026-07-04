@@ -1,6 +1,6 @@
 import { LineIntent } from "@/lib/generated/prisma";
-import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
-import { extractLineRequiredSearchTokens } from "@/lib/chat-core/search-guards";
+import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
+import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 type ProductSearchInput = {
@@ -24,8 +24,8 @@ type ProductSearchOutput = {
 };
 type ProductSearchFn = (input: ProductSearchInput) => Promise<ProductSearchOutput>;
 
-export type LineProductSearchBridgeInput = {
-  route: LineIntentRouteResult;
+export type ChatProductSearchBridgeInput = {
+  route: ChatIntentRouteResult;
   text?: string | null;
   extractedPartNumber?: string | null;
   extractedImageHints?: string[] | null;
@@ -50,7 +50,7 @@ export type LineProductSearchBridgeInput = {
   take?: number;
 };
 
-export type LineProductSearchBridgeResult =
+export type ChatProductSearchBridgeResult =
   | {
       searched: false;
       reason: string;
@@ -79,7 +79,7 @@ export type LineProductSearchBridgeResult =
       droppedImageCodes: string[];
     };
 
-export type LineMatchedProductSummary = {
+export type ChatMatchedProductSummary = {
   id: string;
   name: string;
   code: string | null;
@@ -93,7 +93,7 @@ export type LineMatchedProductSummary = {
  * fabricated — so the reply can show the customer what was actually found and link
  * to the real storefront pages (the canonical product URL embeds the id).
  */
-export async function getLineProductSummaries(ids: string[]): Promise<LineMatchedProductSummary[]> {
+export async function getChatProductSummaries(ids: string[]): Promise<ChatMatchedProductSummary[]> {
   if (ids.length === 0) return [];
   const { db } = await import("@/lib/db");
   const rows = await db.product.findMany({
@@ -123,7 +123,7 @@ export async function getLineProductSummaries(ids: string[]): Promise<LineMatche
  * จะ fallback เป็น "สอบถามราคา" อัตโนมัติ ไม่ต้องแก้ formatter/prompt แยก
  * ลูกค้าที่ showPrice=true (เช่น อู่ซ่อมรถ) จะได้ราคาจริงตามเดิม
  */
-export function applyLinePriceVisibility<T extends { salePrice: number }>(
+export function applyChatPriceVisibility<T extends { salePrice: number }>(
   products: T[],
   showPrice: boolean,
 ): T[] {
@@ -144,7 +144,7 @@ function normalizeSearchSeed(value?: string | null) {
  * over context terms into one query — token-deduped, order preserved, length capped
  * — which the V2 search ranks the same way the storefront handles full queries.
  */
-function buildSearchQuery(input: LineProductSearchBridgeInput): string | null {
+function buildSearchQuery(input: ChatProductSearchBridgeInput): string | null {
   const partNumber = normalizeSearchSeed(input.extractedPartNumber);
   if (partNumber) return partNumber.slice(0, MAX_QUERY_LENGTH);
 
@@ -212,12 +212,12 @@ const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
 const isCodeLikeToken = (token: string): boolean =>
   extractProductSearchRequiredTokens(token).length > 0;
 
-export async function searchLineProductInquiry(
-  input: LineProductSearchBridgeInput,
+export async function searchChatProductInquiry(
+  input: ChatProductSearchBridgeInput,
   searchFn?: ProductSearchFn,
   suggestFn?: SuggestFn,
   resolveCatalogCodesFn: ResolveCatalogCodesFn = defaultResolveCatalogCodes,
-): Promise<LineProductSearchBridgeResult> {
+): Promise<ChatProductSearchBridgeResult> {
   const searchableIntent =
     input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
     input.route.intent === LineIntent.PART_IMAGE_INQUIRY;
@@ -262,7 +262,7 @@ export async function searchLineProductInquiry(
   const customerSeed = [input.extractedPartNumber, input.text, ...(input.contextHints ?? [])]
     .filter(Boolean)
     .join(" ");
-  const requiredTokens = extractLineRequiredSearchTokens(customerSeed);
+  const requiredTokens = extractChatRequiredSearchTokens(customerSeed);
 
   const resolvedSearchFn =
     searchFn ??

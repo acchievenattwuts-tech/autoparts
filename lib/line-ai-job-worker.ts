@@ -14,7 +14,7 @@ import {
   updateLineAiJob,
   updateLineConversationState,
 } from "@/lib/line-conversation-repository";
-import { getLineProductSummaries, searchLineProductInquiry } from "@/lib/chat-core/product-search-bridge";
+import { getChatProductSummaries, searchChatProductInquiry } from "@/lib/chat-core/product-search-bridge";
 import { pushLineMessages, replyLineMessage } from "@/lib/line-messaging";
 import {
   processLineAiReply,
@@ -61,8 +61,8 @@ const workerDependencies: LineWebhookProcessorDependencies = {
   markOutboundLineMessageSent,
   storeLineAiJob,
   updateLineAiJob,
-  searchLineProductInquiry,
-  getLineProductSummaries,
+  searchChatProductInquiry,
+  getChatProductSummaries,
   replyLineMessage,
   pushLineMessages,
 };

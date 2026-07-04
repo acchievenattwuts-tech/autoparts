@@ -1,5 +1,5 @@
 import { buildSearchVariants, normalizeSearchText, tokenizeSearchVariants } from "@/lib/search-normalization";
-import type { LineReplyHistoryItem, LineSearchIntent } from "@/lib/chat-core/ai-service";
+import type { ChatReplyHistoryItem, ChatSearchIntent } from "@/lib/chat-core/ai-service";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
 
@@ -8,7 +8,7 @@ import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
  * LINE chats (e.g. 709, 2070, STA-7065). Keep them as required recall anchors so
  * a broad search fallback cannot drift to a popular but unrelated car model.
  */
-export function extractLineRequiredSearchTokens(text?: string | null): string[] {
+export function extractChatRequiredSearchTokens(text?: string | null): string[] {
   return extractProductSearchRequiredTokens(text);
 }
 
@@ -23,7 +23,7 @@ export function lineQueryContainsRequiredTokens(query: string | null | undefined
 export function lineValueHasCustomerEvidence(
   value: string | null | undefined,
   latestText: string | null | undefined,
-  history: LineReplyHistoryItem[],
+  history: ChatReplyHistoryItem[],
   brandLookup?: ReadonlyMap<string, string[]> | null,
 ) {
   const normalizedValue = normalizeSearchText(value);
@@ -53,7 +53,7 @@ export function lineValueHasCustomerEvidence(
 function lineModelHasCustomerAliasEvidence(
   value: string | null | undefined,
   latestText: string | null | undefined,
-  history: LineReplyHistoryItem[],
+  history: ChatReplyHistoryItem[],
 ) {
   const normalizedValue = normalizeSearchText(value);
   if (!normalizedValue) return true;
@@ -73,10 +73,10 @@ function lineModelHasCustomerAliasEvidence(
   return false;
 }
 
-export function guardLineSearchIntent(input: {
-  intent: LineSearchIntent | null;
+export function guardChatSearchIntent(input: {
+  intent: ChatSearchIntent | null;
   latestText?: string | null;
-  history: LineReplyHistoryItem[];
+  history: ChatReplyHistoryItem[];
   /** DB-backed brand spelling lookup; falls back to the hardcoded map when omitted. */
   brandLookup?: ReadonlyMap<string, string[]> | null;
 }) {
@@ -85,7 +85,7 @@ export function guardLineSearchIntent(input: {
     return { intent, forceLiteralQuery: false, requiredTokens: [] as string[] };
   }
 
-  const requiredTokens = extractLineRequiredSearchTokens(latestText);
+  const requiredTokens = extractChatRequiredSearchTokens(latestText);
   if (requiredTokens.length === 0) {
     return { intent, forceLiteralQuery: false, requiredTokens };
   }

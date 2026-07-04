@@ -247,7 +247,7 @@ function createProcessorTestDeps(input?: {
       calls.markedSent.push(input);
       return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["markOutboundLineMessageSent"]>>;
     },
-    searchLineProductInquiry: async (input) => {
+    searchChatProductInquiry: async (input) => {
       if (!input.route.allowsSearch) {
         return { searched: false, reason: "NON_SEARCHABLE_INTENT", query: null, result: null };
       }
@@ -343,15 +343,15 @@ function createProcessorTestDeps(input?: {
       return 1;
     },
     getRecentLineMessagesForAi: async () => [],
-    getLineProductSummaries: async () => [],
+    getChatProductSummaries: async () => [],
     countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
     countPendingPaymentSlipsForConversation: async () => 0,
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
-    answerFromLineFaq: async () =>
+    answerFromChatFaq: async () =>
       input?.faqReply ? { answered: true, reply: input.faqReply } : { answered: false, reply: "" },
     // Default: no extraction (mirrors Gemini-off / first-turn), so the search
     // falls back to the latest text. Tests that exercise carryover set it.
-    extractLineSearchIntent: async () =>
+    extractChatSearchIntent: async () =>
       input?.nonProductTurn
         ? {
             group: input?.intentGroup ?? "other",
@@ -397,7 +397,7 @@ function createProcessorTestDeps(input?: {
         year: frameInput.year,
       });
     },
-    resolveLineFitmentFilters: async (filterInput) => {
+    resolveChatFitmentFilters: async (filterInput) => {
       const configured = input?.fitmentFilters ?? {};
       return {
         categoryName: configured.categoryName,
@@ -934,7 +934,7 @@ test("deadline fallback still replies on the free token when generate is too slo
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
   // Reply generation never returns in time.
-  dependencies.generateLineSuggestion = () => new Promise<never>(() => {});
+  dependencies.generateChatSuggestion = () => new Promise<never>(() => {});
 
   const result = await processLineWebhookPayload(
     textPayload("คอยล์เย็น vios"),
@@ -964,7 +964,7 @@ test("deadline fallback after search keeps complete text search results", async 
     intentYear: 2015,
     intentPartKind: "fitment",
   });
-  dependencies.generateLineSuggestion = () => new Promise<never>(() => {});
+  dependencies.generateChatSuggestion = () => new Promise<never>(() => {});
 
   const result = await processLineWebhookPayload(
     textPayload("หม้อน้ำ D-Max 2015"),
@@ -997,7 +997,7 @@ test("part-image turn near the reply-token deadline still searches (no pre-searc
     imagePartKind: "fitment",
   });
   // Deterministic fast generation so the assertion doesn't race the real fallback.
-  dependencies.generateLineSuggestion = async () => ({
+  dependencies.generateChatSuggestion = async () => ({
     suggestedReply: "เจอรายการที่ใกล้เคียงค่ะ",
     confidence: LineAiConfidence.POSSIBLE_MATCH,
     reasoningSummary: "TEST",
@@ -1074,7 +1074,7 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ faqReply: "ร้านส่งต่างจังหวัดได้ค่ะ 🙏" });
   // Empty product search → FAQ gets a chance before asking-more/escalating.
-  dependencies.searchLineProductInquiry = async () => ({
+  dependencies.searchChatProductInquiry = async () => ({
     searched: true,
     reason: "SEARCHED_PRODUCT_INQUIRY",
     query: "asdf qwer",
@@ -1099,7 +1099,7 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
-  dependencies.searchLineProductInquiry = async () => ({
+  dependencies.searchChatProductInquiry = async () => ({
     searched: true,
     reason: "SEARCHED_PRODUCT_INQUIRY",
     query: "vios 1234",
@@ -1281,7 +1281,7 @@ test("part image recognized but search empty → acknowledges the part + hands o
     // image with zero matches (it would read "send a photo of the part").
     faqReply: "สอบถามเรื่องจัดส่งได้เลยค่ะ",
   });
-  dependencies.searchLineProductInquiry = async () => ({
+  dependencies.searchChatProductInquiry = async () => ({
     searched: true,
     reason: "SEARCHED_PRODUCT_INQUIRY",
     query: "สายน้ำยาแอร์",
@@ -1361,7 +1361,7 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
   });
   // Search returns ids; provide matching summaries so flex cards (and thus the
   // follow-up bubble) are produced.
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1426,7 +1426,7 @@ test("price inquiry with a searchable part → searches, shows products, no admi
     intentCarModel: "D-Max",
     intentPartKind: "universal", // searchable directly; focus is the price path
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1454,7 +1454,7 @@ test("hidden-price customer naming a product + price → shows cards then hands 
     intentCarModel: "Vigo",
     intentPartKind: "universal",
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1482,7 +1482,7 @@ test("hidden-price customer asking bare price (no product named) → direct hand
     consolidatedQuery: "ราคาเท่าไร",
     intentPartKind: "universal",
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1510,7 +1510,7 @@ test("visible-price customer (garage) asking price → shows products, no handof
     intentCarModel: "D-Max",
     intentPartKind: "universal",
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1595,7 +1595,7 @@ test("inquiry frame: a sparse follow-up ('ปี 03') continues the stored subje
     intentYear: 2003,
     intentPartKind: "fitment",
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500 },
   ];
 
@@ -1626,7 +1626,7 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
     intentCarModel: null,
     intentPartKind: "fitment",
   });
-  dependencies.getLineProductSummaries = async () => [
+  dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900 },
   ];
 

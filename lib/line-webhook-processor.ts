@@ -20,21 +20,21 @@ import {
   buildJunePartImageNoMatchReply,
   buildJuneSmalltalkReply,
   buildJuneSocialReply,
-  extractLineSearchIntent,
-  generateLineSuggestion,
+  extractChatSearchIntent,
+  generateChatSuggestion,
   generateScopedConversationalReply,
-  type LineReplyHistoryItem,
-  type LineSearchIntent,
+  type ChatReplyHistoryItem,
+  type ChatSearchIntent,
 } from "@/lib/chat-core/ai-service";
 import { resolveKnownQueryIntent } from "@/lib/chat-core/known-query-intent";
 import {
   isAccessoryOrChemicalIntent,
-  resolveLineFitmentFilters,
-  type LineFitmentFilters,
+  resolveChatFitmentFilters,
+  type ChatFitmentFilters,
 } from "@/lib/chat-core/fitment-resolve";
-import { normalizeInboundLineQuery } from "@/lib/chat-core/text-normalize";
+import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { groupToRoute, intentToGroup, type LineMessageGroup } from "@/lib/chat-core/intent-groups";
+import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   acquireLineConversationLock,
@@ -66,27 +66,27 @@ import {
   updateLineConversationState,
 } from "@/lib/line-conversation-repository";
 import { buildLineConversationStatePatch } from "@/lib/line-conversation-service";
-import { routeLineIntent } from "@/lib/chat-core/intent-router";
+import { routeChatIntent } from "@/lib/chat-core/intent-router";
 import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
 import {
-  applyLinePriceVisibility,
-  getLineProductSummaries,
-  searchLineProductInquiry,
+  applyChatPriceVisibility,
+  getChatProductSummaries,
+  searchChatProductInquiry,
 } from "@/lib/chat-core/product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
-import { answerFromLineFaq } from "@/lib/chat-core/faq";
+import { answerFromChatFaq } from "@/lib/chat-core/faq";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
-import { extractLineRequiredSearchTokens, guardLineSearchIntent } from "@/lib/chat-core/search-guards";
+import { extractChatRequiredSearchTokens, guardChatSearchIntent } from "@/lib/chat-core/search-guards";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
-  buildLineSearchAskReply,
-  buildLineSearchFollowUp,
-  decideLineSearchGate,
+  buildChatSearchAskReply,
+  buildChatSearchFollowUp,
+  decideChatSearchGate,
 } from "@/lib/chat-core/search-gate";
 import {
   boundMessagesToSession,
@@ -137,15 +137,15 @@ export type LineWebhookProcessorDependencies = {
   markOutboundLineMessageSent: typeof markOutboundLineMessageSent;
   storeLineAiJob: typeof storeLineAiJob;
   updateLineAiJob: typeof updateLineAiJob;
-  searchLineProductInquiry: typeof searchLineProductInquiry;
-  getLineProductSummaries: typeof getLineProductSummaries;
+  searchChatProductInquiry: typeof searchChatProductInquiry;
+  getChatProductSummaries: typeof getChatProductSummaries;
   replyLineMessage: typeof replyLineMessage;
   pushLineMessages: typeof pushLineMessages;
   /** Optional override; shows the LINE typing dots while the bot prepares a reply
    *  (best-effort; only fired when the bot will actually auto-reply). */
   startLineLoadingAnimation?: typeof startLineLoadingAnimation;
   /** Optional override; defaults to the Gemini-backed generator with rule-based fallback. */
-  generateLineSuggestion?: typeof generateLineSuggestion;
+  generateChatSuggestion?: typeof generateChatSuggestion;
   /** Optional override; defaults to the Gemini-vision classifier with safe fallback. */
   classifyLineImage?: typeof classifyLineImage;
   /** Optional override; defaults to the full slip ingest (fetch → OCR → store). */
@@ -163,13 +163,13 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; AI fallback classifier for purchase intent. */
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
   /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
-  answerFromLineFaq?: typeof answerFromLineFaq;
+  answerFromChatFaq?: typeof answerFromChatFaq;
   /** Optional override; extracts the running search subject + structured fitment
    *  hints from conversation history (search-side memory for drip-fed details). */
-  extractLineSearchIntent?: typeof extractLineSearchIntent;
+  extractChatSearchIntent?: typeof extractChatSearchIntent;
   /** Optional override; resolves AI fitment hints to canonical master-data names
    *  for use as precise hard filters in product search. */
-  resolveLineFitmentFilters?: typeof resolveLineFitmentFilters;
+  resolveChatFitmentFilters?: typeof resolveChatFitmentFilters;
   /** Optional override; loads the DB-backed Thai↔English brand spelling lookup
    *  (cached) so the search guard can ground a Thai-typed brand. */
   loadCarBrandVariantLookup?: typeof loadCarBrandVariantLookup;
@@ -209,12 +209,12 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   markOutboundLineMessageSent,
   storeLineAiJob,
   updateLineAiJob,
-  searchLineProductInquiry,
-  getLineProductSummaries,
+  searchChatProductInquiry,
+  getChatProductSummaries,
   replyLineMessage,
   pushLineMessages,
   startLineLoadingAnimation,
-  generateLineSuggestion,
+  generateChatSuggestion,
   classifyLineImage,
   ingestPaymentSlip,
   notifyLineOaNeedsAdmin,
@@ -222,9 +222,9 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   classifyPurchaseIntent,
-  answerFromLineFaq,
-  extractLineSearchIntent,
-  resolveLineFitmentFilters,
+  answerFromChatFaq,
+  extractChatSearchIntent,
+  resolveChatFitmentFilters,
   loadCarBrandVariantLookup,
   generateScopedConversationalReply,
   acquireLineConversationLock,
@@ -396,7 +396,7 @@ async function handleSocialTurn(
   input: ProcessLineAiReplyInput,
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  history: LineReplyHistoryItem[],
+  history: ChatReplyHistoryItem[],
 ): Promise<{ replied: boolean }> {
   const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
   const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -469,7 +469,7 @@ async function handleScopedConversationalTurn(
   input: ProcessLineAiReplyInput,
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  history: LineReplyHistoryItem[],
+  history: ChatReplyHistoryItem[],
 ): Promise<{ replied: boolean }> {
   const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
   const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
@@ -611,7 +611,7 @@ const HISTORY_TURN_MAX_CHARS = 400;
 function toReplyHistory(
   rows: Awaited<ReturnType<typeof getRecentLineMessagesForAi>>,
   excludeMessageId: string,
-): LineReplyHistoryItem[] {
+): ChatReplyHistoryItem[] {
   return rows
     .filter((row) => row.id !== excludeMessageId)
     .map((row) => {
@@ -636,10 +636,10 @@ function toReplyHistory(
  * a part image stays in the part-inquiry flow.
  */
 function applyImageClassificationToRoute(
-  base: ReturnType<typeof routeLineIntent>,
+  base: ReturnType<typeof routeChatIntent>,
   classification: LineImageClassification,
   imageSearchEnabled: boolean,
-): ReturnType<typeof routeLineIntent> {
+): ReturnType<typeof routeChatIntent> {
   if (classification.kind === "payment_slip") {
     return {
       intent: LineIntent.PAYMENT_SLIP_IMAGE,
@@ -854,7 +854,7 @@ export type ProcessLineAiReplyInput = {
   replyToken: string | null;
   canReply: boolean;
   messageType: LineMessageType;
-  route: ReturnType<typeof routeLineIntent>;
+  route: ReturnType<typeof routeChatIntent>;
   text: string | null;
   imageClassification: LineImageClassification | null;
   lineEventId: string | null;
@@ -882,7 +882,7 @@ async function respondMultiSubject(
   input: ProcessLineAiReplyInput,
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-  subjects: import("@/lib/chat-core/ai-service").LineSubject[],
+  subjects: import("@/lib/chat-core/ai-service").ChatSubject[],
 ): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED } | null> {
   if (!config.channelAccessToken) return null;
 
@@ -890,9 +890,9 @@ async function respondMultiSubject(
   const replaceCue = MULTI_SUBJECT_REPLACE_CUE_RE.test(input.text ?? "");
   const candidateSubjects = replaceCue ? [subjects[subjects.length - 1]] : subjects;
 
-  const resolveFitment = dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters;
-  const search = dependencies.searchLineProductInquiry;
-  const summarize = dependencies.getLineProductSummaries;
+  const resolveFitment = dependencies.resolveChatFitmentFilters ?? resolveChatFitmentFilters;
+  const search = dependencies.searchChatProductInquiry;
+  const summarize = dependencies.getChatProductSummaries;
   const productRoute = groupToRoute("product") ?? input.route;
   // ราคาจะแสดงจริงเฉพาะลูกค้าที่ประเภทมี showPrice=true (เช่น อู่ซ่อมรถ)
   // ที่เหลือ (ทั่วไป/unlinked) ซ่อนราคา → "สอบถามราคา"
@@ -905,9 +905,9 @@ async function respondMultiSubject(
   // doesn't resolve still split by their raw part type so we never silently merge
   // two clearly different parts.
   type ResolvedSubject = {
-    subject: import("@/lib/chat-core/ai-service").LineSubject;
+    subject: import("@/lib/chat-core/ai-service").ChatSubject;
     key: string;
-    fitment: LineFitmentFilters;
+    fitment: ChatFitmentFilters;
   };
   const byKey = new Map<string, ResolvedSubject>();
   for (const subject of candidateSubjects) {
@@ -919,7 +919,7 @@ async function respondMultiSubject(
       // NOTE: do NOT pass the whole-turn raw text here — in the multi-subject path
       // it contains every subject's keyword, which would let one subject match
       // another's (higher-priority) category alias and break subject isolation.
-    }).catch((): LineFitmentFilters => ({}));
+    }).catch((): ChatFitmentFilters => ({}));
     const key = (fitment.categoryName ?? subject.partType ?? "").trim().toLowerCase();
     if (!key || byKey.has(key)) continue;
     byKey.set(key, { subject, key, fitment });
@@ -954,7 +954,7 @@ async function respondMultiSubject(
     }).catch(() => null);
 
     const ids = productSearch?.searched ? productSearch.result.ids : [];
-    const products = applyLinePriceVisibility(
+    const products = applyChatPriceVisibility(
       ids.length > 0 ? await summarize(ids).catch(() => []) : [],
       showPrice,
     );
@@ -1179,7 +1179,7 @@ export async function processLineAiReply(
     // before the AI/search pipeline reads them, so model-code/year anchors tokenize
     // and the search guards engage. The raw input.text stays untouched for
     // storage/echo/audit.
-    const processText = normalizeInboundLineQuery(input.text);
+    const processText = normalizeInboundChatQuery(input.text);
 
     // Hybrid A (rule-first): when the message is a fully-known, self-contained
     // product query (part + vehicle, or a code) we derive the intent from the
@@ -1190,7 +1190,7 @@ export async function processLineAiReply(
     const knownIntent = shouldClassify
       ? await resolveKnownQueryIntent(processText).catch(() => null)
       : null;
-    const ruleSearchIntent: LineSearchIntent | null =
+    const ruleSearchIntent: ChatSearchIntent | null =
       knownIntent && knownIntent.contextFree
         ? {
             group: "product",
@@ -1208,7 +1208,7 @@ export async function processLineAiReply(
     const searchIntent = ruleSearchIntent
       ? ruleSearchIntent
       : shouldClassify
-        ? await (dependencies.extractLineSearchIntent ?? extractLineSearchIntent)({
+        ? await (dependencies.extractChatSearchIntent ?? extractChatSearchIntent)({
             intent: input.route.intent,
             latestText: processText,
             history,
@@ -1216,7 +1216,7 @@ export async function processLineAiReply(
         : null;
     const usedRuleIntent = ruleSearchIntent !== null;
     const classifyFailed = shouldClassify && !usedRuleIntent && searchIntent === null;
-    const group: LineMessageGroup = shouldClassify ? searchIntent?.group ?? layer1Group : layer1Group;
+    const group: ChatMessageGroup = shouldClassify ? searchIntent?.group ?? layer1Group : layer1Group;
 
     // Effective route from the group (reuses the existing forced-response / hand-off
     // / policy machinery). general_faq / social / other have no 1:1 intent → keep
@@ -1285,7 +1285,7 @@ export async function processLineAiReply(
       : await (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null);
     const guardedSearch = isNonProductTurn
       ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardLineSearchIntent({ intent: searchIntent, latestText: processText, history, brandLookup });
+      : guardChatSearchIntent({ intent: searchIntent, latestText: processText, history, brandLookup });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null
@@ -1320,7 +1320,7 @@ export async function processLineAiReply(
           ? input.imageClassification
           : null;
       const imageSearchHints = input.imageClassification?.searchHints ?? [];
-      const imageRequiredTokens = extractLineRequiredSearchTokens(imageSearchHints.join(" "));
+      const imageRequiredTokens = extractChatRequiredSearchTokens(imageSearchHints.join(" "));
       const latestHasVehicleEvidence = Boolean(
         guardedSearchIntent?.carBrand ||
           guardedSearchIntent?.carModel ||
@@ -1440,7 +1440,7 @@ export async function processLineAiReply(
     // part kind (otherwise degrade to legacy search-on-hints, never blocking).
     const imageGateDecision =
       input.imageClassification?.kind === "part_image" && input.imageClassification.partKind
-        ? decideLineSearchGate({
+        ? decideChatSearchGate({
             partType: input.imageClassification.partType ?? null,
             carBrand: input.imageClassification.carBrand ?? null,
             carModel: input.imageClassification.carModel ?? null,
@@ -1451,7 +1451,7 @@ export async function processLineAiReply(
         : null;
     const rawGateDecision =
       !isNonProductTurn && inquiryFrame && (inquiryFrame.partType || inquiryFrame.carModel || inquiryFrame.carBrand)
-        ? decideLineSearchGate({
+        ? decideChatSearchGate({
             // Completeness is judged against the carried FRAME, so a follow-up that
             // only adds the year still counts the part + car from earlier turns.
             partType: inquiryFrame.partType,
@@ -1467,7 +1467,7 @@ export async function processLineAiReply(
       rawGateDecision.ask === "need_car" &&
       Boolean(
         guardedSearch.requiredTokens.length ||
-          extractLineRequiredSearchTokens((input.imageClassification?.searchHints ?? []).join(" ")).length,
+          extractChatRequiredSearchTokens((input.imageClassification?.searchHints ?? []).join(" ")).length,
       )
         ? { action: "search" as const, followUp: null, reason: "specific_latest_turn_without_car" }
         : rawGateDecision;
@@ -1488,15 +1488,15 @@ export async function processLineAiReply(
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
-    const fitmentFilters: LineFitmentFilters =
+    const fitmentFilters: ChatFitmentFilters =
       !isNonProductTurn && inquiryFrame
-        ? await (dependencies.resolveLineFitmentFilters ?? resolveLineFitmentFilters)({
+        ? await (dependencies.resolveChatFitmentFilters ?? resolveChatFitmentFilters)({
             partType: inquiryFrame.partType,
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
             queryText: consolidatedQuery ?? processText,
             rawText: processText,
-          }).catch((): LineFitmentFilters => ({}))
+          }).catch((): ChatFitmentFilters => ({}))
         : {};
 
     // When the AI gave us a consolidated query it already merged the whole
@@ -1535,8 +1535,8 @@ export async function processLineAiReply(
               : "NON_PRODUCT_TURN",
           query: null,
           result: null,
-        } as Awaited<ReturnType<typeof searchLineProductInquiry>>)
-      : await dependencies.searchLineProductInquiry({
+        } as Awaited<ReturnType<typeof searchChatProductInquiry>>)
+      : await dependencies.searchChatProductInquiry({
           route,
           text: consolidatedQuery ?? input.text,
           extractedImageHints: input.imageClassification?.searchHints ?? null,
@@ -1620,9 +1620,9 @@ export async function processLineAiReply(
     const showPrice = await (dependencies.resolveLineShowPrice ?? resolveLineShowPrice)(
       input.lineUserId,
     ).catch(() => false);
-    const products = applyLinePriceVisibility(
+    const products = applyChatPriceVisibility(
       productSearch.searched && productSearch.result.ids.length > 0
-        ? await dependencies.getLineProductSummaries(productSearch.result.ids).catch(() => [])
+        ? await dependencies.getChatProductSummaries(productSearch.result.ids).catch(() => [])
         : [],
       showPrice,
     );
@@ -1658,7 +1658,7 @@ export async function processLineAiReply(
     // sequential Gemini call from the critical path on the slow product-match
     // turns. If a forced response (purchase / escalate / FAQ / shop info) ends up
     // winning, this result is simply discarded.
-    const generateSuggestion = dependencies.generateLineSuggestion ?? generateLineSuggestion;
+    const generateSuggestion = dependencies.generateChatSuggestion ?? generateChatSuggestion;
     const wantEarlyGenerate =
       liveMode &&
       !directNoMatchHandoff &&
@@ -1733,7 +1733,7 @@ export async function processLineAiReply(
       (tryFaqThenAsk ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
         (productSearch.searched && productSearch.result.total === 0 && !partImageNoMatch && !directNoMatchHandoff))
-        ? await (dependencies.answerFromLineFaq ?? answerFromLineFaq)({ text: input.text }).catch(() => ({
+        ? await (dependencies.answerFromChatFaq ?? answerFromChatFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
           }))
@@ -1764,7 +1764,7 @@ export async function processLineAiReply(
       // Never a hand-off — the AI stays active and waits for the answer.
       : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
-            message: buildLineSearchAskReply(gateDecision.ask),
+            message: buildChatSearchAskReply(gateDecision.ask),
             reason: `GATE_ASK_${gateDecision.ask}`,
             handoff: false,
             audit: "AI_SEARCH_GATE_ASK",
@@ -2079,7 +2079,7 @@ export async function processLineAiReply(
           : regexPriceIntent
             ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
             : searchFollowUp
-              ? textMessage(buildLineSearchFollowUp(searchFollowUp))
+              ? textMessage(buildChatSearchFollowUp(searchFollowUp))
               : null
         : null;
     const outboundMessages = [
@@ -2304,7 +2304,7 @@ async function ingestLineEvent(
 ): Promise<{
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
   inboundMessage: Awaited<ReturnType<typeof appendLineMessage>>;
-  route: ReturnType<typeof routeLineIntent>;
+  route: ReturnType<typeof routeChatIntent>;
   imageClassification: LineImageClassification | null;
   aiJob: Awaited<ReturnType<typeof storeLineAiJob>>;
 }> {
@@ -2322,7 +2322,7 @@ async function ingestLineEvent(
     pictureUrl: lineProfile?.pictureUrl ?? null,
   });
 
-  let route = routeLineIntent({ messageType: event.messageType, text: event.text });
+  let route = routeChatIntent({ messageType: event.messageType, text: event.text });
 
   // Instant typing dots — fire here, the moment the message is ingested and
   // BEFORE the (slow) image vision call below, so the customer sees "กำลังพิมพ์"
@@ -2936,7 +2936,7 @@ async function buildMergedTurnInput(args: {
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
   inboundMessage: { id: string };
   messageType: LineMessageType;
-  route: ReturnType<typeof routeLineIntent>;
+  route: ReturnType<typeof routeChatIntent>;
   text: string | null;
   imageClassification: LineImageClassification | null;
   replyToken: string | null;
@@ -3038,7 +3038,7 @@ async function buildMergedTurnInput(args: {
   // search via imageClassification.searchHints). Image-only → route from the
   // unified classification. This also dissolves the original bug: a stray
   // unknown_image can no longer hijack a turn that has real text or a part image.
-  let route = routeLineIntent({ messageType, text: mergedText });
+  let route = routeChatIntent({ messageType, text: mergedText });
   if (!hasText && imageClassification) {
     route = applyImageClassificationToRoute(route, imageClassification, imageSearchEnabled);
   }

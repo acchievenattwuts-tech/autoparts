@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { LineIntent } from "@/lib/generated/prisma";
-import { searchLineProductInquiry } from "@/lib/chat-core/product-search-bridge";
-import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
+import { searchChatProductInquiry } from "@/lib/chat-core/product-search-bridge";
+import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 
-const searchableRoute: LineIntentRouteResult = {
+const searchableRoute: ChatIntentRouteResult = {
   intent: LineIntent.PRODUCT_INQUIRY_TEXT,
   allowsSearch: true,
   requiresAdmin: false,
@@ -17,7 +17,7 @@ const searchableRoute: LineIntentRouteResult = {
 test("searchable product inquiry calls existing search contract", async () => {
   const calls: unknown[] = [];
 
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอมแอร์ vios 2012",
@@ -48,7 +48,7 @@ test("searchable product inquiry calls existing search contract", async () => {
 });
 
 test("non-searchable intents do not call search", async () => {
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: {
         intent: LineIntent.SHIPPING_ADDRESS,
@@ -74,7 +74,7 @@ test("non-searchable intents do not call search", async () => {
 });
 
 test("weak search results require more information", async () => {
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอมแอร์รุ่นไม่ชัด",
@@ -89,7 +89,7 @@ test("weak search results require more information", async () => {
 
 test("combines message text with carried-over context terms into one query", async () => {
   let captured = "";
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอมแอร์",
@@ -107,7 +107,7 @@ test("combines message text with carried-over context terms into one query", asy
 
 test("retries with a did-you-mean suggestion when the first search is empty", async () => {
   const queries: string[] = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     { route: searchableRoute, text: "คอมแarr" },
     async (input) => {
       queries.push(input.query ?? "");
@@ -126,7 +126,7 @@ test("retries with a did-you-mean suggestion when the first search is empty", as
 
 test("did-you-mean retry keeps category/brand/model, drops only the year", async () => {
   const calls: Array<{ query: string; categoryName: unknown; fitmentYear: unknown }> = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอยร้อนวีออส03",
@@ -170,7 +170,7 @@ test("did-you-mean retry keeps category/brand/model, drops only the year", async
 
 test("unresolved OCR code from an image is dropped from the query, not forced as a filter", async () => {
   const searchInputs: Array<{ query: string }> = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: {
         intent: LineIntent.PART_IMAGE_INQUIRY,
@@ -201,7 +201,7 @@ test("unresolved OCR code from an image is dropped from the query, not forced as
 
 test("a resolvable OCR code from an image is kept in the query", async () => {
   const searchInputs: Array<{ query: string }> = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: {
         intent: LineIntent.PART_IMAGE_INQUIRY,
@@ -230,7 +230,7 @@ test("a resolvable OCR code from an image is kept in the query", async () => {
 test("part image inquiry searches using extracted vision hints when allowed", async () => {
   const calls: unknown[] = [];
 
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: {
         intent: LineIntent.PART_IMAGE_INQUIRY,
@@ -255,7 +255,7 @@ test("part image inquiry searches using extracted vision hints when allowed", as
 });
 
 test("part image inquiry does not search when allowsSearch is off", async () => {
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: {
         intent: LineIntent.PART_IMAGE_INQUIRY,
@@ -276,7 +276,7 @@ test("part image inquiry does not search when allowsSearch is off", async () => 
 });
 
 test("part number seed takes precedence over free text", async () => {
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "ขอราคาคอมแอร์",
@@ -291,7 +291,7 @@ test("part number seed takes precedence over free text", async () => {
 
 test("accessory head noun is required when there is no category filter", async () => {
   const calls: Array<string[] | null> = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "มีฟองน้ำแบบเส้นไหมครับ",
@@ -311,7 +311,7 @@ test("accessory head noun is required when there is no category filter", async (
 
 test("accessory head noun falls back to a broad search when the strict one is empty", async () => {
   const calls: Array<string[] | null> = [];
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "โฟมเส้น",
@@ -336,7 +336,7 @@ test("accessory head noun falls back to a broad search when the strict one is em
 
 test("accessory head noun is ignored when a category filter is present (fitment untouched)", async () => {
   const calls: Array<string[] | null> = [];
-  await searchLineProductInquiry(
+  await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "หม้อน้ำ vios",
@@ -356,7 +356,7 @@ test("accessory head noun is ignored when a category filter is present (fitment 
 test("numeric model or part tokens are sent as required tokens for LINE search", async () => {
   const calls: unknown[] = [];
 
-  const result = await searchLineProductInquiry(
+  const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอม dragon 709",

@@ -1,10 +1,10 @@
 import { LineAiConfidence, LineIntent } from "@/lib/generated/prisma";
 import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
-import type { LineProductSearchBridgeResult } from "@/lib/chat-core/product-search-bridge";
-import { isLineMessageGroup, type LineMessageGroup } from "@/lib/chat-core/intent-groups";
+import type { ChatProductSearchBridgeResult } from "@/lib/chat-core/product-search-bridge";
+import { isChatMessageGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 
-export type LineAiSuggestionDraft = {
+export type ChatAiSuggestionDraft = {
   suggestedReply: string;
   confidence: LineAiConfidence;
   reasoningSummary: string;
@@ -12,13 +12,13 @@ export type LineAiSuggestionDraft = {
 };
 
 /** One prior turn in the conversation, used to give the reply short-term memory. */
-export type LineReplyHistoryItem = {
+export type ChatReplyHistoryItem = {
   role: "customer" | "shop";
   text: string;
 };
 
 /** A matched catalog product to present to the customer (names are never fabricated). */
-export type LineProductSummary = {
+export type ChatProductSummary = {
   name: string;
   code: string | null;
   salePrice: number;
@@ -109,16 +109,16 @@ const LINE_AI_SYSTEM_INSTRUCTION = [
  * Falls back to the deterministic rule-based suggestion whenever Gemini is not
  * configured, the intent is not safe for AI, or any generation error occurs.
  */
-export async function generateLineSuggestion(input: {
+export async function generateChatSuggestion(input: {
   intent: LineIntent;
   originalText?: string | null;
-  productSearch?: LineProductSearchBridgeResult | null;
+  productSearch?: ChatProductSearchBridgeResult | null;
   /** Recent prior turns (oldest → newest), excluding the current message. */
-  history?: LineReplyHistoryItem[];
+  history?: ChatReplyHistoryItem[];
   /** Matched catalog products to present to the customer (real names from the DB). */
-  products?: LineProductSummary[];
-}): Promise<LineAiSuggestionDraft> {
-  const fallback = buildConservativeLineSuggestion(input);
+  products?: ChatProductSummary[];
+}): Promise<ChatAiSuggestionDraft> {
+  const fallback = buildConservativeChatSuggestion(input);
 
   // Skip the model when keys are absent, the intent isn't AI-replyable, or the
   // deterministic policy already decided this must go to an admin (e.g. a part
@@ -211,23 +211,23 @@ const MAX_SEARCH_YEAR = 2100;
  *  `group` drives routing (product / shop_info / payment / ... / other). `query`
  *  and the fitment hints are only meaningful for `group === "product"`.
  *  `isProductQuery` is kept as a convenience mirror of `group === "product"`. */
-export type LinePartKind = "fitment" | "universal";
+export type ChatPartKind = "fitment" | "universal";
 
 /** One distinct product subject the customer asked about (B2c). A single message
  *  can carry several when the customer lists multiple part TYPES at once
  *  ("คอมแอร์กับคอยเย็น D-Max"). Different car models for the SAME part type are NOT
  *  separate subjects (per decision 1 = ก) — those stay in the consolidated query. */
-export type LineSubject = {
+export type ChatSubject = {
   partType: string | null;
   carBrand: string | null;
   carModel: string | null;
   year: number | null;
-  partKind: LinePartKind | null;
+  partKind: ChatPartKind | null;
   query: string;
 };
 
-export type LineSearchIntent = {
-  group: LineMessageGroup;
+export type ChatSearchIntent = {
+  group: ChatMessageGroup;
   query: string;
   isProductQuery: boolean;
   partType: string | null;
@@ -236,14 +236,14 @@ export type LineSearchIntent = {
   year: number | null;
   /** Whether the part needs a vehicle to find (fitment) or is searchable on its
    *  own name/spec (universal). Null when unknown / non-product. */
-  partKind: LinePartKind | null;
+  partKind: ChatPartKind | null;
   /** The query is too generic to search usefully (e.g. "น็อต" alone) → ask first. */
   tooBroad: boolean;
   /** B2c: when the customer asks for ≥2 DISTINCT part types in one turn, each is
    *  listed here so the caller can answer them in separate blocks. The top-level
    *  fields above always mirror the FIRST subject (back-compat). Absent / length
    *  ≤1 means a single-subject turn (answer normally). */
-  subjects?: LineSubject[];
+  subjects?: ChatSubject[];
 };
 
 const cleanIntentString = (value: unknown): string | null => {
@@ -260,11 +260,11 @@ const cleanIntentYear = (value: unknown): number | null => {
 };
 
 /**
- * Parses the model's JSON reply into a LineSearchIntent. Pure + defensive: strips
+ * Parses the model's JSON reply into a ChatSearchIntent. Pure + defensive: strips
  * markdown fences, tolerates extra prose around the object, and returns null when
  * there's no usable `query`. Exported for unit testing.
  */
-export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
+export const parseChatSearchIntent = (raw: string): ChatSearchIntent | null => {
   if (!raw) return null;
   // Grab the first {...} block so stray prose / code fences don't break parsing.
   const match = raw.match(/\{[\s\S]*\}/);
@@ -284,7 +284,7 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   // maps to product/other; an unknown/missing group is treated as `other` (the
   // safe "try FAQ then ask" path) rather than guessed as a product search.
   const groupRaw = typeof obj.group === "string" ? obj.group.trim().toLowerCase() : "";
-  const group: LineMessageGroup = isLineMessageGroup(groupRaw)
+  const group: ChatMessageGroup = isChatMessageGroup(groupRaw)
     ? groupRaw
     : obj.isProductQuery === true
       ? "product"
@@ -296,18 +296,18 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
   const isProductQuery = group === "product";
 
   const partKindRaw = typeof obj.partKind === "string" ? obj.partKind.trim().toLowerCase() : "";
-  const partKind: LinePartKind | null =
+  const partKind: ChatPartKind | null =
     isProductQuery && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
 
   // B2c: parse the optional multi-subject list. Only product turns can carry it,
   // and only entries with a real partType count as a distinct subject (an empty /
   // partType-less entry is noise). Kept undefined for the common single-subject
   // case so existing callers are unaffected.
-  let subjects: LineSubject[] | undefined;
+  let subjects: ChatSubject[] | undefined;
   if (isProductQuery && Array.isArray(obj.subjects)) {
     const parsed = obj.subjects
       .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
-      .map((s): LineSubject => {
+      .map((s): ChatSubject => {
         const sKindRaw = typeof s.partKind === "string" ? s.partKind.trim().toLowerCase() : "";
         const sQuery = cleanIntentString(s.query);
         return {
@@ -338,7 +338,7 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
 };
 
 /**
- * Classifies the latest message into a {@link LineMessageGroup} AND, for product
+ * Classifies the latest message into a {@link ChatMessageGroup} AND, for product
  * turns, distils the consolidated search query + fitment hints from the whole
  * conversation (so drip-fed details "คอยเย็น d max" → "ปี 06" search the COMBINED
  * subject). Runs on EVERY text turn (first turn included) so routing is robust to
@@ -348,11 +348,11 @@ export const parseLineSearchIntent = (raw: string): LineSearchIntent | null => {
  * Returns null only when Gemini is unavailable or the reply can't be parsed — the
  * caller then falls back to the deterministic Layer-1 (regex) routing.
  */
-export async function extractLineSearchIntent(input: {
+export async function extractChatSearchIntent(input: {
   intent: LineIntent;
   latestText?: string | null;
-  history?: LineReplyHistoryItem[];
-}): Promise<LineSearchIntent | null> {
+  history?: ChatReplyHistoryItem[];
+}): Promise<ChatSearchIntent | null> {
   if (!hasGeminiKeysConfigured()) {
     return null;
   }
@@ -377,7 +377,7 @@ export async function extractLineSearchIntent(input: {
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
 
-    return parseLineSearchIntent(text);
+    return parseChatSearchIntent(text);
   } catch {
     return null;
   }
@@ -386,9 +386,9 @@ export async function extractLineSearchIntent(input: {
 function buildLineReplyPrompt(input: {
   intent: LineIntent;
   originalText?: string | null;
-  productSearch?: LineProductSearchBridgeResult | null;
-  history?: LineReplyHistoryItem[];
-  products?: LineProductSummary[];
+  productSearch?: ChatProductSearchBridgeResult | null;
+  history?: ChatReplyHistoryItem[];
+  products?: ChatProductSummary[];
 }): string {
   const lines: string[] = [];
 
@@ -475,7 +475,7 @@ function formatProductPrice(salePrice: number): string {
  * by every customer-facing list reply so the deterministic templates and the
  * live AI path stay visually identical. Returns "" when there are no products.
  */
-export function formatProductListBlock(products: LineProductSummary[]): string {
+export function formatProductListBlock(products: ChatProductSummary[]): string {
   return products
     .slice(0, 5)
     .map((product, index) => {
@@ -487,12 +487,12 @@ export function formatProductListBlock(products: LineProductSummary[]): string {
     .join(`\n${PRODUCT_LIST_DIVIDER}\n`);
 }
 
-export function buildConservativeLineSuggestion(input: {
+export function buildConservativeChatSuggestion(input: {
   intent: LineIntent;
   originalText?: string | null;
-  productSearch?: LineProductSearchBridgeResult | null;
-  products?: LineProductSummary[];
-}): LineAiSuggestionDraft {
+  productSearch?: ChatProductSearchBridgeResult | null;
+  products?: ChatProductSummary[];
+}): ChatAiSuggestionDraft {
   if (input.intent === LineIntent.GREETING) {
     return {
       suggestedReply: "สวัสดีค่ะ 😊 จูนช่วยหาอะไหล่แอร์และหม้อน้ำรถยนต์ให้ได้เลยค่ะ รบกวนแจ้งรุ่นรถ ปีรถ หรือส่งรูปอะไหล่เดิมมาได้เลยนะคะ",
@@ -542,7 +542,7 @@ export function buildConservativeLineSuggestion(input: {
  * product results shown are identical to the live path.
  */
 /** Fitment slots already known for the current inquiry (from the carried frame). */
-export type LineKnownFitment = {
+export type ChatKnownFitment = {
   partType: string | null;
   carBrand: string | null;
   carModel: string | null;
@@ -555,7 +555,7 @@ export type LineKnownFitment = {
  * that an image already revealed). Returns null when nothing is missing, so the
  * caller can stay silent instead of asking a redundant question.
  */
-export function buildMissingFitmentQuestion(known?: LineKnownFitment | null): string | null {
+export function buildMissingFitmentQuestion(known?: ChatKnownFitment | null): string | null {
   const needPart = !known?.partType;
   const needCar = !known?.carBrand && !known?.carModel;
   const needYear = known?.year === null || known?.year === undefined;
@@ -571,8 +571,8 @@ export function buildMissingFitmentQuestion(known?: LineKnownFitment | null): st
 
 export function buildJuneDeadlineReply(input: {
   query?: string | null;
-  products?: LineProductSummary[];
-  known?: LineKnownFitment | null;
+  products?: ChatProductSummary[];
+  known?: ChatKnownFitment | null;
 }): string {
   const subject = input.query?.trim();
   const products = input.products ?? [];
@@ -606,7 +606,7 @@ export function buildJuneDeadlineReply(input: {
  * generic FAQ "send a photo of the part" answer that looks absurd right after the
  * customer already sent one.
  */
-export function buildJunePartImageNoMatchReply(known?: LineKnownFitment | null): string {
+export function buildJunePartImageNoMatchReply(known?: ChatKnownFitment | null): string {
   const part = known?.partType?.trim();
   const car = [known?.carBrand?.trim(), known?.carModel?.trim()].filter(Boolean).join(" ") || null;
   const subject = part ? (car ? `${part}สำหรับ ${car}` : part) : "อะไหล่ในรูป";
@@ -648,7 +648,7 @@ export function buildJuneOutOfScopeReply(): string {
  * {@link LINE_AI_SYSTEM_INSTRUCTION} (no fabricated price/stock, no promises)
  * still apply on top of these.
  */
-const SCOPED_CONVERSATIONAL_DIRECTIVE: Partial<Record<LineMessageGroup, string>> = {
+const SCOPED_CONVERSATIONAL_DIRECTIVE: Partial<Record<ChatMessageGroup, string>> = {
   smalltalk: [
     "บริบท: ลูกค้าทักทาย/ถามตัวตน/ถามความสามารถ/คุยเล่น (เช่น 'จูนคือใคร' 'เป็นบอทไหม' 'ทำอะไรได้')",
     "ให้แนะนำตัวสั้น ๆ ว่าเป็น 'จูน' ผู้ช่วยร้านศรีวรรณอะไหล่แอร์ อย่างเป็นกันเอง 1-2 บรรทัด",
@@ -671,9 +671,9 @@ const SCOPED_CONVERSATIONAL_DIRECTIVE: Partial<Record<LineMessageGroup, string>>
  * degrades to the deterministic template so the customer always gets a reply.
  */
 export async function generateScopedConversationalReply(input: {
-  group: LineMessageGroup;
+  group: ChatMessageGroup;
   latestText?: string | null;
-  history?: LineReplyHistoryItem[];
+  history?: ChatReplyHistoryItem[];
 }): Promise<string> {
   const fallback =
     input.group === "out_of_scope" ? buildJuneOutOfScopeReply() : buildJuneSmalltalkReply();

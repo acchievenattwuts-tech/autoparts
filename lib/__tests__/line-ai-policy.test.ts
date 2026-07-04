@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 
 import { LineAiConfidence, LineConversationAiStatus, LineDeliveryMode, LineIntent } from "@/lib/generated/prisma";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
-import type { LineIntentRouteResult } from "@/lib/chat-core/intent-router";
+import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 
-const productRoute: LineIntentRouteResult = {
+const productRoute: ChatIntentRouteResult = {
   intent: LineIntent.PRODUCT_INQUIRY_TEXT,
   allowsSearch: true,
   requiresAdmin: false,

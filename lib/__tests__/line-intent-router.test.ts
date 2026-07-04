@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
-import { routeLineIntent } from "@/lib/chat-core/intent-router";
+import { routeChatIntent } from "@/lib/chat-core/intent-router";
 
 test("routes product inquiry text to searchable intent", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.TEXT,
     text: "มีคอมแอร์ vios 2012 ไหม",
   });
@@ -17,7 +17,7 @@ test("routes product inquiry text to searchable intent", () => {
 
 test("routes a short part code/number to searchable product inquiry", () => {
   for (const text of ["508 o", "508", "tv12", "6pk1234", "134a"]) {
-    const result = routeLineIntent({
+    const result = routeChatIntent({
       messageType: LineMessageType.TEXT,
       text,
     });
@@ -30,7 +30,7 @@ test("routes a short part code/number to searchable product inquiry", () => {
 
 test("routes purchase wording to admin without search", () => {
   for (const text of ["เอาตัวนี้เลยค่ะ", "สั่งซื้อ 2 อัน", "กี่บาทคะ", "ซื้อเลยค่ะ", "รับของยังไง"]) {
-    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
     assert.equal(result.intent, LineIntent.PURCHASE_INTENT, `expected purchase intent for "${text}"`);
     assert.equal(result.allowsSearch, false);
     assert.equal(result.requiresAdmin, true);
@@ -38,7 +38,7 @@ test("routes purchase wording to admin without search", () => {
 });
 
 test("routes payment wording away from product search", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.TEXT,
     text: "โอนแล้วครับ ส่งสลิปให้แล้ว",
   });
@@ -49,7 +49,7 @@ test("routes payment wording away from product search", () => {
 });
 
 test("routes shipping address away from product search", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.TEXT,
     text: "ที่อยู่จัดส่ง 99/1 อำเภอเมือง จังหวัดนครสวรรค์",
   });
@@ -67,7 +67,7 @@ test("routes shipping-service questions to the AI shop-info reply (no admin)", (
     "ค่าส่งคิดอย่างไร",
     "ส่งกี่วัน",
   ]) {
-    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
 
     assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
     assert.equal(result.allowsSearch, false);
@@ -77,7 +77,7 @@ test("routes shipping-service questions to the AI shop-info reply (no admin)", (
 });
 
 test("routes claim and return to admin", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.TEXT,
     text: "สินค้าพัง ขอเคลมได้ไหม",
   });
@@ -87,7 +87,7 @@ test("routes claim and return to admin", () => {
 });
 
 test("routes greeting without requiring search", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.TEXT,
     text: "สวัสดีครับ",
   });
@@ -99,7 +99,7 @@ test("routes greeting without requiring search", () => {
 
 test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
   for (const text of ["เวลาทำการ", "ติดต่อร้าน", "ร้านเปิดกี่โมง", "เบอร์โทรร้าน"]) {
-    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
 
     assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
     assert.equal(result.allowsSearch, false);
@@ -109,7 +109,7 @@ test("routes shop-info keywords to the AI shop-info reply (no admin)", () => {
 });
 
 test("routes ติดต่อสอบถาม to the shop-info reply", () => {
-  const result = routeLineIntent({ messageType: LineMessageType.TEXT, text: "ติดต่อสอบถาม" });
+  const result = routeChatIntent({ messageType: LineMessageType.TEXT, text: "ติดต่อสอบถาม" });
   assert.equal(result.intent, LineIntent.SHOP_INFO);
   assert.equal(result.requiresAdmin, false);
   assert.equal(result.reason, "SHOP_INFO_KEYWORD");
@@ -117,7 +117,7 @@ test("routes ติดต่อสอบถาม to the shop-info reply", () =>
 
 test("routes part-finding phrases to product inquiry (searchable)", () => {
   for (const text of ["หาอะไหล่", "สอบถามอะไหล่"]) {
-    const result = routeLineIntent({ messageType: LineMessageType.TEXT, text });
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
 
     assert.equal(result.intent, LineIntent.PRODUCT_INQUIRY_TEXT, `expected product inquiry for "${text}"`);
     assert.equal(result.allowsSearch, true);
@@ -126,7 +126,7 @@ test("routes part-finding phrases to product inquiry (searchable)", () => {
 });
 
 test("routes image to image analysis before search", () => {
-  const result = routeLineIntent({
+  const result = routeChatIntent({
     messageType: LineMessageType.IMAGE,
   });
 
@@ -137,7 +137,7 @@ test("routes image to image analysis before search", () => {
 
 test("defaults freeform text (Thai part name / car model) to a product search", () => {
   for (const text of ["คอยเย็น ดีแม็ก", "พัดลมหม้อน้ำ triton", "asdf qwer"]) {
-    const result = routeLineIntent({
+    const result = routeChatIntent({
       messageType: LineMessageType.TEXT,
       text,
     });
@@ -151,11 +151,11 @@ test("defaults freeform text (Thai part name / car model) to a product search", 
 test("still routes the special intents (payment/claim/etc.) away from product search", () => {
   // Sanity: the default-to-search fallback must not swallow admin-only intents.
   assert.equal(
-    routeLineIntent({ messageType: LineMessageType.TEXT, text: "โอนเงินแล้วค่ะ" }).intent,
+    routeChatIntent({ messageType: LineMessageType.TEXT, text: "โอนเงินแล้วค่ะ" }).intent,
     LineIntent.PAYMENT_SLIP_IMAGE,
   );
   assert.equal(
-    routeLineIntent({ messageType: LineMessageType.TEXT, text: "ขอเคลมสินค้า" }).intent,
+    routeChatIntent({ messageType: LineMessageType.TEXT, text: "ขอเคลมสินค้า" }).intent,
     LineIntent.CLAIM_OR_RETURN,
   );
 });
