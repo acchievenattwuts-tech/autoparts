@@ -33,6 +33,8 @@
 
 ## Phase A — Meta App Review (งานฝั่ง Meta, ทำคู่ขนาน / เจ้าของร้าน + dev)
 
+> 📘 **คู่มือ step-by-step ละเอียด:** [docs/messenger/META-APP-SETUP.md](/D:/autoparts/docs/messenger/META-APP-SETUP.md)
+
 รออนุมัตินาน → เริ่มเร็วที่สุด
 
 - [ ] A1. Business verification ให้เสร็จใน Meta Business Portfolio (จัดการ Action-needed: add trusted domain, passkey) — ไม่บล็อก dev แต่ต้องมีก่อน advanced access
