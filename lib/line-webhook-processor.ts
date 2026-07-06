@@ -1369,7 +1369,14 @@ export async function processLineAiReply(
           latestHasProductSpecificity &&
           (inquiryFrame.carBrand || inquiryFrame.carModel || inquiryFrame.year),
       );
-      if (droppedVehicleCarryover && inquiryFrame) {
+      const keepFreshVehicleForImagePartShift = Boolean(
+        droppedVehicleCarryover &&
+          frameTopicShift &&
+          !sessionStale &&
+          imageFields?.partKind === "fitment" &&
+          (stored?.carBrand || stored?.carModel || stored?.year),
+      );
+      if (droppedVehicleCarryover && !keepFreshVehicleForImagePartShift && inquiryFrame) {
         inquiryFrame = {
           ...inquiryFrame,
           carBrand: null,

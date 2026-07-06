@@ -1744,6 +1744,48 @@ test("inquiry frame: part-image OCR hints drop stale vehicle hard filters", asyn
   });
 });
 
+test("inquiry frame: new fitment part image keeps the freshly answered vehicle", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "แผงแอร์", carBrand: "Isuzu", carModel: "D-Max" },
+    imageKind: "part_image",
+    imageHints: ["พัดลมโบลเวอร์", "blower motor", "62500 30352"],
+    imagePartType: "พัดลมโบลเวอร์",
+    imagePartKind: "fitment",
+    fitmentFilters: {
+      categoryName: "โบเวอร์ พัดลมแอร์ (Blower Motor)",
+      carBrandName: "Isuzu",
+      carModelName: "D-Max",
+    },
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-keep-fresh-vehicle"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "new part image still searches");
+  assert.deepEqual(calls.savedFrames.at(-1), {
+    partType: "พัดลมโบลเวอร์",
+    carBrand: "Isuzu",
+    carModel: "D-Max",
+    year: null,
+  });
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "โบเวอร์ พัดลมแอร์ (Blower Motor)",
+    carBrandName: "Isuzu",
+    carModelName: "D-Max",
+    fitmentYear: null,
+  });
+});
+
 test("inquiry frame: generic part image drops stale vehicle but still asks for car", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
