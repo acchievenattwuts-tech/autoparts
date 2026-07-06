@@ -19,10 +19,12 @@
  */
 const THAI_DIGIT_BOUNDARY = /([฀-๿])(\d)/g;
 const DIGIT_THAI_BOUNDARY = /(\d)([฀-๿])/g;
+const LATIN_MODEL_SHORTHAND_YEAR_BOUNDARY = /\b([A-Za-z]{2,})(\d{2}(?:-\d{2})?)(?=\s|$)/g;
 
 export const normalizeInboundChatQuery = (text?: string | null): string =>
   (text ?? "")
     .replace(THAI_DIGIT_BOUNDARY, "$1 $2")
     .replace(DIGIT_THAI_BOUNDARY, "$1 $2")
+    .replace(LATIN_MODEL_SHORTHAND_YEAR_BOUNDARY, "$1 $2")
     .replace(/\s+/g, " ")
     .trim();

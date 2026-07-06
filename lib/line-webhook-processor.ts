@@ -1357,7 +1357,7 @@ export async function processLineAiReply(
           // range's START year from the customer's own text as a fallback so the
           // fitment-year filter still applies (e.g. "คอยเย็น Avanza 12-15" → 2012).
           // Grounded in customer text by construction, so it survives the year guard.
-          year: guardedSearchIntent?.year ?? imageFields?.year ?? parseCarYearRangeStart(input.text) ?? null,
+          year: guardedSearchIntent?.year ?? imageFields?.year ?? parseCarYearRangeStart(processText) ?? null,
         },
         { sessionStale },
       );
@@ -1612,7 +1612,10 @@ export async function processLineAiReply(
       liveMode &&
       productSearch.searched &&
       productSearch.result.total === 0 &&
-      Boolean(inquiryFrame?.partType && (inquiryFrame.carBrand || inquiryFrame.carModel));
+      Boolean(
+        inquiryFrame?.partType &&
+          (inquiryFrame.carBrand || inquiryFrame.carModel || guardedSearch.requiredTokens.length > 0),
+      );
 
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of

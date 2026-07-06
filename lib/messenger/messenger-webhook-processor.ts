@@ -9,6 +9,8 @@ import {
   type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
+import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
+import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import {
   classifyMessengerImage,
   ingestMessengerPaymentSlip,
@@ -70,6 +72,11 @@ const STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1_000;
 // Stop debouncing after this much wall-clock and do one final reply, so a chatty
 // customer can't push the owner past the 60s serverless ceiling.
 const OWNER_FINAL_PASS_AFTER_MS = 28_000;
+const DIRECT_NO_MATCH_HANDOFF_MESSAGE =
+  "ขอส่งต่อให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้ละเอียดนะคะ เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+const EXPLICIT_PRODUCT_NOUN_RE =
+  /(คอย(?:ล์)?\s*เย็น|คอม\s*แอร์|แผง\s*แอร์|กรอง\s*แอร์|หม้อ\s*น้ำ|พัด\s*ลม|วาล์ว|ไดเออร์|ดรายเออร์|ตู้\s*แอร์|น้ำยา|โอริง|สาย\s*น้ำยา)/i;
+const LATIN_MODEL_YEAR_ANCHOR_RE = /\b[A-Za-z]{2,}\s+\d{2}(?:-\d{2})?\b/;
 
 export type MessengerInboundEvent = {
   pageId: string;
@@ -428,7 +435,8 @@ async function replyToMessengerTurn(params: {
 
   if (!mergedText) return;
 
-  const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: mergedText });
+  const processText = normalizeInboundChatQuery(mergedText);
+  const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
   // status…) escalate to a human admin instead of the AI guessing ──
@@ -449,7 +457,7 @@ async function replyToMessengerTurn(params: {
       conversationId,
       psid,
       route,
-      bridgeInput: { route, text: mergedText },
+      bridgeInput: { route, text: processText },
       originalText: mergedText,
       history,
     });
@@ -480,6 +488,26 @@ async function loadHistory(conversationId: string): Promise<ChatHistoryItem[]> {
     }));
 }
 
+function shouldDirectNoMatchHandoff(input: {
+  route: ChatIntentRouteResult;
+  productSearch: Awaited<ReturnType<typeof searchChatProductInquiry>>;
+  text: string;
+}): boolean {
+  if (
+    input.route.intent !== LineIntent.PRODUCT_INQUIRY_TEXT ||
+    !input.productSearch.searched ||
+    input.productSearch.result.total > 0
+  ) {
+    return false;
+  }
+
+  const requiredTokens = extractChatRequiredSearchTokens(input.text);
+  return (
+    EXPLICIT_PRODUCT_NOUN_RE.test(input.text) &&
+    (requiredTokens.length > 0 || LATIN_MODEL_YEAR_ANCHOR_RE.test(input.text))
+  );
+}
+
 /**
  * Shared product-inquiry reply used by both the text and part-image paths: runs
  * the shared catalog search, applies price visibility, asks the shared AI to draft
@@ -497,6 +525,32 @@ async function replyWithProductSearch(params: {
 }): Promise<boolean> {
   const productSearch = await searchChatProductInquiry(params.bridgeInput);
   if (!productSearch.searched) return false;
+
+  if (
+    shouldDirectNoMatchHandoff({
+      route: params.route,
+      productSearch,
+      text: params.bridgeInput.text ?? params.originalText,
+    })
+  ) {
+    await escalateMessengerConversationToAdmin(params.conversationId);
+    safeNotify(
+      notifyMessengerNeedsAdmin({
+        conversationId: params.conversationId,
+        text: params.originalText,
+        messageType: "TEXT",
+      }),
+    );
+    await sendMessengerText({
+      pageAccessToken: params.pageAccessToken,
+      psid: params.psid,
+      text: DIRECT_NO_MATCH_HANDOFF_MESSAGE,
+    });
+    await persistOutbound(params.conversationId, params.psid, DIRECT_NO_MATCH_HANDOFF_MESSAGE, {
+      intent: params.route.intent,
+    });
+    return true;
+  }
 
   const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
   const showPrice = await resolveMessengerShowPrice(params.conversationId);

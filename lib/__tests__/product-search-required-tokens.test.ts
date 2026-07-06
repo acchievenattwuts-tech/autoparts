@@ -16,10 +16,19 @@ test("does not treat plausible car years as required tokens", () => {
 });
 
 test("does not treat car-year range shorthand as required tokens", () => {
-  // Regression: "12-15" (years 2012–2015) must NOT become a hard anchor —
-  // no product name contains "12-15", which zeroed the LINE search.
   assert.deepEqual(extractProductSearchRequiredTokens("คอยเย็น Avanza 12-15"), []);
   assert.deepEqual(extractProductSearchRequiredTokens("คอยเย็น Avanza 2012-2015"), []);
-  // A real part code with a dash still anchors.
   assert.deepEqual(extractProductSearchRequiredTokens("คอยเย็น Avanza 12-15 STB-2116"), ["stb-2116"]);
+});
+
+test("does not treat car shorthand years as part-code anchors", () => {
+  assert.deepEqual(extractProductSearchRequiredTokens("คอยเย็น Jazz 08-12"), []);
+  assert.deepEqual(extractProductSearchRequiredTokens("คอยเย็น City 03"), []);
+  assert.deepEqual(extractProductSearchRequiredTokens("กรองแอร์ Vios 13-19"), []);
+});
+
+test("keeps real part-code anchors required", () => {
+  assert.deepEqual(extractProductSearchRequiredTokens("วาล์วแอร์ R134a"), ["r134a"]);
+  assert.deepEqual(extractProductSearchRequiredTokens("คอมแอร์ STA-7065"), ["sta-7065"]);
+  assert.deepEqual(extractProductSearchRequiredTokens("คอม dragon 709"), ["709"]);
 });

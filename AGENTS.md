@@ -42,6 +42,14 @@ When adding a new transaction type or a new document relationship, update both t
 
 All new Prisma `DateTime` fields must explicitly use `@db.Timestamptz(3)` unless a narrower PostgreSQL type is deliberately approved for that exact field. Do not add bare `DateTime` or PostgreSQL `timestamp without time zone`; date/time storage must preserve the instant semantics used by `lib/th-date.ts`.
 
+# AI Search Platform Sync Rule
+
+When changing AI chat search logic, product-search routing, no-match fallback behavior, query normalization, search guards, intent-to-search bridging, or any equivalent AI-assisted search behavior for LINE or Facebook Messenger, you must review and update both platforms in the same round.
+
+Default routine: implement and verify the first affected platform, then continue immediately to the second platform and apply the equivalent change and verification there. Do not stop after one platform unless the user explicitly says to change only that specific platform.
+
+If the requested scope is ambiguous or the equivalent change is not obvious, ask the user before guessing. Do not silently assume single-platform scope.
+
 # Bug Investigation Approval Rule
 
 When the user asks to investigate, inspect, review, diagnose, analyze, check, or verify a bug or problem, including Thai requests such as `ตรวจสอบ`, `เช็ค`, `ดูสาเหตุ`, `หาสาเหตุ`, or similar wording, you must treat the turn as investigation-only unless the user explicitly asks you to edit code in that same message.

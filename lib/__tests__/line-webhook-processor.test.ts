@@ -1096,6 +1096,33 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
   assert.equal(calls.notifyHandoffs.length, 0);
 });
 
+test("text product no-match with a product subject does not use generic FAQ fallback", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยเย็น ABC123",
+    intentPartType: "คอยล์เย็น",
+    intentPartKind: "fitment",
+    searchTotal: 0,
+    searchIds: [],
+    failedSearchCount: 0,
+    faqReply: "FAQ should not answer this no-match product search",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยเย็น ABC123"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.replies.length, 1);
+  assert.ok(!calls.replies[0]?.text.includes("FAQ should not answer"));
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
