@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ReactNode } from "react";
 
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 
@@ -36,14 +37,30 @@ const TopProductsChart = dynamic(() => import("./TopProductsChart"), {
 });
 
 export default function AdminDashboardCharts({
+  leadingContent,
   salesData,
   topProductsData,
 }: {
+  leadingContent?: ReactNode;
   salesData: SalesChartDatum[];
   topProductsData: TopProductsChartDatum[];
 }) {
+  if (leadingContent) {
+    return (
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="space-y-4 xl:col-span-2">
+          <SalesChart data={salesData} />
+          {leadingContent}
+        </div>
+        <div>
+          <TopProductsChart data={topProductsData} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       <div className="xl:col-span-2">
         <SalesChart data={salesData} />
       </div>
