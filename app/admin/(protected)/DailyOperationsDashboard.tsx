@@ -143,6 +143,12 @@ const fetchDashboardAggregates = (params: {
             },
           },
           _sum: { quantity: true, totalAmount: true },
+          orderBy: [
+            { _sum: { quantity: "desc" } },
+            { _sum: { totalAmount: "desc" } },
+            { productId: "asc" },
+          ],
+          take: 10,
         }),
       ]);
     },
@@ -243,7 +249,7 @@ const DailyOperationsDashboard = async () => {
       qty: Number(item._sum.quantity ?? 0),
       revenue: Number(item._sum.totalAmount ?? 0),
     }))
-    .sort((left, right) => right.revenue - left.revenue || right.qty - left.qty || left.name.localeCompare(right.name))
+    .sort((left, right) => right.qty - left.qty || right.revenue - left.revenue || left.name.localeCompare(right.name))
     .slice(0, 10);
 
   const cards = [

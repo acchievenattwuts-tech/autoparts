@@ -1,18 +1,5 @@
 "use client";
 
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  LabelList,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
-import { useAdminTheme } from "@/components/shared/AdminThemeProvider";
-
 export type TopProductsChartDatum = {
   name: string;
   qty: number;
@@ -21,101 +8,75 @@ export type TopProductsChartDatum = {
 
 const formatRevenue = (value: unknown) => {
   const numericValue = Number(value ?? 0);
-  return numericValue >= 1000 ? `฿${(numericValue / 1000).toFixed(0)}k` : `฿${numericValue}`;
+  return numericValue.toLocaleString("th-TH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 };
 
-const CustomTooltip = ({
-  active,
-  label,
-  payload,
-  isDark,
-}: {
-  active?: boolean;
-  label?: string;
-  payload?: { value: number; name: string; payload: TopProductsChartDatum }[];
-  isDark: boolean;
-}) => {
-  if (!active || !payload?.length) return null;
-
-  const datum = payload[0].payload;
-
-  return (
-    <div
-      className={`rounded-lg border px-3 py-2 text-xs shadow-lg ${
-        isDark
-          ? "border-white/10 bg-slate-900 text-slate-100"
-          : "border-gray-200 bg-white text-gray-800"
-      }`}
-    >
-      <p className="mb-1 max-w-[180px] font-medium leading-tight">{label}</p>
-      <p className="text-emerald-500 dark:text-emerald-300">
-        ยอดขาย: <span className="font-semibold">฿{datum.revenue.toLocaleString("th-TH")}</span>
-      </p>
-      <p className="text-sky-500 dark:text-sky-300">
-        จำนวนขาย: <span className="font-semibold">{datum.qty} ชิ้น</span>
-      </p>
-    </div>
-  );
-};
+const formatQuantity = (value: unknown) => Number(value ?? 0).toLocaleString("th-TH");
 
 const TopProductsChart = ({ data }: { data: TopProductsChartDatum[] }) => {
-  const { isDark } = useAdminTheme();
-  const colors = isDark
-    ? {
-        axis: "#a5b4c7",
-        cursor: "rgba(52, 211, 153, 0.12)",
-        grid: "rgba(148, 163, 184, 0.18)",
-        label: "#e5e7eb",
-        value: "#cbd5e1",
-      }
-    : {
-        axis: "#9ca3af",
-        cursor: "#f9fafb",
-        grid: "#f0f0f0",
-        label: "#374151",
-        value: "#6b7280",
-      };
+  const maxQty = Math.max(1, ...data.map((item) => item.qty));
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white/95 p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-      <div className="mb-1 flex items-start justify-between gap-3">
+      <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-kanit font-semibold text-gray-800 dark:text-slate-100">สินค้าขายดี Top 10 (เดือนนี้)</h2>
-          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">เรียงตามยอดขาย (฿) และ hover เพื่อดูจำนวนชิ้นอย่างรวดเร็ว</p>
+          <h2 className="font-kanit font-semibold text-gray-800 dark:text-slate-100">
+            สินค้าขายดี Top 10 (เดือนนี้)
+          </h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            เรียงตามจำนวนชิ้นที่ขายได้ พร้อมยอดขายรวมของสินค้าแต่ละรายการ
+          </p>
         </div>
       </div>
       {data.length > 0 ? (
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={data} layout="vertical" margin={{ top: 0, right: 64, left: 0, bottom: 0 }}>
-            <CartesianGrid horizontal={false} stroke={colors.grid} strokeDasharray="3 3" />
-            <XAxis
-              axisLine={false}
-              tick={{ fontSize: 10, fill: colors.axis }}
-              tickFormatter={(value) => (value >= 1000 ? `${(value / 1000).toFixed(0)}k` : `${value}`)}
-              tickLine={false}
-              type="number"
-            />
-            <YAxis
-              axisLine={false}
-              dataKey="name"
-              tick={{ fontSize: 10, fill: colors.label }}
-              tickLine={false}
-              type="category"
-              width={160}
-            />
-            <Tooltip content={<CustomTooltip isDark={isDark} />} cursor={{ fill: colors.cursor }} />
-            <Bar dataKey="revenue" fill="#10b981" maxBarSize={16} radius={[0, 3, 3, 0]}>
-              <LabelList
-                dataKey="revenue"
-                formatter={formatRevenue}
-                position="right"
-                style={{ fill: colors.value, fontSize: 9 }}
-              />
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="space-y-3">
+          {data.map((item, index) => {
+            const percent = Math.max(6, Math.round((item.qty / maxQty) * 100));
+
+            return (
+              <div
+                key={`${item.name}-${index}`}
+                className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-xs font-semibold text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-200">
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-sm font-medium leading-snug text-gray-900 dark:text-slate-100">
+                      {item.name}
+                    </p>
+                    <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-gray-500 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                      <span>
+                        ขาย{" "}
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-200">
+                          {formatQuantity(item.qty)} ชิ้น
+                        </span>
+                      </span>
+                      <span>
+                        ยอดขาย{" "}
+                        <span className="font-semibold text-gray-900 dark:text-slate-100">
+                          ฿{formatRevenue(item.revenue)}
+                        </span>
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-slate-800">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 dark:bg-emerald-400"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       ) : (
-        <div className="flex h-[320px] items-center justify-center text-sm text-gray-500 dark:text-slate-400">
+        <div className="flex h-[320px] items-center justify-center rounded-xl border border-dashed border-gray-200 text-sm text-gray-500 dark:border-white/10 dark:text-slate-400">
           ยังไม่มีข้อมูลสินค้าขายดีของเดือนนี้
         </div>
       )}
