@@ -12,6 +12,7 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
 import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
+import { sniffImageMimeType } from "@/lib/image-upload-validation";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -45,12 +46,17 @@ export async function uploadLogoImage(
     const safeFileName = `logo-${Date.now()}-${crypto.randomUUID()}.${ext}`;
     const filePath    = `settings/${safeFileName}`;
     const buffer      = new Uint8Array(await file.arrayBuffer());
+    const detectedType = sniffImageMimeType(buffer);
+
+    if (!detectedType || !ALLOWED_MIME_TYPES.includes(detectedType)) {
+      return { error: "ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ (JPEG, PNG, WebP, GIF)" };
+    }
 
     // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
     const url = await uploadProductsBucketObject({
       objectPath: filePath,
       body: buffer,
-      contentType: file.type,
+      contentType: detectedType,
     });
     return { url };
   } catch {

@@ -74,4 +74,38 @@ assert.deepEqual(
   "Business code must use parameterized raw SQL instead of raw-unsafe APIs",
 );
 
+const uploadActionFiles = [
+  "app/admin/(protected)/settings/company/actions.ts",
+  "app/admin/(protected)/users/actions.ts",
+  "app/admin/(protected)/sales/actions.ts",
+];
+
+const uploadActionsWithoutMagicByteValidation = uploadActionFiles.filter((file) => {
+  const source = readRepoFile(file);
+  return !/\bsniffImageMimeType\b/.test(source);
+});
+
+assert.deepEqual(
+  uploadActionsWithoutMagicByteValidation.map(normalize),
+  [],
+  "Every image upload action must validate actual image bytes instead of trusting client MIME/extension",
+);
+
+const uploadActionsTrustingClientMimeForStorage = uploadActionFiles.filter((file) => {
+  const source = readRepoFile(file);
+  return /contentType:\s*file\.type\b/.test(source);
+});
+
+assert.deepEqual(
+  uploadActionsTrustingClientMimeForStorage.map(normalize),
+  [],
+  "Image upload storage contentType must come from server-side magic-byte detection",
+);
+
+const nextConfigSource = readRepoFile("next.config.ts");
+assert.ok(
+  !/script-src[^"\n]*'unsafe-eval'/.test(nextConfigSource),
+  "Production CSP must not allow unsafe-eval in script-src",
+);
+
 console.log("Security hardening checks passed");

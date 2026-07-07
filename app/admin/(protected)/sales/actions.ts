@@ -26,6 +26,7 @@ import {
 } from "@/lib/generated/prisma";
 import { generateTrackingToken } from "@/lib/delivery-tracking";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
@@ -1441,13 +1442,17 @@ const uploadDeliveryProofImage = async ({
   const safeSaleId = saleId.replace(/[^a-zA-Z0-9_-]/g, "");
   const filePath = `delivery-proofs/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
   const buffer = new Uint8Array(await file.arrayBuffer());
+  const detectedType = sniffImageMimeType(buffer);
+  if (!detectedType || !(detectedType in DELIVERY_PROOF_EXTENSIONS)) {
+    return { error: "ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ (JPEG, PNG, WebP)" };
+  }
 
   try {
     // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
     const url = await uploadProductsBucketObject({
       objectPath: filePath,
       body: buffer,
-      contentType,
+      contentType: detectedType,
     });
     return { url };
   } catch {

@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
 
+const scriptSrcDirectives = [
+  "'self'",
+  "'unsafe-inline'",
+  ...(process.env.NODE_ENV === "development" ? ["'unsafe-eval'"] : []),
+  "https://www.googletagmanager.com",
+  "https://static.line-scdn.net",
+];
+
 const securityHeaders = [
   // Prevent MIME type sniffing
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -25,8 +33,8 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      // Next.js requires unsafe-inline for hydration scripts; Google Analytics
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://static.line-scdn.net",
+      // Next.js requires unsafe-inline for hydration scripts; unsafe-eval is dev-only.
+      `script-src ${scriptSrcDirectives.join(" ")}`,
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
       // Allow images from self, Vercel Blob CDN, analytics pixels, data URIs, and OpenStreetMap tiles

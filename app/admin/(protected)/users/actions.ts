@@ -13,6 +13,7 @@ import {
 import { ensureAccessControlSetup } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
+import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 
 const ALLOWED_SIGNATURE_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -393,12 +394,17 @@ export async function uploadUserSignature(
     const safeFileName = `user-signature-${Date.now()}-${crypto.randomUUID()}.${extension}`;
     const filePath = `users/signatures/${safeFileName}`;
     const buffer = new Uint8Array(await file.arrayBuffer());
+    const detectedType = sniffImageMimeType(buffer);
+
+    if (!detectedType || !ALLOWED_SIGNATURE_MIME_TYPES.includes(detectedType)) {
+      return { error: "ไฟล์นี้ไม่ใช่ภาพลายเซ็นที่รองรับ (JPG, PNG, WebP)" };
+    }
 
     // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
     const url = await uploadProductsBucketObject({
       objectPath: filePath,
       body: buffer,
-      contentType: file.type,
+      contentType: detectedType,
     });
 
     return { url };
