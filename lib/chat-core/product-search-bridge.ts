@@ -206,6 +206,12 @@ const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
   return rows.map((row) => row.code);
 };
 
+/** Public handle to the catalog-code resolver (validates code-like tokens against
+ *  product code / OEM / alias / name). Exposed so the LINE processor can run the
+ *  product-code fast-path — resolving a customer-typed / image-OCR'd code straight
+ *  to its product — before the completeness gate. Injectable for tests. */
+export const resolveCatalogCodes: ResolveCatalogCodesFn = defaultResolveCatalogCodes;
+
 /** A token is "code-like" when it carries a digit and ≥3 chars (e.g. STB-2116S,
  *  2903E) — the same heuristic the search uses to treat a token as a part-code
  *  anchor. Plain words (แผงแอร์, vios) are never code-like. */

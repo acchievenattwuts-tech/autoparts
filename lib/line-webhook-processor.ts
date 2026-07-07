@@ -71,6 +71,7 @@ import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@
 import {
   applyChatPriceVisibility,
   getChatProductSummaries,
+  resolveCatalogCodes,
   searchChatProductInquiry,
 } from "@/lib/chat-core/product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
@@ -142,6 +143,9 @@ export type LineWebhookProcessorDependencies = {
   storeLineAiJob: typeof storeLineAiJob;
   updateLineAiJob: typeof updateLineAiJob;
   searchChatProductInquiry: typeof searchChatProductInquiry;
+  /** Optional override; validates code-like tokens against the catalog for the
+   *  product-code fast-path (customer-typed code / image-OCR'd part number). */
+  resolveCatalogCodes?: typeof resolveCatalogCodes;
   getChatProductSummaries: typeof getChatProductSummaries;
   replyLineMessage: typeof replyLineMessage;
   pushLineMessages: typeof pushLineMessages;
@@ -214,6 +218,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   storeLineAiJob,
   updateLineAiJob,
   searchChatProductInquiry,
+  resolveCatalogCodes,
   getChatProductSummaries,
   replyLineMessage,
   pushLineMessages,
@@ -1514,6 +1519,44 @@ export async function processLineAiReply(
       input.imageClassification?.kind === "part_image" &&
       input.imageClassification.confidence === "LOW";
 
+    // ── Product-code fast-path (Option A) ─────────────────────────────────────
+    // A customer who browsed the shop site/app often sends the product's code
+    // ("สอบถามราคา P0368") or a screenshot whose vision OCR captured the printed
+    // part number. A code alone identifies the item, so when one RESOLVES to a
+    // real catalog product we answer with THAT product directly: exact-code search
+    // (extractedPartNumber wins the query), no completeness gate, no fitment hard
+    // filters, no "which car?" ask. Candidates come from the customer's own text,
+    // the image's OCR'd part number, and any code-like image hints — validated
+    // against the catalog so a misread/unknown code falls back to the normal flow.
+    // Skipped for admin-only guarded turns (payment/claim) and payment-slip images.
+    const isPaymentSlipImage = input.imageClassification?.kind === "payment_slip";
+    const codeCandidates =
+      !hardGuard && !isPaymentSlipImage
+        ? Array.from(
+            new Set(
+              [
+                ...extractChatRequiredSearchTokens(processText),
+                ...(input.imageClassification?.partNumber
+                  ? extractChatRequiredSearchTokens(input.imageClassification.partNumber)
+                  : []),
+                ...extractChatRequiredSearchTokens(
+                  (input.imageClassification?.searchHints ?? []).join(" "),
+                ),
+              ].filter(Boolean),
+            ),
+          )
+        : [];
+    const resolvedCatalogCodes =
+      codeCandidates.length > 0
+        ? new Set(
+            await (dependencies.resolveCatalogCodes ?? resolveCatalogCodes)(codeCandidates).catch(
+              () => [] as string[],
+            ),
+          )
+        : new Set<string>();
+    // First candidate (customer text > image part number > image hints) that exists.
+    const directProductCode = codeCandidates.find((code) => resolvedCatalogCodes.has(code)) ?? null;
+
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
@@ -1553,8 +1596,12 @@ export async function processLineAiReply(
         ? inquiryFrame.partType
         : null;
 
+    // A resolved product code drives a direct exact-code lookup and bypasses the
+    // gate / low-confidence guard (the code itself is the confirmation). It never
+    // overrides a genuinely non-product turn (greeting/payment) — those are already
+    // excluded from codeCandidates via hardGuard / payment-slip above.
     const productSearch =
-      isNonProductTurn || gateBlocksSearch || imageOnlyLowConfidence
+      isNonProductTurn || (!directProductCode && (gateBlocksSearch || imageOnlyLowConfidence))
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
@@ -1565,7 +1612,20 @@ export async function processLineAiReply(
           query: null,
           result: null,
         } as Awaited<ReturnType<typeof searchChatProductInquiry>>)
-      : await dependencies.searchChatProductInquiry({
+      : directProductCode
+        ? await dependencies.searchChatProductInquiry({
+            // Exact-code lookup: the code identifies the item, so no fitment hard
+            // filters (which could exclude a code that fits a different car) and no
+            // free-text/hints noise — buildSearchQuery lets extractedPartNumber win.
+            route: groupToRoute("product") ?? route,
+            text: null,
+            extractedPartNumber: directProductCode,
+            extractedImageHints: null,
+            contextHints: [],
+            fitmentHints: null,
+            accessoryHeadNoun: null,
+          })
+        : await dependencies.searchChatProductInquiry({
           route,
           text: consolidatedQuery ?? input.text,
           extractedImageHints: input.imageClassification?.searchHints ?? null,
@@ -1578,6 +1638,21 @@ export async function processLineAiReply(
           },
           accessoryHeadNoun,
         });
+
+    if (directProductCode && productSearch.searched) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "PRODUCT_CODE_DIRECT",
+        payload: {
+          lineEventId: input.lineEventId,
+          code: directProductCode,
+          source: extractChatRequiredSearchTokens(processText).includes(directProductCode)
+            ? "text"
+            : "image",
+          total: productSearch.result?.total ?? 0,
+        },
+      });
+    }
 
     if (isNonProductTurn) {
       fireAndForgetAudit(dependencies, {

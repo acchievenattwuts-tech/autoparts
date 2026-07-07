@@ -5,6 +5,7 @@ import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/int
 import {
   applyChatPriceVisibility,
   getChatProductSummaries,
+  resolveCatalogCodes,
   searchChatProductInquiry,
   type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
@@ -403,23 +404,35 @@ async function replyToMessengerTurn(params: {
         requiresMoreInfo: false,
         reason: "MESSENGER_PART_IMAGE",
       };
+      // Product-code fast-path: if the OCR'd part number (or a code-like hint /
+      // the accompanying text) resolves to a catalog product, search by that exact
+      // code with NO fitment hard filters — the code alone identifies the item, so
+      // a classifier partType/car guess must not be able to filter it out.
+      const directImageCode = await resolveDirectProductCode([
+        classification.partNumber,
+        (classification.searchHints ?? []).join(" "),
+        mergedText || null,
+      ]);
+      const bridgeInput: ChatProductSearchBridgeInput = directImageCode
+        ? { route: partRoute, text: null, extractedPartNumber: directImageCode }
+        : {
+            route: partRoute,
+            text: mergedText || null,
+            extractedPartNumber: classification.partNumber ?? null,
+            extractedImageHints: classification.searchHints,
+            fitmentHints: {
+              categoryName: classification.partType ?? null,
+              carBrandName: classification.carBrand ?? null,
+              carModelName: classification.carModel ?? null,
+              fitmentYear: classification.year ?? null,
+            },
+          };
       const replied = await replyWithProductSearch({
         pageAccessToken,
         conversationId,
         psid,
         route: partRoute,
-        bridgeInput: {
-          route: partRoute,
-          text: mergedText || null,
-          extractedPartNumber: classification.partNumber ?? null,
-          extractedImageHints: classification.searchHints,
-          fitmentHints: {
-            categoryName: classification.partType ?? null,
-            carBrandName: classification.carBrand ?? null,
-            carModelName: classification.carModel ?? null,
-            fitmentYear: classification.year ?? null,
-          },
-        },
+        bridgeInput,
         originalText: mergedText || "(ลูกค้าส่งรูปอะไหล่)",
         history,
       });
@@ -437,6 +450,24 @@ async function replyToMessengerTurn(params: {
 
   const processText = normalizeInboundChatQuery(mergedText);
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
+
+  // ── Product-code fast-path: a message carrying a catalog-resolvable code
+  // ("สอบถามราคา P0368", "P0368 ราคาเท่าไหร่") is answered with that exact product
+  // directly — before the price/admin escalation below, since the code alone
+  // identifies the item (price still defers to admin via price visibility). ──
+  const directTextCode = await resolveDirectProductCode([processText]);
+  if (directTextCode) {
+    const replied = await replyWithProductSearch({
+      pageAccessToken,
+      conversationId,
+      psid,
+      route: MESSENGER_PRODUCT_ROUTE,
+      bridgeInput: { route: MESSENGER_PRODUCT_ROUTE, text: null, extractedPartNumber: directTextCode },
+      originalText: mergedText,
+      history,
+    });
+    if (replied) return;
+  }
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
   // status…) escalate to a human admin instead of the AI guessing ──
@@ -506,6 +537,39 @@ function shouldDirectNoMatchHandoff(input: {
     EXPLICIT_PRODUCT_NOUN_RE.test(input.text) &&
     (requiredTokens.length > 0 || LATIN_MODEL_YEAR_ANCHOR_RE.test(input.text))
   );
+}
+
+// Product route used by the product-code fast-path (a resolved code identifies the
+// item, so we search directly regardless of the layer-1 regex intent).
+const MESSENGER_PRODUCT_ROUTE: ChatIntentRouteResult = {
+  intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+  allowsSearch: true,
+  requiresAdmin: false,
+  requiresImageAnalysis: false,
+  requiresMoreInfo: false,
+  reason: "MESSENGER_PRODUCT_CODE_DIRECT",
+};
+
+/**
+ * Product-code fast-path (mirrors the LINE processor's Option A). A customer who
+ * browsed the shop site/app often sends the product's code ("สอบถามราคา P0368") or
+ * an image whose OCR captured the printed part number. Gathers code-like tokens
+ * from the given sources, validates them against the catalog, and returns the first
+ * one that resolves — the caller then runs an exact-code search (no fitment filters,
+ * bypassing price/admin escalation) so the AI answers with that product directly.
+ */
+async function resolveDirectProductCode(sources: Array<string | null | undefined>): Promise<string | null> {
+  const candidates = Array.from(
+    new Set(
+      sources
+        .filter((s): s is string => Boolean(s))
+        .flatMap((s) => extractChatRequiredSearchTokens(s))
+        .filter(Boolean),
+    ),
+  );
+  if (candidates.length === 0) return null;
+  const resolved = new Set(await resolveCatalogCodes(candidates).catch(() => [] as string[]));
+  return candidates.find((code) => resolved.has(code)) ?? null;
 }
 
 /**

@@ -121,6 +121,9 @@ function createProcessorTestDeps(input?: {
   imageCarModel?: string | null;
   imageYear?: number | null;
   imagePartKind?: "fitment" | "universal" | null;
+  imagePartNumber?: string | null;
+  /** Codes that the resolveCatalogCodes mock treats as existing in the catalog. */
+  catalogCodes?: string[];
   failedSearchCount?: number;
   searchTotal?: number;
   searchIds?: string[];
@@ -251,7 +254,9 @@ function createProcessorTestDeps(input?: {
       if (!input.route.allowsSearch) {
         return { searched: false, reason: "NON_SEARCHABLE_INTENT", query: null, result: null };
       }
-      calls.searches.push(input.text ?? (input.extractedImageHints ?? []).join(" "));
+      calls.searches.push(
+        input.extractedPartNumber ?? input.text ?? (input.extractedImageHints ?? []).join(" "),
+      );
       calls.searchFitmentHints.push(input.fitmentHints ?? null);
       return {
         searched: true,
@@ -317,8 +322,11 @@ function createProcessorTestDeps(input?: {
         carModel: input?.imageCarModel ?? null,
         year: input?.imageYear ?? null,
         partKind: input?.imagePartKind ?? null,
+        partNumber: input?.imagePartNumber ?? null,
       };
     },
+    resolveCatalogCodes: async (codes: string[]) =>
+      codes.filter((code) => (input?.catalogCodes ?? []).includes(code)),
     ingestPaymentSlip: async (slipInput) => {
       calls.ocrCalls += 1;
       calls.reusedSlipContent = Boolean(slipInput.content);
@@ -1698,6 +1706,71 @@ test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT
   // valve — the frame keeps "วาล์วแอร์".
   assert.equal(calls.savedFrames.at(-1)?.partType, "วาล์วแอร์");
   assert.equal(calls.savedFrames.at(-1)?.carModel, "Vios");
+});
+
+test("product-code fast-path: a part image with a catalog-resolvable OCR code searches by code (no 'which car?' ask)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imagePartType: "วาล์วแอร์", // part-only → the gate would normally ask for the car
+    imagePartKind: "fitment",
+    imagePartNumber: "DI261411-0300",
+    imageHints: ["วาล์วแอร์", "Toyota Vios 13-19"],
+    catalogCodes: ["di261411-0300"], // exists in the catalog (resolves)
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-code"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  // Searched by the exact code — no fitment hard filters, no need_car ask.
+  assert.equal(calls.searches.length, 1, "code lookup runs instead of asking for the car");
+  assert.equal(calls.searches.at(-1), "di261411-0300");
+  assert.equal(calls.searchFitmentHints.at(-1), null, "direct code lookup applies no fitment filters");
+});
+
+test("product-code fast-path: an unknown OCR code falls back to the normal (ask/search) flow", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imagePartType: "วาล์วแอร์",
+    imagePartKind: "fitment",
+    imagePartNumber: "ZZ999-0000",
+    catalogCodes: [], // resolves to nothing → not a real code
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-nocode"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  // No resolvable code → part-only image still asks for the car (legacy behaviour).
+  assert.equal(calls.searches.length, 0, "no code → gate still asks for the car");
+});
+
+test("product-code fast-path: a customer-typed code searches by that exact code", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "สอบถามราคา P0368",
+    intentPartType: null,
+    intentCarBrand: null,
+    intentCarModel: null,
+    intentYear: null,
+    catalogCodes: ["p0368"],
+  });
+
+  await processLineWebhookPayload(
+    textPayload("สอบถามราคา P0368"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searches.at(-1), "p0368", "the resolved code drives the exact-code search");
+  assert.equal(calls.searchFitmentHints.at(-1), null);
 });
 
 test("inquiry frame: spec-only latest text drops stale vehicle hard filters", async () => {
