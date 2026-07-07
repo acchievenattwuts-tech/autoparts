@@ -27,6 +27,15 @@ test("does not treat car shorthand years as part-code anchors", () => {
   assert.deepEqual(extractProductSearchRequiredTokens("กรองแอร์ Vios 13-19"), []);
 });
 
+test("does not treat car-generation markers as required tokens", () => {
+  assert.deepEqual(extractProductSearchRequiredTokens("คอยล์เย็น Vios gen3 2013"), []);
+  assert.deepEqual(extractProductSearchRequiredTokens("คอมแอร์ Vios Gen3"), []);
+  assert.deepEqual(extractProductSearchRequiredTokens("ท่อแอร์ CR-V เจน4"), []);
+  assert.deepEqual(extractProductSearchRequiredTokens("หม้อน้ำ Accord Gen8"), []);
+  // A generation marker must not shadow a real part-code anchor in the same query.
+  assert.deepEqual(extractProductSearchRequiredTokens("คอมแอร์ Vios Gen3 STA-7065"), ["sta-7065"]);
+});
+
 test("keeps real part-code anchors required", () => {
   assert.deepEqual(extractProductSearchRequiredTokens("วาล์วแอร์ R134a"), ["r134a"]);
   assert.deepEqual(extractProductSearchRequiredTokens("คอมแอร์ STA-7065"), ["sta-7065"]);

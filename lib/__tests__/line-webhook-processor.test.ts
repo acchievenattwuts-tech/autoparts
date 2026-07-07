@@ -1672,6 +1672,34 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
   assert.equal(calls.savedFrames.at(-1)?.carModel, "D-Max");
 });
 
+test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT a topic shift (Option A grounding)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    // The valve part was established from the customer's image on a previous turn.
+    storedFrame: { partType: "วาล์วแอร์", carBrand: "Toyota", carModel: "Vios" },
+    // Classifier hallucinates a common AC part for a car-only follow-up.
+    consolidatedQuery: "คอยล์เย็น Toyota Vios",
+    intentPartType: "คอยล์เย็น",
+    intentCarBrand: "Toyota",
+    intentCarModel: "Vios",
+    intentYear: 2013,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "วาล์ว (Expansion Valve)", carBrandName: "Toyota", carModelName: "Vios" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("Vios gen3 ปี2013ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  // The customer only supplied car + year (no part word, no new image), so the
+  // classifier's ungrounded "คอยล์เย็น" must not override the image-established
+  // valve — the frame keeps "วาล์วแอร์".
+  assert.equal(calls.savedFrames.at(-1)?.partType, "วาล์วแอร์");
+  assert.equal(calls.savedFrames.at(-1)?.carModel, "Vios");
+});
+
 test("inquiry frame: spec-only latest text drops stale vehicle hard filters", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({

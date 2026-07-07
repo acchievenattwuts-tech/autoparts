@@ -81,7 +81,11 @@ import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
-import { extractChatRequiredSearchTokens, guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import {
+  extractChatRequiredSearchTokens,
+  guardChatSearchIntent,
+  lineValueHasCustomerEvidence,
+} from "@/lib/chat-core/search-guards";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   buildChatSearchAskReply,
@@ -1344,12 +1348,30 @@ export async function processLineAiReply(
           imageFields?.carModel ||
           imageFields?.year,
       );
+      // partType grounding (mirror the brand/model/year evidence gate in
+      // guardChatSearchIntent). The classifier can hallucinate a common part
+      // ("คอยล์เย็น") for a vehicle-only follow-up ("Vios gen3 ปี2013") — which
+      // would then override the part the customer actually established (often from
+      // an image) and flip the frame to the wrong category. Trust the classifier's
+      // partType only when it came from a NEW image this turn, OR the customer's own
+      // text evidences it. Gated on there being a STORED part to fall back to, so a
+      // fresh first-mention (no prior part) still classifies as before.
+      const classifierPartType = guardedSearchIntent?.partType ?? null;
+      const imagePartType = imageFields?.partType ?? null;
+      const groundedLatestPartType =
+        imagePartType ??
+        (stored?.partType &&
+        classifierPartType &&
+        !lineValueHasCustomerEvidence(classifierPartType, processText, history)
+          ? null
+          : classifierPartType);
+
       const reconciled = reconcileInquiryFrame(
         stored
           ? { partType: stored.partType, carBrand: stored.carBrand, carModel: stored.carModel, year: stored.year }
           : null,
         {
-          partType: guardedSearchIntent?.partType ?? imageFields?.partType ?? null,
+          partType: groundedLatestPartType,
           carBrand: guardedSearchIntent?.carBrand ?? imageFields?.carBrand ?? null,
           carModel: guardedSearchIntent?.carModel ?? imageFields?.carModel ?? null,
           // The classifier reports a single 4-digit C.E. year and often returns

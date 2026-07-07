@@ -752,6 +752,46 @@ const applyYearFilter = (
   return { ...where, AND: [...existingAnd, yearCondition] };
 };
 
+/** Appends an extra condition to a where's top-level AND without mutating it. */
+const mergeAndCondition = (
+  where: PrismaTypes.ProductWhereInput,
+  extra: PrismaTypes.ProductWhereInput,
+): PrismaTypes.ProductWhereInput => {
+  const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
+  return { ...where, AND: [...existingAnd, extra] };
+};
+
+/**
+ * Option A — correlate the requested model/brand with the requested year on the
+ * SAME fitment row. Returns a `ProductCarModel` `some` predicate that requires one
+ * fitment row to match BOTH the requested vehicle (model and/or brand, by name)
+ * AND cover the requested year — so a wide fitment on ANOTHER model (e.g. Vigo
+ * 06-13) can never satisfy the year for a Vios query. Returns null when there is
+ * no year, no name-based vehicle scope, or an id-based (UI) scope is in play
+ * (`carModelId`/`carBrandId` keep their original uncorrelated behaviour).
+ */
+const buildCorrelatedVehicleYearSome = (
+  input: ProductSearchInput,
+  targetYear: number | null,
+): PrismaTypes.ProductFitmentWhereInput | null => {
+  if (targetYear === null) return null;
+  if (input.carModelId || input.carBrandId) return null;
+  const modelNames = normalizeCarModelNames(input);
+  const brandNames = input.carBrandName
+    ? [input.carBrandName]
+    : normalizeStringArray(input.carBrandNames);
+  if (modelNames.length === 0 && brandNames.length === 0) return null;
+
+  const carModel: PrismaTypes.CarModelWhereInput = {};
+  if (modelNames.length > 0) carModel.name = { in: modelNames };
+  if (brandNames.length > 0) carModel.carBrand = { name: { in: brandNames } };
+
+  return {
+    carModel,
+    OR: buildYearOrConditions(targetYear),
+  };
+};
+
 const getFallbackOrderBy = (
   order: ProductSearchOrder,
 ): PrismaTypes.ProductOrderByWithRelationInput => {
@@ -781,7 +821,18 @@ async function searchProductIdsFallback(
   const { year: targetYear } = await resolveQueryYear(input.query, input.fitmentYear);
   const yearMin = normalizeYearBound(input.yearMin);
   const yearMax = normalizeYearBound(input.yearMax);
-  const where = applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
+  // Option A: when a model/brand + year are both given, enforce the year on the
+  // SAME fitment row as the vehicle (correlated). The range filter (yearMin/yearMax,
+  // storefront UI) stays uncorrelated as before.
+  const correlatedVehicleYear = buildCorrelatedVehicleYearSome(input, targetYear);
+  const where = correlatedVehicleYear
+    ? applyYearFilter(
+        mergeAndCondition(baseWhere, { carModels: { some: correlatedVehicleYear } }),
+        null,
+        yearMin,
+        yearMax,
+      )
+    : applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
 
   if (input.stockStatus === "in_stock" || input.stockStatus === "low_stock") {
     const stockRows = await db.$queryRaw<{ id: string }[]>(
@@ -823,6 +874,19 @@ async function searchProductIdsV2(
   if (!normalizedQuery) {
     return searchProductIdsFallback(input);
   }
+
+  // Option A — vehicle+year correlation (name-based scope only; id-based UI scope
+  // keeps its original behaviour). Used below to gate the correlated year filter
+  // and year boost so a wide fitment on ANOTHER model can't satisfy the requested
+  // year for a specific model/brand query.
+  const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
+  const effectiveCarBrandNames = input.carBrandName
+    ? [input.carBrandName]
+    : normalizedCarBrandNames;
+  const hasNameVehicleScope =
+    !input.carModelId &&
+    !input.carBrandId &&
+    (normalizedCarModelNames.length > 0 || effectiveCarBrandNames.length > 0);
 
   const skip = input.skip ?? 0;
   const take = input.take ?? 30;
@@ -881,15 +945,55 @@ async function searchProductIdsV2(
   // still pass the ranked.score > 0 cut.
   const isYearOnlyQuery = targetYear !== null && /^\d{4}$/.test(normalizedQuery);
 
+  // Option A — correlated vehicle+year EXISTS. When a specific model/brand (by
+  // name) AND a year are both requested, the year MUST be covered by the SAME
+  // fitment row that matches that vehicle. Without this correlation a wide fitment
+  // on a DIFFERENT model (e.g. a valve fitting both "Vios 07-12" and "Vigo 06-13")
+  // would satisfy the year 2013 via the Vigo row and leak into a Vios-2013 query.
+  const correlateYearWithVehicle = targetYear !== null && !isYearOnlyQuery && hasNameVehicleScope;
+  const buildVehicleYearExists = (): PrismaTypes.Sql => {
+    const needsBrandJoin = effectiveCarBrandNames.length > 0;
+    const brandJoin = needsBrandJoin
+      ? Prisma.sql`INNER JOIN "CarBrand" cb ON cb.id = cm."carBrandId"`
+      : Prisma.empty;
+    const modelCond = normalizedCarModelNames.length > 0
+      ? Prisma.sql`AND cm.name IN (${Prisma.join(normalizedCarModelNames)})`
+      : Prisma.empty;
+    const brandCond = needsBrandJoin
+      ? Prisma.sql`AND cb.name IN (${Prisma.join(effectiveCarBrandNames)})`
+      : Prisma.empty;
+    return Prisma.sql`
+      EXISTS (
+        SELECT 1
+        FROM "ProductCarModel" pcm
+        INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
+        ${brandJoin}
+        WHERE pcm."productId" = psd.product_id
+          ${modelCond}
+          ${brandCond}
+          AND (
+            (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
+            OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+            OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+            OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+          )
+      )
+    `;
+  };
+
   // Year filter:
-  //  - Mixed query (e.g. "ผ้าเบรค Vios 2010"): lenient hard AND — also accept
-  //    NULL/NULL because the text-match clause already constrains the set.
+  //  - Model/brand + year (correlated): the year must sit on the SAME fitment row
+  //    as the requested vehicle (Option A).
+  //  - Mixed query without a vehicle scope (e.g. "ผ้าเบรค 2010"): lenient hard AND —
+  //    also accept NULL/NULL because the text-match clause already constrains the set.
   //  - Year-only query (e.g. "1950"): do NOT hard-filter by year. A bare 4-digit
   //    number is often a part-number fragment, so the year becomes one of
   //    several OR candidate paths below (see yearOnlyFitmentExists) and
   //    yearBoost still ranks true year matches highest.
   const yearFilterClause = targetYear !== null && !isYearOnlyQuery
-    ? Prisma.sql`
+    ? correlateYearWithVehicle
+      ? Prisma.sql`AND ${buildVehicleYearExists()}`
+      : Prisma.sql`
         AND EXISTS (
           SELECT 1
           FROM "ProductCarModel" pcm
@@ -922,9 +1026,15 @@ async function searchProductIdsV2(
       `
     : Prisma.empty;
 
-  // Year boost (Q3=C): +700 when a fitment row covers the requested year explicitly
+  // Year boost (Q3=C): +700 when a fitment row covers the requested year. When a
+  // model/brand is also requested, the boost is CORRELATED (Option A) — it only
+  // fires when the SAME row that matches the requested vehicle covers the year, so
+  // a genuine model+year fit outranks a mis-fit whose year is covered by an
+  // unrelated model's wide fitment row.
   const yearBoostExpr = targetYear !== null
-    ? Prisma.sql`
+    ? correlateYearWithVehicle
+      ? Prisma.sql`CASE WHEN ${buildVehicleYearExists()} THEN 700 ELSE 0 END`
+      : Prisma.sql`
         CASE
           WHEN EXISTS (
             SELECT 1
@@ -1014,14 +1124,12 @@ async function searchProductIdsV2(
 
   const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
   const normalizedBrandIds = normalizeStringArray(input.brandIds);
-  const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
+  // normalizedCarBrandNames / effectiveCarBrandNames are computed once near the top
+  // of this function (needed early for the Option A vehicle+year correlation).
   const yearMinRange = normalizeYearBound(input.yearMin);
   const yearMaxRange = normalizeYearBound(input.yearMax);
   const priceMin = normalizePriceBound(input.priceMin);
   const priceMax = normalizePriceBound(input.priceMax);
-  const effectiveCarBrandNames = input.carBrandName
-    ? [input.carBrandName]
-    : normalizedCarBrandNames;
 
   const carBrandClause = effectiveCarBrandNames.length > 0
     ? Prisma.sql`
@@ -1427,7 +1535,7 @@ async function searchProductIdsV2(
     let vectorMatches: VectorMatch[] = [];
     if (queryEmbedding) {
       try {
-        await tx.$executeRawUnsafe("SAVEPOINT vec_recall");
+        await tx.$executeRaw`SAVEPOINT vec_recall`;
         // Widen HNSW traversal so filtered semantic recall keeps enough real
         // candidates. Inside the savepoint: a DB without the GUC rolls back here
         // and degrades to lexical-only, never poisoning the ranked query.
@@ -1436,12 +1544,12 @@ async function searchProductIdsV2(
         `;
         const qvec = toPgVectorLiteral(queryEmbedding);
         vectorMatches = await run<VectorMatch[]>(vectorRecallSql(qvec));
-        await tx.$executeRawUnsafe("RELEASE SAVEPOINT vec_recall");
+        await tx.$executeRaw`RELEASE SAVEPOINT vec_recall`;
       } catch (error) {
         console.error("Semantic recall failed; falling back to lexical-only search.", error);
         try {
           // Recover the transaction so the lexical ranked query below can run.
-          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT vec_recall");
+          await tx.$executeRaw`ROLLBACK TO SAVEPOINT vec_recall`;
         } catch {
           // Savepoint may not exist if the SAVEPOINT statement itself failed; if
           // the transaction is unrecoverable the ranked query will throw and the
