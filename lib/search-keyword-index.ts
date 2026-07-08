@@ -31,7 +31,22 @@ export type SearchKeywordSuggestion = {
   sublabel: string | null;
 };
 
+export type SearchKeywordRefreshOutcome = {
+  rowsBuilt: number;
+  rowsWritten: number;
+  batches: number;
+  skipped: "EMPTY" | "LOCKED" | null;
+};
+
 const MAX_TERM_LENGTH = 120;
+const SEARCH_KEYWORD_REFRESH_LOCK_NAMESPACE = 24_061;
+const SEARCH_KEYWORD_REFRESH_LOCK_KEY = 1;
+const SEARCH_KEYWORD_UPSERT_BATCH_SIZE = 250;
+const REFRESH_TX_TIMEOUT_MS = 110_000;
+const REFRESH_TX_MAX_WAIT_MS = 10_000;
+const REFRESH_TX_LOCK_TIMEOUT_MS = 8_000;
+const REFRESH_TX_IDLE_IN_TX_TIMEOUT_MS = 30_000;
+const REFRESH_STATEMENT_TIMEOUT_MS = 25_000;
 
 type DraftRow = {
   term: string;
@@ -148,75 +163,148 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
 }
 
 /**
- * Rebuilds the entire SearchKeyword index transactionally (delete-all + bulk
- * insert). Cheap because the catalog is small (≈800 products). Returns the row
- * count written. Uses upsert (ON CONFLICT) keyed by the unique (normalized, kind)
- * pair plus a stale-delete, so existing rows keep their id / createdAt and only
- * changed / new / removed rows are written — instead of truncating the table on
- * every run. The whole thing is one transaction, so readers never see a partial
- * state. Cheap at this scale (≈1,600 rows), and runs daily via cron + on every
- * catalog/master mutation via the storefront revalidate hook.
+ * Rebuilds the SearchKeyword index transactionally via batched upserts plus one
+ * stale-delete. The heavy row build stays outside the transaction; only the DB
+ * write phase is serialized. A transaction-scoped advisory lock prevents
+ * multiple serverless instances from trying to rebuild the same index at once,
+ * and batching avoids one giant VALUES statement as the catalog grows.
  */
-// Generous envelopes for the rebuild transaction (see call site below). 60s of
-// work is well under the Supabase 120s statement_timeout, and 10s to acquire a
-// pooled connection rides out a short burst instead of failing fast at 2s.
-const REFRESH_TX_TIMEOUT_MS = 60_000;
-const REFRESH_TX_MAX_WAIT_MS = 10_000;
+type SearchKeywordTxLike = {
+  $executeRaw: (query: Prisma.Sql) => Promise<unknown>;
+  $queryRaw: <T = unknown>(query: Prisma.Sql) => Promise<T>;
+};
 
-export async function refreshSearchKeywordIndex(): Promise<number> {
-  const rows = await buildSearchKeywordRows();
+type SearchKeywordRefreshDeps = {
+  buildRows: () => Promise<DraftRow[]>;
+  now: () => Date;
+  batchSize?: number;
+  log?: Pick<typeof console, "info" | "warn" | "error">;
+  runTx: <T>(fn: (tx: SearchKeywordTxLike) => Promise<T>) => Promise<T>;
+};
+
+function chunkDraftRows(rows: DraftRow[], batchSize: number): DraftRow[][] {
+  const size = Math.max(1, Math.floor(batchSize));
+  const chunks: DraftRow[][] = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function buildSearchKeywordUpsertSql(rows: DraftRow[], runStartedAt: Date): Prisma.Sql {
+  return Prisma.sql`
+    INSERT INTO "SearchKeyword" ("id", "term", "normalized", "kind", "sublabel", "popularity", "createdAt", "updatedAt")
+    VALUES ${Prisma.join(
+      rows.map(
+        (row) => Prisma.sql`(
+          gen_random_uuid()::text,
+          ${row.term},
+          ${row.normalized},
+          ${row.kind},
+          ${row.sublabel},
+          ${row.popularity},
+          ${runStartedAt},
+          ${runStartedAt}
+        )`,
+      ),
+    )}
+    ON CONFLICT ("normalized", "kind") DO UPDATE SET
+      "term" = EXCLUDED."term",
+      "sublabel" = EXCLUDED."sublabel",
+      "popularity" = EXCLUDED."popularity",
+      "updatedAt" = ${runStartedAt}
+  `;
+}
+
+function runRefreshTransaction<T>(fn: (tx: SearchKeywordTxLike) => Promise<T>): Promise<T> {
+  return db.$transaction(
+    async (tx) => {
+      await tx.$executeRaw`
+        SELECT set_config('lock_timeout', ${String(REFRESH_TX_LOCK_TIMEOUT_MS)}, true)
+      `;
+      await tx.$executeRaw`
+        SELECT set_config('idle_in_transaction_session_timeout', ${String(REFRESH_TX_IDLE_IN_TX_TIMEOUT_MS)}, true)
+      `;
+      await tx.$executeRaw`
+        SELECT set_config('statement_timeout', ${String(REFRESH_STATEMENT_TIMEOUT_MS)}, true)
+      `;
+      return fn(tx);
+    },
+    { timeout: REFRESH_TX_TIMEOUT_MS, maxWait: REFRESH_TX_MAX_WAIT_MS },
+  ) as Promise<T>;
+}
+
+export async function runSearchKeywordRefreshWithDeps(
+  deps: SearchKeywordRefreshDeps,
+): Promise<SearchKeywordRefreshOutcome> {
+  const startedAtMs = Date.now();
+  const rows = await deps.buildRows();
   if (rows.length === 0) {
-    // Defensive: an empty build (e.g. a transient read failure) must NOT wipe the
-    // live index. Leave the existing rows untouched.
-    return 0;
+    deps.log?.warn("[search-keyword] refresh skipped because the rebuilt index was empty");
+    return { rowsBuilt: 0, rowsWritten: 0, batches: 0, skipped: "EMPTY" };
   }
 
-  const runStartedAt = new Date();
+  const runStartedAt = deps.now();
+  const batches = chunkDraftRows(rows, deps.batchSize ?? SEARCH_KEYWORD_UPSERT_BATCH_SIZE);
 
-  await db.$transaction(
-    async (tx) => {
-    // Bulk upsert every built row in a single statement. Touched rows (inserted or
-    // updated) get updatedAt = runStartedAt; rows not present this run keep their
-    // older updatedAt and are deleted below.
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "SearchKeyword" ("id", "term", "normalized", "kind", "sublabel", "popularity", "createdAt", "updatedAt")
-      VALUES ${Prisma.join(
-        rows.map(
-          (row) => Prisma.sql`(
-            gen_random_uuid()::text,
-            ${row.term},
-            ${row.normalized},
-            ${row.kind},
-            ${row.sublabel},
-            ${row.popularity},
-            ${runStartedAt},
-            ${runStartedAt}
-          )`,
-        ),
-      )}
-      ON CONFLICT ("normalized", "kind") DO UPDATE SET
-        "term" = EXCLUDED."term",
-        "sublabel" = EXCLUDED."sublabel",
-        "popularity" = EXCLUDED."popularity",
-        "updatedAt" = ${runStartedAt}
+  const outcome = await deps.runTx(async (tx) => {
+    const lockRows = await tx.$queryRaw<Array<{ acquired: boolean }>>(Prisma.sql`
+      SELECT pg_try_advisory_xact_lock(
+        ${SEARCH_KEYWORD_REFRESH_LOCK_NAMESPACE},
+        ${SEARCH_KEYWORD_REFRESH_LOCK_KEY}
+      ) AS "acquired"
     `);
 
-      // Remove rows that no longer exist in the catalog (not touched this run).
-      await tx.$executeRaw(Prisma.sql`
-        DELETE FROM "SearchKeyword" WHERE "updatedAt" < ${runStartedAt}
-      `);
-    },
-    // The default Prisma interactive-transaction limits (timeout 5s / maxWait 2s)
-    // are far too tight for this job: the bulk upsert of ~1,600 rows as one large
-    // parameterized statement plus the stale-delete regularly runs past 5s, and
-    // under a burst of master-data mutations the small per-instance pool (max 5)
-    // can take longer than 2s to hand out a connection. Both produced the P2028
-    // "expired transaction" / "unable to start a transaction" errors. Give the
-    // job room: 60s of work and 10s to acquire a connection.
-    { timeout: REFRESH_TX_TIMEOUT_MS, maxWait: REFRESH_TX_MAX_WAIT_MS },
-  );
+    if (!lockRows[0]?.acquired) {
+      const lockedOutcome: SearchKeywordRefreshOutcome = {
+        rowsBuilt: rows.length,
+        rowsWritten: 0,
+        batches: 0,
+        skipped: "LOCKED",
+      };
+      return lockedOutcome;
+    }
 
-  return rows.length;
+    for (const batch of batches) {
+      await tx.$executeRaw(buildSearchKeywordUpsertSql(batch, runStartedAt));
+    }
+
+    await tx.$executeRaw(Prisma.sql`
+      DELETE FROM "SearchKeyword" WHERE "updatedAt" < ${runStartedAt}
+    `);
+
+    const successOutcome: SearchKeywordRefreshOutcome = {
+      rowsBuilt: rows.length,
+      rowsWritten: rows.length,
+      batches: batches.length,
+      skipped: null,
+    };
+    return successOutcome;
+  });
+
+  if (outcome.skipped === "LOCKED") {
+    deps.log?.info(
+      `[search-keyword] refresh skipped because another instance already holds the advisory lock (${rows.length} rows built)`,
+    );
+    return outcome;
+  }
+
+  deps.log?.info(
+    `[search-keyword] refresh completed: built ${outcome.rowsBuilt} rows, wrote ${outcome.rowsWritten} rows in ${outcome.batches} batch(es) (${Date.now() - startedAtMs} ms)`,
+  );
+  return outcome;
+}
+
+export async function refreshSearchKeywordIndex(): Promise<number> {
+  const outcome = await runSearchKeywordRefreshWithDeps({
+    buildRows: buildSearchKeywordRows,
+    now: () => new Date(),
+    batchSize: SEARCH_KEYWORD_UPSERT_BATCH_SIZE,
+    log: console,
+    runTx: runRefreshTransaction,
+  });
+
+  return outcome.rowsWritten;
 }
 
 /**
@@ -233,9 +321,8 @@ export async function refreshSearchKeywordIndex(): Promise<number> {
 // transactions onto the small per-instance pool (max 5) and starving it — the
 // exact contention behind the P2028 cascade. So: while a rebuild is in flight we
 // don't start another; instead we mark "rerun pending" so exactly one more run
-// fires afterwards to capture the latest data. This is per-instance only (state
-// doesn't persist across serverless instances), which is fine — the daily cron
-// remains the guaranteed catch-all.
+// fires afterwards to capture the latest data. Cross-instance overlap is handled
+// separately by the transaction-scoped advisory lock inside refreshSearchKeywordIndex.
 let inFlightRefresh: Promise<void> | null = null;
 let rerunPending = false;
 
@@ -264,9 +351,9 @@ export function triggerSearchKeywordRefresh(): void {
   // Run the rebuild via `after()` so on Vercel the function stays alive (waitUntil)
   // until the transaction finishes, instead of returning the response and freezing
   // the instance mid-transaction. A frozen instance let wall-clock time run past the
-  // 60s interactive-transaction window (observed 411s), producing the P2028 "expired
-  // transaction" errors. `after()` requires a request scope; if we're somehow outside
-  // one (e.g. a script), fall back to a plain fire-and-forget.
+  // transaction timeout window, producing the P2028 "expired transaction" errors.
+  // `after()` requires a request scope; if we're somehow outside one (e.g. a script),
+  // fall back to a plain fire-and-forget.
   try {
     after(() => runRefreshCoalesced());
   } catch {
