@@ -3,6 +3,11 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import {
+  buildAdminProductFilterSearchParams,
+  parseAdminProductFilterParams,
+  type AdminProductFilterParams,
+} from "@/lib/admin-product-filter-params";
+import {
   getAllPermissionKeys,
   hasPermissionAccess,
 } from "@/lib/access-control";
@@ -44,8 +49,8 @@ interface ProductsPageProps {
     brandId?: string;
     carBrandId?: string;
     carModelId?: string;
-    priceMin?: string;
-    priceMax?: string;
+    yearMin?: string;
+    yearMax?: string;
     stockStatus?: string;
     statusFilter?: string;
     trackingFilter?: string;
@@ -80,10 +85,20 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");
   const canCancel = hasPermissionAccess(role, permissions, "products.cancel");
 
+  const rawParams = await searchParams;
+  const { page } = rawParams;
   const {
-    search, page, categoryId, brandId, carBrandId, carModelId,
-    priceMin, priceMax, stockStatus, statusFilter, trackingFilter,
-  } = await searchParams;
+    search,
+    categoryId,
+    brandId,
+    carBrandId,
+    carModelId,
+    yearMin,
+    yearMax,
+    stockStatus,
+    statusFilter,
+    trackingFilter,
+  } = parseAdminProductFilterParams(rawParams);
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
 
   const searchIsActive =
@@ -109,8 +124,8 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     carBrandId,
     carModelId,
     isActive: searchIsActive,
-    priceMin: numberOrNull(priceMin),
-    priceMax: numberOrNull(priceMax),
+    yearMin: numberOrNull(yearMin),
+    yearMax: numberOrNull(yearMax),
     stockStatus: normalizedStockStatus,
     inventoryTracking,
     skip: (pageNum - 1) * PAGE_SIZE,
@@ -206,18 +221,19 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
-  const exportQuery = new URLSearchParams({
-    ...(search ? { search } : {}),
-    ...(categoryId ? { categoryId } : {}),
-    ...(brandId ? { brandId } : {}),
-    ...(carBrandId ? { carBrandId } : {}),
-    ...(carModelId ? { carModelId } : {}),
-    ...(priceMin ? { priceMin } : {}),
-    ...(priceMax ? { priceMax } : {}),
-    ...(stockStatus ? { stockStatus } : {}),
-    ...(statusFilter ? { statusFilter } : {}),
-    ...(trackingFilter ? { trackingFilter } : {}),
-  }).toString();
+  const filters: AdminProductFilterParams = {
+    search,
+    categoryId,
+    brandId,
+    carBrandId,
+    carModelId,
+    yearMin,
+    yearMax,
+    stockStatus,
+    statusFilter,
+    trackingFilter,
+  };
+  const exportQuery = new URLSearchParams(buildAdminProductFilterSearchParams(filters)).toString();
 
   // Phase Q4 — "Did you mean" suggestions when admin search returns no/few hits
   const didYouMean = search && total < 3
@@ -264,8 +280,8 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         brandId={brandId}
         carBrandId={carBrandId}
         carModelId={carModelId}
-        priceMin={priceMin}
-        priceMax={priceMax}
+        yearMin={yearMin}
+        yearMax={yearMax}
         stockStatus={stockStatus}
         statusFilter={statusFilter}
         trackingFilter={trackingFilter}
@@ -280,7 +296,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
       <AdminTableSection>
         {(() => {
-          const allParams = { search, categoryId, brandId, carBrandId, carModelId, priceMin, priceMax, stockStatus, statusFilter, trackingFilter };
+          const allParams = filters;
           type Pill = { label: string; removeUrl: string };
           const pills: Pill[] = [];
           if (search) pills.push({ label: `ค้นหา: "${search}"`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["search"]) });
@@ -300,11 +316,11 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             const cm = carBrands.flatMap((b) => b.carModels).find((m) => m.id === carModelId);
             pills.push({ label: `รุ่นรถ: ${cm?.name ?? carModelId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["carModelId"]) });
           }
-          if (priceMin || priceMax) {
-            const label = priceMin && priceMax
-              ? `ราคา: ${Number(priceMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(priceMax).toLocaleString("th-TH-u-ca-gregory")} ฿`
-              : priceMin ? `ราคา ≥ ${Number(priceMin).toLocaleString("th-TH-u-ca-gregory")} ฿` : `ราคา ≤ ${Number(priceMax).toLocaleString("th-TH-u-ca-gregory")} ฿`;
-            pills.push({ label, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["priceMin", "priceMax"]) });
+          if (yearMin || yearMax) {
+            const label = yearMin && yearMax
+              ? `ปีรถ: ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`
+              : yearMin ? `ปีรถ ≥ ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}` : `ปีรถ ≤ ${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`;
+            pills.push({ label, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["yearMin", "yearMax"]) });
           }
           if (stockStatus) {
             const map: Record<string, string> = { in_stock: "มีสต็อก", low_stock: "สต็อกต่ำ", out_of_stock: "หมดสต็อก" };
@@ -537,18 +553,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         currentPage={pageNum}
         totalPages={totalPages}
         basePath="/admin/products"
-        searchParams={{
-          ...(search ? { search } : {}),
-          ...(categoryId ? { categoryId } : {}),
-          ...(brandId ? { brandId } : {}),
-          ...(carBrandId ? { carBrandId } : {}),
-          ...(carModelId ? { carModelId } : {}),
-          ...(priceMin ? { priceMin } : {}),
-          ...(priceMax ? { priceMax } : {}),
-          ...(stockStatus ? { stockStatus } : {}),
-          ...(statusFilter ? { statusFilter } : {}),
-          ...(trackingFilter ? { trackingFilter } : {}),
-        }}
+        searchParams={buildAdminProductFilterSearchParams(filters)}
       />
     </div>
   );

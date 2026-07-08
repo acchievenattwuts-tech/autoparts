@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 
+import { parseAdminProductFilterParams } from "@/lib/admin-product-filter-params";
 import { db } from "@/lib/db";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 
@@ -18,8 +19,8 @@ export type ProductReportFilters = {
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
-  priceMin?: string;
-  priceMax?: string;
+  yearMin?: string;
+  yearMax?: string;
   stockStatus?: string;
   statusFilter?: string;
   trackingFilter?: string;
@@ -73,18 +74,7 @@ function getProductReportHeaders(): string[] {
 export function parseProductReportFilters(
   params: Record<string, string | undefined>,
 ): ProductReportFilters {
-  return {
-    search: params.search || undefined,
-    categoryId: params.categoryId || undefined,
-    brandId: params.brandId || undefined,
-    carBrandId: params.carBrandId || undefined,
-    carModelId: params.carModelId || undefined,
-    priceMin: params.priceMin || undefined,
-    priceMax: params.priceMax || undefined,
-    stockStatus: params.stockStatus || undefined,
-    statusFilter: params.statusFilter || undefined,
-    trackingFilter: params.trackingFilter || undefined,
-  };
+  return parseAdminProductFilterParams(params);
 }
 
 export async function queryProductReportRows(filters: ProductReportFilters): Promise<ProductReportRow[]> {
@@ -108,8 +98,8 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
     carBrandId: filters.carBrandId,
     carModelId: filters.carModelId,
     isActive: searchIsActive,
-    priceMin: numberOrNull(filters.priceMin),
-    priceMax: numberOrNull(filters.priceMax),
+    yearMin: numberOrNull(filters.yearMin),
+    yearMax: numberOrNull(filters.yearMax),
     inventoryTracking,
     skip: 0,
     take: MAX_EXPORT_ROWS,

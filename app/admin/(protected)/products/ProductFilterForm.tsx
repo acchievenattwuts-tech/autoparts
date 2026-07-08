@@ -19,8 +19,8 @@ type Props = {
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
-  priceMin?: string;
-  priceMax?: string;
+  yearMin?: string;
+  yearMax?: string;
   stockStatus?: string;
   statusFilter?: string;
   trackingFilter?: string;
@@ -35,8 +35,8 @@ export default function ProductFilterForm(props: Props) {
     props.brandId ?? "",
     props.carBrandId ?? "",
     props.carModelId ?? "",
-    props.priceMin ?? "",
-    props.priceMax ?? "",
+    props.yearMin ?? "",
+    props.yearMax ?? "",
     props.stockStatus ?? "",
     props.statusFilter ?? "",
     props.trackingFilter ?? "",
@@ -51,8 +51,8 @@ function ProductFilterFormContent({
   brandId,
   carBrandId,
   carModelId,
-  priceMin,
-  priceMax,
+  yearMin,
+  yearMax,
   stockStatus,
   statusFilter,
   trackingFilter,
@@ -64,14 +64,14 @@ function ProductFilterFormContent({
   const [brandValue, setBrandValue] = useState(brandId ?? "");
   const [carBrandValue, setCarBrandValue] = useState(carBrandId ?? "");
   const [selectedCarBrandId, setSelectedCarBrandId] = useState(carBrandId ?? "");
-  const [priceMinValue, setPriceMinValue] = useState(priceMin ?? "");
-  const [priceMaxValue, setPriceMaxValue] = useState(priceMax ?? "");
+  const [yearMinValue, setYearMinValue] = useState(yearMin ?? "");
+  const [yearMaxValue, setYearMaxValue] = useState(yearMax ?? "");
   const [stockStatusValue, setStockStatusValue] = useState(stockStatus ?? "");
   const [statusFilterValue, setStatusFilterValue] = useState(statusFilter ?? "");
   const [trackingFilterValue, setTrackingFilterValue] = useState(trackingFilter ?? "");
 
   const hasAdvancedFilter = Boolean(
-    carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter,
+    carBrandId || carModelId || yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
   );
   const [showMore, setShowMore] = useState(hasAdvancedFilter);
 
@@ -82,13 +82,13 @@ function ProductFilterFormContent({
 
   const hasFilters = Boolean(
     search || categoryId || brandId || carBrandId || carModelId ||
-    priceMin || priceMax || stockStatus || statusFilter || trackingFilter,
+    yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
   );
 
   const advancedActiveCount = [
     carBrandId,
     carModelId,
-    priceMin || priceMax,
+    yearMin || yearMax,
     stockStatus,
     statusFilter,
     trackingFilter,
@@ -206,27 +206,29 @@ function ProductFilterFormContent({
                 </select>
               </div>
 
-              {/* Price Range */}
+              {/* Year Range */}
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-slate-400">ช่วงราคา (฿)</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-slate-400">ช่วงปีรถ (ค.ศ.)</p>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
-                    name="priceMin"
-                    value={priceMinValue}
-                    onChange={(e) => setPriceMinValue(e.target.value)}
-                    placeholder="ต่ำสุด"
-                    min={0}
+                    name="yearMin"
+                    value={yearMinValue}
+                    onChange={(e) => setYearMinValue(e.target.value)}
+                    placeholder="ปีเริ่ม"
+                    min={1900}
+                    max={2200}
                     className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                   />
                   <span className="shrink-0 text-xs text-gray-400">–</span>
                   <input
                     type="number"
-                    name="priceMax"
-                    value={priceMaxValue}
-                    onChange={(e) => setPriceMaxValue(e.target.value)}
-                    placeholder="สูงสุด"
-                    min={0}
+                    name="yearMax"
+                    value={yearMaxValue}
+                    onChange={(e) => setYearMaxValue(e.target.value)}
+                    placeholder="ปีสิ้นสุด"
+                    min={1900}
+                    max={2200}
                     className="w-full rounded-lg border border-gray-300 px-2 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
                   />
                 </div>

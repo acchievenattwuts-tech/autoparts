@@ -7,6 +7,11 @@ import { AlertTriangle, Box, ChevronRight, MapPin, ShieldCheck, Sparkles } from 
 import Pagination from "@/components/shared/Pagination";
 import ProductMatchChips from "@/components/shared/ProductMatchChips";
 import ProductFitmentSummary from "@/app/admin/(protected)/products/ProductFitmentSummary";
+import {
+  buildAdminProductFilterSearchParams,
+  parseAdminProductFilterParams,
+  type AdminProductFilterParams,
+} from "@/lib/admin-product-filter-params";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
@@ -28,8 +33,8 @@ type ProductsSearchPageProps = {
     brandId?: string;
     carBrandId?: string;
     carModelId?: string;
-    priceMin?: string;
-    priceMax?: string;
+    yearMin?: string;
+    yearMax?: string;
     stockStatus?: string;
     statusFilter?: string;
     trackingFilter?: string;
@@ -56,19 +61,20 @@ const buildProductSearchUrl = (params: Record<string, string>) => {
 const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProps) => {
   await requirePermission("products.view");
 
+  const rawParams = await searchParams;
+  const { page } = rawParams;
   const {
     search,
-    page,
     categoryId,
     brandId,
     carBrandId,
     carModelId,
-    priceMin,
-    priceMax,
+    yearMin,
+    yearMax,
     stockStatus,
     statusFilter,
     trackingFilter,
-  } = await searchParams;
+  } = parseAdminProductFilterParams(rawParams);
 
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const searchIsActive =
@@ -94,8 +100,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     carBrandId,
     carModelId,
     isActive: searchIsActive,
-    priceMin: numberOrNull(priceMin),
-    priceMax: numberOrNull(priceMax),
+    yearMin: numberOrNull(yearMin),
+    yearMax: numberOrNull(yearMax),
     stockStatus: normalizedStockStatus,
     inventoryTracking,
     skip: (pageNum - 1) * PAGE_SIZE,
@@ -189,25 +195,27 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const didYouMean = search && total < 3 ? await suggestDidYouMean(search, 3) : [];
   const hasFilters = Boolean(
-    search || categoryId || brandId || carBrandId || carModelId || priceMin || priceMax || stockStatus || statusFilter || trackingFilter,
+    search || categoryId || brandId || carBrandId || carModelId || yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
   );
 
-  const paginationParams = {
-    ...(search ? { search } : {}),
-    ...(categoryId ? { categoryId } : {}),
-    ...(brandId ? { brandId } : {}),
-    ...(carBrandId ? { carBrandId } : {}),
-    ...(carModelId ? { carModelId } : {}),
-    ...(priceMin ? { priceMin } : {}),
-    ...(priceMax ? { priceMax } : {}),
-    ...(stockStatus ? { stockStatus } : {}),
-    ...(statusFilter ? { statusFilter } : {}),
-    ...(trackingFilter ? { trackingFilter } : {}),
+  const paginationParams: AdminProductFilterParams = {
+    search,
+    categoryId,
+    brandId,
+    carBrandId,
+    carModelId,
+    yearMin,
+    yearMax,
+    stockStatus,
+    statusFilter,
+    trackingFilter,
   };
-  const currentSearchHref = buildProductSearchUrl({
-    ...paginationParams,
-    ...(pageNum > 1 ? { page: String(pageNum) } : {}),
-  });
+  const currentSearchHref = buildProductSearchUrl(
+    buildAdminProductFilterSearchParams({
+      ...paginationParams,
+      ...(pageNum > 1 ? { page: String(pageNum) } : {}),
+    }),
+  );
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-50 via-white to-slate-50 text-gray-900 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-100">
@@ -218,8 +226,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
           brandId={brandId}
           carBrandId={carBrandId}
           carModelId={carModelId}
-          priceMin={priceMin}
-          priceMax={priceMax}
+          yearMin={yearMin}
+          yearMax={yearMax}
           stockStatus={stockStatus}
           statusFilter={statusFilter}
           trackingFilter={trackingFilter}
@@ -238,6 +246,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
             brandName={partsBrands.find((brand) => brand.id === brandId)?.name}
             carBrandName={carBrands.find((brand) => brand.id === carBrandId)?.name}
             carModelName={carBrands.flatMap((brand) => brand.carModels).find((model) => model.id === carModelId)?.name}
+            yearMin={yearMin}
+            yearMax={yearMax}
           />
         ) : null}
 
@@ -413,7 +423,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
           currentPage={pageNum}
           totalPages={totalPages}
           basePath="/admin/products/search"
-          searchParams={paginationParams}
+          searchParams={buildAdminProductFilterSearchParams(paginationParams)}
         />
       </div>
     </div>
@@ -450,6 +460,8 @@ function ActiveFilterSummary({
   brandName,
   carBrandName,
   carModelName,
+  yearMin,
+  yearMax,
 }: {
   search?: string;
   stockStatus?: string;
@@ -457,13 +469,24 @@ function ActiveFilterSummary({
   brandName?: string;
   carBrandName?: string;
   carModelName?: string;
+  yearMin?: string;
+  yearMax?: string;
 }) {
+  const yearLabel =
+    yearMin && yearMax
+      ? `ปีรถ: ${yearMin}-${yearMax}`
+      : yearMin
+        ? `ปีรถ: ตั้งแต่ ${yearMin}`
+        : yearMax
+          ? `ปีรถ: ถึง ${yearMax}`
+          : null;
   const chips = [
     search ? `ค้นหา: ${search}` : null,
     categoryName ? `หมวด: ${categoryName}` : null,
     brandName ? `แบรนด์: ${brandName}` : null,
     carBrandName ? `รถ: ${carBrandName}` : null,
     carModelName ? `รุ่น: ${carModelName}` : null,
+    yearLabel,
     stockStatus ? `สต็อก: ${stockStatusLabel[stockStatus] ?? stockStatus}` : null,
   ].filter(Boolean);
 

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Loader2, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 
+import { buildAdminProductFilterSearchParams } from "@/lib/admin-product-filter-params";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 type Option = { id: string; name: string };
@@ -14,8 +15,8 @@ type FilterDraft = {
   brandId: string;
   carBrandId: string;
   carModelId: string;
-  priceMin: string;
-  priceMax: string;
+  yearMin: string;
+  yearMax: string;
   stockStatus: string;
   statusFilter: string;
   trackingFilter: string;
@@ -29,8 +30,8 @@ type Props = {
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
-  priceMin?: string;
-  priceMax?: string;
+  yearMin?: string;
+  yearMax?: string;
   stockStatus?: string;
   statusFilter?: string;
   trackingFilter?: string;
@@ -60,11 +61,7 @@ const trackingOptions = [
 ];
 
 const buildUrl = (params: Record<string, string | undefined>) => {
-  const next = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value) next.set(key, value);
-  }
-  const query = next.toString();
+  const query = new URLSearchParams(buildAdminProductFilterSearchParams(params)).toString();
   return `/admin/products/search${query ? `?${query}` : ""}`;
 };
 
@@ -74,8 +71,8 @@ export default function MobileProductSearchForm({
   brandId,
   carBrandId,
   carModelId,
-  priceMin,
-  priceMax,
+  yearMin,
+  yearMax,
   stockStatus,
   statusFilter,
   trackingFilter,
@@ -94,8 +91,8 @@ export default function MobileProductSearchForm({
     brandId: brandId ?? "",
     carBrandId: carBrandId ?? "",
     carModelId: carModelId ?? "",
-    priceMin: priceMin ?? "",
-    priceMax: priceMax ?? "",
+    yearMin: yearMin ?? "",
+    yearMax: yearMax ?? "",
     stockStatus: stockStatus ?? "",
     statusFilter: statusFilter ?? "",
     trackingFilter: trackingFilter ?? "",
@@ -112,7 +109,7 @@ export default function MobileProductSearchForm({
     brandId,
     carBrandId,
     carModelId,
-    priceMin || priceMax,
+    yearMin || yearMax,
     stockStatus,
     statusFilter,
     trackingFilter,
@@ -140,8 +137,8 @@ export default function MobileProductSearchForm({
         brandId,
         carBrandId,
         carModelId,
-        priceMin,
-        priceMax,
+        yearMin,
+        yearMax,
         stockStatus,
         statusFilter,
         trackingFilter,
@@ -368,9 +365,9 @@ function FilterSheetContent({
               </>
             ) : null}
             <Divider />
-            <PriceRange
-              priceMin={draft.priceMin}
-              priceMax={draft.priceMax}
+            <YearRange
+              yearMin={draft.yearMin}
+              yearMax={draft.yearMax}
               onChange={(next) => setDraft((prev) => ({ ...prev, ...next }))}
             />
             <Divider />
@@ -496,34 +493,36 @@ function CheckboxList({
   );
 }
 
-function PriceRange({
-  priceMin,
-  priceMax,
+function YearRange({
+  yearMin,
+  yearMax,
   onChange,
 }: {
-  priceMin: string;
-  priceMax: string;
-  onChange: (next: { priceMin: string; priceMax: string }) => void;
+  yearMin: string;
+  yearMax: string;
+  onChange: (next: { yearMin: string; yearMax: string }) => void;
 }) {
   return (
     <section>
-      <h3 className="mb-3 font-kanit text-base font-semibold text-slate-950 dark:text-white">ช่วงราคา</h3>
+      <h3 className="mb-3 font-kanit text-base font-semibold text-slate-950 dark:text-white">ช่วงปีรถ</h3>
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
         <input
           type="number"
-          value={priceMin}
-          min={0}
-          placeholder="ต่ำสุด"
-          onChange={(event) => onChange({ priceMin: event.target.value, priceMax })}
+          value={yearMin}
+          min={1900}
+          max={2200}
+          placeholder="ปีเริ่ม"
+          onChange={(event) => onChange({ yearMin: event.target.value, yearMax })}
           className="h-10 min-w-0 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 focus:border-[#f97316] focus:outline-none focus:ring-1 focus:ring-[#f97316] dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-400"
         />
         <span className="text-slate-400">-</span>
         <input
           type="number"
-          value={priceMax}
-          min={0}
-          placeholder="สูงสุด"
-          onChange={(event) => onChange({ priceMin, priceMax: event.target.value })}
+          value={yearMax}
+          min={1900}
+          max={2200}
+          placeholder="ปีสิ้นสุด"
+          onChange={(event) => onChange({ yearMin, yearMax: event.target.value })}
           className="h-10 min-w-0 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 focus:border-[#f97316] focus:outline-none focus:ring-1 focus:ring-[#f97316] dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-400"
         />
       </div>
