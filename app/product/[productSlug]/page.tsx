@@ -104,6 +104,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     product,
   });
 
+  // Share previews (LINE, Facebook, etc.) show the real product photo — like
+  // Shopee — by pointing og:image straight at the stored product image. Only
+  // when a product has no photo do we fall back to the satori-generated card
+  // route (`/opengraph-image`). Using the real image URL also sidesteps the
+  // font-bundling / resvg render failures that route has historically hit.
+  const primaryImageUrl =
+    product.imageUrl ||
+    product.images.find((image) => image.isPrimary)?.url ||
+    product.images[0]?.url ||
+    null;
+  const ogImageUrl = primaryImageUrl
+    ? absoluteUrl(toProductImageCdnPath(primaryImageUrl) ?? primaryImageUrl)
+    : absoluteUrl(`${canonicalPath}/opengraph-image`);
+
   return {
     title: product.name,
     description,
@@ -114,12 +128,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: absoluteUrl(canonicalPath),
       title: product.name,
       description,
-      images: [{ url: absoluteUrl(`${canonicalPath}/opengraph-image`), alt: product.name }],
+      images: [{ url: ogImageUrl, alt: product.name }],
     },
     twitter: {
       title: product.name,
       description,
-      images: [absoluteUrl(`${canonicalPath}/opengraph-image`)],
+      images: [ogImageUrl],
     },
   };
 }
