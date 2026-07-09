@@ -9,6 +9,7 @@ import {
   CarFront,
   CheckCircle2,
   FileText,
+  ShieldCheck,
   MessageCircle,
   Phone,
 } from "lucide-react";
@@ -267,6 +268,7 @@ const ProductDetailPage = async ({ params }: Props) => {
   const inStock = product.stock > 0;
   const stockLabel = inStock ? "มีสินค้าในระบบ" : "กรุณายืนยันกับร้าน";
   const partsBrandName = product.brand?.name ?? "ไม่ระบุแบรนด์";
+  const hasWarranty = product.warrantyDays > 0;
   const productImages = [
     ...product.images.map((image) => ({ url: image.url, alt: image.alt || product.name })),
     ...(product.imageUrl && !product.images.some((image) => image.url === product.imageUrl)
@@ -414,6 +416,12 @@ const ProductDetailPage = async ({ params }: Props) => {
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
                       รหัส {product.code}
                     </span>
+                    {hasWarranty && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        รับประกัน {product.warrantyDays.toLocaleString("th-TH")} วัน
+                      </span>
+                    )}
                   </div>
 
                   <h1 className="mt-3 font-kanit text-2xl font-bold leading-tight tracking-tight text-[#10213d] sm:text-3xl lg:text-4xl">
@@ -464,10 +472,28 @@ const ProductDetailPage = async ({ params }: Props) => {
                       <p className="text-xs text-slate-400">หน่วย</p>
                       <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{product.saleUnitName || "-"}</p>
                     </div>
-                    <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
-                      <p className="text-xs text-slate-400">แบรนด์อะไหล่</p>
-                      <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{partsBrandName}</p>
-                    </div>
+                    {hasWarranty ? (
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+                        <div className="flex gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs text-emerald-600">แบรนด์อะไหล่</p>
+                            <p className="mt-1 line-clamp-1 font-semibold text-emerald-900">{partsBrandName}</p>
+                          </div>
+                          <div className="min-w-0 flex-1 border-l border-emerald-200 pl-3">
+                            <p className="text-xs text-emerald-600">ระยะเวลาประกัน</p>
+                            <p className="mt-1 flex items-center gap-1 font-semibold text-emerald-900">
+                              <ShieldCheck className="h-4 w-4 shrink-0 text-emerald-600" />
+                              <span className="line-clamp-1">{product.warrantyDays.toLocaleString("th-TH")} วัน</span>
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                        <p className="text-xs text-slate-400">แบรนด์อะไหล่</p>
+                        <p className="mt-1 line-clamp-1 font-semibold text-slate-800">{partsBrandName}</p>
+                      </div>
+                    )}
                     <div
                       className={`rounded-2xl border px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)] ${
                         inStock ? "border-emerald-200 bg-emerald-50" : "border-orange-200 bg-orange-50"

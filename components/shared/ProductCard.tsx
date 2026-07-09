@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, ShieldCheck } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
 import {
   getStorefrontDisplayPrices,
@@ -22,6 +22,7 @@ type ProductForCard = {
   imageUrl: string | null;
   salePrice: { toString(): string } | number;
   saleUnitName?: string | null;
+  warrantyDays?: number | null;
   stock: number;
   category: { name: string; slug?: string | null };
   brand: { name: string } | null;
@@ -115,6 +116,12 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
         {!inStock && (
           <span className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
             สินค้าหมด
+          </span>
+        )}
+        {(product.warrantyDays ?? 0) > 0 && (
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/95 px-2 py-0.5 text-[10px] font-bold text-emerald-700 shadow-sm sm:text-xs">
+            <ShieldCheck className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+            ประกัน {(product.warrantyDays ?? 0).toLocaleString("th-TH")} วัน
           </span>
         )}
       </div>

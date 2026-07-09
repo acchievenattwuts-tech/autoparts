@@ -25,6 +25,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         imageUrl: true,
         salePrice: true,
         saleUnitName: true,
+        warrantyDays: true,
         stock: true,
         category: { select: { name: true, slug: true } },
         brand: { select: { name: true } },
