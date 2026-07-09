@@ -1528,12 +1528,66 @@ test("bare price question (no product named) → direct handoff, no cards re-sho
   );
 
   assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "bare price follow-up must not re-search old product context");
   assert.equal(calls.replies[0]?.messageCount, 1, "only the handoff bubble, no cards/list re-shown");
   assert.ok(calls.replies[0]?.text.includes("แจ้งราคา"), "defers price to admin");
   assert.ok(!calls.replies[0]?.text.includes("P0073"), "does not repeat the product list");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
   assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
+});
+
+test("coalesced multi-product price ask searches each product subject before handing price to admin", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    priceTier: "RETAIL",
+    // Simulates Gemini unavailable / classifier timeout: deterministic fallback
+    // must still detect the product subjects from the customer's own text.
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload(
+      [
+        "ตู้วีโก้คลูเกีรยคับน้ำDENSO250ccราคาคับ",
+        "น้ำมัน",
+        "ที่ร้านมีน้ำยาแอร์ของอะไรคับขอราคาด้วยคับ",
+      ].join("\n"),
+    ),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 3, "searches the three customer-requested subjects");
+  assert.ok(calls.searches.some((q) => q.includes("Vigo") || q.includes("วีโก้")), "searches the Vigo evaporator/cooling unit subject");
+  assert.ok(calls.searches.some((q) => q.includes("DENSO") || q.includes("denso")), "searches the DENSO oil subject");
+  assert.ok(calls.searches.some((q) => q.includes("น้ำยาแอร์")), "searches the refrigerant subject");
+  assert.ok(calls.auditActions.includes("AI_MULTI_SUBJECT"));
+  assert.ok(!calls.auditActions.includes("SEARCH_SKIPPED_NON_PRODUCT"));
+});
+
+test("bare price question with stored product frame stays a direct handoff", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    priceTier: "RETAIL",
+    storedFrame: {
+      partType: "แผงแอร์",
+      carBrand: "Honda",
+      carModel: "Jazz",
+      year: 2012,
+    },
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ราคาเท่าไรครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "price-only text must not resurrect the stored frame");
+  assert.equal(calls.replies[0]?.messageCount, 1);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
 });
 
 test("wholesale-tier customer (garage) asking price → shows products then hands off to admin too", async () => {

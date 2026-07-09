@@ -83,6 +83,10 @@ import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import {
+  buildPriceProductSearchIntent,
+  extractPriceProductSubjectsFromText,
+} from "@/lib/chat-core/price-product-subjects";
+import {
   extractChatRequiredSearchTokens,
   guardChatSearchIntent,
   lineValueHasCustomerEvidence,
@@ -1186,6 +1190,8 @@ export async function processLineAiReply(
     const regexPriceIntent =
       input.route.intent === LineIntent.PURCHASE_INTENT ||
       input.route.intent === LineIntent.PRICE_NEGOTIATION;
+    const priceQuestionIntent =
+      input.route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
     const shouldClassify = isTextTurn && !hardGuard;
     // Space-split glued Thai+digit queries ("วาล์วโตโยต้า134" → "วาล์วโตโยต้า 134")
     // before the AI/search pipeline reads them, so model-code/year anchors tokenize
@@ -1217,7 +1223,11 @@ export async function processLineAiReply(
           }
         : null;
 
-    const searchIntent = ruleSearchIntent
+    const extractedPriceSubjects =
+      regexPriceIntent || priceQuestionIntent ? extractPriceProductSubjectsFromText(processText) : [];
+    const priceSubjectIntent = buildPriceProductSearchIntent(extractedPriceSubjects);
+
+    const rawSearchIntent = ruleSearchIntent
       ? ruleSearchIntent
       : shouldClassify
         ? await (dependencies.extractChatSearchIntent ?? extractChatSearchIntent)({
@@ -1227,8 +1237,30 @@ export async function processLineAiReply(
           }).catch(() => null)
         : null;
     const usedRuleIntent = ruleSearchIntent !== null;
-    const classifyFailed = shouldClassify && !usedRuleIntent && searchIntent === null;
-    const group: ChatMessageGroup = shouldClassify ? searchIntent?.group ?? layer1Group : layer1Group;
+    const searchIntent = priceSubjectIntent ?? rawSearchIntent;
+    const classifierProductHasCurrentEvidence =
+      priceQuestionIntent &&
+      searchIntent?.group === "product" &&
+      [
+        searchIntent.partType,
+        searchIntent.carBrand,
+        searchIntent.carModel,
+        searchIntent.year === null || searchIntent.year === undefined ? null : String(searchIntent.year),
+      ].some((value) => value && lineValueHasCustomerEvidence(value, processText, []));
+    const priceTurnHasCurrentProductEvidence =
+      priceQuestionIntent &&
+      (extractedPriceSubjects.length > 0 ||
+        extractChatRequiredSearchTokens(processText).length > 0 ||
+        classifierProductHasCurrentEvidence);
+    const keepPriceTurnAsAdminIntent =
+      priceQuestionIntent && !priceTurnHasCurrentProductEvidence;
+    const effectiveSearchIntent = keepPriceTurnAsAdminIntent ? null : searchIntent;
+    const classifyFailed = shouldClassify && !usedRuleIntent && rawSearchIntent === null && priceSubjectIntent === null;
+    const group: ChatMessageGroup = shouldClassify
+      ? keepPriceTurnAsAdminIntent
+        ? layer1Group
+        : effectiveSearchIntent?.group ?? layer1Group
+      : layer1Group;
 
     // Effective route from the group (reuses the existing forced-response / hand-off
     // / policy machinery). general_faq / social / other have no 1:1 intent → keep
@@ -1249,6 +1281,8 @@ export async function processLineAiReply(
             ? "image_route"
             : usedRuleIntent
               ? "rule_dictionary"
+              : priceSubjectIntent
+                ? "price_subject_rule"
               : classifyFailed
                 ? "regex_fallback"
                 : "ai",
@@ -1274,7 +1308,7 @@ export async function processLineAiReply(
     // instead of mashing them into one mushy query. respondMultiSubject returns
     // null if, after resolving, only one distinct category remains (e.g. same part
     // for two cars) — then we fall through to the normal single-subject path.
-    const multiSubjects = group === "product" ? searchIntent?.subjects ?? null : null;
+    const multiSubjects = group === "product" ? effectiveSearchIntent?.subjects ?? null : null;
     if (
       autoReplyEnabled &&
       !dryRun &&
@@ -1296,8 +1330,8 @@ export async function processLineAiReply(
       ? null
       : await (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null);
     const guardedSearch = isNonProductTurn
-      ? { intent: searchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardChatSearchIntent({ intent: searchIntent, latestText: processText, history, brandLookup });
+      ? { intent: effectiveSearchIntent, forceLiteralQuery: false, requiredTokens: [] }
+      : guardChatSearchIntent({ intent: effectiveSearchIntent, latestText: processText, history, brandLookup });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null

@@ -10,6 +10,7 @@ import {
   type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
+import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-product-subjects";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import {
@@ -470,6 +471,45 @@ async function replyToMessengerTurn(params: {
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
   // status…) escalate to a human admin instead of the AI guessing ──
+  if (route.intent === LineIntent.PRICE_NEGOTIATION) {
+    const priceSubjects = extractPriceProductSubjectsFromText(processText);
+    if (priceSubjects.length > 0) {
+      let repliedWithAnySearch = false;
+      for (const subject of priceSubjects.slice(0, 3)) {
+        const query = subject.query || subject.partType || processText;
+        const replied = await replyWithProductSearch({
+          pageAccessToken,
+          conversationId,
+          psid,
+          route: MESSENGER_PRODUCT_ROUTE,
+          bridgeInput: {
+            route: MESSENGER_PRODUCT_ROUTE,
+            text: query,
+            fitmentHints: {
+              categoryName: subject.partType,
+              carBrandName: subject.carBrand,
+              carModelName: subject.carModel,
+              fitmentYear: subject.year,
+            },
+          },
+          originalText: mergedText,
+          history,
+        });
+        repliedWithAnySearch = repliedWithAnySearch || replied;
+      }
+      if (repliedWithAnySearch) {
+        await escalateMessengerConversationToAdmin(conversationId);
+        safeNotify(
+          notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
+        );
+        const reply = "จูนส่งเรื่องราคาให้แอดมินช่วยเช็กให้นะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+        await sendMessengerText({ pageAccessToken, psid, text: reply });
+        await persistOutbound(conversationId, psid, reply, { intent: route.intent });
+        return;
+      }
+    }
+  }
+
   if (route.requiresAdmin) {
     await escalateMessengerConversationToAdmin(conversationId);
     safeNotify(

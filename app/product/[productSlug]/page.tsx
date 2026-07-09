@@ -400,6 +400,12 @@ const ProductDetailPage = async ({ params }: Props) => {
                         {product.brand.name}
                       </span>
                     )}
+                    {hasWarranty && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/95 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm">
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        รับประกัน {product.warrantyDays.toLocaleString("th-TH")} วัน
+                      </span>
+                    )}
                   </div>
                   <ProductImageGallery images={productImages} productName={product.name} />
                 </div>
@@ -416,12 +422,6 @@ const ProductDetailPage = async ({ params }: Props) => {
                     <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
                       รหัส {product.code}
                     </span>
-                    {hasWarranty && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                        รับประกัน {product.warrantyDays.toLocaleString("th-TH")} วัน
-                      </span>
-                    )}
                   </div>
 
                   <h1 className="mt-3 font-kanit text-2xl font-bold leading-tight tracking-tight text-[#10213d] sm:text-3xl lg:text-4xl">
