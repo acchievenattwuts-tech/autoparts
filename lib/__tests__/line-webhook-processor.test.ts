@@ -627,6 +627,24 @@ test("admin-only intent sends a polite ack, then hands off to admin (no search)"
   assert.equal(calls.notifyHandoffs.length, 1);
 });
 
+test("service inquiry sends to admin without product search or car-model ask", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("\u0e23\u0e31\u0e1a\u0e2d\u0e31\u0e14\u0e2a\u0e32\u0e22\u0e41\u0e2d\u0e23\u0e4c\u0e44\u0e2b\u0e21\u0e04\u0e23\u0e31\u0e1a"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.processedCount, 1);
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /D-Max|Vios|Jazz|รุ่นรถ/);
+});
+
 test("shop-info keyword is auto-answered with the canned reply, no handoff", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();

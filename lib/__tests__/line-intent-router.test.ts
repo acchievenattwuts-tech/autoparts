@@ -76,6 +76,22 @@ test("routes shipping-service questions to the AI shop-info reply (no admin)", (
   }
 });
 
+test("routes car aircon service questions to admin without product search", () => {
+  for (const text of [
+    "\u0e23\u0e31\u0e1a\u0e2d\u0e31\u0e14\u0e2a\u0e32\u0e22\u0e41\u0e2d\u0e23\u0e4c\u0e44\u0e2b\u0e21\u0e04\u0e23\u0e31\u0e1a",
+    "\u0e2d\u0e31\u0e14\u0e2a\u0e32\u0e22\u0e41\u0e2d\u0e23\u0e4c\u0e44\u0e14\u0e49\u0e44\u0e2b\u0e21",
+    "\u0e40\u0e15\u0e34\u0e21\u0e19\u0e49\u0e33\u0e22\u0e32\u0e41\u0e2d\u0e23\u0e4c\u0e44\u0e2b\u0e21\u0e04\u0e23\u0e31\u0e1a",
+    "\u0e25\u0e49\u0e32\u0e07\u0e41\u0e2d\u0e23\u0e4c\u0e23\u0e16\u0e22\u0e19\u0e15\u0e4c\u0e44\u0e14\u0e49\u0e44\u0e2b\u0e21",
+  ]) {
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+
+    assert.equal(result.intent, LineIntent.UNKNOWN, `expected service handoff for "${text}"`);
+    assert.equal(result.allowsSearch, false, `expected no search for "${text}"`);
+    assert.equal(result.requiresAdmin, true, `expected admin handoff for "${text}"`);
+    assert.equal(result.reason, "SERVICE_INQUIRY_KEYWORD");
+  }
+});
+
 test("routes claim and return to admin", () => {
   const result = routeChatIntent({
     messageType: LineMessageType.TEXT,

@@ -1,5 +1,25 @@
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
 
+const SERVICE_INQUIRY_RE =
+  /(รับ\s*(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)\s*(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์)|รับซ่อม|รับทำ).*(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์)|(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์).*(?:รับ\s*(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|รับซ่อม|รับทำ)/i;
+
+const SERVICE_INQUIRY_SAFE_RE = new RegExp(
+  [
+    "(?:\\u0e23\\u0e31\\u0e1a\\s*(?:\\u0e2d\\u0e31\\u0e14|\\u0e17\\u0e33|\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e40\\u0e15\\u0e34\\u0e21|\\u0e25\\u0e49\\u0e32\\u0e07|\\u0e15\\u0e34\\u0e14\\u0e15\\u0e31\\u0e49\\u0e07)|(?:\\u0e2d\\u0e31\\u0e14|\\u0e17\\u0e33|\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e40\\u0e15\\u0e34\\u0e21|\\u0e25\\u0e49\\u0e32\\u0e07|\\u0e15\\u0e34\\u0e14\\u0e15\\u0e31\\u0e49\\u0e07)\\s*(?:\\u0e2a\\u0e32\\u0e22\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e19\\u0e49(?:\\u0e33|\\u0e4d\\u0e32)\\u0e22\\u0e32\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16\\u0e22\\u0e19\\u0e15\\u0e4c)|\\u0e23\\u0e31\\u0e1a\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e23\\u0e31\\u0e1a\\u0e17\\u0e33).*(?:\\u0e2a\\u0e32\\u0e22\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e19\\u0e49(?:\\u0e33|\\u0e4d\\u0e32)\\u0e22\\u0e32\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16\\u0e22\\u0e19\\u0e15\\u0e4c)",
+    "(?:\\u0e2a\\u0e32\\u0e22\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e19\\u0e49(?:\\u0e33|\\u0e4d\\u0e32)\\u0e22\\u0e32\\u0e41\\u0e2d\\u0e23\\u0e4c|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16|\\u0e41\\u0e2d\\u0e23\\u0e4c\\u0e23\\u0e16\\u0e22\\u0e19\\u0e15\\u0e4c).*(?:\\u0e23\\u0e31\\u0e1a\\s*(?:\\u0e2d\\u0e31\\u0e14|\\u0e17\\u0e33|\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e40\\u0e15\\u0e34\\u0e21|\\u0e25\\u0e49\\u0e32\\u0e07|\\u0e15\\u0e34\\u0e14\\u0e15\\u0e31\\u0e49\\u0e07)|(?:\\u0e2d\\u0e31\\u0e14|\\u0e17\\u0e33|\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e40\\u0e15\\u0e34\\u0e21|\\u0e25\\u0e49\\u0e32\\u0e07|\\u0e15\\u0e34\\u0e14\\u0e15\\u0e31\\u0e49\\u0e07)|\\u0e23\\u0e31\\u0e1a\\u0e0b\\u0e48\\u0e2d\\u0e21|\\u0e23\\u0e31\\u0e1a\\u0e17\\u0e33)",
+  ].join("|"),
+  "i",
+);
+
+const SERVICE_ACTION_RE =
+  /\u0e23\u0e31\u0e1a\s*(?:\u0e2d\u0e31\u0e14|\u0e17\u0e33|\u0e0b\u0e48\u0e2d\u0e21|\u0e40\u0e15\u0e34\u0e21|\u0e25\u0e49\u0e32\u0e07|\u0e15\u0e34\u0e14\u0e15\u0e31\u0e49\u0e07)|\u0e2d\u0e31\u0e14|\u0e17\u0e33|\u0e0b\u0e48\u0e2d\u0e21|\u0e40\u0e15\u0e34\u0e21|\u0e25\u0e49\u0e32\u0e07|\u0e15\u0e34\u0e14\u0e15\u0e31\u0e49\u0e07|\u0e23\u0e31\u0e1a\u0e0b\u0e48\u0e2d\u0e21|\u0e23\u0e31\u0e1a\u0e17\u0e33/i;
+const SERVICE_TARGET_RE =
+  /\u0e2a\u0e32\u0e22\u0e41\u0e2d\u0e23\u0e4c|\u0e19\u0e49(?:\u0e33|\u0e4d\u0e32)\u0e22\u0e32\u0e41\u0e2d\u0e23\u0e4c|\u0e41\u0e2d\u0e23\u0e4c\u0e23\u0e16|\u0e41\u0e2d\u0e23\u0e4c\u0e23\u0e16\u0e22\u0e19\u0e15\u0e4c/i;
+
+function isServiceInquiryText(text: string): boolean {
+  return SERVICE_INQUIRY_SAFE_RE.test(text) || (SERVICE_ACTION_RE.test(text) && SERVICE_TARGET_RE.test(text));
+}
+
 export type ChatIntentRouteInput = {
   messageType: LineMessageType;
   text?: string | null;
@@ -55,6 +75,17 @@ function routeText(text: string): ChatIntentRouteResult {
 
   // "ถามว่ามีบริการส่งไหม / ค่าส่งคิดยังไง" → ตอบเองด้วยข้อมูลร้าน ไม่เด้งแอดมิน.
   // ต้องเช็กก่อน SHIPPING_ADDRESS_RE ที่จับคำว่า "จัดส่ง/ส่งของ" เหมือนกัน.
+  if (isServiceInquiryText(normalized)) {
+    return {
+      intent: LineIntent.UNKNOWN,
+      allowsSearch: false,
+      requiresAdmin: true,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "SERVICE_INQUIRY_KEYWORD",
+    };
+  }
+
   if (SHIPPING_SERVICE_INQUIRY_RE.test(normalized)) {
     return {
       intent: LineIntent.SHOP_INFO,

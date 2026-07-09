@@ -270,6 +270,8 @@ const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
 // Sent as a bubble AFTER the matched products on a price inquiry — the customer
 // sees the options, and the exact price/promo is confirmed by a human.
+const SERVICE_HANDOFF_MESSAGE =
+  "\u0e08\u0e39\u0e19\u0e02\u0e2d\u0e2a\u0e48\u0e07\u0e40\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e07\u0e32\u0e19\u0e1a\u0e23\u0e34\u0e01\u0e32\u0e23\u0e43\u0e2b\u0e49\u0e41\u0e2d\u0e14\u0e21\u0e34\u0e19\u0e0a\u0e48\u0e27\u0e22\u0e40\u0e0a\u0e47\u0e01\u0e43\u0e2b\u0e49\u0e19\u0e30\u0e04\u0e30 \u0e23\u0e2d\u0e41\u0e2d\u0e14\u0e21\u0e34\u0e19\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d\u0e01\u0e25\u0e31\u0e1a\u0e2a\u0e31\u0e01\u0e04\u0e23\u0e39\u0e48\u0e04\u0e48\u0e30 \uD83D\uDE0A";
 const PRICE_INQUIRY_DEFER_NOTE =
   "ส่วนเรื่องราคา/โปรโมชั่น เดี๋ยวจูนให้แอดมินมาช่วยสรุปให้นะคะ 🙏";
 // ลูกค้าที่ซ่อนราคา (ประเภททั่วไป/ยังไม่ผูกบัญชี) ถามราคา → ต้องส่งเรื่องให้แอดมินแจ้งราคาเอง
@@ -1183,7 +1185,10 @@ export async function processLineAiReply(
     // "หม้อน้ำ d-max ราคาเท่าไหร่" must be classified so it can route to product
     // (search + show), not a blind admin hand-off. Only payment/claim stay
     // authoritative (those are genuinely admin-only).
-    const hardGuard = layer1Group === "payment" || layer1Group === "claim_or_return";
+    const hardGuard =
+      layer1Group === "payment" ||
+      layer1Group === "claim_or_return" ||
+      input.route.reason === "SERVICE_INQUIRY_KEYWORD";
     // True when the regex flagged a price/buy intent — used to (a) skip the
     // purchase hand-off when it's really a price *inquiry* we can answer with
     // products, and (b) append a "price → admin" note after the matches.
@@ -1954,6 +1959,14 @@ export async function processLineAiReply(
             },
           }
         // ลูกค้าซ่อนราคาถามราคาสินค้าเดิม/ล้วน → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ (freeze + notify)
+        : liveMode && route.reason === "SERVICE_INQUIRY_KEYWORD"
+        ? {
+            message: SERVICE_HANDOFF_MESSAGE,
+            reason: "SERVICE_INQUIRY_HANDOFF",
+            handoff: true,
+            audit: "AI_SERVICE_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId },
+          }
         : hiddenPriceDirect
         ? {
             message: PRICE_HIDDEN_HANDOFF_MESSAGE,
