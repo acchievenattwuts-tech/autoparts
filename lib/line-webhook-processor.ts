@@ -44,7 +44,7 @@ import {
   countConsecutiveFailedLineSearches,
   countPendingPaymentSlipsForConversation,
   findActiveCustomerIdByLineUserId,
-  resolveLineShowPrice,
+  resolveLinePriceTier,
   findStalledCoalescedConversationIds,
   getLineCoalesceState,
   getLineConversationForRecovery,
@@ -69,7 +69,7 @@ import { buildLineConversationStatePatch } from "@/lib/line-conversation-service
 import { routeChatIntent } from "@/lib/chat-core/intent-router";
 import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
 import {
-  applyChatPriceVisibility,
+  applyChatPriceTier,
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
@@ -133,7 +133,7 @@ export type LineWebhookProcessorDependencies = {
   hasProcessedLineEvent: typeof hasProcessedLineEvent;
   findActiveCustomerIdByLineUserId: typeof findActiveCustomerIdByLineUserId;
   /** Optional override; resolves whether the LINE user may see real prices. */
-  resolveLineShowPrice?: typeof resolveLineShowPrice;
+  resolveLinePriceTier?: typeof resolveLinePriceTier;
   getOrCreateLineConversation: typeof getOrCreateLineConversation;
   appendLineMessage: typeof appendLineMessage;
   updateLineConversationState: typeof updateLineConversationState;
@@ -208,7 +208,7 @@ export type LineWebhookProcessorDependencies = {
 const defaultDependencies: LineWebhookProcessorDependencies = {
   hasProcessedLineEvent,
   findActiveCustomerIdByLineUserId,
-  resolveLineShowPrice,
+  resolveLinePriceTier,
   getOrCreateLineConversation,
   appendLineMessage,
   updateLineConversationState,
@@ -275,8 +275,11 @@ const PRICE_HIDDEN_HANDOFF_MESSAGE =
 // ต่อท้ายการ์ด/รายการเมื่อเป็นสินค้าใหม่ที่เพิ่งถาม (topicShift) — โชว์ของก่อนแล้วส่งเรื่องราคาให้แอดมิน
 const PRICE_HIDDEN_HANDOFF_NOTE =
   "ส่วนเรื่องราคา จูนขอส่งเรื่องให้แอดมินช่วยแจ้งให้นะคะ 🙏 รอแอดมินติดต่อกลับสักครู่ค่ะ";
-// คำถามเชิงราคา (เสริมจาก regex intent เดิม) — จับ "พอมีราคา", "ขอสอบถามราคา", "กี่บาท", "เท่าไร/เท่าไหร่"
-const PRICE_QUESTION_RE = /(ราคา|กี่บาท|กี่ตัง|เท่าไหร่|เท่าไร)/;
+// คำถาม/ต่อรองเชิงราคา (เสริมจาก regex intent เดิม) — ทุกกรณีส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา
+// "ราคา" (substring) ครอบคลุม ขอราคา/เช็กราคา/ราคาอู่/ราคาช่าง/ราคาส่ง/ราคาลด/ราคาพิเศษ/ราคาเพื่อน ฯลฯ
+// ที่เหลือจับคำถามราคา-ส่วนลดที่ไม่มีคำว่า "ราคา" ในประโยค
+const PRICE_QUESTION_RE =
+  /(ราคา|กี่บาท|กี่ตัง|เท่าไหร่|เท่าไร|เท่าไหร|ส่วนลด|ลดราคา|ลดได้|ลดหน่อย|ลดให้|ลดไหม|ลดมั้ย|มีลด|มีโปร|โปรโมชั่น|โปรโมชัน)/;
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
@@ -903,11 +906,11 @@ async function respondMultiSubject(
   const search = dependencies.searchChatProductInquiry;
   const summarize = dependencies.getChatProductSummaries;
   const productRoute = groupToRoute("product") ?? input.route;
-  // ราคาจะแสดงจริงเฉพาะลูกค้าที่ประเภทมี showPrice=true (เช่น อู่ซ่อมรถ)
-  // ที่เหลือ (ทั่วไป/unlinked) ซ่อนราคา → "สอบถามราคา"
-  const showPrice = await (dependencies.resolveLineShowPrice ?? resolveLineShowPrice)(
+  // ราคาแสดงตามระดับราคาของประเภทลูกค้า: WHOLESALE (อู่) → salePrice,
+  // RETAIL (ทั่วไป/unlinked) → retailPrice; ราคา 0 → "สอบถามราคา"
+  const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
     input.lineUserId,
-  ).catch(() => false);
+  ).catch(() => "RETAIL" as const);
 
   // Resolve each subject to a canonical category and keep the FIRST per distinct
   // category (decision 1 = ก: split on category, not car). Subjects whose category
@@ -963,9 +966,9 @@ async function respondMultiSubject(
     }).catch(() => null);
 
     const ids = productSearch?.searched ? productSearch.result.ids : [];
-    const products = applyChatPriceVisibility(
+    const products = applyChatPriceTier(
       ids.length > 0 ? await summarize(ids).catch(() => []) : [],
-      showPrice,
+      priceTier,
     );
 
     if (products.length === 0) {
@@ -1724,26 +1727,26 @@ export async function processLineAiReply(
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
     // gatekeeping on chassis/OEM numbers they usually can't provide.
-    const showPrice = await (dependencies.resolveLineShowPrice ?? resolveLineShowPrice)(
+    const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
       input.lineUserId,
-    ).catch(() => false);
-    const products = applyChatPriceVisibility(
+    ).catch(() => "RETAIL" as const);
+    const products = applyChatPriceTier(
       productSearch.searched && productSearch.result.ids.length > 0
         ? await dependencies.getChatProductSummaries(productSearch.result.ids).catch(() => [])
         : [],
-      showPrice,
+      priceTier,
     );
 
-    // ลูกค้าที่ซ่อนราคา (showPrice=false) ถามราคา → ส่งเรื่องให้แอดมินแจ้งราคา
-    // ใช้คำว่า "ราคา/กี่บาท/เท่าไร" ในข้อความ + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
-    // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา. อู่ (showPrice=true) เห็นราคาปกติ
+    // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
+    // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
+    // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
     //  - hiddenPriceWithProducts: ข้อความนี้ระบุชื่อสินค้าเอง (guardedSearchIntent มี part/car) + เจอสินค้า
     //    → โชว์การ์ดก่อน แล้วต่อ note ส่งเรื่องราคา + freeze (ลูกค้าอยากเห็นว่ามีของ เช่น "คอยเย็นวีโก้ เท่าไร")
     //  - hiddenPriceDirect: ถามราคาล้วน ไม่ได้ระบุสินค้าในข้อความ (เช่น "ราคาเท่าไร" ต่อจากที่โชว์ไปแล้ว)
     //    → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ
     const priceAskThisTurn =
       route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
-    const hiddenPriceInquiry = liveMode && !showPrice && priceAskThisTurn;
+    const hiddenPriceInquiry = liveMode && priceAskThisTurn;
     // guardedSearchIntent = evidence-gated intent ของ "ข้อความเทิร์นนี้" (เฉพาะสิ่งที่ลูกค้าพิมพ์จริง
     // ไม่รวม history) → ใช้แยกว่าลูกค้าเปิดสินค้าใหม่ในข้อความนี้ หรือถามราคาล้วน
     const currentTurnNamedProduct = Boolean(

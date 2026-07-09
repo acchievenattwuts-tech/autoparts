@@ -5,15 +5,20 @@ dotenv.config({ path: ".env" });
 
 /**
  * Idempotent seed for the 2 default customer types.
- * - "ลูกค้าทั่วไป": showPrice=false (system, ห้ามลบ) — ซ่อนราคาบน LINE
- * - "อู่ซ่อมรถ":   showPrice=true — เห็นราคาจริงบน LINE
+ * - "ลูกค้าทั่วไป": priceTier=RETAIL (system, ห้ามลบ) — เห็นราคาขายปลีก (Product.retailPrice)
+ * - "อู่ซ่อมรถ":   priceTier=WHOLESALE — เห็นราคาขายส่ง (Product.salePrice)
  *
  * Run once after `prisma db push`:
  *   npx tsx --env-file=.env.local scripts/seed-customer-types.ts
  */
-const seeds: Array<{ name: string; showPrice: boolean; sortOrder: number; isSystem: boolean }> = [
-  { name: "ลูกค้าทั่วไป", showPrice: false, sortOrder: 0, isSystem: true },
-  { name: "อู่ซ่อมรถ", showPrice: true, sortOrder: 1, isSystem: false },
+const seeds: Array<{
+  name: string;
+  priceTier: "RETAIL" | "WHOLESALE";
+  sortOrder: number;
+  isSystem: boolean;
+}> = [
+  { name: "ลูกค้าทั่วไป", priceTier: "RETAIL", sortOrder: 0, isSystem: true },
+  { name: "อู่ซ่อมรถ", priceTier: "WHOLESALE", sortOrder: 1, isSystem: false },
 ];
 
 async function main() {
@@ -26,7 +31,7 @@ async function main() {
         continue;
       }
       await db.customerType.create({ data: seed });
-      console.log(`+ สร้าง: "${seed.name}" (showPrice=${seed.showPrice})`);
+      console.log(`+ สร้าง: "${seed.name}" (priceTier=${seed.priceTier})`);
     }
     console.log("เสร็จสิ้น seed ประเภทลูกค้า");
   } finally {

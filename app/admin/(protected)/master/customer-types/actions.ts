@@ -7,7 +7,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db } from "@/lib/db";
-import { AuditAction } from "@/lib/generated/prisma";
+import { AuditAction, PriceTier } from "@/lib/generated/prisma";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
@@ -17,14 +17,14 @@ const ID_PATTERN = /^[a-z0-9]+$/;
 
 const customerTypeSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อประเภทลูกค้า").max(100),
-  showPrice: z.boolean(),
+  priceTier: z.nativeEnum(PriceTier),
   sortOrder: z.number().int().min(0).max(9999),
 });
 
 const parseFormData = (formData: FormData) =>
   customerTypeSchema.safeParse({
     name: (formData.get("name") ?? "").toString().trim(),
-    showPrice: formData.get("showPrice") === "on" || formData.get("showPrice") === "true",
+    priceTier: formData.get("priceTier") === "WHOLESALE" ? PriceTier.WHOLESALE : PriceTier.RETAIL,
     sortOrder: Number.parseInt((formData.get("sortOrder") ?? "0").toString(), 10) || 0,
   });
 
@@ -34,7 +34,7 @@ async function getCustomerTypeAuditSnapshot(id: string) {
     select: {
       id: true,
       name: true,
-      showPrice: true,
+      priceTier: true,
       isActive: true,
       sortOrder: true,
       isSystem: true,
@@ -61,7 +61,7 @@ export const createCustomerType = async (formData: FormData): Promise<{ error?: 
     const created = await db.customerType.create({
       data: {
         name: parsed.data.name,
-        showPrice: parsed.data.showPrice,
+        priceTier: parsed.data.priceTier,
         sortOrder: parsed.data.sortOrder,
       },
     });
@@ -114,7 +114,7 @@ export const updateCustomerType = async (
       where: { id },
       data: {
         name: parsed.data.name,
-        showPrice: parsed.data.showPrice,
+        priceTier: parsed.data.priceTier,
         sortOrder: parsed.data.sortOrder,
       },
     });

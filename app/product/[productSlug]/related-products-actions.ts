@@ -15,9 +15,10 @@ type RawRelatedProduct = Awaited<
   ReturnType<typeof getRelatedStorefrontProductsPaginated>
 >[number];
 
-// salePrice serialized to string for safe Server→Client boundary transfer
-export type RelatedProduct = Omit<RawRelatedProduct, "salePrice"> & {
+// salePrice/retailPrice serialized to string for safe Server→Client boundary transfer
+export type RelatedProduct = Omit<RawRelatedProduct, "salePrice" | "retailPrice"> & {
   salePrice: string;
+  retailPrice: string;
 };
 
 export async function loadMoreRelatedProducts(
@@ -38,7 +39,11 @@ export async function loadMoreRelatedProducts(
   const hasMore = rows.length > LOAD_MORE_TAKE;
   const products: RelatedProduct[] = rows
     .slice(0, LOAD_MORE_TAKE)
-    .map((p) => ({ ...p, salePrice: p.salePrice.toString() }));
+    .map((p) => ({
+      ...p,
+      salePrice: p.salePrice.toString(),
+      retailPrice: p.retailPrice.toString(),
+    }));
 
   return { products, hasMore };
 }

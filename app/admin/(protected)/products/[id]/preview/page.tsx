@@ -50,6 +50,7 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
       imageUrl: true,
       isActive: true,
       salePrice: true,
+      retailPrice: true,
       costPrice: true,
       purchaseLastPrice: true,
       purchaseLastDate: true,
@@ -207,8 +208,15 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
       {/* Metrics grid */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         <MetricCard label="ราคาขาย">
-          <span className="text-lg font-bold text-[#f97316]">
+          <span className="text-[10px] font-semibold uppercase text-emerald-500 dark:text-emerald-400">ส่ง</span>
+          <span className="text-lg font-bold text-emerald-600 dark:text-emerald-300">
             ฿{Number(product.salePrice).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">/{product.saleUnitName}</span>
+          <span className="basis-full" />
+          <span className="text-[10px] font-medium uppercase text-gray-400 dark:text-slate-500">ปลีก</span>
+          <span className="text-sm font-medium text-gray-500 dark:text-slate-400">
+            ฿{Number(product.retailPrice).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
           </span>
           <span className="text-xs text-gray-400 dark:text-slate-500">/{product.saleUnitName}</span>
         </MetricCard>

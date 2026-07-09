@@ -760,6 +760,7 @@ model Product {
   purchaseLastPrice   Decimal?               @db.Decimal(10, 2)
   purchaseLastDate    DateTime?              @db.Timestamptz(3)
   salePrice           Decimal                @default(0) @db.Decimal(10, 2)
+  retailPrice         Decimal                @default(0) @db.Decimal(10, 2)
   stock               Int                    @default(0)
   minStock            Int                    @default(1)
   imageUrl            String?
@@ -1122,6 +1123,7 @@ model CustomerType {
   id        String     @id @default(cuid())
   name      String     @unique
   showPrice Boolean    @default(false)
+  priceTier PriceTier  @default(RETAIL)
   isActive  Boolean    @default(true)
   sortOrder Int        @default(0)
   isSystem  Boolean    @default(false)
@@ -2345,6 +2347,14 @@ enum DocStatus {
 enum SaleType {
   RETAIL
   WHOLESALE
+}
+
+/// ระดับราคาที่กลุ่มลูกค้าใช้เมื่อบันทึกการขาย
+/// WHOLESALE = ใช้ราคาขายส่ง (Product.salePrice) — เช่น อู่ซ่อมรถ
+/// RETAIL    = ใช้ราคาขายปลีก (Product.retailPrice) — ลูกค้าทั่วไป (ค่าเริ่มต้น)
+enum PriceTier {
+  WHOLESALE
+  RETAIL
 }
 
 enum SaleChannel {

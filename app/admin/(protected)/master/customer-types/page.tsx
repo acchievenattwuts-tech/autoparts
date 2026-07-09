@@ -20,7 +20,7 @@ const CustomerTypesPage = async () => {
     select: {
       id: true,
       name: true,
-      showPrice: true,
+      priceTier: true,
       isActive: true,
       sortOrder: true,
       isSystem: true,
@@ -32,7 +32,7 @@ const CustomerTypesPage = async () => {
     <div className="space-y-4">
       <AdminPageHeader
         title="จัดการประเภทลูกค้า"
-        description="กำหนดกลุ่มลูกค้าและคุมการแสดงราคาบน LINE (ติ๊ก 'แสดงราคา' = กลุ่มนั้นเห็นราคาจริง เช่น อู่ซ่อมรถ)"
+        description="กำหนดกลุ่มลูกค้าและระดับราคาที่เห็นบนแชท (ขายปลีก = ลูกค้าทั่วไป / ขายส่ง = เช่น อู่ซ่อมรถ)"
       />
       <CustomerTypeForm
         customerTypes={customerTypes}

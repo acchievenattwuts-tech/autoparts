@@ -7,8 +7,7 @@ import Link from "next/link";
 import { MessageCircle, ShieldCheck } from "lucide-react";
 import { getProductPath } from "@/lib/product-slug";
 import {
-  getStorefrontDisplayPrices,
-  HIDE_STOREFRONT_PRICE,
+  getStorefrontRetailPricing,
   STOREFRONT_PRICE_INQUIRY_LABEL,
 } from "@/lib/storefront-pricing";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
@@ -21,6 +20,7 @@ type ProductForCard = {
   code: string;
   imageUrl: string | null;
   salePrice: { toString(): string } | number;
+  retailPrice?: { toString(): string } | number | null;
   saleUnitName?: string | null;
   warrantyDays?: number | null;
   stock: number;
@@ -55,7 +55,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
     category: product.category,
     product,
   });
-  const displayPrices = getStorefrontDisplayPrices(product.salePrice);
+  const retailPricing = getStorefrontRetailPricing(product.retailPrice);
   const saleUnitLabel = product.saleUnitName?.trim() || "หน่วย";
 
   const compatibilitySummary =
@@ -148,24 +148,20 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
 
         <div className="mt-auto pt-1.5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
-            {HIDE_STOREFRONT_PRICE ? (
+            {retailPricing ? (
               <div className="min-w-0">
-                <p className="whitespace-nowrap text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
-                  {STOREFRONT_PRICE_INQUIRY_LABEL}
+                <p className="text-xs text-gray-400 line-through">
+                  ฿{retailPricing.compareAtPrice.toLocaleString("th-TH")}
+                </p>
+                <p className="mt-0.5 text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
+                  ฿{retailPricing.retailPrice.toLocaleString("th-TH")}{" "}
+                  <span className="text-[11px] font-medium text-slate-500 sm:text-xs">/ {saleUnitLabel}</span>
                 </p>
               </div>
             ) : (
               <div className="min-w-0">
-                <p className="text-xs text-gray-400">ราคาปกติ</p>
-                <p className="text-xs text-gray-400 line-through">
-                  ฿{displayPrices.compareAtPrice.toLocaleString("th-TH")}
-                </p>
-                <p className="mt-1 text-xs font-bold text-emerald-600 sm:text-sm">ราคาพิเศษ</p>
-                <p className="text-xl font-extrabold leading-none text-[#f97316] sm:text-2xl">
-                  ฿{displayPrices.salePrice.toLocaleString("th-TH")}
-                </p>
-                <p className="mt-1 text-[11px] font-medium text-slate-500 sm:text-xs">
-                  / {saleUnitLabel}
+                <p className="whitespace-nowrap text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
+                  {STOREFRONT_PRICE_INQUIRY_LABEL}
                 </p>
               </div>
             )}

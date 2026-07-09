@@ -305,7 +305,7 @@ async function getReceiptAuditSnapshot(receiptId: string) {
 
 export async function createReceipt(
   formData: FormData,
-): Promise<{ success: boolean; receiptNo?: string; error?: string }> {
+): Promise<{ success: boolean; receiptNo?: string; receiptId?: string | null; error?: string }> {
   const session = await requirePermission("receipts.create").catch(() => null);
   if (!session?.user?.id) {
     return { success: false, error: "กรุณาเข้าสู่ระบบก่อน" };
@@ -418,7 +418,7 @@ export async function createReceipt(
     revalidatePath("/admin/receipts");
     revalidatePath("/admin/customers");
 
-    return { success: true, receiptNo };
+    return { success: true, receiptNo, receiptId: createdReceiptId };
   } catch (err) {
     console.error("[createReceipt] error:", err);
     return {

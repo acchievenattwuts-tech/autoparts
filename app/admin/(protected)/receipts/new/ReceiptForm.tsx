@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Printer } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
@@ -55,12 +55,15 @@ interface Props {
   cashBankAccounts: CashBankAccountOption[];
   initialData?: InitialData;
   initialCreditSales?: CreditSaleItem[];
+  canPrint?: boolean;
 }
 
-const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales }: Props) => {
+const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales, canPrint = false }: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const today = getThailandDateKey();
+  const [savedReceiptId, setSavedReceiptId] = useState("");
+  const printReceiptId = isEdit ? (initialData?.id ?? "") : savedReceiptId;
 
   const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
   const [receiptDate, setReceiptDate] = useState(initialData?.receiptDate ?? today);
@@ -247,7 +250,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         const result = await createReceipt(formData);
         if (result.success) {
           setSuccessMsg(`บันทึกใบเสร็จ ${result.receiptNo} สำเร็จ`);
-          setTimeout(() => router.push("/admin/receipts"), 1500);
+          if (result.receiptId) setSavedReceiptId(result.receiptId);
         } else {
           setError(result.error ?? "เกิดข้อผิดพลาด");
         }
@@ -530,8 +533,29 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
           </div>
         )}
         {successMsg && (
-          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-400/30 dark:bg-green-500/10 dark:text-green-400">
-            {successMsg}
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-400/30 dark:bg-green-500/10">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <span className="text-sm text-green-700 dark:text-green-400">{successMsg}</span>
+              <div className="flex items-center gap-2">
+                {canPrint && printReceiptId && (
+                  <a
+                    href={`/admin/receipts/${printReceiptId}?print=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600"
+                  >
+                    <Printer size={16} /> พิมพ์ใบเสร็จ
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => router.push("/admin/receipts")}
+                  className="inline-flex items-center justify-center rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
+                >
+                  ไปหน้ารายการ
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -560,14 +584,26 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               <span className="ml-1 text-sm font-normal text-gray-500 dark:text-slate-400">บาท</span>
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isPending || selectedItems.length === 0}
-            className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:bg-gray-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
-          >
-            {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบเสร็จ"}
-          </button>
+          <div className="flex items-center gap-3">
+            {canPrint && isEdit && printReceiptId && (
+              <a
+                href={`/admin/receipts/${printReceiptId}?print=1`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600"
+              >
+                <Printer size={16} /> พิมพ์
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={isPending || selectedItems.length === 0 || (!isEdit && !!savedReceiptId)}
+              className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:bg-gray-300 dark:bg-sky-700 dark:hover:bg-sky-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-500"
+            >
+              {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกใบเสร็จ"}
+            </button>
+          </div>
         </div>
       </div>
     </div>

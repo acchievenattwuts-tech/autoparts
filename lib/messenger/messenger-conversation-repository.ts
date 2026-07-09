@@ -170,23 +170,25 @@ export async function getRecentMessengerMessagesForAi(conversationId: string, ta
 }
 
 /**
- * Whether this Messenger customer should see prices. Mirrors resolveLineShowPrice
- * but resolves via the conversation's linked customerId (Messenger has no direct
- * Customer.psid column — linkage is manual/admin-side).
+ * ระดับราคาของลูกค้า Messenger รายนี้ (mirror ของ resolveLinePriceTier) — resolve ผ่าน
+ * customerId ที่ผูกกับบทสนทนา (Messenger ไม่มีคอลัมน์ Customer.psid — ผูกโดยแอดมิน)
+ * WHOLESALE → ประเภทลูกค้า (active) ระดับขายส่ง / RETAIL → ยังไม่ผูก/ประเภทปิด → retailPrice
  */
-export async function resolveMessengerShowPrice(conversationId: string): Promise<boolean> {
+export async function resolveMessengerPriceTier(
+  conversationId: string,
+): Promise<"RETAIL" | "WHOLESALE"> {
   const conversation = await db.messengerConversation.findUnique({
     where: { id: conversationId },
     select: {
       customer: {
-        select: { isActive: true, customerType: { select: { showPrice: true, isActive: true } } },
+        select: { isActive: true, customerType: { select: { priceTier: true, isActive: true } } },
       },
     },
   });
   const customer = conversation?.customer;
-  if (!customer?.isActive) return false;
-  if (!customer.customerType?.isActive) return false;
-  return customer.customerType.showPrice;
+  if (!customer?.isActive) return "RETAIL";
+  if (!customer.customerType?.isActive) return "RETAIL";
+  return customer.customerType.priceTier;
 }
 
 export async function storeMessengerAiSuggestion(input: {

@@ -84,7 +84,10 @@ export type ChatMatchedProductSummary = {
   name: string;
   code: string | null;
   imageUrl: string | null;
+  /** ราคาที่จะแสดงในแชท (หลังเลือกตามระดับราคาแล้ว) — 0 = "สอบถามราคา" */
   salePrice: number;
+  /** ราคาขายปลีก (Product.retailPrice) — ใช้เลือกราคาตามระดับราคาของลูกค้า */
+  retailPrice: number;
 };
 
 /**
@@ -102,7 +105,7 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       isActive: true,
       isStorefrontVisible: true,
     },
-    select: { id: true, name: true, code: true, imageUrl: true, salePrice: true },
+    select: { id: true, name: true, code: true, imageUrl: true, salePrice: true, retailPrice: true },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return ids
@@ -114,21 +117,25 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       code: row.code,
       imageUrl: row.imageUrl,
       salePrice: Number(row.salePrice),
+      retailPrice: Number(row.retailPrice),
     }));
 }
 
+/** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier) */
+export type ChatPriceTier = "RETAIL" | "WHOLESALE";
+
 /**
- * บังคับซ่อนราคาสำหรับลูกค้าที่ไม่มีสิทธิ์เห็นราคา (ลูกค้าทั่วไป/unlinked)
- * โดยเซ็ต salePrice = 0 ซึ่งเป็น sentinel เดิมของระบบ → ทั้ง Flex การ์ดและข้อความ AI
- * จะ fallback เป็น "สอบถามราคา" อัตโนมัติ ไม่ต้องแก้ formatter/prompt แยก
- * ลูกค้าที่ showPrice=true (เช่น อู่ซ่อมรถ) จะได้ราคาจริงตามเดิม
+ * เลือกราคาแสดงในแชทตามระดับราคาของลูกค้า โดยเขียนทับ salePrice (ฟิลด์ราคาแสดงเดิม):
+ * - RETAIL (ลูกค้าทั่วไป / ยังไม่ผูกบัญชี / ประเภทถูกปิด) → Product.retailPrice
+ * - WHOLESALE (เช่น อู่ซ่อมรถ) → Product.salePrice (ราคาขายส่ง)
+ * ราคา = 0 เป็น sentinel เดิมของระบบ → Flex การ์ดและข้อความ AI แสดง "สอบถามราคา" อัตโนมัติ
  */
-export function applyChatPriceVisibility<T extends { salePrice: number }>(
+export function applyChatPriceTier<T extends { salePrice: number; retailPrice: number }>(
   products: T[],
-  showPrice: boolean,
+  tier: ChatPriceTier,
 ): T[] {
-  if (showPrice) return products;
-  return products.map((product) => ({ ...product, salePrice: 0 }));
+  if (tier === "WHOLESALE") return products;
+  return products.map((product) => ({ ...product, salePrice: product.retailPrice }));
 }
 
 const MAX_QUERY_LENGTH = 120;

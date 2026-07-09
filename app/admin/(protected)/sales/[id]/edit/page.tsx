@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
@@ -21,6 +22,8 @@ import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canPrint = hasPermissionAccess(role, permissions, "sales.view");
 
   const { id } = await params;
 
@@ -65,7 +68,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
           orderBy: { code: "asc" },
           select: {
             id: true, code: true, name: true, description: true, isActive: true,
-            salePrice: true, saleUnitName: true, warrantyDays: true,
+            salePrice: true, retailPrice: true, saleUnitName: true, warrantyDays: true,
             preferredSupplierId: true, inventoryTracking: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
             category:          { select: { name: true } },
             brand:             { select: { name: true } },
@@ -113,7 +116,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
-    salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
+    salePrice: Number(p.salePrice), retailPrice: Number(p.retailPrice), saleUnitName: p.saleUnitName ?? "",
     warrantyDays: p.warrantyDays ?? 0,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),
@@ -244,13 +247,14 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
-        customers={customers}
+        customers={customers.map((c) => ({ ...c, priceTier: c.customerType?.priceTier ?? "RETAIL" }))}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}
         editableLotOnEdit
         initialAvailableLots={initialAvailableLots}
         submitLocked={!!mutationBlockMessage}
+        canPrint={canPrint}
       />
     </div>
   );

@@ -23,6 +23,7 @@ const PRODUCT_SELECT = {
   code: true,
   imageUrl: true,
   salePrice: true,
+  retailPrice: true,
   saleUnitName: true,
   warrantyDays: true,
   stock: true,
@@ -51,6 +52,7 @@ export type SearchProductItem = {
   code: string;
   imageUrl: string | null;
   salePrice: string;
+  retailPrice: string;
   saleUnitName: string | null;
   warrantyDays: number;
   stock: number;
@@ -161,6 +163,7 @@ const serializeSearchProduct = (product: SearchProductRecord): SearchProductItem
   code: product.code,
   imageUrl: product.imageUrl,
   salePrice: product.salePrice.toString(),
+  retailPrice: product.retailPrice.toString(),
   saleUnitName: product.saleUnitName,
   warrantyDays: product.warrantyDays,
   stock: product.stock,

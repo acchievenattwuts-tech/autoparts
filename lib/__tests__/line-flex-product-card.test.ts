@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
 import {
-  applyChatPriceVisibility,
+  applyChatPriceTier,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
 
@@ -17,6 +17,7 @@ const product = (over: Partial<ChatMatchedProductSummary> = {}): ChatMatchedProd
   code: "CL-001",
   imageUrl: "https://img.example.com/a.jpg",
   salePrice: 1200,
+  retailPrice: 1500,
   ...over,
 });
 
@@ -66,28 +67,39 @@ test("price shows 'สอบถามราคา' when salePrice is zero", () =
   assert.match(JSON.stringify(msg), /สอบถามราคา/);
 });
 
-test("applyChatPriceVisibility keeps real prices when showPrice is true (e.g. garage)", () => {
-  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
-  const visible = applyChatPriceVisibility(products, true);
+test("applyChatPriceTier keeps wholesale prices for WHOLESALE tier (e.g. garage)", () => {
+  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const visible = applyChatPriceTier(products, "WHOLESALE");
   assert.deepEqual(
     visible.map((p) => p.salePrice),
     [1200, 350],
   );
 });
 
-test("applyChatPriceVisibility zeroes prices when showPrice is false (general customer)", () => {
-  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350 })];
-  const hidden = applyChatPriceVisibility(products, false);
+test("applyChatPriceTier swaps in retailPrice for RETAIL tier (general/unlinked customer)", () => {
+  const products = [product({ salePrice: 1200, retailPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const retail = applyChatPriceTier(products, "RETAIL");
   assert.deepEqual(
-    hidden.map((p) => p.salePrice),
-    [0, 0],
+    retail.map((p) => p.salePrice),
+    [1500, 500],
   );
-  // …and a hidden product renders as "สอบถามราคา" on the flex card.
-  const msg = buildProductFlexMessage({ products: hidden, searchQuery: null, total: 2 });
+  const msg = buildProductFlexMessage({ products: retail, searchQuery: null, total: 2 });
   assert.ok(msg);
   const json = JSON.stringify(msg);
-  assert.match(json, /สอบถามราคา/);
+  assert.match(json, /฿1,500/);
   assert.doesNotMatch(json, /฿1,200|฿350/);
+});
+
+test("applyChatPriceTier falls back to 'สอบถามราคา' when retailPrice is unset (0)", () => {
+  const products = [product({ salePrice: 1200, retailPrice: 0 })];
+  const retail = applyChatPriceTier(products, "RETAIL");
+  assert.deepEqual(
+    retail.map((p) => p.salePrice),
+    [0],
+  );
+  const msg = buildProductFlexMessage({ products: retail, searchQuery: null, total: 1 });
+  assert.ok(msg);
+  assert.match(JSON.stringify(msg), /สอบถามราคา/);
 });
 
 test("view-all URL carries the LINE search fitment filters (so web count matches)", () => {

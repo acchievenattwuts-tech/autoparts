@@ -32,6 +32,7 @@ export const getTransactionCustomers = (
       defaultLatitude: true,
       defaultLongitude: true,
       isActive: true,
+      customerType: { select: { priceTier: true } },
     },
   });
 };

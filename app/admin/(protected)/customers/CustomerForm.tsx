@@ -13,7 +13,7 @@ import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
 interface CustomerTypeOption {
   id: string;
   name: string;
-  showPrice: boolean;
+  priceTier: "RETAIL" | "WHOLESALE";
 }
 
 interface CustomerFormProps {
@@ -185,7 +185,7 @@ const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: 
                 (t): SelectOption => ({
                   id: t.id,
                   label: t.name,
-                  sublabel: t.showPrice ? "แสดงราคาบน LINE" : "ซ่อนราคา (สอบถามราคา)",
+                  sublabel: t.priceTier === "WHOLESALE" ? "ราคาขายส่ง (เช่น อู่ซ่อมรถ)" : "ราคาขายปลีก (ลูกค้าทั่วไป)",
                 }),
               )}
               value={customerTypeId}

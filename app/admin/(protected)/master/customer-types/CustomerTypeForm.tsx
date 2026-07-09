@@ -13,7 +13,7 @@ import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-sta
 
 type CustomerTypeRow = Pick<
   CustomerType,
-  "id" | "name" | "showPrice" | "isActive" | "sortOrder" | "isSystem" | "createdAt"
+  "id" | "name" | "priceTier" | "isActive" | "sortOrder" | "isSystem" | "createdAt"
 >;
 
 interface CustomerTypeFormProps {
@@ -26,11 +26,11 @@ interface CustomerTypeFormProps {
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
-const PriceBadge = ({ showPrice }: { showPrice: boolean }) =>
-  showPrice ? (
-    <AdminStatusBadge tone="success">แสดงราคา</AdminStatusBadge>
+const PriceTierBadge = ({ priceTier }: { priceTier: CustomerType["priceTier"] }) =>
+  priceTier === "WHOLESALE" ? (
+    <AdminStatusBadge tone="info">ราคาขายส่ง</AdminStatusBadge>
   ) : (
-    <AdminStatusBadge tone="muted">ซ่อนราคา</AdminStatusBadge>
+    <AdminStatusBadge tone="muted">ราคาขายปลีก</AdminStatusBadge>
   );
 
 const CustomerTypeRowEditor = ({
@@ -90,15 +90,17 @@ const CustomerTypeRowEditor = ({
                 className={inputClassName}
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-200 sm:py-2">
-              <input
-                type="checkbox"
-                name="showPrice"
-                defaultChecked={item.showPrice}
-                className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
-              />
-              แสดงราคาบน LINE
-            </label>
+            <div className="sm:w-40">
+              <select
+                name="priceTier"
+                defaultValue={item.priceTier}
+                className={inputClassName}
+                aria-label="ระดับราคา"
+              >
+                <option value="RETAIL">ราคาขายปลีก</option>
+                <option value="WHOLESALE">ราคาขายส่ง</option>
+              </select>
+            </div>
             <div className="flex gap-2">
               <button
                 type="submit"
@@ -133,7 +135,7 @@ const CustomerTypeRowEditor = ({
         )}
       </td>
       <td className="px-4 py-3">
-        <PriceBadge showPrice={item.showPrice} />
+        <PriceTierBadge priceTier={item.priceTier} />
       </td>
       <td className="px-4 py-3">
         <AdminStatusBadge tone={getAdminActiveBadgeTone(item.isActive)}>
@@ -231,14 +233,12 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
                   className={inputClassName}
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-slate-200 sm:py-2">
-                <input
-                  type="checkbox"
-                  name="showPrice"
-                  className="h-4 w-4 rounded border-gray-300 text-[#1e3a5f] focus:ring-[#1e3a5f]"
-                />
-                แสดงราคาบน LINE
-              </label>
+              <div className="sm:w-40">
+                <select name="priceTier" defaultValue="RETAIL" className={inputClassName} aria-label="ระดับราคา">
+                  <option value="RETAIL">ราคาขายปลีก</option>
+                  <option value="WHOLESALE">ราคาขายส่ง</option>
+                </select>
+              </div>
               <button
                 type="submit"
                 disabled={isPending}
@@ -264,7 +264,7 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
                   ชื่อประเภท
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
-                  การเห็นราคา
+                  ระดับราคา
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
                   สถานะ

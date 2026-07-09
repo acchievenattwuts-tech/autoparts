@@ -112,7 +112,7 @@ function createProcessorTestDeps(input?: {
   duplicateEventIds?: string[];
   conversationStatus?: LineConversationAiStatus;
   linkedCustomerId?: string | null;
-  showPrice?: boolean;
+  priceTier?: "RETAIL" | "WHOLESALE";
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
   imageConfidence?: "LOW" | "MEDIUM" | "HIGH";
   imageHints?: string[];
@@ -191,9 +191,9 @@ function createProcessorTestDeps(input?: {
     hasProcessedLineEvent: async (lineEventId) =>
       Boolean(input?.duplicate) || (typeof lineEventId === "string" && duplicateEventIds.has(lineEventId)),
     findActiveCustomerIdByLineUserId: async () => input?.linkedCustomerId ?? null,
-    // Default to visible so existing structural tests keep their original prices;
-    // hide-price behavior is covered by dedicated cases that pass showPrice: false.
-    resolveLineShowPrice: async () => input?.showPrice ?? true,
+    // Default to WHOLESALE so existing structural tests keep their original prices;
+    // retail-tier behavior is covered by dedicated cases that pass priceTier: "RETAIL".
+    resolveLinePriceTier: async () => input?.priceTier ?? "WHOLESALE",
     getOrCreateLineConversation: async (conversationInput) => {
       calls.conversationInputs.push({
         lineUserId: conversationInput.lineUserId,
@@ -1397,7 +1397,7 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
   // Search returns ids; provide matching summaries so flex cards (and thus the
   // follow-up bubble) are produced.
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1453,7 +1453,7 @@ test("direct no-match with part + car replies once and hands off to admin", asyn
   assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
 });
 
-test("price inquiry with a searchable part → searches, shows products, no admin handoff, price-defer note", async () => {
+test("price inquiry with a searchable part → searches, shows products, then hands price off to admin", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     consolidatedQuery: "หม้อน้ำ d-max",
@@ -1462,7 +1462,7 @@ test("price inquiry with a searchable part → searches, shows products, no admi
     intentPartKind: "universal", // searchable directly; focus is the price path
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1473,24 +1473,24 @@ test("price inquiry with a searchable part → searches, shows products, no admi
 
   assert.equal(result.repliedCount, 1);
   assert.equal(calls.searches.length, 1, "price question still searches the catalog");
-  // No PURCHASE_HANDOFF — the customer sees products, not 'admin will summarise price'.
+  // No PURCHASE_HANDOFF — the customer sees products first, not a bare purchase handoff.
   assert.ok(!calls.replies[0]?.text.includes("เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่ง"));
-  // Last bubble is the price-defer note.
-  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ราคา/โปรโมชั่น"), "price deferred to admin as a note");
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active");
+  // ถามราคา → ส่งเรื่องให้แอดมินทุกกรณี: โชว์การ์ดก่อน แล้วต่อ note ส่งเรื่องราคา + freeze
+  assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ส่งเรื่องให้แอดมิน"), "price handed off to admin as a note");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin to quote price");
 });
 
-test("hidden-price customer naming a product + price → shows cards then hands off to admin", async () => {
+test("retail-tier customer naming a product + price → shows cards then hands off to admin", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
-    showPrice: false, // ลูกค้าทั่วไป/unlinked — ซ่อนราคา
+    priceTier: "RETAIL", // ลูกค้าทั่วไป/unlinked — เห็นราคาขายปลีก
     consolidatedQuery: "คอยเย็นวีโก้",
     intentPartType: "คอยล์เย็น", // ข้อความระบุสินค้าเอง → โชว์การ์ดก่อน handoff
     intentCarModel: "Vigo",
     intentPartKind: "universal",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1508,17 +1508,17 @@ test("hidden-price customer naming a product + price → shows cards then hands 
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
 });
 
-test("hidden-price customer asking bare price (no product named) → direct handoff, no cards re-shown", async () => {
+test("bare price question (no product named) → direct handoff, no cards re-shown", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
-    showPrice: false,
+    priceTier: "RETAIL",
     // No intentPartType/car — the message names no product; the search only finds
     // items via carried context. This is the "ราคาเท่าไร" follow-up after a list was shown.
     consolidatedQuery: "ราคาเท่าไร",
     intentPartKind: "universal",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1536,17 +1536,17 @@ test("hidden-price customer asking bare price (no product named) → direct hand
   assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
 });
 
-test("visible-price customer (garage) asking price → shows products, no handoff", async () => {
+test("wholesale-tier customer (garage) asking price → shows products then hands off to admin too", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
-    showPrice: true, // อู่ซ่อมรถ — เห็นราคาปกติ
+    priceTier: "WHOLESALE", // อู่ซ่อมรถ — เห็นราคาขายส่ง แต่เรื่องราคายังส่งแอดมินทุกกรณี
     consolidatedQuery: "หม้อน้ำ d-max",
     intentPartType: "หม้อน้ำ",
     intentCarModel: "D-Max",
     intentPartKind: "universal",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1556,8 +1556,9 @@ test("visible-price customer (garage) asking price → shows products, no handof
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "garage sees prices — AI stays active");
-  assert.equal(calls.notifyHandoffs.length, 0, "no admin handoff for a visible-price customer");
+  assert.ok((calls.replies[0]?.messageCount ?? 0) >= 2, "product answer + handoff note");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "price ask escalates for every tier");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
 });
 
 test("genuine purchase intent still hands off to admin", async () => {
@@ -1631,7 +1632,7 @@ test("inquiry frame: a sparse follow-up ('ปี 03') continues the stored subje
     intentPartKind: "fitment",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1662,7 +1663,7 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
     intentPartKind: "fitment",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900 },
+    { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900, retailPrice: 900 },
   ];
 
   await processLineWebhookPayload(

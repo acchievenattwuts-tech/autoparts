@@ -91,6 +91,7 @@ export interface ProductFormData {
   inventoryTracking: InventoryTrackingValue;
   isStorefrontVisible: boolean;
   salePrice:       number;
+  retailPrice:     number;
   minStock:        number;
   warrantyDays:    number;
   shelfLocation:   string | null;
@@ -1538,10 +1539,18 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
             </p>
           </div>
           <div>
-            <label className={labelCls}>ราคาขาย (บาท)</label>
+            <label className={labelCls}>ราคาขายส่ง (บาท)</label>
             <input type="number" name="salePrice"
               defaultValue={product ? Number(product.salePrice) : 0}
               min={0} step={0.01} className={inputCls} />
+            <p className={helpCls}>ราคาสำหรับกลุ่มลูกค้าประเภท “ราคาขายส่ง” เช่น อู่ซ่อมรถ</p>
+          </div>
+          <div>
+            <label className={labelCls}>ราคาขายปลีก (บาท)</label>
+            <input type="number" name="retailPrice"
+              defaultValue={product ? Number(product.retailPrice) || 0 : 0}
+              min={0} step={0.01} className={inputCls} />
+            <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะใช้ราคาขายส่งแทน</p>
           </div>
           <div>
             <label className={labelCls}>Stock ขั้นต่ำ</label>

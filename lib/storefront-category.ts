@@ -78,6 +78,7 @@ const fetchCategoryProductPage = unstable_cache(
         code: true,
         imageUrl: true,
         salePrice: true,
+        retailPrice: true,
         saleUnitName: true,
         warrantyDays: true,
         stock: true,
@@ -108,6 +109,7 @@ const fetchCategoryProductPage = unstable_cache(
     const serialized = products.map((p) => ({
       ...p,
       salePrice: p.salePrice.toString(),
+      retailPrice: p.retailPrice.toString(),
     }));
     return { products: serialized, total };
   },

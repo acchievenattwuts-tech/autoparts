@@ -20,6 +20,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           imageUrl: true,
           saleUnitName: true,
           warrantyDays: true,
+          retailPrice: true,
           images: {
             select: { url: true, alt: true, sortOrder: true, isPrimary: true },
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -83,6 +84,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
           code: true,
           imageUrl: true,
           salePrice: true,
+          retailPrice: true,
           saleUnitName: true,
           warrantyDays: true,
           stock: true,
@@ -118,6 +120,7 @@ const RELATED_SELECT = {
   code: true,
   imageUrl: true,
   salePrice: true,
+  retailPrice: true,
   saleUnitName: true,
   warrantyDays: true,
   stock: true,

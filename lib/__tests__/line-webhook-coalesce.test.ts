@@ -140,7 +140,7 @@ function createCoalesceHarness(options?: {
         droppedImageCodes: [],
       };
     },
-    getChatProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100 }],
+    getChatProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100, retailPrice: 130 }],
     replyLineMessage: async (input) => {
       calls.replies.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
       return { sent: true, replyToken: input.replyToken };

@@ -69,14 +69,14 @@ test("Messenger normalizes glued model-year queries and hands off product no-mat
         calls.processedSeqs.push(seq);
       },
       releaseMessengerConversationLock: async () => undefined,
-      resolveMessengerShowPrice: async () => false,
+      resolveMessengerPriceTier: async () => "RETAIL",
       storeMessengerAiSuggestion: async () => ({ id: "suggestion-1" }),
     },
   });
 
   await mock.module("@/lib/chat-core/product-search-bridge", {
     namedExports: {
-      applyChatPriceVisibility: <T>(products: T[]) => products,
+      applyChatPriceTier: <T>(products: T[]) => products,
       getChatProductSummaries: async () => [],
       searchChatProductInquiry: async (input: { text?: string | null }) => {
         calls.searches.push({ text: input.text });

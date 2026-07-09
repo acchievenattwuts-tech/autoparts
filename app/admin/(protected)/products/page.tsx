@@ -185,6 +185,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         name: true,
         shelfLocation: true,
         salePrice: true,
+        retailPrice: true,
         stock: true,
         minStock: true,
         reportUnitName: true,
@@ -383,7 +384,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">การคำนวณ</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">หน้าบ้าน</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ตำแหน่ง Shelf</th>
-                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ราคาขาย</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">
+                  ราคาขาย
+                  <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">ส่ง / ปลีก</span>
+                </th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">Stock</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">ประกัน</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
@@ -481,10 +485,21 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                       <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                         {product.shelfLocation ?? <span className="text-gray-300 dark:text-slate-500">-</span>}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium text-gray-800 dark:text-slate-100">
-                        {Number(product.salePrice).toLocaleString("th-TH", {
-                          minimumFractionDigits: 2,
-                        })}
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="inline-flex items-baseline gap-1.5">
+                            <span className="text-[10px] font-semibold uppercase text-emerald-500 dark:text-emerald-400">ส่ง</span>
+                            <span className="text-base font-bold tabular-nums text-emerald-600 dark:text-emerald-300">
+                              {Number(product.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-baseline gap-1.5">
+                            <span className="text-[10px] font-medium uppercase text-gray-400 dark:text-slate-500">ปลีก</span>
+                            <span className="text-xs font-medium tabular-nums text-gray-500 dark:text-slate-400">
+                              {Number(product.retailPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            </span>
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span

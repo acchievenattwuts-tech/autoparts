@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft } from "lucide-react";
@@ -13,6 +14,8 @@ import { formatDateOnlyForInput } from "@/lib/th-date";
 
 const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("receipts.update");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canPrint = hasPermissionAccess(role, permissions, "receipts.view");
 
   const { id } = await params;
 
@@ -237,6 +240,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
         cashBankAccounts={cashBankAccounts}
         initialData={initialData}
         initialCreditSales={initialCreditSales}
+        canPrint={canPrint}
       />
     </div>
   );

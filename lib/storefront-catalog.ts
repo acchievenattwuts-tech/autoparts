@@ -48,6 +48,7 @@ const getStorefrontProductsLandingPageProducts = unstable_cache(
         code: true,
         imageUrl: true,
         salePrice: true,
+        retailPrice: true,
         saleUnitName: true,
         warrantyDays: true,
         stock: true,

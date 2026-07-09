@@ -3,7 +3,7 @@ import { generateChatSuggestion, generateScopedConversationalReply } from "@/lib
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import {
-  applyChatPriceVisibility,
+  applyChatPriceTier,
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
@@ -37,7 +37,7 @@ import {
   getUnansweredMessengerMessages,
   markMessengerProcessedSeq,
   releaseMessengerConversationLock,
-  resolveMessengerShowPrice,
+  resolveMessengerPriceTier,
   storeMessengerAiSuggestion,
 } from "@/lib/messenger/messenger-conversation-repository";
 import {
@@ -110,10 +110,9 @@ function safeNotify(promise: Promise<unknown>): void {
 
 function productToCarouselElement(
   product: ChatMatchedProductSummary,
-  showPrice: boolean,
 ): MessengerGenericElement {
   const priceLine =
-    showPrice && product.salePrice > 0
+    product.salePrice > 0
       ? `฿${product.salePrice.toLocaleString("th-TH")}`
       : "สอบถามราคา";
   const url = `${SITE_URL}/product/${getProductSlug({
@@ -617,10 +616,10 @@ async function replyWithProductSearch(params: {
   }
 
   const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
-  const showPrice = await resolveMessengerShowPrice(params.conversationId);
-  const products: ChatMatchedProductSummary[] = applyChatPriceVisibility(
+  const priceTier = await resolveMessengerPriceTier(params.conversationId);
+  const products: ChatMatchedProductSummary[] = applyChatPriceTier(
     await getChatProductSummaries(ids),
-    showPrice,
+    priceTier,
   );
 
   const suggestion = await generateChatSuggestion({
@@ -637,7 +636,7 @@ async function replyWithProductSearch(params: {
     text: suggestion.suggestedReply,
   });
   if (products.length > 0) {
-    const elements = products.map((p) => productToCarouselElement(p, showPrice));
+    const elements = products.map((p) => productToCarouselElement(p));
     // Append a "view all on web" card when the catalog has more matches than the
     // carousel shows, linking to the storefront filtered to the same result set.
     if (productSearch.result.total > products.length) {

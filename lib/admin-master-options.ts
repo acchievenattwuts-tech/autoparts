@@ -57,7 +57,7 @@ export const loadActiveCustomerTypeOptions = async () =>
     db.customerType.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, showPrice: true },
+      select: { id: true, name: true, priceTier: true },
     }),
   );
 

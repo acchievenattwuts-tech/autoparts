@@ -24,6 +24,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         code: true,
         imageUrl: true,
         salePrice: true,
+        retailPrice: true,
         saleUnitName: true,
         warrantyDays: true,
         stock: true,
@@ -115,7 +116,11 @@ const FeaturedProducts = async ({ lineUrl, products }: Props) => {
           {resolvedProducts.map((product, index) => (
             <ScrollReveal key={product.id} delay={index * 60} className="h-full">
               <ProductCard
-                product={{ ...product, salePrice: product.salePrice.toString() }}
+                product={{
+                  ...product,
+                  salePrice: product.salePrice.toString(),
+                  retailPrice: product.retailPrice.toString(),
+                }}
                 lineUrl={lineUrl}
               />
             </ScrollReveal>

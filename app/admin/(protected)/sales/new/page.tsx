@@ -3,7 +3,8 @@ export const maxDuration = 200; // Vercel Pro: must match createSale tx timeout 
 
 import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
-import { requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -13,12 +14,14 @@ import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewSalePage = async () => {
   await requirePermission("sales.create");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canPrint = hasPermissionAccess(role, permissions, "sales.view");
 
   const [rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
     db.product.findMany({
       orderBy: { code: "asc" },
       select: {
-        id: true, code: true, name: true, description: true, salePrice: true, saleUnitName: true,
+        id: true, code: true, name: true, description: true, salePrice: true, retailPrice: true, saleUnitName: true,
         isActive: true,
         warrantyDays: true, preferredSupplierId: true, inventoryTracking: true, isLotControl: true,
         lotIssueMethod: true, allowExpiredIssue: true,
@@ -34,7 +37,7 @@ const NewSalePage = async () => {
   ]);
   const products = rawProducts.map((product) => ({
     id: product.id, code: product.code, name: product.name, description: product.description,
-    salePrice: Number(product.salePrice), saleUnitName: product.saleUnitName,
+    salePrice: Number(product.salePrice), retailPrice: Number(product.retailPrice), saleUnitName: product.saleUnitName,
     warrantyDays: product.warrantyDays, categoryName: product.category.name,
     brandName: product.brand?.name ?? null, aliases: product.aliases.map((alias) => alias.alias),
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
@@ -63,9 +66,10 @@ const NewSalePage = async () => {
         products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
-        customers={customers}
+        customers={customers.map((c) => ({ ...c, priceTier: c.customerType?.priceTier ?? "RETAIL" }))}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        canPrint={canPrint}
       />
     </div>
   );

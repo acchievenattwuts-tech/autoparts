@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createSale, updateSale } from "../actions";
-import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap, Printer } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -27,6 +27,7 @@ interface ProductOption {
   name: string;
   description?: string | null;
   salePrice: number;
+  retailPrice: number;
   saleUnitName: string;
   warrantyDays: number;
   categoryName: string;
@@ -67,6 +68,7 @@ interface CustomerOption {
   defaultLatitude:  number | null;
   defaultLongitude: number | null;
   isActive?: boolean;
+  priceTier:        "WHOLESALE" | "RETAIL";
 }
 
 interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
@@ -92,6 +94,22 @@ const withLineDiscount = (item: LineItem): LineItem => ({
   ...item,
   lineDiscount: round2(Math.max(0, item.unitListPrice - item.salePrice) * item.qty),
 });
+
+/**
+ * Pick the unit price for a product based on the customer's price tier.
+ * WHOLESALE → ราคาขายส่ง (salePrice). RETAIL → ราคาขายปลีก (retailPrice),
+ * falling back to salePrice when retailPrice is unset (0) so no product ever
+ * defaults to a zero price.
+ */
+const priceForTier = (
+  product: Pick<ProductOption, "salePrice" | "retailPrice">,
+  tier: "WHOLESALE" | "RETAIL",
+): number => {
+  const wholesale = product.salePrice ?? 0;
+  if (tier === "WHOLESALE") return wholesale;
+  const retail = product.retailPrice ?? 0;
+  return retail > 0 ? retail : wholesale;
+};
 
 /** Ensure a restored/legacy draft item carries the two new price fields. */
 const normalizeDraftItem = (item: LineItem): LineItem => {
@@ -136,6 +154,7 @@ const SaleForm = ({
   editableLotOnEdit = false,
   initialAvailableLots = {},
   submitLocked = false,
+  canPrint = false,
 }: {
   products:       ProductOption[];
   suppliers:      SupplierOption[];
@@ -147,6 +166,7 @@ const SaleForm = ({
   editableLotOnEdit?: boolean;
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
   submitLocked?: boolean;
+  canPrint?: boolean;
 }) => {
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -194,6 +214,9 @@ const SaleForm = ({
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
+  const deriveTier = (customerId: string): "WHOLESALE" | "RETAIL" =>
+    customerMap.get(customerId)?.priceTier ?? "RETAIL";
+  const activeTier = deriveTier(selectedCustomerId);
   const draftKey = getSaleDraftKey(
     persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
   );
@@ -370,8 +393,8 @@ const SaleForm = ({
               ...item,
               productId: product.id,
               unitName: product.saleUnitName ?? "",
-              salePrice: product.salePrice ?? 0,
-              unitListPrice: product.salePrice ?? 0,
+              salePrice: priceForTier(product, activeTier),
+              unitListPrice: priceForTier(product, activeTier),
               lineDiscount: 0,
               warrantyDays: product.warrantyDays ?? 0,
               supplierId: product.preferredSupplierId ?? "",
@@ -533,8 +556,34 @@ const SaleForm = ({
   const discountedTotal = Math.max(0, totalAmount + effectiveShippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
+  /** Re-apply the tier price to every line that already has a product selected. */
+  const repriceItemsToTier = (tier: "WHOLESALE" | "RETAIL") => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (!item.productId) return item;
+        const prod = productMap.get(item.productId);
+        if (!prod) return item;
+        const price = priceForTier(prod, tier);
+        return withLineDiscount({ ...item, salePrice: price, unitListPrice: price });
+      }),
+    );
+  };
+
   const handleCustomerChange = (customerId: string) => {
+    const prevTier = deriveTier(selectedCustomerId);
+    const nextTier = deriveTier(customerId);
     setSelectedCustomerId(customerId);
+    // ราคาผูกกับประเภทลูกค้า — ถ้าระดับราคาเปลี่ยนและมีสินค้าในบิลแล้ว
+    // ถามยืนยันก่อนปรับราคาทุกบรรทัดตามประเภทลูกค้าใหม่ (ไม่บังคับทับราคาที่แก้มือ)
+    if (
+      nextTier !== prevTier &&
+      items.some((item) => item.productId) &&
+      window.confirm(
+        `เปลี่ยนประเภทลูกค้าเป็น “${nextTier === "WHOLESALE" ? "ราคาขายส่ง" : "ราคาขายปลีก"}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
+      )
+    ) {
+      repriceItemsToTier(nextTier);
+    }
     if (customerId) {
       const found = customerMap.get(customerId);
       setCustomerNameOverride(found?.name ?? "");
@@ -1375,9 +1424,21 @@ const SaleForm = ({
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
-          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
-          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between dark:bg-green-500/10 dark:border-green-400/30">
+          <div className="flex items-center gap-2">
+            <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+            <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
+          </div>
+          {canPrint && persistedSaleId && (
+            <a
+              href={`/admin/sales/${persistedSaleId}?print=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900"
+            >
+              <Printer size={16} /> พิมพ์แบบฟอร์ม
+            </a>
+          )}
         </div>
       )}
 
@@ -1393,6 +1454,16 @@ const SaleForm = ({
           >
             <Plus size={14} /> เพิ่มรายการ
           </button>
+        {canPrint && persistedSaleId && (
+          <a
+            href={`/admin/sales/${persistedSaleId}?print=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1e3a5f] hover:bg-blue-900 text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            <Printer size={16} /> พิมพ์
+          </a>
+        )}
         <button
           type="submit"
           disabled={isPending || submitLocked}

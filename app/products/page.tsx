@@ -236,7 +236,11 @@ const ProductsPage = async ({ searchParams }: Props) => {
     }
 
     const { products, totalProducts } = landingData;
-    initialProducts = products.map((p) => ({ ...p, salePrice: p.salePrice.toString() }));
+    initialProducts = products.map((p) => ({
+      ...p,
+      salePrice: p.salePrice.toString(),
+      retailPrice: p.retailPrice.toString(),
+    }));
     initialTotal = totalProducts;
     initialMeta = {
       pageStart: initialProducts.length > 0 ? 1 : 0,
