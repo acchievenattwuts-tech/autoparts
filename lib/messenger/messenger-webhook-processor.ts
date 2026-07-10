@@ -469,13 +469,17 @@ async function replyToMessengerTurn(params: {
       if (canSearchImage) {
         const useHardFilters = conf === "HIGH";
         const useHints = conf !== "LOW";
+        const imageHints = [
+          ...(classification.searchHints ?? []),
+          ...(classification.partNumber ? [classification.partNumber] : []),
+        ];
         const bridgeInput: ChatProductSearchBridgeInput = directImageCode
           ? { route: partRoute, text: null, extractedPartNumber: directImageCode }
           : {
               route: partRoute,
               text: mergedText || null,
-              extractedPartNumber: classification.partNumber ?? null,
-              extractedImageHints: useHints ? classification.searchHints : null,
+              extractedPartNumber: null,
+              extractedImageHints: useHints ? imageHints : null,
               fitmentHints: useHardFilters
                 ? {
                     categoryName: classification.partType ?? null,
