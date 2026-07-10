@@ -44,3 +44,15 @@ export function extractProductSearchRequiredTokens(text?: string | null): string
   }
   return Array.from(tokens);
 }
+
+/**
+ * Product-code fast-path must stay stricter than generic required-token extraction.
+ * Pure numeric fragments like engine size / trim ("2500", "2800") are useful
+ * recall anchors for normal search, but they are too ambiguous to override
+ * category/fitment filters as an exact-code lookup.
+ */
+export function isDirectProductCodeToken(token?: string | null): boolean {
+  const normalized = normalizeSearchText(token);
+  if (!normalized) return false;
+  return /[a-z]/.test(normalized) || normalized.includes("-");
+}

@@ -1923,27 +1923,46 @@ test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT
   assert.equal(calls.savedFrames.at(-1)?.carModel, "Vios");
 });
 
-test("product-code fast-path: a part image with a catalog-resolvable OCR code searches by code (no 'which car?' ask)", async () => {
+test("product-code fast-path: a part image with a catalog-resolvable OCR code still honors fitment filters first", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     imageKind: "part_image",
     imagePartType: "วาล์วแอร์", // part-only → the gate would normally ask for the car
     imagePartKind: "fitment",
+    imageCarBrand: "Toyota",
+    imageCarModel: "Vios",
     imagePartNumber: "DI261411-0300",
     imageHints: ["วาล์วแอร์", "Toyota Vios 13-19"],
     catalogCodes: ["di261411-0300"], // exists in the catalog (resolves)
+    fitmentFilters: {
+      categoryName: "Expansion Valve",
+      carBrandName: "Toyota",
+      carModelName: "Vios",
+    },
   });
 
   await processLineWebhookPayload(
     imagePayload("event-img-code"),
-    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
     dependencies,
   );
 
-  // Searched by the exact code — no fitment hard filters, no need_car ask.
-  assert.equal(calls.searches.length, 1, "code lookup runs instead of asking for the car");
-  assert.equal(calls.searches.at(-1), "di261411-0300");
-  assert.equal(calls.searchFitmentHints.at(-1), null, "direct code lookup applies no fitment filters");
+  // Fitment evidence from the current turn wins over exact-code lookup.
+  assert.equal(calls.searches.length, 1, "image still searches");
+  assert.notEqual(calls.searches.at(-1), "di261411-0300", "fitment search must not be hijacked by direct code");
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "Expansion Valve",
+    carBrandName: "Toyota",
+    carModelName: "Vios",
+    fitmentYear: null,
+  });
+  assert.ok(!calls.auditActions.includes("PRODUCT_CODE_DIRECT"));
 });
 
 test("product-code fast-path: an unknown OCR code falls back to the normal (ask/search) flow", async () => {
@@ -1986,6 +2005,39 @@ test("product-code fast-path: a customer-typed code searches by that exact code"
   assert.equal(calls.searches.length, 1);
   assert.equal(calls.searches.at(-1), "p0368", "the resolved code drives the exact-code search");
   assert.equal(calls.searchFitmentHints.at(-1), null);
+});
+
+test("fitment-first search: category/model filters block numeric-only code hijack", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "ac hose Strada 2500",
+    intentPartType: "ac hose",
+    intentCarBrand: null,
+    intentCarModel: "Strada",
+    intentPartKind: "fitment",
+    catalogCodes: ["2500"],
+    fitmentFilters: {
+      categoryName: "A/C Hose",
+      carBrandName: undefined,
+      carModelName: "Strada",
+    },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("ac hose Strada 2500"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.notEqual(calls.searches.at(-1), "2500", "numeric model token must not trigger direct code search");
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "A/C Hose",
+    carBrandName: null,
+    carModelName: "Strada",
+    fitmentYear: null,
+  });
+  assert.ok(!calls.auditActions.includes("PRODUCT_CODE_DIRECT"));
 });
 
 test("inquiry frame: spec-only latest text drops stale vehicle hard filters", async () => {

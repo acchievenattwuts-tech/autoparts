@@ -29,6 +29,7 @@ import {
 import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-product-subjects";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import {
   classifyMessengerImage,
   ingestMessengerPaymentSlip,
@@ -443,15 +444,19 @@ async function replyToMessengerTurn(params: {
         requiresMoreInfo: false,
         reason: "MESSENGER_PART_IMAGE",
       };
-      // Product-code fast-path: if the OCR'd part number (or a code-like hint /
-      // the accompanying text) resolves to a catalog product, search by that exact
-      // code with NO fitment hard filters — the code alone identifies the item, so
-      // a classifier partType/car guess must not be able to filter it out.
-      const directImageCode = await resolveDirectProductCode([
-        classification.partNumber,
-        (classification.searchHints ?? []).join(" "),
-        mergedText || null,
-      ]);
+      // Product-code fast-path is allowed only when this image turn has no
+      // explicit fitment evidence. If category / brand / model / year exists,
+      // the fitment search path wins and code-like fragments stay as search tokens.
+      const imageHasExplicitFitmentFilter = Boolean(
+        classification.partType || classification.carBrand || classification.carModel || classification.year,
+      );
+      const directImageCode = imageHasExplicitFitmentFilter
+        ? null
+        : await resolveDirectProductCode([
+            classification.partNumber,
+            (classification.searchHints ?? []).join(" "),
+            mergedText || null,
+          ]);
       // Confidence gating (parity with LINE, "ห้ามเดา"):
       //  - HIGH  → the classifier's part/car/year become hard fitment filters.
       //  - MEDIUM → usable only as SOFT search hints (no hard filter that could
@@ -504,24 +509,6 @@ async function replyToMessengerTurn(params: {
 
   const processText = normalizeInboundChatQuery(mergedText);
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
-
-  // ── Product-code fast-path: a message carrying a catalog-resolvable code
-  // ("สอบถามราคา P0368", "P0368 ราคาเท่าไหร่") is answered with that exact product
-  // directly — before the price/admin escalation below, since the code alone
-  // identifies the item (price still defers to admin via price visibility). ──
-  const directTextCode = await resolveDirectProductCode([processText]);
-  if (directTextCode) {
-    const replied = await replyWithProductSearch({
-      pageAccessToken,
-      conversationId,
-      psid,
-      route: MESSENGER_PRODUCT_ROUTE,
-      bridgeInput: { route: MESSENGER_PRODUCT_ROUTE, text: null, extractedPartNumber: directTextCode },
-      originalText: mergedText,
-      history,
-    });
-    if (replied) return;
-  }
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
   // status…) escalate to a human admin instead of the AI guessing ──
@@ -589,6 +576,26 @@ async function replyToMessengerTurn(params: {
         intent: route.intent,
       });
       return;
+    }
+    const hasExplicitFitmentFilter = Boolean(
+      fitmentPartHeadNoun ||
+        fitmentHints.categoryName ||
+        fitmentHints.carBrandName ||
+        fitmentHints.carModelName ||
+        fitmentHints.fitmentYear,
+    );
+    const directTextCode = hasExplicitFitmentFilter ? null : await resolveDirectProductCode([processText]);
+    if (directTextCode) {
+      const replied = await replyWithProductSearch({
+        pageAccessToken,
+        conversationId,
+        psid,
+        route: MESSENGER_PRODUCT_ROUTE,
+        bridgeInput: { route: MESSENGER_PRODUCT_ROUTE, text: null, extractedPartNumber: directTextCode },
+        originalText: mergedText,
+        history,
+      });
+      if (replied) return;
     }
     const replied = await replyWithProductSearch({
       pageAccessToken,
@@ -678,6 +685,7 @@ async function resolveDirectProductCode(sources: Array<string | null | undefined
       sources
         .filter((s): s is string => Boolean(s))
         .flatMap((s) => extractChatRequiredSearchTokens(s))
+        .filter((token) => isDirectProductCodeToken(token))
         .filter(Boolean),
     ),
   );

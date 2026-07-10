@@ -94,6 +94,7 @@ import {
   guardChatSearchIntent,
   lineValueHasCustomerEvidence,
 } from "@/lib/chat-core/search-guards";
+import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   buildChatSearchAskReply,
@@ -1614,9 +1615,11 @@ export async function processLineAiReply(
     // A customer who browsed the shop site/app often sends the product's code
     // ("สอบถามราคา P0368") or a screenshot whose vision OCR captured the printed
     // part number. A code alone identifies the item, so when one RESOLVES to a
-    // real catalog product we answer with THAT product directly: exact-code search
+    // real catalog product we answer with THAT product only when this turn has
+    // no fitment evidence: exact-code search
     // (extractedPartNumber wins the query), no completeness gate, no fitment hard
-    // filters, no "which car?" ask. Candidates come from the customer's own text,
+    // filters, no "which car?" ask. If category / brand / model / year exists in
+    // this turn, fitment filters win. Candidates come from the customer's own text,
     // the image's OCR'd part number, and any code-like image hints — validated
     // against the catalog so a misread/unknown code falls back to the normal flow.
     // Skipped for admin-only guarded turns (payment/claim) and payment-slip images.
@@ -1633,7 +1636,7 @@ export async function processLineAiReply(
                 ...extractChatRequiredSearchTokens(
                   (input.imageClassification?.searchHints ?? []).join(" "),
                 ),
-              ].filter(Boolean),
+              ].filter((token) => Boolean(token) && isDirectProductCodeToken(token)),
             ),
           )
         : [];
@@ -1646,7 +1649,7 @@ export async function processLineAiReply(
           )
         : new Set<string>();
     // First candidate (customer text > image part number > image hints) that exists.
-    const directProductCode = codeCandidates.find((code) => resolvedCatalogCodes.has(code)) ?? null;
+    const directProductCodeCandidate = codeCandidates.find((code) => resolvedCatalogCodes.has(code)) ?? null;
 
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
@@ -1662,6 +1665,17 @@ export async function processLineAiReply(
             rawText: processText,
           }).catch((): ChatFitmentFilters => ({}))
         : {};
+    const hasCurrentTurnFitmentEvidence = Boolean(
+      guardedSearchIntent?.partType ||
+        guardedSearchIntent?.carBrand ||
+        guardedSearchIntent?.carModel ||
+        guardedSearchIntent?.year ||
+        input.imageClassification?.partType ||
+        input.imageClassification?.carBrand ||
+        input.imageClassification?.carModel ||
+        input.imageClassification?.year,
+    );
+    const directProductCode = hasCurrentTurnFitmentEvidence ? null : directProductCodeCandidate;
 
     // ── LLM category fallback ──────────────────────────────────────────────
     // The deterministic resolver could not map a category (often a misspelled

@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import {
+  extractProductSearchRequiredTokens,
+  isDirectProductCodeToken,
+} from "@/lib/product-search-required-tokens";
 
 test("extracts numeric model and part fragments as required search tokens", () => {
   assert.deepEqual(extractProductSearchRequiredTokens("คอม dragon 709"), ["709"]);
@@ -40,4 +43,11 @@ test("keeps real part-code anchors required", () => {
   assert.deepEqual(extractProductSearchRequiredTokens("วาล์วแอร์ R134a"), ["r134a"]);
   assert.deepEqual(extractProductSearchRequiredTokens("คอมแอร์ STA-7065"), ["sta-7065"]);
   assert.deepEqual(extractProductSearchRequiredTokens("คอม dragon 709"), ["709"]);
+});
+test("direct-code fast-path rejects numeric-only anchors but keeps real codes", () => {
+  assert.equal(isDirectProductCodeToken("2500"), false);
+  assert.equal(isDirectProductCodeToken("709"), false);
+  assert.equal(isDirectProductCodeToken("p0368"), true);
+  assert.equal(isDirectProductCodeToken("sta-7065"), true);
+  assert.equal(isDirectProductCodeToken("r134a"), true);
 });
