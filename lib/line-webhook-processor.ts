@@ -1405,9 +1405,17 @@ export async function processLineAiReply(
       // fresh first-mention (no prior part) still classifies as before.
       const classifierPartType = guardedSearchIntent?.partType ?? null;
       const imagePartType = imageFields?.partType ?? null;
+      // The evidence gate below guards against the LLM HALLUCINATING a part for a
+      // vehicle-only follow-up. The rule-dictionary path cannot hallucinate — every
+      // token was resolved from the customer's own words against SearchKeyword — and
+      // it sets partType to the full canonical category name ("หม้อน้ำ (Radiator)"),
+      // whose "(English)" suffix the customer never types, so the raw evidence check
+      // always fails and would wrongly drop a legitimate part. Trust rule-derived
+      // partType verbatim; only evidence-gate the LLM classifier's partType.
       const groundedLatestPartType =
         imagePartType ??
-        (stored?.partType &&
+        (!usedRuleIntent &&
+        stored?.partType &&
         classifierPartType &&
         !lineValueHasCustomerEvidence(classifierPartType, processText, history)
           ? null
