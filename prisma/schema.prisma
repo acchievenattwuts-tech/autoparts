@@ -703,22 +703,37 @@ enum CategoryAliasMatchMode {
   TOKEN
 }
 
+enum CategoryAliasSource {
+  MANUAL
+  AI_AUTO
+}
+
+enum CategoryAliasReviewStatus {
+  APPROVED
+  PENDING
+  REJECTED
+}
+
 model CategoryAlias {
-  id         String                 @id @default(cuid())
-  categoryId String?
-  alias      String
-  kind       CategoryAliasKind      @default(MATCH)
-  matchMode  CategoryAliasMatchMode @default(CONTAINS)
-  priority   Int                    @default(0)
-  isActive   Boolean                @default(true)
-  notes      String?
-  createdAt  DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt  DateTime               @updatedAt @db.Timestamptz(3)
-  category   Category?              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  id             String                    @id @default(cuid())
+  categoryId     String?
+  alias          String
+  kind           CategoryAliasKind         @default(MATCH)
+  matchMode      CategoryAliasMatchMode     @default(CONTAINS)
+  priority       Int                        @default(0)
+  isActive       Boolean                    @default(true)
+  notes          String?
+  source         CategoryAliasSource        @default(MANUAL)
+  reviewStatus   CategoryAliasReviewStatus  @default(APPROVED)
+  aiCorrectedTerm String?
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime                   @updatedAt @db.Timestamptz(3)
+  category       Category?                  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([alias, kind])
   @@index([categoryId])
   @@index([kind, isActive, priority])
+  @@index([reviewStatus, source])
 }
 
 model Supplier {

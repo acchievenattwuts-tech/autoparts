@@ -232,6 +232,8 @@ function createProcessorTestDeps(input?: {
       calls.auditActions.push(input.action);
       return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
     },
+    // Never hit the live LLM fallback in unit tests — keep the flow deterministic.
+    correctPartSpelling: async () => null,
     storeLineAiSuggestion: async (input) => {
       calls.suggestions.push({
         confidence: input.confidence,

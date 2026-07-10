@@ -32,6 +32,8 @@ import {
   resolveChatFitmentFilters,
   type ChatFitmentFilters,
 } from "@/lib/chat-core/fitment-resolve";
+import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
+import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
@@ -182,6 +184,9 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; resolves AI fitment hints to canonical master-data names
    *  for use as precise hard filters in product search. */
   resolveChatFitmentFilters?: typeof resolveChatFitmentFilters;
+  /** Optional override; LLM spell-correction fallback used only when the
+   *  deterministic resolver cannot map a category. Injected so tests can stub it. */
+  correctPartSpelling?: typeof correctPartSpelling;
   /** Optional override; loads the DB-backed Thai↔English brand spelling lookup
    *  (cached) so the search guard can ground a Thai-typed brand. */
   loadCarBrandVariantLookup?: typeof loadCarBrandVariantLookup;
@@ -1610,9 +1615,10 @@ export async function processLineAiReply(
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
-    const fitmentFilters: ChatFitmentFilters =
+    const resolveFitment = dependencies.resolveChatFitmentFilters ?? resolveChatFitmentFilters;
+    let fitmentFilters: ChatFitmentFilters =
       !isNonProductTurn && inquiryFrame
-        ? await (dependencies.resolveChatFitmentFilters ?? resolveChatFitmentFilters)({
+        ? await resolveFitment({
             partType: inquiryFrame.partType,
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
@@ -1620,6 +1626,63 @@ export async function processLineAiReply(
             rawText: processText,
           }).catch((): ChatFitmentFilters => ({}))
         : {};
+
+    // ── LLM category fallback ──────────────────────────────────────────────
+    // The deterministic resolver could not map a category (often a misspelled
+    // part word, e.g. "วาว์ล" → "วาล์วแอร์"). Only on a text product turn that
+    // will actually search: ask the LLM to correct the spelling, then RE-MAP the
+    // corrected word through the SAME deterministic resolver. Apply it only when
+    // that yields a real category — so the map stays grounded in the alias table,
+    // never a raw LLM guess. On success, stage the misspelling as a PENDING alias
+    // for admin review (fire-and-forget; no customer-latency impact).
+    if (
+      !isNonProductTurn &&
+      isTextTurn &&
+      !fitmentFilters.categoryName &&
+      !directProductCode &&
+      !gateBlocksSearch &&
+      !imageOnlyLowConfidence &&
+      Boolean(consolidatedQuery ?? processText)
+    ) {
+      const correction = await (dependencies.correctPartSpelling ?? correctPartSpelling)(processText, {
+        carBrand: inquiryFrame?.carBrand ?? fitmentFilters.carBrandName ?? null,
+        carModel: inquiryFrame?.carModel ?? fitmentFilters.carModelName ?? null,
+      }).catch(() => null);
+      if (correction?.corrected) {
+        const remapped = await resolveFitment({
+          partType: correction.corrected,
+          carBrand: inquiryFrame?.carBrand ?? null,
+          carModel: inquiryFrame?.carModel ?? null,
+          queryText: correction.corrected,
+          rawText: correction.corrected,
+        }).catch((): ChatFitmentFilters => ({}));
+        if (remapped.categoryName) {
+          fitmentFilters = {
+            ...fitmentFilters,
+            categoryName: remapped.categoryName,
+            carBrandName: fitmentFilters.carBrandName ?? remapped.carBrandName,
+            carModelName: fitmentFilters.carModelName ?? remapped.carModelName,
+          };
+          fireAndForgetAudit(dependencies, {
+            conversationId: input.conversation.id,
+            action: "CATEGORY_LLM_FALLBACK",
+            payload: {
+              lineEventId: input.lineEventId,
+              original: correction.original,
+              corrected: correction.corrected,
+              categoryName: remapped.categoryName,
+            },
+          });
+          // Stage the misspelling for admin review — never block the reply on it.
+          void stageAiCategoryAlias({
+            alias: correction.original,
+            categoryName: remapped.categoryName,
+            correctedTerm: correction.corrected,
+            originalText: correction.original,
+          }).catch(() => undefined);
+        }
+      }
+    }
 
     // When the AI gave us a consolidated query it already merged the whole
     // subject, so the narrow fitment carryover is redundant. Otherwise keep the

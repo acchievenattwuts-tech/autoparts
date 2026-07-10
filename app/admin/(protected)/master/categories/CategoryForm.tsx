@@ -41,12 +41,12 @@ type CategoryAliasRow = {
   notes: string | null;
 };
 
-type CategoryWithVisual = CategoryRow & {
+export type CategoryWithVisual = CategoryRow & {
   aliases: CategoryAliasRow[];
   visual: CategoryVisualSetting;
 };
 
-interface CategoryFormProps {
+export interface CategoryFormProps {
   categories: CategoryWithVisual[];
   aliasCoverageGaps: Array<{ id: string; name: string }>;
   canCreate: boolean;

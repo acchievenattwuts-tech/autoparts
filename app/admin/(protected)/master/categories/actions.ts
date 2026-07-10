@@ -19,6 +19,7 @@ import {
 } from "@/lib/category-visual-settings";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { requirePermission } from "@/lib/require-auth";
+import { normalizeSearchText } from "@/lib/search-normalization";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { refreshCategoryStorefrontCaches } from "@/lib/storefront-revalidation";
 import { invalidateCategoryAliasCache } from "@/lib/category-alias-cache";
@@ -95,6 +96,9 @@ async function getCategoryAliasAuditSnapshot(id: string) {
       priority: true,
       isActive: true,
       notes: true,
+      source: true,
+      reviewStatus: true,
+      aiCorrectedTerm: true,
     },
   });
 }
@@ -454,5 +458,124 @@ export const toggleCategoryAlias = async (
     return {};
   } catch {
     return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };
+  }
+};
+
+/**
+ * Approve an AI-suggested (PENDING) alias: activate it AND create the paired
+ * SearchKeyword synonym (misspelling → corrected term) so storefront/rule search
+ * benefit too. The synonym is created ONLY here, on human approval — never by the
+ * AI auto-stage step.
+ */
+export const approveAiCategoryAlias = async (id: string): Promise<{ error?: string }> => {
+  const session = await requirePermission("master.update").catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
+  const requestContext = await getRequestContext();
+  try {
+    const beforeSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (!beforeSnapshot) return { error: "ไม่พบรายการนี้" };
+    if (beforeSnapshot.reviewStatus !== "PENDING") {
+      return { error: "รายการนี้ไม่ได้อยู่ในสถานะรออนุมัติ" };
+    }
+
+    await db.categoryAlias.update({
+      where: { id },
+      data: { isActive: true, reviewStatus: "APPROVED" },
+    });
+
+    // Paired SearchKeyword synonym: misspelling → corrected canonical term.
+    const correctedTerm = beforeSnapshot.aiCorrectedTerm?.trim();
+    if (correctedTerm) {
+      const normalized = normalizeSearchText(beforeSnapshot.alias);
+      if (normalized) {
+        await db.searchKeyword.upsert({
+          where: { normalized_kind: { normalized, kind: "synonym" } },
+          update: { term: correctedTerm },
+          create: { term: correctedTerm, normalized, kind: "synonym", sublabel: correctedTerm },
+        });
+      }
+    }
+
+    const afterSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CategoryAlias",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.alias,
+        before: diff.before,
+        after: diff.after,
+        meta: { reviewAction: "APPROVE" },
+      });
+    }
+
+    invalidateCategoryAliasCache();
+    triggerSearchKeywordRefresh();
+    revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
+    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
+    return {};
+  } catch {
+    return { error: "ไม่สามารถอนุมัติรายการนี้ได้" };
+  }
+};
+
+/**
+ * Reject an AI-suggested (PENDING) alias: keep the row (isActive stays false) and
+ * mark it REJECTED so the AI never re-suggests the same misspelling.
+ */
+export const rejectAiCategoryAlias = async (id: string): Promise<{ error?: string }> => {
+  const session = await requirePermission("master.update").catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
+    return { error: "รหัสไม่ถูกต้อง" };
+  }
+
+  const requestContext = await getRequestContext();
+  try {
+    const beforeSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (!beforeSnapshot) return { error: "ไม่พบรายการนี้" };
+    if (beforeSnapshot.reviewStatus !== "PENDING") {
+      return { error: "รายการนี้ไม่ได้อยู่ในสถานะรออนุมัติ" };
+    }
+
+    await db.categoryAlias.update({
+      where: { id },
+      data: { isActive: false, reviewStatus: "REJECTED" },
+    });
+
+    const afterSnapshot = await getCategoryAliasAuditSnapshot(id);
+    if (afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...requestContext,
+        action: AuditAction.UPDATE,
+        entityType: "CategoryAlias",
+        entityId: afterSnapshot.id,
+        entityRef: afterSnapshot.alias,
+        before: diff.before,
+        after: diff.after,
+        meta: { reviewAction: "REJECT" },
+      });
+    }
+
+    invalidateCategoryAliasCache();
+    revalidatePath("/admin/master/categories");
+    updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
+    return {};
+  } catch {
+    return { error: "ไม่สามารถปฏิเสธรายการนี้ได้" };
   }
 };
