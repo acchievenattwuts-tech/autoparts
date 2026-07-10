@@ -1,0 +1,164 @@
+# LINE/Messenger AI — Product Mismatch Audit & Handoff
+
+> เอกสารส่งต่องาน (AI handoff) — บันทึกความเสี่ยงที่ AI แชท (LINE + Facebook Messenger)
+> อาจ **ส่งสินค้ามั่ว / ผิดหมวด / ไม่ตรงสิ่งที่ลูกค้าค้นหา** พร้อมจุดโค้ด สาเหตุ และข้อเสนอแก้
+>
+> **ธงของเจ้าของงาน:** ห้ามส่งคำตอบมั่ว — ถ้าไม่มั่นใจให้ส่งเรื่องต่อแอดมินเท่านั้น
+>
+> สถานะเอกสาร: **ตรวจสอบแล้ว ยังไม่แก้** (รอยืนยันก่อนลงมือข้อ A–E ด้านล่าง)
+> วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5)
+
+---
+
+## 0. อ่านตรงนี้ก่อน (สำหรับ AI ที่มารับงานต่อ)
+
+- งานนี้เป็น **investigation-only** จนกว่าเจ้าของจะสั่งแก้ (`แก้เลย` / `ทำ A` / `implement`)
+- ห้ามแก้ business logic ค้นหา/สต๊อก/ราคา จนกว่าจะยืนยัน — ดู `.rules` §0, §8
+- โค้ดที่เกี่ยวข้องทั้งหมดอยู่ใน `lib/chat-core/*` (สมองร่วม LINE+Messenger), `lib/line-webhook-processor.ts`, `lib/messenger/messenger-webhook-processor.ts`, `lib/product-search.ts` (engine ค้นหา ใช้ร่วมกับ storefront)
+- **สำคัญ:** `product-search.ts` ใช้ร่วมกับหน้าเว็บ storefront ด้วย — การแก้ที่ engine กระทบหน้าเว็บ ให้เลี่ยงถ้าทำที่ชั้นแชทได้
+- test รันด้วย `npx tsx --test <file>` (ไม่มี `npm test`) — `mock.module` ใช้ไม่ได้ใน env นี้ (test `messenger-webhook-processor.test.ts` จะ fail ที่ env นี้เป็นปกติ ไม่เกี่ยวกับโค้ด)
+
+---
+
+## 1. บริบท: งานรอบก่อนที่ทำไปแล้ว (commit `577eaa5`)
+
+รอบก่อนปิดช่อง "ตอบมั่ว" ไป 6 ข้อ (ข้อ 2–7 ของ audit เดิม) — **แก้แล้ว merge เข้า main แล้ว**:
+
+1. **Evidence-ground ยี่ห้อ+ปี ทุกเทิร์น** ([search-guards.ts](../lib/chat-core/search-guards.ts) `guardChatSearchIntent`) — กัน classifier hallucinate รถ/ปี. **โมเดล** ground เฉพาะเมื่อมี numeric anchor (transliteration ไทย↔อังกฤษ "วีโก้"↔"Vigo" ไม่มีใน evidence data → ground เสมอจะ drop โมเดลจริง)
+2. **did-you-mean transparency note** ([search-gate.ts](../lib/chat-core/search-gate.ts) `buildDidYouMeanNote`, [product-search-bridge.ts](../lib/chat-core/product-search-bridge.ts) field `didYouMean`)
+3. **Image confidence gating** — frame รับ vision เฉพาะ HIGH, LOW ไม่ป้อน searchHints
+4. **FAQ ไม่กลบ escalation** + ไม่เรียก FAQ กับ product turn ที่ frame มี partType
+5. **matchedButNoneShowable** (total>0 แต่ไม่มี summary) → handoff+notify
+6. **price tier fail → UNKNOWN** ("สอบถามราคา") ไม่ default retail
+7. **แปลง พ.ศ.→ค.ศ. ก่อนค้น** ([car-year-shorthand.ts](../lib/car-year-shorthand.ts) `toGregorianCarYear`, ใช้ใน `cleanIntentYear`/image `cleanYear`)
+
+**งานรอบนี้ (เอกสารนี้) เป็นคนละมิติ**: ไม่ใช่ "ข้อความตอบมั่ว" แต่เป็น **"สินค้าที่ค้นเจอ/โชว์ ผิดหมวดหรือผิดสิ่งที่หา"** — คือ engine ค้นหาคืนของผิด แล้วชั้นแชทเอามาโชว์ตรง ๆ
+
+---
+
+## 2. แก่นของปัญหา
+
+**อันตรายทั้งหมดกระจุกที่ "เทิร์นที่ resolve หมวด (categoryName) ไม่ได้"**
+
+- เมื่อ `resolveChatFitmentFilters` ([fitment-resolve.ts](../lib/chat-core/fitment-resolve.ts)) แปลงคำอะไหล่เป็น `categoryName` **ได้** → เป็น **hard filter** (`AND psd.category_name = X` ที่ [product-search.ts:1076](../lib/product-search.ts)) คาไว้ทั้ง primary + OR fallback → **ปลอดภัย ไม่หลุดหมวด**
+- เมื่อ `categoryName = null` → **ไม่มี category filter เลย** → มี 3 กลไกใน engine ดึงของนอกหมวดขึ้นมา และ **ชั้นแชทไม่มี relevance gate** → top-5 อะไรก็โชว์หมด
+
+**จุดร่วมที่ทำให้หลุดถึงลูกค้า:** `searchChatProductInquiry` คืน `result.ids` ตรง ๆ → processor เอา `getChatProductSummaries(ids)` มาโชว์ **โดยไม่เช็คว่า match แข็งพอไหม / หมวดตรงไหม**
+
+**เมื่อไหร่ categoryName ถึง null:**
+- คำอะไหล่สะกดผิด/ไม่รู้จัก ไม่อยู่ใน CategoryAlias/dictionary (LLM fallback ช่วยได้บางเคสบน LINE text เท่านั้น)
+- ค้นจาก image hint ที่ partType เป็น generic ("อะไหล่แอร์…")
+- universal/accessory (น้ำยา/น็อต/โอริง)
+- อะไหล่จริงที่ยังไม่มี alias หมวด
+- **เทิร์นที่ลูกค้ายังไม่บอกชนิดอะไหล่เลย** (gate rule 2: รถ+ปี ไม่มี part)
+
+---
+
+## 3. เคสเสี่ยง (เรียงตามความรุนแรง)
+
+### 🔴 1. ไม่มี relevance floor — ตัดแค่ `score > 0`
+- **จุด:** [product-search.ts:1506](../lib/product-search.ts) `WHERE ranked.score > 0`
+- **กลไก:** คะแนน trigram ให้แต้มแม้ similarity ต่ำ ~0.12 ([product-search.ts:1477](../lib/product-search.ts)) → ของเกี่ยวหลวม ๆ ได้ score>0 → ถ้าไม่มีของตรงกว่าก็ติด top-5
+- **ผล:** ลูกค้าถามของที่ร้านไม่มี ระบบดัน "ของใกล้เคียงคนละอย่าง" มาโชว์อย่างมั่นใจ
+- **confidence:** ยืนยันได้ (โครงสร้าง query ไม่มีเกณฑ์คะแนนขั้นต่ำก่อนโชว์)
+
+### 🔴 2. Broad OR fallback ดึงของที่ตรงแค่ครึ่งเดียว
+- **จุด:** [product-search.ts:1581-1589](../lib/product-search.ts)
+- **กลไก:** AND query (part & car) = 0 → retry ด้วย OR → ของที่ match **แค่รถ** หรือ **แค่ชนิดอะไหล่** ก็ผ่าน
+- **เคส:** "คอมแอร์ vios" ไม่มีตรง → OR → โชว์ **หม้อน้ำ Vios** (match แค่ "vios") หรือ **คอมแอร์รถรุ่นอื่น** (match แค่ "คอมแอร์")
+- **ซ้ำร้าย:** bridge did-you-mean ตัดปีทิ้งเพิ่ม (มี note แจ้งแล้วรอบก่อน แต่ OR fallback ของ engine เองยังไม่มี note)
+- **confidence:** ยืนยันได้
+
+### 🔴 3. Vector semantic recall ดึงของที่ "ไม่ match ตัวอักษรเลย"
+- **จุด:** [product-search.ts:1395](../lib/product-search.ts) `OR v.product_id IS NOT NULL` + score `sim * 500` ([product-search.ts:1397](../lib/product-search.ts))
+- **กลไก:** top-100 เพื่อนบ้านใกล้สุดด้วย embedding เข้าชุด ranked แม้ไม่มี token ตรง ถ้า categoryName null ไม่มีอะไรกัน "ใกล้เชิงความหมายแต่ผิดตัว" คะแนน vector สูงพอจะขึ้น top-5
+- **ผล:** มั่วแบบดูสมเหตุสมผล — อันตรายกับแชทที่โชว์มั่นใจ
+- **confidence:** ยืนยันได้ (โครงสร้าง candidate admission)
+
+### 🟠 4. Gate rule 2 (รถ+ปี ไม่มีชนิดอะไหล่) → โชว์อะไหล่คละของรถรุ่นนั้น
+- **จุด:** [search-gate.ts:49-51](../lib/chat-core/search-gate.ts) (`CAR_PLUS_YEAR` → action search) → ค้นโดย categoryName null + ไม่มี part anchor
+- **กลไก:** ลูกค้าบอกแค่ "Vios 2015" ยังไม่บอกเอาอะไหล่อะไร → gate ให้ search → engine คืนอะไหล่อะไรก็ได้ของ Vios เรียง score → โชว์ พร้อม follow-up ถามชนิดทีหลัง
+- **หมายเหตุ:** `unresolvedFitmentPartHeadNoun` (anchor กันดริฟท์) ไม่ทำงานเพราะ partType null
+- **confidence:** ยืนยันได้ — **แต่เป็น decision ที่เคยคอนเฟิร์มกับเจ้าของร้าน** (decision ก) ต้องถามก่อนเปลี่ยน
+
+### 🟠 5. หมวด resolve "ผิด" → hard filter ผิด (ดูแม่นแต่ผิด)
+- **จุด:** [fitment-resolve.ts:195-232](../lib/chat-core/fitment-resolve.ts) `PART_TYPE_CATEGORY_ALIASES` (substring first-hit)
+- **กลไก:**
+  - (a) ลำดับ alias สำคัญมาก — มี comment เตือน fan-motor vs condenser เอง; คำที่เป็น substring ของ alias ผิดจะ route ผิด
+  - (b) สมมติฐาน hardcode "ร้านไม่มี thermostat → วาล์ว = expansion valve เสมอ" ([fitment-resolve.ts:200-205](../lib/chat-core/fitment-resolve.ts)) — พังทันทีถ้าเพิ่มสินค้า thermostat/วาล์วน้ำ
+  - (c) `matchDbCategoryAlias` MATCH ที่แอดมิน approve ผิด → หมวดผิด
+- **ผล:** แย่กว่าไม่มีหมวด เพราะ hard filter ทำให้ "ดูตรงเป๊ะ" แต่หมวดผิด
+- **confidence:** น่าจะ (โครงสร้างเสี่ยง; ยังไม่ replay เคสจริง)
+
+### 🟡 6. accessory anchor broaden-on-empty แล้วดริฟท์
+- **จุด:** [product-search-bridge.ts:347-360](../lib/chat-core/product-search-bridge.ts)
+- **กลไก:** accessory (categoryName null) ค้นด้วย head-noun anchor แล้ว 0 → drop anchor → ค้น free-text กว้าง → คืน accessory อื่นที่แชร์ token → โชว์ผิดชิ้น (comment ยอมรับ "worst case = พฤติกรรมเดิม" = การดริฟท์)
+- **confidence:** ยืนยันได้ (แต่ผลกระทบจำกัดเฉพาะ accessory)
+
+### 🟡 7. model resolve แบบ contains over-match
+- **จุด:** [fitment-resolve.ts:432-439](../lib/chat-core/fitment-resolve.ts) fallback `contains`
+- **กลไก:** carModel "3" → contains-match "323"/"CX-3"; "2" → หลายรุ่น → อาจปักรถผิดเป็น hard filter (โอกาสต่ำเพราะ scope ด้วย brand แต่มีช่อง)
+- **confidence:** น่าจะ
+
+---
+
+## 4. จุดสำคัญที่ต้องเข้าใจก่อนแก้
+
+- **categoryName เป็น hard filter ที่แข็งและปลอดภัย** — คาไว้ทั้ง primary + OR fallback (`exactScope` [product-search.ts:1252-1272](../lib/product-search.ts) ใช้ร่วมกันทั้งสอง path) ดังนั้น "หมวด resolve ได้" = ปลอดภัย, "หมวด resolve ไม่ได้" = อันตราย
+- **`searchChatProductInquiry` คืน `result` ที่มี `mode` ("v2"/"fallback"), `matchReasons`, `total`, `reason` อยู่แล้ว** แต่ bridge/processor **ยังไม่ได้ใช้ข้อมูลเหล่านี้กรอง** — คือ data พร้อมทำ relevance gate แล้ว แค่ยังไม่มีตัวกรอง
+- `matchReasons` (code/oem/name/keyword/fitment/year) = สัญญาณว่า match แข็งแค่ไหน — ใช้เป็นเกณฑ์ gate ได้ ([product-search.ts:1688-1701](../lib/product-search.ts))
+
+---
+
+## 5. ข้อเสนอแก้ (รอยืนยัน — ยังไม่ทำ)
+
+| # | ข้อเสนอ | แก้เคส | ทำที่ไหน | ความเสี่ยง |
+|---|---------|--------|----------|-----------|
+| **A** | **Relevance gate ที่ชั้นแชท**: ถ้า `categoryName` ไม่ resolve **และ** ผลลัพธ์ไม่มี matchReason แข็ง (code/oem/name-exact/fitment) → ถือว่า "ไม่มั่นใจ" → ไม่โชว์การ์ด แต่ถามต่อ/ส่งแอดมิน | 1,2,3 | bridge/processor (ไม่แตะ engine → ไม่กระทบ storefront) | recall ลดในเคสก้ำกึ่ง (ตรงธง) |
+| **B** | **categoryName null ต้องมี part-anchor เสมอ**: ขยาย `fitmentPartHeadNoun` ให้ครอบ image-hint/generic; ถ้าไม่มี part ระบุ (gate rule 2) → ไม่ค้น/ถามชนิดก่อน | 2,4,6 | search-gate + processor | **decision ก (โชว์ของรถให้ดูก่อน) หายไป — ต้องถามเจ้าของร้าน** |
+| **C** | จำกัด vector recall เมื่อ categoryName null (ปิด vectorCandidate หรือ require แต้ม lexical ควบ) | 3 | engine (กระทบ storefront — ระวัง) | semantic recall แคบลงตอนไม่มีหมวด |
+| **D** | แจ้ง note เมื่อผลมาจาก OR fallback (`mode`/`reason` บอกได้): "เป็นรายการใกล้เคียง อาจไม่ตรงทั้งหมด" | 2 | bridge + processor | เพิ่มความโปร่งใส ไม่กระทบ logic |
+| **E** | ลบสมมติฐาน hardcode "ไม่มี thermostat" → ย้ายไป DB CategoryAlias ล้วน + review ลำดับ `PART_TYPE_CATEGORY_ALIASES` | 5 | fitment-resolve | ต้องเช็คว่ามีสินค้า thermostat/วาล์วน้ำ ในระบบหรือยัง |
+
+### คำแนะนำลำดับ
+1. **A + B ก่อน** — ตรงธง "ไม่มั่นใจส่งแอดมิน" ที่สุด ปิดเคส 🔴 ที่ต้นทาง (แทนไล่ปิดทีละกลไกใน engine ที่กระทบ storefront)
+2. A ทำที่ bridge/processor อย่างเดียว → ไม่กระทบหน้าเว็บ
+3. D ทำง่าย เพิ่มความโปร่งใส
+4. C, E ทำทีหลัง (กระทบ storefront / ต้องเช็คข้อมูล master)
+
+---
+
+## 6. คำถามที่ต้องเคลียร์ก่อนลงมือ (blockers)
+
+1. **Gate rule 2** — จะเปลี่ยนจาก "โชว์อะไหล่ของรถให้ดูก่อน" เป็น "ถามชนิดอะไหล่ก่อน" ได้ไหม? (decision ก เคยคอนเฟิร์มไว้ — ต้องเจ้าของร้านยืนยัน) → กระทบข้อ B
+2. **มีสินค้า thermostat / วาล์วน้ำ ในระบบหรือยัง?** ถ้ามี ต้องรีบทำข้อ E (สมมติฐาน hardcode ผิดทันที)
+3. **relevance gate ของข้อ A** — เกณฑ์ "match แข็ง" ควรเข้มแค่ไหน? (เช่น ต้องมี fitment/name-exact เสมอ หรือยอม trigram สูง ๆ ได้)
+
+---
+
+## 7. วิธีตรวจ/ยืนยันเพิ่ม (ก่อนหรือระหว่างแก้)
+
+- **Replay จาก audit log:** ตาราง `LineAiAuditLog` action `PRODUCT_SEARCH_SUMMARY` (มี `searched`, `total`, `query`) + `SEARCH_QUERY_CONSOLIDATED` (มี `categoryName`, filters) → หาเคสจริงที่ `categoryName=null` แล้ว `total>0` = เคสเสี่ยงจริง
+  - repo helper: `countConsecutiveFailedLineSearches` อ่าน audit นี้อยู่แล้ว ([line-conversation-repository.ts:219](../lib/line-conversation-repository.ts))
+- **ดู mode="fallback" หรือ reason ขึ้นต้น "DID_YOU_MEAN"** = ผลมาจาก OR/สะกดใหม่ = กลุ่มเสี่ยง
+- Test ที่เกี่ยวข้อง: `lib/__tests__/line-product-search-bridge.test.ts`, `line-search-gate.test.ts`, `line-fitment-resolve.test.ts`, `line-webhook-processor.test.ts`
+
+---
+
+## 8. ไฟล์อ้างอิงหลัก
+
+| ไฟล์ | บทบาท |
+|------|-------|
+| [lib/product-search.ts](../lib/product-search.ts) | Engine ค้นหาจริง (ใช้ร่วม storefront) — ranked query, OR fallback, vector recall, score>0 |
+| [lib/chat-core/product-search-bridge.ts](../lib/chat-core/product-search-bridge.ts) | สะพานแชท→engine: buildSearchQuery, requiredTokens, head-noun anchors, did-you-mean, applyChatPriceTier |
+| [lib/chat-core/fitment-resolve.ts](../lib/chat-core/fitment-resolve.ts) | แปลงคำอะไหล่/รถ → categoryName/brand/model (master data) — จุด resolve หมวด |
+| [lib/chat-core/search-gate.ts](../lib/chat-core/search-gate.ts) | completeness gate (part/car/year พอค้นไหม), gate rule 2 |
+| [lib/chat-core/search-guards.ts](../lib/chat-core/search-guards.ts) | evidence grounding brand/model/year |
+| [lib/line-webhook-processor.ts](../lib/line-webhook-processor.ts) | pipeline LINE (frame, forced-response chain, handoff) |
+| [lib/messenger/messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts) | pipeline Messenger (parity) |
+| [docs/line-oa-ai-agent-runbook.md](line-oa-ai-agent-runbook.md) | runbook LINE OA เดิม |
+
+---
+
+## 9. Changelog เอกสาร
+- 2026-07-10: สร้างเอกสาร — audit ความเสี่ยงสินค้ามั่ว/ผิดหมวด 7 เคส + ข้อเสนอ A–E (ยังไม่แก้)
