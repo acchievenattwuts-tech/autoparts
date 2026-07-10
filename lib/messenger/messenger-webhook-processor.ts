@@ -1,7 +1,16 @@
 import { LineConversationAiStatus, LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
-import { generateChatSuggestion, generateScopedConversationalReply } from "@/lib/chat-core/ai-service";
+import {
+  extractChatSearchIntent,
+  generateChatSuggestion,
+  generateScopedConversationalReply,
+} from "@/lib/chat-core/ai-service";
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
+import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
+import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
+import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
+import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import {
   applyChatPriceTier,
   getChatProductSummaries,
@@ -522,12 +531,15 @@ async function replyToMessengerTurn(params: {
   }
 
   if (route.allowsSearch) {
+    // Resolve precise category/brand/model/year hard filters (parity with LINE),
+    // with the LLM spell-correction fallback + auto-stage when no category maps.
+    const fitmentHints = await resolveMessengerFitmentHints(processText, history);
     const replied = await replyWithProductSearch({
       pageAccessToken,
       conversationId,
       psid,
       route,
-      bridgeInput: { route, text: processText },
+      bridgeInput: { route, text: processText, fitmentHints },
       originalText: mergedText,
       history,
     });
@@ -609,6 +621,91 @@ async function resolveDirectProductCode(sources: Array<string | null | undefined
   if (candidates.length === 0) return null;
   const resolved = new Set(await resolveCatalogCodes(candidates).catch(() => [] as string[]));
   return candidates.find((code) => resolved.has(code)) ?? null;
+}
+
+/**
+ * Category/fitment resolution for a Messenger product text turn — parity with the
+ * LINE pipeline so Messenger applies the SAME precise hard filters (category /
+ * brand / model / year) instead of a bare free-text search.
+ *
+ * Flow (all best-effort, safety-first — any failure degrades to no hard filter):
+ *  1. classify the text (Gemini) → part/car/year, evidence-gated by `guardChatSearchIntent`.
+ *  2. `resolveChatFitmentFilters` → canonical category / brand / model.
+ *  3. LLM fallback when no category resolves: correct the (misspelled) part word,
+ *     re-map through the SAME deterministic resolver, apply only if it yields one
+ *     category, and stage the misspelling as a PENDING alias for admin review.
+ *
+ * Messenger has no persistent inquiry-frame, so resolution is scoped to the
+ * current turn's text (with history only for the classifier's own context).
+ */
+async function resolveMessengerFitmentHints(
+  processText: string,
+  history: ChatHistoryItem[],
+): Promise<{
+  categoryName: string | null;
+  carBrandName: string | null;
+  carModelName: string | null;
+  fitmentYear: number | null;
+}> {
+  const empty = { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null };
+  try {
+    const rawIntent = await extractChatSearchIntent({
+      intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+      latestText: processText,
+      history,
+    }).catch(() => null);
+    const brandLookup = await loadCarBrandVariantLookup().catch(() => null);
+    const guarded = guardChatSearchIntent({ intent: rawIntent, latestText: processText, history, brandLookup });
+    const gi = guarded.intent;
+
+    let filters = await resolveChatFitmentFilters({
+      partType: gi?.partType ?? null,
+      carBrand: gi?.carBrand ?? null,
+      carModel: gi?.carModel ?? null,
+      queryText: processText,
+      rawText: processText,
+    }).catch((): ChatFitmentFilters => ({}));
+
+    // LLM category fallback + auto-stage (same helpers/behaviour as LINE).
+    if (!filters.categoryName) {
+      const correction = await correctPartSpelling(processText, {
+        carBrand: gi?.carBrand ?? filters.carBrandName ?? null,
+        carModel: gi?.carModel ?? filters.carModelName ?? null,
+      }).catch(() => null);
+      if (correction?.corrected) {
+        const remapped = await resolveChatFitmentFilters({
+          partType: correction.corrected,
+          carBrand: gi?.carBrand ?? null,
+          carModel: gi?.carModel ?? null,
+          queryText: correction.corrected,
+          rawText: correction.corrected,
+        }).catch((): ChatFitmentFilters => ({}));
+        if (remapped.categoryName) {
+          filters = {
+            ...filters,
+            categoryName: remapped.categoryName,
+            carBrandName: filters.carBrandName ?? remapped.carBrandName,
+            carModelName: filters.carModelName ?? remapped.carModelName,
+          };
+          void stageAiCategoryAlias({
+            alias: correction.original,
+            categoryName: remapped.categoryName,
+            correctedTerm: correction.corrected,
+            originalText: correction.original,
+          }).catch(() => undefined);
+        }
+      }
+    }
+
+    return {
+      categoryName: filters.categoryName ?? null,
+      carBrandName: filters.carBrandName ?? null,
+      carModelName: filters.carModelName ?? null,
+      fitmentYear: gi?.year ?? null,
+    };
+  } catch {
+    return empty;
+  }
 }
 
 /**
