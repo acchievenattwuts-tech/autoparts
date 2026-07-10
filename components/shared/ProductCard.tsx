@@ -150,10 +150,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
             {retailPricing ? (
               <div className="min-w-0">
-                <p className="text-xs text-gray-400 line-through">
-                  ฿{retailPricing.compareAtPrice.toLocaleString("th-TH")}
-                </p>
-                <p className="mt-0.5 text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
+                <p className="text-lg font-extrabold leading-tight text-[#f97316] sm:text-xl">
                   ฿{retailPricing.retailPrice.toLocaleString("th-TH")}{" "}
                   <span className="text-[11px] font-medium text-slate-500 sm:text-xs">/ {saleUnitLabel}</span>
                 </p>

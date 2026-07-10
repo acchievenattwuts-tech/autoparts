@@ -438,10 +438,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                       {retailPricing ? (
                         <>
                           <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">ราคา</p>
-                          <p className="mt-1 text-sm text-slate-400 line-through">
-                            ฿{retailPricing.compareAtPrice.toLocaleString("th-TH")}
-                          </p>
-                          <div className="mt-0.5 flex flex-wrap items-end gap-x-2 gap-y-1">
+                          <div className="mt-1 flex flex-wrap items-end gap-x-2 gap-y-1">
                             <p className="text-2xl font-black leading-none text-[#f97316] sm:text-3xl">
                               ฿{retailPricing.retailPrice.toLocaleString("th-TH")}
                             </p>
