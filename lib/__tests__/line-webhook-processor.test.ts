@@ -260,9 +260,15 @@ function createProcessorTestDeps(input?: {
         input.extractedPartNumber ?? input.text ?? (input.extractedImageHints ?? []).join(" "),
       );
       calls.searchFitmentHints.push(input.fitmentHints ?? null);
+      // Mirror the real bridge: a specific fitment part that anchored to zero
+      // matches surfaces the SEARCHED_FITMENT_PART_NO_MATCH reason.
+      const stubReason =
+        input.fitmentPartHeadNoun && configuredSearchTotal === 0
+          ? "SEARCHED_FITMENT_PART_NO_MATCH"
+          : "SEARCHED_PRODUCT_INQUIRY";
       return {
         searched: true,
-        reason: "SEARCHED_PRODUCT_INQUIRY",
+        reason: stubReason,
         query: input.text ?? "",
         result: {
           ids: configuredSearchIds,
@@ -1465,9 +1471,41 @@ test("direct no-match with part + car replies once and hands off to admin", asyn
   assert.equal(result.repliedCount, 1);
   assert.equal(calls.searches.length, 1);
   assert.equal(calls.replies.length, 1);
-  assert.ok(calls.replies[0]?.text.includes("ยังไม่พบรายการที่ตรงกับข้อมูลนี้ในระบบโดยตรง"));
+  assert.ok(calls.replies[0]?.text.includes("ยังไม่มีรายการนี้ในระบบโดยตรง"));
+  assert.ok(calls.replies[0]?.text.includes("แผงแอร์"), "part-aware: names the requested part");
   assert.ok(calls.replies[0]?.text.includes("ส่งต่อให้แอดมิน"));
   assert.ok(!calls.replies[0]?.text.includes("FAQ should not answer"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
+  assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
+});
+
+test("specific part with no category that anchors to zero hands off (even without a car)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "เทอร์โมสตรัท Vios 2017",
+    intentPartType: "เทอร์โมสตรัท",
+    intentCarBrand: "Toyota",
+    intentCarModel: "Vios",
+    intentPartKind: "fitment",
+    // No category resolves for a thermostat → the fitment-part anchor engages and
+    // the stub returns SEARCHED_FITMENT_PART_NO_MATCH for total 0.
+    fitmentFilters: { carBrandName: "Toyota", carModelName: "Vios" },
+    searchTotal: 0,
+    searchIds: [],
+    failedSearchCount: 0,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("เช็ค เทอร์โมสตรัท Vios ปี2017 ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.replies[0]?.text.includes("เทอร์โมสตรัท"), "acknowledges the requested part");
+  assert.ok(calls.replies[0]?.text.includes("ยังไม่มีรายการนี้ในระบบโดยตรง"));
+  assert.ok(calls.replies[0]?.text.includes("ส่งต่อให้แอดมิน"));
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
   assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));

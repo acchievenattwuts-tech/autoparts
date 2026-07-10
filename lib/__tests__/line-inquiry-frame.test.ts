@@ -96,6 +96,50 @@ test("same model across turns keeps the carried brand/year", () => {
   assert.equal(next.year, 2012);
 });
 
+test("stale-part guard: misspelled new part + car switch drops the carried part", () => {
+  // Production bug (2026-07-10): prior turn "หม้อน้ำ commuter" set partType=หม้อน้ำ.
+  // Next message "วาว์ลอัลติสแท้03" (วาล์วแอร์ Altis) switched the car AND named a
+  // new part, but "วาว์ล" failed literal grounding so latest.partType is null. The
+  // carried "หม้อน้ำ" must be dropped, not inherited — otherwise the query gets
+  // hard-filtered to Radiator and returns หม้อน้ำ instead of วาล์ว.
+  const prev = frame({ partType: "หม้อน้ำ (Radiator)", carModel: "Hiace Commuter" });
+  const latest = frame({ partType: null, carModel: "Altis", year: 2003 });
+  const { frame: next, droppedStalePart } = reconcileInquiryFrame(prev, latest, {
+    sessionStale: false,
+    latestClassifierPartType: "วาล์วแอร์",
+  });
+  assert.equal(droppedStalePart, true);
+  assert.equal(next.partType, null, "stale radiator part dropped on car switch + new part");
+  assert.equal(next.carModel, "Altis");
+  assert.equal(next.year, 2003);
+});
+
+test("stale-part guard: pure vehicle-only follow-up keeps the carried part", () => {
+  // "แล้ว Vigo ล่ะ" — the customer switched car but named NO part this turn, so the
+  // classifier reports no new part (or the same carried one). Keep the carried part.
+  const prev = frame({ partType: "คอยล์เย็น", carModel: "D-Max", year: 2012 });
+  const latest = frame({ partType: null, carModel: "Vigo" });
+  const { frame: next, droppedStalePart } = reconcileInquiryFrame(prev, latest, {
+    sessionStale: false,
+    latestClassifierPartType: null,
+  });
+  assert.equal(droppedStalePart, false);
+  assert.equal(next.partType, "คอยล์เย็น", "part retained for vehicle-only follow-up");
+  assert.equal(next.carModel, "Vigo");
+});
+
+test("stale-part guard: same car + no new part keeps the carried part (drip-feed)", () => {
+  const prev = frame({ partType: "หม้อน้ำ", carModel: "Altis" });
+  const latest = frame({ partType: null, carModel: "Altis", year: 2003 });
+  const { frame: next, droppedStalePart } = reconcileInquiryFrame(prev, latest, {
+    sessionStale: false,
+    latestClassifierPartType: "หม้อน้ำ",
+  });
+  assert.equal(droppedStalePart, false, "no car switch → nothing dropped");
+  assert.equal(next.partType, "หม้อน้ำ");
+  assert.equal(next.year, 2003);
+});
+
 test("buildFrameQuery joins part + car, excludes the year", () => {
   assert.equal(buildFrameQuery(frame({ partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 })), "หม้อน้ำ D-Max");
   assert.equal(buildFrameQuery(frame()), null);

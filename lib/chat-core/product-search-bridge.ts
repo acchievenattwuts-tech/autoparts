@@ -47,6 +47,19 @@ export type ChatProductSearchBridgeInput = {
    * the worst case is identical to the previous behaviour. Fitment parts (which
    * resolve a category) never reach this path. */
   accessoryHeadNoun?: string | null;
+  /**
+   * Head noun for a SPECIFIC fitment part the customer named that resolved to NO
+   * category (e.g. "เทอร์โมสตรัท" — no thermostat category/product exists). Without
+   * an anchor the search drifts to model-only and returns unrelated parts of that
+   * car ("show me a Vios thermostat" → random Vios compressor/radiator). When set
+   * and no category filter applies, it is required (contains-matched against
+   * name/alias/fitment text) so results must actually be that part. Unlike
+   * {@link accessoryHeadNoun}, there is NO broaden-on-empty fallback: if nothing
+   * matches, the search returns empty (needsMoreInfo) so the reply says "we don't
+   * carry this yet" instead of listing unrelated parts. Never set together with
+   * accessoryHeadNoun.
+   */
+  fitmentPartHeadNoun?: string | null;
   take?: number;
 };
 
@@ -300,9 +313,20 @@ export async function searchChatProductInquiry(
   // still counts).
   const accessoryHeadNoun =
     !baseFilters.categoryName ? normalizeSearchSeed(input.accessoryHeadNoun) : null;
-  const primaryRequiredTokens = accessoryHeadNoun
-    ? [...requiredTokens, accessoryHeadNoun]
+
+  // Fitment-part precision anchor: a SPECIFIC part the customer named that resolved
+  // to no category. Required in EVERY search (primary + did-you-mean retry) and,
+  // unlike the accessory anchor, never dropped — a specific part that isn't in the
+  // catalog must return empty, not drift to model-only unrelated parts.
+  const fitmentPartHeadNoun =
+    !baseFilters.categoryName && !accessoryHeadNoun ? normalizeSearchSeed(input.fitmentPartHeadNoun) : null;
+  // Anchor kept through the did-you-mean retry too (persistent).
+  const persistentRequiredTokens = fitmentPartHeadNoun
+    ? [...requiredTokens, fitmentPartHeadNoun]
     : requiredTokens;
+  const primaryRequiredTokens = accessoryHeadNoun
+    ? [...persistentRequiredTokens, accessoryHeadNoun]
+    : persistentRequiredTokens;
 
   let result = await resolvedSearchFn({
     query,
@@ -318,7 +342,8 @@ export async function searchChatProductInquiry(
   // Graceful fallback: the strict head-noun search found nothing (e.g. the
   // customer's word differs from the catalog wording). Drop the head-noun anchor
   // and rerun the broad search — the worst case is exactly the previous behaviour,
-  // never a wrong "not found".
+  // never a wrong "not found". Applies ONLY to the accessory anchor; the fitment
+  // anchor deliberately has no broaden fallback (see fitmentPartHeadNoun).
   let accessoryHeadFallback = false;
   if (result.total === 0 && accessoryHeadNoun) {
     accessoryHeadFallback = true;
@@ -327,7 +352,7 @@ export async function searchChatProductInquiry(
       isActive: true,
       isStorefrontVisible: true,
       ...baseFilters,
-      ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
+      ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
       skip: 0,
       take: input.take ?? 5,
       cacheProfile: "storefront",
@@ -358,7 +383,9 @@ export async function searchChatProductInquiry(
         isActive: true,
         isStorefrontVisible: true,
         ...retryFilters,
-        ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
+        // Keep the fitment-part anchor through the spelling retry so a "did you
+        // mean" can't drift the recovery into unrelated same-car parts.
+        ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
         skip: 0,
         take: input.take ?? 5,
         cacheProfile: "storefront",
@@ -380,11 +407,15 @@ export async function searchChatProductInquiry(
 
   return {
     searched: true,
-    reason: accessoryHeadNoun && !accessoryHeadFallback
-      ? "SEARCHED_ACCESSORY_HEAD_ANCHORED"
-      : accessoryHeadFallback
-        ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
-        : "SEARCHED_PRODUCT_INQUIRY",
+    reason: fitmentPartHeadNoun && result.total === 0
+      ? "SEARCHED_FITMENT_PART_NO_MATCH"
+      : fitmentPartHeadNoun
+        ? "SEARCHED_FITMENT_PART_ANCHORED"
+        : accessoryHeadNoun && !accessoryHeadFallback
+          ? "SEARCHED_ACCESSORY_HEAD_ANCHORED"
+          : accessoryHeadFallback
+            ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
+            : "SEARCHED_PRODUCT_INQUIRY",
     query,
     result,
     needsMoreInfo: result.total === 0 || result.ids.length === 0,

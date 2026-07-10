@@ -109,6 +109,8 @@ test("Messenger normalizes glued model-year queries and hands off product no-mat
         };
       },
       generateScopedConversationalReply: async () => "scoped reply",
+      buildJuneTextNoMatchHandoffReply: (known?: { partType?: string | null } | null) =>
+        `สำหรับ${known?.partType ?? "รายการที่แจ้ง"} ยังไม่มีในระบบ ขอส่งต่อให้แอดมินนะคะ`,
     },
   });
 

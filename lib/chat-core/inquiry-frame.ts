@@ -87,11 +87,22 @@ export function isFrameStale(
 export function reconcileInquiryFrame(
   previous: InquiryFrame | null | undefined,
   latest: InquiryFrame,
-  options: { sessionStale: boolean },
-): { frame: InquiryFrame; topicShift: boolean } {
+  options: {
+    sessionStale: boolean;
+    /**
+     * The part word the classifier read from THIS turn's text BEFORE evidence
+     * grounding. A misspelled part ("วาว์ล" for วาล์วแอร์) fails the literal
+     * evidence check, so `latest.partType` arrives null and the carried part
+     * would otherwise stick — even though the customer clearly named a new part
+     * AND switched cars. Used only to detect that a new part was named when the
+     * vehicle also changed; never persisted directly.
+     */
+    latestClassifierPartType?: string | null;
+  },
+): { frame: InquiryFrame; topicShift: boolean; droppedStalePart: boolean } {
   const base = options.sessionStale ? null : previous;
   if (isFrameEmpty(base)) {
-    return { frame: { ...latest }, topicShift: false };
+    return { frame: { ...latest }, topicShift: false, droppedStalePart: false };
   }
   const safeBase = base as InquiryFrame;
 
@@ -120,15 +131,33 @@ export function reconcileInquiryFrame(
     return {
       frame: { partType: latest.partType, ...vehicle },
       topicShift: true,
+      droppedStalePart: false,
     };
   }
 
+  // Stale-part guard: the customer switched to a DIFFERENT vehicle model this turn
+  // AND named a new part word that failed grounding (typically a misspelling, so
+  // `latest.partType` is null). Inheriting the previous car's part here wrongly
+  // hard-filters the new-car query to the old category — e.g. after "หม้อน้ำ
+  // commuter", the message "วาว์ลอัลติสแท้03" (วาล์วแอร์ Altis) must NOT stay
+  // หม้อน้ำ. Drop the carried part so the search rebuilds from the classifier's
+  // consolidated query (which carries the customer's real words). Gated on the
+  // classifier having read a DIFFERENT part this turn, so a pure vehicle-only
+  // follow-up ("แล้ว Vigo ล่ะ") keeps its carried part.
+  const classifierPart = options.latestClassifierPartType;
+  const namedNewPart = Boolean(
+    classifierPart &&
+      (!safeBase.partType || normalizeSearchText(classifierPart) !== normalizeSearchText(safeBase.partType)),
+  );
+  const droppedStalePart = !latest.partType && modelChanged && namedNewPart;
+
   return {
     frame: {
-      partType: latest.partType ?? safeBase.partType,
+      partType: latest.partType ?? (droppedStalePart ? null : safeBase.partType),
       ...vehicle,
     },
     topicShift: false,
+    droppedStalePart,
   };
 }
 

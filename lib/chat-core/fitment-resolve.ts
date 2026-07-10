@@ -194,7 +194,15 @@ async function matchDbCategoryAlias(texts: Array<string | null | undefined>) {
 type PartTypeAlias = { keywords: string[]; categoryMatch: string };
 const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
   { keywords: ["คอนโทรลวาล์ว", "control valve"], categoryMatch: "Compressor Control Valve" },
-  { keywords: ["วาล์วแอร์", "วาล์วตู้", "expansion valve", "วาล์ว"], categoryMatch: "(Expansion Valve)" },
+  // "วาว์ล/วาวล์" are the common misspellings of วาล์ว (letter order swapped);
+  // keep them mapped to Expansion Valve — this store carries NO thermostat /
+  // engine water-valve product, so a bare valve word is always the A/C expansion
+  // valve. A future วาล์วน้ำ (Thermostat) category is separated via a DB
+  // CategoryAlias row, which takes precedence over this hardcoded matcher.
+  {
+    keywords: ["วาล์วแอร์", "วาล์วตู้", "expansion valve", "วาล์ว", "วาว์ลแอร์", "วาวล์แอร์", "วาว์ล", "วาวล์"],
+    categoryMatch: "(Expansion Valve)",
+  },
   { keywords: ["น้ำมันคอม", "compressor oil"], categoryMatch: "Compressor Oil" },
   { keywords: ["หน้าครัช", "หน้าคลัช", "คลัชคอม", "มูเล่คอม", "clutch"], categoryMatch: "Compressor Clutch" },
   { keywords: ["คอมแอร์", "คอมเพรสเซอร์", "compressor"], categoryMatch: "(Compressor)" },

@@ -353,6 +353,97 @@ test("accessory head noun is ignored when a category filter is present (fitment 
   assert.equal(calls[0], null); // head noun NOT anchored because a category applies
 });
 
+test("fitment part head noun anchors the search when no category resolves", async () => {
+  const calls: Array<string[] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "เช็ค เทอร์โมสตรัท Vios 2017",
+      fitmentPartHeadNoun: "เทอร์โมสตรัท",
+      fitmentHints: { carModelName: "Vios", fitmentYear: 2017 },
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      return { ids: ["p1"], total: 4, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ["เทอร์โมสตรัท"]);
+  if (result.searched) assert.equal(result.reason, "SEARCHED_FITMENT_PART_ANCHORED");
+});
+
+test("fitment part head noun does NOT broaden on empty — returns no-match (no model-only drift)", async () => {
+  const calls: Array<string[] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "เช็ค เทอร์โมสตรัท Vios 2017",
+      fitmentPartHeadNoun: "เทอร์โมสตรัท",
+      fitmentHints: { carModelName: "Vios", fitmentYear: 2017 },
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      // The specific part isn't in the catalog → strict anchored search is empty.
+      return { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    // suggestFn: no spelling suggestions so the did-you-mean loop is skipped.
+    async () => [],
+  );
+
+  assert.equal(result.searched, true);
+  // Only ONE search — never re-runs broad/model-only (unlike the accessory anchor).
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], ["เทอร์โมสตรัท"]);
+  if (result.searched) {
+    assert.equal(result.needsMoreInfo, true);
+    assert.equal(result.reason, "SEARCHED_FITMENT_PART_NO_MATCH");
+    assert.equal(result.result.total, 0);
+  }
+});
+
+test("fitment part head noun is ignored when a category filter is present", async () => {
+  const calls: Array<string[] | null> = [];
+  await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอมแอร์ vios",
+      fitmentPartHeadNoun: "คอมแอร์",
+      fitmentHints: { categoryName: "คอมแอร์ (Compressor)" },
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      return { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0], null); // not anchored because a category already scopes it
+});
+
+test("fitment part anchor is kept through the did-you-mean spelling retry", async () => {
+  const calls: Array<string[] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "เทอร์โมสตรัท vios",
+      fitmentPartHeadNoun: "เทอร์โมสตรัท",
+    },
+    async (input) => {
+      calls.push(input.requiredTokens ?? null);
+      return { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["เทอร์โมสตัท vios"],
+  );
+
+  assert.equal(result.searched, true);
+  // primary + one did-you-mean retry, both keep the fitment anchor.
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0], ["เทอร์โมสตรัท"]);
+  assert.deepEqual(calls[1], ["เทอร์โมสตรัท"]);
+});
+
 test("numeric model or part tokens are sent as required tokens for LINE search", async () => {
   const calls: unknown[] = [];
 

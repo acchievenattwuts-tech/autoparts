@@ -13,6 +13,16 @@ test("maps colloquial part-types to the right category hint", async () => {
   assert.equal(matchPartTypeToCategoryHint("กรองแอร์"), "Cabin air filter");
 });
 
+test("maps common วาล์ว misspellings (วาว์ล/วาวล์) to Expansion Valve", async () => {
+  const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
+  // Letter-order swap the store sees often; no thermostat/water-valve product
+  // exists so a bare valve word is always the A/C expansion valve.
+  assert.equal(matchPartTypeToCategoryHint("วาว์ล"), "(Expansion Valve)");
+  assert.equal(matchPartTypeToCategoryHint("วาวล์"), "(Expansion Valve)");
+  assert.equal(matchPartTypeToCategoryHint("วาว์ลแอร์"), "(Expansion Valve)");
+  assert.equal(matchPartTypeToCategoryHint("วาวล์แอร์"), "(Expansion Valve)");
+});
+
 test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {
   const { resolveColloquialCarModelAlias } = await import("@/lib/chat-core/fitment-resolve");
 

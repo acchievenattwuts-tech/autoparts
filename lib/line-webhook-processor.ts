@@ -18,6 +18,7 @@ import {
   buildJuneDeadlineReply,
   buildJuneOutOfScopeReply,
   buildJunePartImageNoMatchReply,
+  buildJuneTextNoMatchHandoffReply,
   buildJuneSmalltalkReply,
   buildJuneSocialReply,
   extractChatSearchIntent,
@@ -267,10 +268,6 @@ const WEBHOOK_MAX_DURATION_MS = 60_000;
 const POST_SEARCH_DELIVERY_FALLBACK_MIN_BUDGET_MS = 12_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
   "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
-const DIRECT_NO_MATCH_HANDOFF_MESSAGE =
-  "ขออภัยค่ะ ตอนนี้จูนยังไม่พบรายการที่ตรงกับข้อมูลนี้ในระบบโดยตรงนะคะ 🙏\n" +
-  "จูนขอส่งต่อให้แอดมินช่วยตรวจสอบสต็อกให้อีกครั้งค่ะ\n\n" +
-  "ถ้าลูกค้ามีปีรถ รูปอะไหล่เดิม หรือรหัสบนตัวอะไหล่ ส่งเพิ่มมาได้เลยนะคะ จะช่วยให้แอดมินเทียบให้แม่นขึ้นค่ะ 😊🚗";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
 // Sent as a bubble AFTER the matched products on a price inquiry — the customer
@@ -1441,10 +1438,17 @@ export async function processLineAiReply(
           // Grounded in customer text by construction, so it survives the year guard.
           year: guardedSearchIntent?.year ?? imageFields?.year ?? parseCarYearRangeStart(processText) ?? null,
         },
-        { sessionStale },
+        {
+          sessionStale,
+          // Pass the classifier's raw (pre-grounding) part word so the frame can
+          // tell a misspelled NEW part ("วาว์ล") from a pure vehicle-only
+          // follow-up when the vehicle changes — see reconcileInquiryFrame.
+          latestClassifierPartType: classifierPartType ?? imagePartType ?? null,
+        },
       );
       inquiryFrame = reconciled.frame;
       frameTopicShift = reconciled.topicShift;
+      const droppedStalePartOnVehicleSwitch = reconciled.droppedStalePart;
       const droppedVehicleCarryover = Boolean(
         inquiryFrame &&
           !latestHasVehicleEvidence &&
@@ -1502,6 +1506,8 @@ export async function processLineAiReply(
           topicShift: frameTopicShift,
           sessionStale,
           droppedVehicleCarryover,
+          droppedStalePartOnVehicleSwitch,
+          classifierPartType,
           latestHasProductSpecificity,
         },
       });
@@ -1709,6 +1715,21 @@ export async function processLineAiReply(
         ? inquiryFrame.partType
         : null;
 
+    // Fitment-part precision anchor: the customer named a SPECIFIC part this turn
+    // that resolved to NO category (e.g. "เทอร์โมสตรัท" — no such category/product).
+    // Without an anchor the search drifts to model-only and lists unrelated parts
+    // of that car. Pass the part word so the bridge requires it (and returns
+    // "no direct match" instead of drifting). Gated on a customer-typed specific
+    // part with no category + not an accessory; generic catch-alls ("อะไหล่แอร์…"
+    // from image OCR) are excluded so they still search broadly.
+    const unresolvedFitmentPartHeadNoun =
+      !fitmentFilters.categoryName &&
+      !accessoryHeadNoun &&
+      guardedSearchIntent?.partType &&
+      !guardedSearchIntent.partType.includes("อะไหล่")
+        ? guardedSearchIntent.partType
+        : null;
+
     // A resolved product code drives a direct exact-code lookup and bypasses the
     // gate / low-confidence guard (the code itself is the confirmation). It never
     // overrides a genuinely non-product turn (greeting/payment) — those are already
@@ -1750,6 +1771,7 @@ export async function processLineAiReply(
             fitmentYear: frameYear,
           },
           accessoryHeadNoun,
+          fitmentPartHeadNoun: unresolvedFitmentPartHeadNoun,
         });
 
     if (directProductCode && productSearch.searched) {
@@ -1829,10 +1851,14 @@ export async function processLineAiReply(
       liveMode &&
       productSearch.searched &&
       productSearch.result.total === 0 &&
-      Boolean(
+      (Boolean(
         inquiryFrame?.partType &&
           (inquiryFrame.carBrand || inquiryFrame.carModel || guardedSearch.requiredTokens.length > 0),
-      );
+      ) ||
+        // The customer named a SPECIFIC part that anchored to zero matches (the
+        // fitment-part precision anchor). Hand off even when no car was given —
+        // the part word alone is a concrete, actionable request the shop lacks.
+        productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH");
 
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
@@ -2017,13 +2043,26 @@ export async function processLineAiReply(
           }
         : liveMode && directNoMatchHandoff
         ? {
-            message: DIRECT_NO_MATCH_HANDOFF_MESSAGE,
+            // Part-aware acknowledgement ("สำหรับ<part> <car> ปี <ปี>…") instead of
+            // the generic line, so the customer sees we understood the exact request
+            // before the human hand-off. Falls back to the part word alone when no
+            // car was captured.
+            message: buildJuneTextNoMatchHandoffReply(
+              inquiryFrame
+                ? {
+                    partType: inquiryFrame.partType ?? unresolvedFitmentPartHeadNoun,
+                    carBrand: inquiryFrame.carBrand,
+                    carModel: inquiryFrame.carModel,
+                    year: frameYear,
+                  }
+                : { partType: unresolvedFitmentPartHeadNoun, carBrand: null, carModel: null, year: null },
+            ),
             reason: "DIRECT_NO_MATCH_HANDOFF",
             handoff: true,
             audit: "AI_DIRECT_NO_MATCH_HANDOFF",
             auditPayload: {
               lineEventId: input.lineEventId,
-              partType: inquiryFrame?.partType ?? null,
+              partType: inquiryFrame?.partType ?? unresolvedFitmentPartHeadNoun ?? null,
               carBrand: inquiryFrame?.carBrand ?? null,
               carModel: inquiryFrame?.carModel ?? null,
               failedSearchCount,

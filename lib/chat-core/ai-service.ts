@@ -412,6 +412,12 @@ function buildLineReplyPrompt(input: {
       "ให้นำเสนอรายการเหล่านี้กับลูกค้าได้เลยเพื่อช่วยตัดสินใจเบื้องต้น โดยใช้ชื่อสินค้า/รหัส/ราคาตามนี้เป๊ะ ห้ามแต่งชื่อ/รหัส/ราคาเพิ่มเอง",
     );
     lines.push(
+      // The customer's part word may be misspelled or ambiguous (e.g. typed
+      // "วาว์ล"/"วาล์วน้ำ" for what the catalog calls "วาล์วแอร์"). Naming the part
+      // from the raw text makes the prose disagree with the products/cards shown.
+      "เมื่อกล่าวถึง 'ชนิดอะไหล่' ในข้อความเปิดหรือปิดท้าย ให้ยึดชื่อชนิดอะไหล่ตามรายการสินค้าที่พบในระบบด้านบนเท่านั้น ห้ามเรียกชื่อชนิดอะไหล่ตามคำที่ลูกค้าพิมพ์ซึ่งอาจสะกดผิดหรือกำกวม (เช่น ลูกค้าพิมพ์ 'วาว์ล' หรือ 'วาล์วน้ำ' แต่รายการที่พบเป็น 'วาล์วแอร์' ให้เรียกว่า 'วาล์วแอร์')",
+    );
+    lines.push(
       "สำคัญ: เรียงรายการในคำตอบ 'ตามลำดับที่ให้มาเป๊ะ' ห้ามสลับ/จัดลำดับใหม่ เพราะต้องตรงกับการ์ดสินค้าที่ส่งคู่กัน",
     );
     lines.push(
@@ -611,6 +617,31 @@ export function buildJunePartImageNoMatchReply(known?: ChatKnownFitment | null):
   const car = [known?.carBrand?.trim(), known?.carModel?.trim()].filter(Boolean).join(" ") || null;
   const subject = part ? (car ? `${part}สำหรับ ${car}` : part) : "อะไหล่ในรูป";
   return `จูนเห็นรูป${subject}ที่ส่งมาแล้วนะคะ 🙏 แต่ตอนนี้ยังไม่เจอตัวที่ตรงในระบบค่ะ ขอส่งต่อให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้อีกครั้งนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 😊`;
+}
+
+/**
+ * Reply for a TEXT product inquiry where the customer named a specific part (and
+ * usually a car) but the catalog search found no match — e.g. asking for a part
+ * the shop doesn't carry ("เทอร์โมสตรัท Vios 2017"). Acknowledges the exact part +
+ * car so it never reads like the request was ignored, then hands off to a human.
+ * Mirrors {@link buildJunePartImageNoMatchReply} for the text channel. The part
+ * label is cleaned of any "(English)" canonical suffix so the customer sees a
+ * natural word ("คอมแอร์" not "คอมแอร์ (Compressor)").
+ */
+export function buildJuneTextNoMatchHandoffReply(known?: ChatKnownFitment | null): string {
+  const part = known?.partType?.trim().replace(/\s*\([^)]*\)\s*$/, "") || null;
+  const car = [known?.carBrand?.trim(), known?.carModel?.trim()].filter(Boolean).join(" ") || null;
+  const yearPart = known?.year ? ` ปี ${known.year}` : "";
+  const subject = part
+    ? car
+      ? `${part} ${car}${yearPart}`
+      : `${part}${yearPart}`
+    : "รายการที่แจ้ง";
+  return (
+    `สำหรับ${subject} ตอนนี้ทางร้านยังไม่มีรายการนี้ในระบบโดยตรงนะคะ 🙏\n` +
+    `จูนขอส่งต่อให้แอดมินช่วยเช็กสต็อกและหาตัวที่ใกล้เคียงให้อีกครั้งค่ะ\n\n` +
+    `ถ้ามีรูปอะไหล่เดิมหรือรหัสบนตัวอะไหล่ ส่งเพิ่มมาได้เลยนะคะ จะช่วยให้เทียบแม่นขึ้นค่ะ 😊`
+  );
 }
 
 /**

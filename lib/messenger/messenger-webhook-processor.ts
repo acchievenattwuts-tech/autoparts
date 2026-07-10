@@ -1,5 +1,6 @@
 import { LineConversationAiStatus, LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
 import {
+  buildJuneTextNoMatchHandoffReply,
   extractChatSearchIntent,
   generateChatSuggestion,
   generateScopedConversationalReply,
@@ -83,8 +84,6 @@ const STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1_000;
 // Stop debouncing after this much wall-clock and do one final reply, so a chatty
 // customer can't push the owner past the 60s serverless ceiling.
 const OWNER_FINAL_PASS_AFTER_MS = 28_000;
-const DIRECT_NO_MATCH_HANDOFF_MESSAGE =
-  "ขอส่งต่อให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้ละเอียดนะคะ เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
 const EXPLICIT_PRODUCT_NOUN_RE =
   /(คอย(?:ล์)?\s*เย็น|คอม\s*แอร์|แผง\s*แอร์|กรอง\s*แอร์|หม้อ\s*น้ำ|พัด\s*ลม|วาล์ว|ไดเออร์|ดรายเออร์|ตู้\s*แอร์|น้ำยา|โอริง|สาย\s*น้ำยา)/i;
 const LATIN_MODEL_YEAR_ANCHOR_RE = /\b[A-Za-z]{2,}\s+\d{2}(?:-\d{2})?\b/;
@@ -533,13 +532,13 @@ async function replyToMessengerTurn(params: {
   if (route.allowsSearch) {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
-    const fitmentHints = await resolveMessengerFitmentHints(processText, history);
+    const { fitmentPartHeadNoun, ...fitmentHints } = await resolveMessengerFitmentHints(processText, history);
     const replied = await replyWithProductSearch({
       pageAccessToken,
       conversationId,
       psid,
       route,
-      bridgeInput: { route, text: processText, fitmentHints },
+      bridgeInput: { route, text: processText, fitmentHints, fitmentPartHeadNoun },
       originalText: mergedText,
       history,
     });
@@ -581,6 +580,13 @@ function shouldDirectNoMatchHandoff(input: {
     input.productSearch.result.total > 0
   ) {
     return false;
+  }
+
+  // The customer named a SPECIFIC part that anchored to zero matches (fitment-part
+  // precision anchor). This is a concrete request the shop lacks — hand off even
+  // when the part word isn't in the hardcoded EXPLICIT_PRODUCT_NOUN_RE list.
+  if (input.productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH") {
+    return true;
   }
 
   const requiredTokens = extractChatRequiredSearchTokens(input.text);
@@ -646,8 +652,17 @@ async function resolveMessengerFitmentHints(
   carBrandName: string | null;
   carModelName: string | null;
   fitmentYear: number | null;
+  /** Specific customer-named part that resolved to no category — anchors the
+   *  search so it can't drift to model-only unrelated parts (parity with LINE). */
+  fitmentPartHeadNoun: string | null;
 }> {
-  const empty = { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null };
+  const empty = {
+    categoryName: null,
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+    fitmentPartHeadNoun: null,
+  };
   try {
     const rawIntent = await extractChatSearchIntent({
       intent: LineIntent.PRODUCT_INQUIRY_TEXT,
@@ -697,11 +712,18 @@ async function resolveMessengerFitmentHints(
       }
     }
 
+    // Specific customer-named part that still resolved to no category → anchor it
+    // so the search returns "no direct match" instead of drifting to unrelated
+    // same-car parts. Generic catch-alls ("อะไหล่แอร์…") are excluded.
+    const fitmentPartHeadNoun =
+      !filters.categoryName && gi?.partType && !gi.partType.includes("อะไหล่") ? gi.partType : null;
+
     return {
       categoryName: filters.categoryName ?? null,
       carBrandName: filters.carBrandName ?? null,
       carModelName: filters.carModelName ?? null,
       fitmentYear: gi?.year ?? null,
+      fitmentPartHeadNoun,
     };
   } catch {
     return empty;
@@ -741,12 +763,21 @@ async function replyWithProductSearch(params: {
         messageType: "TEXT",
       }),
     );
+    // Part-aware acknowledgement ("สำหรับ<part> <car> ปี <ปี>…") so the customer
+    // sees we understood the exact request before the hand-off. Part label prefers
+    // the customer's own word; car/year come from the resolved fitment hints.
+    const handoffMessage = buildJuneTextNoMatchHandoffReply({
+      partType: params.bridgeInput.fitmentPartHeadNoun ?? params.bridgeInput.fitmentHints?.categoryName ?? null,
+      carBrand: params.bridgeInput.fitmentHints?.carBrandName ?? null,
+      carModel: params.bridgeInput.fitmentHints?.carModelName ?? null,
+      year: params.bridgeInput.fitmentHints?.fitmentYear ?? null,
+    });
     await sendMessengerText({
       pageAccessToken: params.pageAccessToken,
       psid: params.psid,
-      text: DIRECT_NO_MATCH_HANDOFF_MESSAGE,
+      text: handoffMessage,
     });
-    await persistOutbound(params.conversationId, params.psid, DIRECT_NO_MATCH_HANDOFF_MESSAGE, {
+    await persistOutbound(params.conversationId, params.psid, handoffMessage, {
       intent: params.route.intent,
     });
     return true;
