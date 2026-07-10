@@ -1,7 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { isCarYearRangeToken, parseCarYearRangeStart } from "@/lib/car-year-shorthand";
+import { isCarYearRangeToken, parseCarYearRangeStart, toGregorianCarYear } from "@/lib/car-year-shorthand";
+
+test("toGregorianCarYear folds Buddhist-era years, leaves Gregorian untouched", () => {
+  assert.equal(toGregorianCarYear(2560), 2017); // พ.ศ. → ค.ศ.
+  assert.equal(toGregorianCarYear(2546), 2003);
+  assert.equal(toGregorianCarYear(2015), 2015); // already ค.ศ.
+  assert.equal(toGregorianCarYear(1998), 1998);
+});
+
+test("parseCarYearRangeStart folds a Buddhist-era 4-digit range", () => {
+  assert.equal(parseCarYearRangeStart("คอยเย็น vios 2560-2565"), 2017);
+});
 
 test("recognizes 2- and 4-digit car-year range tokens", () => {
   assert.equal(isCarYearRangeToken("12-15"), true);

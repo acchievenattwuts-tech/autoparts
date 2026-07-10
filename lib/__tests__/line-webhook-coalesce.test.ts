@@ -138,6 +138,7 @@ function createCoalesceHarness(options?: {
           fitmentYear: null,
         },
         droppedImageCodes: [],
+        didYouMean: null,
       };
     },
     getChatProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100, retailPrice: 130 }],
@@ -785,6 +786,7 @@ test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", a
       needsMoreInfo: notFound,
       appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
       droppedImageCodes: [],
+      didYouMean: null,
     };
   };
   dependencies.extractChatSearchIntent = async () =>

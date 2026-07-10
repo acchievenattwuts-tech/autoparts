@@ -93,6 +93,7 @@ test("Messenger normalizes glued model-year queries and hands off product no-mat
             fitmentYear: null,
           },
           droppedImageCodes: [],
+          didYouMean: null,
         };
       },
     },

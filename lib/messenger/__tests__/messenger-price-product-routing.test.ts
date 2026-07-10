@@ -119,6 +119,7 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
             fitmentYear: null,
           },
           droppedImageCodes: [],
+          didYouMean: null,
         };
       },
     },

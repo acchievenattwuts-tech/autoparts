@@ -73,6 +73,41 @@ function lineModelHasCustomerAliasEvidence(
   return false;
 }
 
+/**
+ * Year-specific evidence check. The customer's own words rarely contain the exact
+ * 4-digit C.E. year the classifier reports — they type shorthand ("ปี 03" for
+ * 2003) or the พ.ศ. form (2546). A literal `String(year)` check would wrongly drop
+ * a year the customer really supplied, so accept: the 4-digit C.E. year, its พ.ศ.
+ * equivalent, or the 2-digit shorthand (03 → 2003), each bounded so it can't match
+ * inside a longer number (a model-code fragment like "STA703").
+ */
+function lineYearHasCustomerEvidence(
+  year: number,
+  latestText: string | null | undefined,
+  history: ChatReplyHistoryItem[],
+): boolean {
+  const historyText = history
+    .filter((turn) => turn.role === "customer")
+    .map((turn) => turn.text)
+    .join(" ");
+  const latest = latestText ?? "";
+  const bounded = (needle: string, haystack: string): boolean =>
+    new RegExp(`(?<!\\d)${needle}(?!\\d)`).test(haystack);
+
+  // Unambiguous 4-digit forms (C.E. or พ.ศ. = year + 543) count anywhere in the
+  // session — the customer clearly named that exact year.
+  const fullText = `${historyText} ${latest}`;
+  if (bounded(String(year), fullText)) return true;
+  if (bounded(String(year + 543), fullText)) return true;
+
+  // 2-digit shorthand ("03" → 2003) is only accepted in the LATEST turn: a bare
+  // "08" left over in history usually belongs to an EARLIER subject, so letting it
+  // ground a fresh query's year would re-pin the wrong year (the frame's job, not
+  // the guard's). In the current turn it's an intentional, current detail.
+  const yy = String(((year % 100) + 100) % 100).padStart(2, "0");
+  return bounded(yy, latest);
+}
+
 export function guardChatSearchIntent(input: {
   intent: ChatSearchIntent | null;
   latestText?: string | null;
@@ -85,33 +120,49 @@ export function guardChatSearchIntent(input: {
     return { intent, forceLiteralQuery: false, requiredTokens: [] as string[] };
   }
 
-  const requiredTokens = extractChatRequiredSearchTokens(latestText);
-  if (requiredTokens.length === 0) {
-    return { intent, forceLiteralQuery: false, requiredTokens };
-  }
-
   const carModelGrounded =
     lineValueHasCustomerEvidence(intent.carModel, latestText, history) ||
     lineModelHasCustomerAliasEvidence(intent.carModel, latestText, history);
   const carBrandGrounded =
     lineValueHasCustomerEvidence(intent.carBrand, latestText, history, brandLookup) ||
     (carModelGrounded && Boolean(intent.carBrand) && Boolean(intent.carModel));
-  // The model year is a hard fitment filter, so a year the customer never typed
-  // (history-merged by the classifier from an EARLIER part inquiry) must be
-  // dropped just like an ungrounded brand/model — otherwise a stale "ปี08" pins a
-  // fresh query to the wrong year and hides valid matches.
   const carYearGrounded =
-    intent.year !== null && lineValueHasCustomerEvidence(String(intent.year), latestText, history);
+    intent.year !== null && lineYearHasCustomerEvidence(intent.year, latestText, history);
+
+  const requiredTokens = extractChatRequiredSearchTokens(latestText);
+
+  // Ground the BRAND and YEAR on EVERY product turn (not only when the text has a
+  // model-code/year anchor). Both slots become HARD fitment filters downstream —
+  // and on LINE they seed the persistent inquiry frame — so a value the classifier
+  // hallucinated, or history-merged from an EARLIER part inquiry, must be dropped
+  // even for a plain Thai query (e.g. "คอยเย็นวีออส"). This is safe because both
+  // have full evidence coverage: the brand check knows Thai↔English variants
+  // (resolveBrandVariants) and the year check knows พ.ศ. + 2-digit shorthand.
+  //
+  // The MODEL is deliberately grounded ONLY when a required-token anchor is
+  // present. Model transliteration ("วีโก้"↔"Vigo") is NOT in the evidence data
+  // (only brands are), so grounding a model on a plain Thai turn would wrongly drop
+  // a model the customer really typed and make the gate re-ask for the car they
+  // already gave. With an anchor present we still enforce it (the original guarded
+  // behavior + forceLiteralQuery below).
+  const groundedIntent: ChatSearchIntent = {
+    ...intent,
+    carBrand: carBrandGrounded ? intent.carBrand : null,
+    carModel: requiredTokens.length === 0 ? intent.carModel : carModelGrounded ? intent.carModel : null,
+    year: carYearGrounded ? intent.year : null,
+  };
+
+  if (requiredTokens.length === 0) {
+    // No model-code/year anchor to enforce a literal query, but the brand/year are
+    // already grounded above so a hallucinated brand/year can't hard-filter here.
+    return { intent: groundedIntent, forceLiteralQuery: false, requiredTokens };
+  }
+
   const queryHasRequiredTokens = lineQueryContainsRequiredTokens(intent.query, requiredTokens);
   const forceLiteralQuery = !queryHasRequiredTokens || !carBrandGrounded || !carModelGrounded;
 
   return {
-    intent: {
-      ...intent,
-      carBrand: carBrandGrounded ? intent.carBrand : null,
-      carModel: carModelGrounded ? intent.carModel : null,
-      year: carYearGrounded ? intent.year : null,
-    },
+    intent: groundedIntent,
     forceLiteralQuery,
     requiredTokens,
   };

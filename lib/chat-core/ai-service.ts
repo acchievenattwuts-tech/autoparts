@@ -3,6 +3,7 @@ import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import type { ChatProductSearchBridgeResult } from "@/lib/chat-core/product-search-bridge";
 import { isChatMessageGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
+import { toGregorianCarYear } from "@/lib/car-year-shorthand";
 
 export type ChatAiSuggestionDraft = {
   suggestedReply: string;
@@ -255,8 +256,13 @@ const cleanIntentString = (value: unknown): string | null => {
 
 const cleanIntentYear = (value: unknown): number | null => {
   const num = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
-  if (!Number.isInteger(num) || num < MIN_SEARCH_YEAR || num > MAX_SEARCH_YEAR) return null;
-  return num;
+  if (!Number.isInteger(num)) return null;
+  // Fold a Buddhist-era year to Gregorian BEFORE validating/returning — the DB
+  // stores Gregorian fitment years, so a พ.ศ. value (e.g. 2560) must search as ค.ศ.
+  // (2017), never as the raw B.E. number (which would match nothing).
+  const gregorian = toGregorianCarYear(num);
+  if (gregorian < MIN_SEARCH_YEAR || gregorian > MAX_SEARCH_YEAR) return null;
+  return gregorian;
 };
 
 /**

@@ -98,6 +98,7 @@ import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   buildChatSearchAskReply,
   buildChatSearchFollowUp,
+  buildDidYouMeanNote,
   decideChatSearchGate,
 } from "@/lib/chat-core/search-gate";
 import {
@@ -918,7 +919,14 @@ async function respondMultiSubject(
   // RETAIL (ทั่วไป/unlinked) → retailPrice; ราคา 0 → "สอบถามราคา"
   const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
     input.lineUserId,
-  ).catch(() => "RETAIL" as const);
+  ).catch(() => "UNKNOWN" as const);
+  if (priceTier === "UNKNOWN") {
+    fireAndForgetAudit(dependencies, {
+      conversationId: input.conversation.id,
+      action: "PRICE_TIER_RESOLVE_FAILED",
+      payload: { lineEventId: input.lineEventId, path: "multi_subject" },
+    });
+  }
 
   // Resolve each subject to a canonical category and keep the FIRST per distinct
   // category (decision 1 = ก: split on category, not car). Subjects whose category
@@ -1346,6 +1354,16 @@ export async function processLineAiReply(
         ? input.text?.trim() || null
         : guardedSearchIntent?.query ?? null;
 
+    // Part-image search hints that are trustworthy enough to feed the query: a LOW
+    // read's guesses are dropped (an image-only LOW turn is blocked from searching;
+    // a LOW photo sent WITH text lets the text drive). Code-like tokens are handled
+    // separately (validated against the catalog) so they stay reliable regardless.
+    const trustedImageSearchHints =
+      input.imageClassification?.kind === "part_image" &&
+      input.imageClassification.confidence !== "LOW"
+        ? input.imageClassification.searchHints
+        : [];
+
     // ── Inquiry frame (conversation slot memory: levels 2 + 3) ────────────────
     // Carry the customer's CURRENT product subject {part, car, year} across turns,
     // merging drip-fed detail and RESETTING the part on a topic shift. The frame
@@ -1364,15 +1382,19 @@ export async function processLineAiReply(
       // context into the next text turn and we never re-ask for detail the photo
       // already contained. The chassis/VIN is deliberately NOT carried — it is
       // not a searchable fitment slot.
-      // Low-confidence OCR must not poison the frame — "ห้ามเดา". Only let the
-      // vision fields seed the running subject when the classifier was at least
-      // MEDIUM-confident; a blurry/uncertain photo is handled by asking instead.
+      // Uncertain OCR must not poison the frame — "ห้ามเดา". The frame becomes a
+      // PERSISTENT hard fitment filter, so only let vision fields seed the running
+      // subject when the classifier was HIGH-confident. A MEDIUM read is still
+      // usable as a SOFT search hint (imageSearchHints below) but never a slot;
+      // a LOW read is handled by asking for confirmation instead.
       const imageFields =
         input.imageClassification?.kind === "part_image" &&
-        input.imageClassification.confidence !== "LOW"
+        input.imageClassification.confidence === "HIGH"
           ? input.imageClassification
           : null;
-      const imageSearchHints = input.imageClassification?.searchHints ?? [];
+      // Search hints from the photo (LOW reads already dropped — see
+      // trustedImageSearchHints above) so a blurry photo can't drift the search.
+      const imageSearchHints = trustedImageSearchHints;
       const imageRequiredTokens = extractChatRequiredSearchTokens(imageSearchHints.join(" "));
       const latestHasVehicleEvidence = Boolean(
         guardedSearchIntent?.carBrand ||
@@ -1562,7 +1584,7 @@ export async function processLineAiReply(
       rawGateDecision.ask === "need_car" &&
       Boolean(
         guardedSearch.requiredTokens.length ||
-          extractChatRequiredSearchTokens((input.imageClassification?.searchHints ?? []).join(" ")).length,
+          extractChatRequiredSearchTokens(trustedImageSearchHints.join(" ")).length,
       )
         ? { action: "search" as const, followUp: null, reason: "specific_latest_turn_without_car" }
         : rawGateDecision;
@@ -1762,7 +1784,7 @@ export async function processLineAiReply(
         : await dependencies.searchChatProductInquiry({
           route,
           text: consolidatedQuery ?? input.text,
-          extractedImageHints: input.imageClassification?.searchHints ?? null,
+          extractedImageHints: trustedImageSearchHints.length > 0 ? trustedImageSearchHints : null,
           contextHints,
           fitmentHints: {
             categoryName: fitmentFilters.categoryName ?? null,
@@ -1865,13 +1887,33 @@ export async function processLineAiReply(
     // gatekeeping on chassis/OEM numbers they usually can't provide.
     const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
       input.lineUserId,
-    ).catch(() => "RETAIL" as const);
+    ).catch(() => "UNKNOWN" as const);
+    if (priceTier === "UNKNOWN") {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "PRICE_TIER_RESOLVE_FAILED",
+        payload: { lineEventId: input.lineEventId, path: "single" },
+      });
+    }
     const products = applyChatPriceTier(
       productSearch.searched && productSearch.result.ids.length > 0
         ? await dependencies.getChatProductSummaries(productSearch.result.ids).catch(() => [])
         : [],
       priceTier,
     );
+
+    // The search matched rows (total > 0) but NONE are showable — every id was
+    // filtered out by getChatProductSummaries (product turned inactive / hidden
+    // from the storefront, or the summary fetch failed). Without this guard the
+    // turn would send a "possible match" reply with an empty card list and notify
+    // nobody (a silent dead-end): total>0 dodges the empty-search escalation, and
+    // products.length===0 dodges the product-reply path. Treat it as a hand-off so
+    // a human picks it up.
+    const matchedButNoneShowable =
+      liveMode &&
+      productSearch.searched &&
+      productSearch.result.total > 0 &&
+      products.length === 0;
 
     // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
     // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
@@ -1974,11 +2016,21 @@ export async function processLineAiReply(
       productSearch.searched &&
       productSearch.result.total === 0;
 
+    // A product turn whose subject is anchored (the frame already has a part type)
+    // but the search found nothing is a genuine "we don't stock this" — NOT a
+    // shipping/how-to-order question. Routing it through the FAQ would let the LLM
+    // answer a policy-style reply and silently close the turn (no admin notified),
+    // so it must skip FAQ and fall through to the escalation / ask path instead.
+    const anchoredProductNoMatch = Boolean(!isNonProductTurn && inquiryFrame?.partType);
     const faqAnswer =
       liveMode &&
       (tryFaqThenAsk ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
-        (productSearch.searched && productSearch.result.total === 0 && !partImageNoMatch && !directNoMatchHandoff))
+        (productSearch.searched &&
+          productSearch.result.total === 0 &&
+          !partImageNoMatch &&
+          !directNoMatchHandoff &&
+          !anchoredProductNoMatch))
         ? await (dependencies.answerFromChatFaq ?? answerFromChatFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
@@ -2015,6 +2067,17 @@ export async function processLineAiReply(
             handoff: false,
             audit: "AI_SEARCH_GATE_ASK",
             auditPayload: { lineEventId: input.lineEventId, ask: gateDecision.ask, reason: gateDecision.reason },
+          }
+        : matchedButNoneShowable
+        ? {
+            message: NO_RESULTS_ESCALATION_MESSAGE,
+            reason: "MATCHED_BUT_NONE_SHOWABLE",
+            handoff: true,
+            audit: "AI_MATCHED_BUT_NONE_SHOWABLE",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              total: productSearch.searched ? productSearch.result.total : 0,
+            },
           }
         : liveMode && partImageNoMatch
         ? {
@@ -2085,8 +2148,10 @@ export async function processLineAiReply(
             audit: "AI_PRICE_HIDDEN_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId },
           }
-        : faqAnswer.answered
-        ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
+        // Escalation MUST win over a FAQ auto-answer: after N empty searches the
+        // customer needs a human, and an LLM FAQ reply (which decides its own
+        // `answered`) could otherwise gloss over it and keep the room AI-owned with
+        // nobody notified.
         : liveMode && shouldEscalateNoResults
           ? {
               message: NO_RESULTS_ESCALATION_MESSAGE,
@@ -2095,6 +2160,8 @@ export async function processLineAiReply(
               audit: "AI_ESCALATE_NO_RESULTS",
               auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
             }
+        : faqAnswer.answered
+          ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
           : liveMode && isPurchaseIntent
           ? {
               message: PURCHASE_HANDOFF_MESSAGE,
@@ -2339,15 +2406,26 @@ export async function processLineAiReply(
     // Price inquiries that we answered with products get a "price → admin" note
     // (the shop sets prices, not the AI); it takes precedence over the year/part
     // nudge so we never stack two follow-up bubbles.
+    // Transparency note for a "did you mean" recovery (the original query found
+    // nothing; these are a best-guess spelling/synonym match with the year filter
+    // dropped). Placed ABOVE the year/part nudge because it already re-asks for the
+    // year when one was dropped — so we never double-ask. Price notes still win
+    // (their hand-off flow is a separate concern).
+    const didYouMeanNote =
+      productSearch.searched && productSearch.didYouMean
+        ? buildDidYouMeanNote(productSearch.didYouMean)
+        : null;
     const followUpBubble =
       !forcedResponse && products.length > 0
         ? hiddenPriceWithProducts
           ? textMessage(PRICE_HIDDEN_HANDOFF_NOTE)
           : regexPriceIntent
             ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
-            : searchFollowUp
-              ? textMessage(buildChatSearchFollowUp(searchFollowUp))
-              : null
+            : didYouMeanNote
+              ? textMessage(didYouMeanNote)
+              : searchFollowUp
+                ? textMessage(buildChatSearchFollowUp(searchFollowUp))
+                : null
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),

@@ -3,6 +3,7 @@ import { generateGeminiContent } from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
 import { parsePaymentSlipOcr, type PaymentSlipOcr } from "@/lib/line-payment-slip-service";
+import { toGregorianCarYear } from "@/lib/car-year-shorthand";
 
 // Vision classify is an interactive (reply-token-bound) call: cap the per-key
 // HTTP wait and the number of keys tried so one slow/hung key can't stack into
@@ -146,7 +147,11 @@ export function parseLineImageClassification(raw: string): LineImageClassificati
     };
     const cleanYear = (value: unknown): number | null => {
       const n = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
-      return Number.isInteger(n) && n >= 1950 && n <= 2100 ? n : null;
+      if (!Number.isInteger(n)) return null;
+      // Fold a Buddhist-era year (พ.ศ. read off a plate/label) to Gregorian — the
+      // catalog stores ค.ศ. fitment years, so search with ค.ศ. never the raw B.E.
+      const gregorian = toGregorianCarYear(n);
+      return gregorian >= 1950 && gregorian <= 2100 ? gregorian : null;
     };
     const partKindRaw = typeof parsed.partKind === "string" ? parsed.partKind.trim().toLowerCase() : "";
     const partKind: LineImagePartKind | null =

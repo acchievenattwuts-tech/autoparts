@@ -6,6 +6,7 @@ import {
   generateScopedConversationalReply,
 } from "@/lib/chat-core/ai-service";
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
+import { buildDidYouMeanNote } from "@/lib/chat-core/search-gate";
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
 import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
@@ -421,30 +422,45 @@ async function replyToMessengerTurn(params: {
         (classification.searchHints ?? []).join(" "),
         mergedText || null,
       ]);
-      const bridgeInput: ChatProductSearchBridgeInput = directImageCode
-        ? { route: partRoute, text: null, extractedPartNumber: directImageCode }
-        : {
-            route: partRoute,
-            text: mergedText || null,
-            extractedPartNumber: classification.partNumber ?? null,
-            extractedImageHints: classification.searchHints,
-            fitmentHints: {
-              categoryName: classification.partType ?? null,
-              carBrandName: classification.carBrand ?? null,
-              carModelName: classification.carModel ?? null,
-              fitmentYear: classification.year ?? null,
-            },
-          };
-      const replied = await replyWithProductSearch({
-        pageAccessToken,
-        conversationId,
-        psid,
-        route: partRoute,
-        bridgeInput,
-        originalText: mergedText || "(ลูกค้าส่งรูปอะไหล่)",
-        history,
-      });
-      if (replied) return;
+      // Confidence gating (parity with LINE, "ห้ามเดา"):
+      //  - HIGH  → the classifier's part/car/year become hard fitment filters.
+      //  - MEDIUM → usable only as SOFT search hints (no hard filter that could
+      //    pin the search to a wrong, uncertain car/part).
+      //  - LOW   → guesses dropped entirely; if there's nothing else to search on
+      //    (no resolved code, no accompanying text) we ask for details below
+      //    rather than search blindly.
+      const conf = classification.confidence;
+      const canSearchImage = Boolean(directImageCode) || conf !== "LOW" || Boolean(mergedText);
+      if (canSearchImage) {
+        const useHardFilters = conf === "HIGH";
+        const useHints = conf !== "LOW";
+        const bridgeInput: ChatProductSearchBridgeInput = directImageCode
+          ? { route: partRoute, text: null, extractedPartNumber: directImageCode }
+          : {
+              route: partRoute,
+              text: mergedText || null,
+              extractedPartNumber: classification.partNumber ?? null,
+              extractedImageHints: useHints ? classification.searchHints : null,
+              fitmentHints: useHardFilters
+                ? {
+                    categoryName: classification.partType ?? null,
+                    carBrandName: classification.carBrand ?? null,
+                    carModelName: classification.carModel ?? null,
+                    fitmentYear: classification.year ?? null,
+                  }
+                : undefined,
+            };
+        const replied = await replyWithProductSearch({
+          pageAccessToken,
+          conversationId,
+          psid,
+          route: partRoute,
+          bridgeInput,
+          originalText: mergedText || "(ลูกค้าส่งรูปอะไหล่)",
+          history,
+        });
+        if (replied) return;
+      }
     }
 
     // Unknown image (or part image with no query) — ask for details.
@@ -784,11 +800,34 @@ async function replyWithProductSearch(params: {
   }
 
   const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
-  const priceTier = await resolveMessengerPriceTier(params.conversationId);
+  // Resolve the price tier; a transient DB failure must NOT silently fall back to
+  // retail pricing (a wholesale/garage customer would see the wrong, higher price).
+  // "UNKNOWN" makes applyChatPriceTier hide every price behind "สอบถามราคา".
+  const priceTier = await resolveMessengerPriceTier(params.conversationId).catch(() => "UNKNOWN" as const);
   const products: ChatMatchedProductSummary[] = applyChatPriceTier(
-    await getChatProductSummaries(ids),
+    await getChatProductSummaries(ids).catch(() => []),
     priceTier,
   );
+
+  // The search matched rows but none are showable (all filtered out by
+  // getChatProductSummaries — product inactive / hidden / fetch failed). Sending a
+  // reply with an empty carousel and no admin notified is a silent dead-end, so
+  // hand off to a human instead.
+  if (productSearch.result.total > 0 && products.length === 0) {
+    await escalateMessengerConversationToAdmin(params.conversationId);
+    safeNotify(
+      notifyMessengerNeedsAdmin({
+        conversationId: params.conversationId,
+        text: params.originalText,
+        messageType: "TEXT",
+      }),
+    );
+    const reply =
+      "จูนเจอรายการที่ใกล้เคียงแต่ยังตรวจสอบรายละเอียดเพิ่มอีกนิดนะคะ 🙏 ขอส่งต่อให้แอดมินช่วยเช็กและติดต่อกลับค่ะ";
+    await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: reply });
+    await persistOutbound(params.conversationId, params.psid, reply, { intent: params.route.intent });
+    return true;
+  }
 
   const suggestion = await generateChatSuggestion({
     intent: params.route.intent,
@@ -821,6 +860,14 @@ async function replyWithProductSearch(params: {
       psid: params.psid,
       elements,
     });
+  }
+  // Transparency note when these results came from a "did you mean" recovery (the
+  // original query found nothing; best-guess spelling/synonym match with the year
+  // filter dropped) so a corrected match never reads as an exact hit.
+  if (products.length > 0 && productSearch.didYouMean) {
+    const note = buildDidYouMeanNote(productSearch.didYouMean);
+    await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: note });
+    await persistOutbound(params.conversationId, params.psid, note, { intent: params.route.intent });
   }
   await persistOutbound(params.conversationId, params.psid, suggestion.suggestedReply, {
     intent: params.route.intent,

@@ -21,9 +21,20 @@ const TWO_DIGIT_CENTURY_SPLIT = 40;
 const MIN_CAR_YEAR = 1960;
 const MAX_CAR_YEAR = 2035;
 
+// Buddhist-era → Gregorian. Customers (and occasionally the LLM/OCR) give a car
+// year in พ.ศ. (พ.ศ. = ค.ศ. + 543), but Product fitment years in the DB are
+// Gregorian (ค.ศ.), so a B.E. year must be folded back before it's used as a
+// search filter. A real ค.ศ. car year never reaches ~2200, while B.E. car years
+// sit ~2493–2643, so anything ≥ 2200 is unambiguously B.E. (Values below 2200 —
+// every plausible ค.ศ. car year — pass through untouched.)
+const BUDDHIST_ERA_OFFSET = 543;
+const BUDDHIST_ERA_MIN = 2200;
+export const toGregorianCarYear = (year: number): number =>
+  year >= BUDDHIST_ERA_MIN ? year - BUDDHIST_ERA_OFFSET : year;
+
 const expandYear = (raw: string): number | null => {
   if (raw.length === 4) {
-    const year = Number(raw);
+    const year = toGregorianCarYear(Number(raw));
     return year >= MIN_CAR_YEAR && year <= MAX_CAR_YEAR ? year : null;
   }
   if (raw.length === 2) {

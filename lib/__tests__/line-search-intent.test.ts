@@ -74,6 +74,16 @@ test("normalizes 'null' strings and out-of-range years to null", async () => {
   assert.equal(intent?.year, null);
 });
 
+test("folds a Buddhist-era year to Gregorian (DB stores ค.ศ.)", async () => {
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  // Customer/LLM gave พ.ศ. 2560 → must search as ค.ศ. 2017.
+  const be = parseChatSearchIntent('{"group":"product","query":"คอยล์เย็น vios","year":2560}');
+  assert.equal(be?.year, 2017);
+  // A normal ค.ศ. year is untouched.
+  const ce = parseChatSearchIntent('{"group":"product","query":"คอยล์เย็น vios","year":2015}');
+  assert.equal(ce?.year, 2015);
+});
+
 test("returns null only when the reply isn't parseable JSON", async () => {
   const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
   assert.equal(parseChatSearchIntent("not json at all"), null);

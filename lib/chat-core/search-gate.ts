@@ -73,6 +73,19 @@ export function buildChatSearchFollowUp(followUp: "ask_year" | "ask_part"): stri
   return "เบื้องต้นจูนเลือกมาให้ดูก่อนนะคะ 😊 ถ้าบอกชนิดอะไหล่ที่ต้องการ (เช่น หม้อน้ำ คอยล์เย็น คอมแอร์) จะช่วยให้จูนเจาะให้ตรงที่สุดค่ะ";
 }
 
+/**
+ * Note shown AFTER the product cards when the results came from a "did you mean"
+ * spelling/synonym recovery — so a corrected (and year-stripped) match never reads
+ * as an exact hit. Transparent about the guess and re-asks for the year when the
+ * customer's year filter was dropped to find these.
+ */
+export function buildDidYouMeanNote(didYouMean: { suggestion: string; droppedYear: boolean }): string {
+  const base = `จูนไม่เจอตรงคำที่พิมพ์พอดี เลยลองค้นจาก "${didYouMean.suggestion}" ให้ก่อนนะคะ 🙏 ถ้าไม่ตรงที่ต้องการ รบกวนพิมพ์ใหม่อีกครั้งได้เลยค่ะ`;
+  return didYouMean.droppedYear
+    ? `${base}\n(รายการนี้ยังไม่ได้กรองตามปีรถนะคะ ถ้าแจ้งปีมา จูนจะช่วยกรองให้ตรงรุ่นยิ่งขึ้นค่ะ 🚗)`
+    : base;
+}
+
 /** Reply used when the gate blocks the search and asks for the missing detail. */
 export function buildChatSearchAskReply(ask: "need_car" | "need_part" | "need_both" | "too_broad"): string {
   switch (ask) {

@@ -59,13 +59,43 @@ test("keeps a year the customer actually typed", () => {
   assert.equal(intent?.year, 2008);
 });
 
-test("does not gate when there are no required tokens (early return preserves intent)", () => {
-  const intentIn = baseIntent({ query: "วาล์วแอร์" });
+test("drops ungrounded brand/year even without a required token", () => {
+  // A plain Thai part word with no numeric anchor: the classifier's brand + year
+  // (Toyota 2008) are pure hallucinations — the customer only typed the part. They
+  // must be dropped so they can't hard-filter the search to the wrong brand/year
+  // (they would otherwise also seed the LINE inquiry frame). The MODEL is left
+  // alone here by design — model transliteration ("วีโก้"↔"Vigo") isn't in the
+  // evidence data, so dropping it on a plain Thai turn would discard a model the
+  // customer really typed.
   const { intent } = guardChatSearchIntent({
-    intent: intentIn,
+    intent: baseIntent({ query: "วาล์วแอร์" }),
     latestText: "วาล์วแอร์",
     history: [],
   });
-  // No model-code/year anchor → guard stays out of the way, year untouched.
-  assert.equal(intent?.year, 2008);
+  assert.equal(intent?.year, null);
+  assert.equal(intent?.carBrand, null);
+  assert.equal(intent?.partType, "วาล์วแอร์"); // part word is untouched
+});
+
+test("keeps a Thai-typed model without a required token (transliteration-safe)", () => {
+  // The customer typed the model in Thai ("วีโก้") but the classifier returns the
+  // Latin "Vigo"; with no numeric anchor the model must be KEPT so the search still
+  // runs on the car — never re-ask for a car the customer already named.
+  const { intent } = guardChatSearchIntent({
+    intent: baseIntent({ query: "คอยเย็นวีโก้", carBrand: null, carModel: "Vigo", year: null }),
+    latestText: "คอยเย็นวีโก้",
+    history: [],
+  });
+  assert.equal(intent?.carModel, "Vigo");
+});
+
+test("grounds the model when a required-token anchor is present", () => {
+  // With a model-code/year anchor in the text ("134"), the model IS grounded — a
+  // model the customer never typed (classifier said Yaris) is dropped.
+  const { intent } = guardChatSearchIntent({
+    intent: baseIntent({ query: "วาล์วแอร์ 134", carBrand: null, carModel: "Yaris", year: null }),
+    latestText: "วาล์ว 134",
+    history: [],
+  });
+  assert.equal(intent?.carModel, null);
 });

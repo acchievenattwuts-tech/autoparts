@@ -90,6 +90,20 @@ test("applyChatPriceTier swaps in retailPrice for RETAIL tier (general/unlinked 
   assert.doesNotMatch(json, /฿1,200|฿350/);
 });
 
+test("applyChatPriceTier hides every price for UNKNOWN tier (resolve failed → สอบถามราคา)", () => {
+  const products = [product({ salePrice: 1200, retailPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const hidden = applyChatPriceTier(products, "UNKNOWN");
+  assert.deepEqual(
+    hidden.map((p) => p.salePrice),
+    [0, 0],
+  );
+  const msg = buildProductFlexMessage({ products: hidden, searchQuery: null, total: 2 });
+  assert.ok(msg);
+  const json = JSON.stringify(msg);
+  assert.match(json, /สอบถามราคา/);
+  assert.doesNotMatch(json, /฿1,500|฿1,200|฿350|฿500/);
+});
+
 test("applyChatPriceTier falls back to 'สอบถามราคา' when retailPrice is unset (0)", () => {
   const products = [product({ salePrice: 1200, retailPrice: 0 })];
   const retail = applyChatPriceTier(products, "RETAIL");

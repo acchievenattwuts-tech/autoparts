@@ -90,6 +90,12 @@ export type ChatProductSearchBridgeResult =
        *  product, so they were dropped from the query instead of zeroing the
        *  search. Non-empty → the OCR was unsure; surfaced for audit. */
       droppedImageCodes: string[];
+      /** Set ONLY when the results came from a "did you mean" spelling/synonym
+       *  recovery (the original query found nothing). The caller must tell the
+       *  customer these are a best-guess correction — and that the year filter was
+       *  dropped — so a corrected/year-stripped match never reads as an exact hit.
+       *  Null on a normal (non-recovered) search. */
+      didYouMean: { suggestion: string; droppedYear: boolean } | null;
     };
 
 export type ChatMatchedProductSummary = {
@@ -134,13 +140,15 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
     }));
 }
 
-/** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier) */
-export type ChatPriceTier = "RETAIL" | "WHOLESALE";
+/** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier)
+ *  - UNKNOWN = resolve ระดับราคาไม่ได้ (เช่น DB สะดุด) → ซ่อนราคา ปลอดภัยกว่าเดาผิด tier */
+export type ChatPriceTier = "RETAIL" | "WHOLESALE" | "UNKNOWN";
 
 /**
  * เลือกราคาแสดงในแชทตามระดับราคาของลูกค้า โดยเขียนทับ salePrice (ฟิลด์ราคาแสดงเดิม):
  * - RETAIL (ลูกค้าทั่วไป / ยังไม่ผูกบัญชี / ประเภทถูกปิด) → Product.retailPrice
  * - WHOLESALE (เช่น อู่ซ่อมรถ) → Product.salePrice (ราคาขายส่ง)
+ * - UNKNOWN (resolve ระดับราคาไม่สำเร็จ) → 0 → แสดง "สอบถามราคา" เสมอ (ห้ามแสดงราคาผิด tier)
  * ราคา = 0 เป็น sentinel เดิมของระบบ → Flex การ์ดและข้อความ AI แสดง "สอบถามราคา" อัตโนมัติ
  */
 export function applyChatPriceTier<T extends { salePrice: number; retailPrice: number }>(
@@ -148,6 +156,9 @@ export function applyChatPriceTier<T extends { salePrice: number; retailPrice: n
   tier: ChatPriceTier,
 ): T[] {
   if (tier === "WHOLESALE") return products;
+  // Price tier could not be resolved (transient DB failure at the call site): hide
+  // every price behind "สอบถามราคา" rather than risk showing a wrong-tier price.
+  if (tier === "UNKNOWN") return products.map((product) => ({ ...product, salePrice: 0 }));
   return products.map((product) => ({ ...product, salePrice: product.retailPrice }));
 }
 
@@ -400,6 +411,13 @@ export async function searchChatProductInquiry(
           needsMoreInfo: false,
           appliedFilters: retryFilters,
           droppedImageCodes,
+          didYouMean: {
+            suggestion: normalizedSuggestion,
+            // The retry always strips the year hard-filter (retryFilters.fitmentYear
+            // = null); flag it when the customer actually supplied one, so the caller
+            // can add a "year not confirmed" note + re-ask for the year.
+            droppedYear: baseFilters.fitmentYear !== null,
+          },
         };
       }
     }
@@ -421,5 +439,6 @@ export async function searchChatProductInquiry(
     needsMoreInfo: result.total === 0 || result.ids.length === 0,
     appliedFilters: baseFilters,
     droppedImageCodes,
+    didYouMean: null,
   };
 }

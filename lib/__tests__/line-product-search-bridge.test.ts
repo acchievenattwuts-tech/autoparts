@@ -374,6 +374,39 @@ test("fitment part head noun anchors the search when no category resolves", asyn
   if (result.searched) assert.equal(result.reason, "SEARCHED_FITMENT_PART_ANCHORED");
 });
 
+test("did-you-mean recovery flags the correction + dropped year (transparency)", async () => {
+  let call = 0;
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอยเย้น avanza",
+      fitmentHints: { carModelName: "Avanza", fitmentYear: 2013 },
+    },
+    async () => {
+      call += 1;
+      // First (original) search finds nothing; the did-you-mean retry hits.
+      return call === 1
+        ? { ids: [], total: 0, mode: "v2", matchReasons: {} }
+        : { ids: ["p1"], total: 2, mode: "v2", matchReasons: {} };
+    },
+    async () => ["คอยเย็น avanza"],
+  );
+
+  assert.equal(result.searched, true);
+  if (result.searched) {
+    assert.deepEqual(result.didYouMean, { suggestion: "คอยเย็น avanza", droppedYear: true });
+  }
+});
+
+test("a normal (non-recovered) search reports no did-you-mean", async () => {
+  const result = await searchChatProductInquiry(
+    { route: searchableRoute, text: "คอมแอร์ vios" },
+    async () => ({ ids: ["p1"], total: 1, mode: "v2", matchReasons: {} }),
+  );
+  assert.equal(result.searched, true);
+  if (result.searched) assert.equal(result.didYouMean, null);
+});
+
 test("fitment part head noun does NOT broaden on empty — returns no-match (no model-only drift)", async () => {
   const calls: Array<string[] | null> = [];
   const result = await searchChatProductInquiry(

@@ -283,6 +283,7 @@ function createProcessorTestDeps(input?: {
           fitmentYear: input.fitmentHints?.fitmentYear ?? null,
         },
         droppedImageCodes: [],
+        didYouMean: null,
       };
     },
     replyLineMessage: async (input) => {
@@ -359,7 +360,19 @@ function createProcessorTestDeps(input?: {
       return 1;
     },
     getRecentLineMessagesForAi: async () => [],
-    getChatProductSummaries: async () => [],
+    // Default: a showable summary for every matched id, so the default search is a
+    // normal successful match (an EMPTY summary list against total>0 now trips the
+    // "matched but none showable" hand-off, which several tests would otherwise hit
+    // unintentionally). Tests that need specific products override this.
+    getChatProductSummaries: async (ids: string[]) =>
+      ids.map((id, index) => ({
+        id,
+        name: `สินค้า ${id}`,
+        code: `P${String(index + 1).padStart(4, "0")}`,
+        imageUrl: null,
+        salePrice: 1000,
+        retailPrice: 1000,
+      })),
     countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
     countPendingPaymentSlipsForConversation: async () => 0,
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
@@ -760,6 +773,11 @@ test("resolved fitment hints are passed as hard filters to search", async () => 
     intentCarModel: "Mazda 2",
     intentPartType: "หม้อน้ำ",
     intentYear: 2015,
+    // Brand carryover in production lives in the persisted inquiry frame (an
+    // earlier "หม้อน้ำ Mazda 2" turn). The follow-up "ปี 15" alone has no brand
+    // evidence, so the per-turn guard drops the classifier's history-merged brand —
+    // the frame is what keeps Mazda. Model with no numeric anchor is left intact.
+    storedFrame: { partType: "หม้อน้ำ", carBrand: "Mazda", carModel: "Mazda 2" },
     // Resolver confirmed these against master data.
     fitmentFilters: { categoryName: "หม้อน้ำ", carBrandName: "Mazda", carModelName: "2" },
   });
@@ -1116,6 +1134,7 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
     needsMoreInfo: true,
     appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
     droppedImageCodes: [],
+    didYouMean: null,
   });
 
   const result = await processLineWebhookPayload(
@@ -1157,6 +1176,31 @@ test("text product no-match with a product subject does not use generic FAQ fall
   assert.equal(calls.notifyHandoffs.length, 1);
 });
 
+test("search matched rows but none are showable → hands off + notifies (no silent dead-end)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยเย็น vios",
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: "Vios",
+    intentPartKind: "fitment",
+    searchTotal: 3, // the search matched rows...
+    searchIds: ["product-hidden"],
+  });
+  // ...but every matched id is filtered out (inactive / hidden / fetch failed).
+  dependencies.getChatProductSummaries = async () => [];
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยเย็น vios"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for a human");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified — never a silent dead-end");
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"));
+});
+
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
@@ -1168,6 +1212,7 @@ test("escalates to admin (waiting + notify + send-off message) after repeated em
     needsMoreInfo: true,
     appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
     droppedImageCodes: [],
+    didYouMean: null,
   });
 
   const result = await processLineWebhookPayload(
@@ -1350,6 +1395,7 @@ test("part image recognized but search empty → acknowledges the part + hands o
     needsMoreInfo: true,
     appliedFilters: { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
     droppedImageCodes: [],
+    didYouMean: null,
   });
 
   const result = await processLineWebhookPayload(

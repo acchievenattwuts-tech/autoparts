@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { decideChatSearchGate, type ChatSearchGateFields } from "@/lib/chat-core/search-gate";
+import { buildDidYouMeanNote, decideChatSearchGate, type ChatSearchGateFields } from "@/lib/chat-core/search-gate";
 
 function fields(overrides: Partial<ChatSearchGateFields>): ChatSearchGateFields {
   return {
@@ -65,4 +65,16 @@ test("universal but too broad bare word → ask", () => {
 test("nothing extracted → too_broad ask", () => {
   const d = decideChatSearchGate(fields({}));
   assert.equal(d.action, "ask");
+});
+
+test("did-you-mean note names the corrected term", () => {
+  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza", droppedYear: false });
+  assert.ok(note.includes("คอยเย็น avanza"));
+  assert.ok(!note.includes("ปีรถ"));
+});
+
+test("did-you-mean note re-asks for the year when the year filter was dropped", () => {
+  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza", droppedYear: true });
+  assert.ok(note.includes("คอยเย็น avanza"));
+  assert.ok(note.includes("ปีรถ"));
 });
