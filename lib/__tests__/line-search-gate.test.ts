@@ -67,6 +67,19 @@ test("nothing extracted → too_broad ask", () => {
   assert.equal(d.action, "ask");
 });
 
+test("broad aircon parts inquiry with truck brands asks for the part category first", () => {
+  const d = decideChatSearchGate(
+    fields({
+      partType: "อะไหล่แอร์",
+      carModel: "สิบล้อ HINO, ISUZU",
+      partKind: "fitment",
+      tooBroad: false,
+    }),
+  );
+
+  assert.deepEqual(d, { action: "ask", ask: "need_part", reason: "BROAD_PART_TYPE" });
+});
+
 test("did-you-mean note names the corrected term", () => {
   const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza", droppedYear: false });
   assert.ok(note.includes("คอยเย็น avanza"));

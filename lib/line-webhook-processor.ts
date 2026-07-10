@@ -99,7 +99,9 @@ import {
   buildChatSearchAskReply,
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
+  CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   decideChatSearchGate,
+  isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
 import {
   boundMessagesToSession,
@@ -1282,6 +1284,8 @@ export async function processLineAiReply(
     // the Layer-1 route and drive them with the flags below. Non-text turns keep
     // their original route untouched.
     const route = isTextTurn ? groupToRoute(group) ?? input.route : input.route;
+    const classifierUncertain =
+      isTextTurn && classifyFailed && route.intent === LineIntent.PRODUCT_INQUIRY_TEXT;
     const tryFaqThenAsk = isTextTurn && (group === "general_faq" || group === "other");
 
     fireAndForgetAudit(dependencies, {
@@ -1514,7 +1518,10 @@ export async function processLineAiReply(
           year: null,
         };
       }
-      await saveFrame({ conversationId: input.conversation.id, ...inquiryFrame }).catch(() => undefined);
+      const broadInquiryFrame = isBroadChatPartType(inquiryFrame.partType);
+      if (!broadInquiryFrame) {
+        await saveFrame({ conversationId: input.conversation.id, ...inquiryFrame }).catch(() => undefined);
+      }
 
       fireAndForgetAudit(dependencies, {
         conversationId: input.conversation.id,
@@ -1531,6 +1538,7 @@ export async function processLineAiReply(
           droppedStalePartOnVehicleSwitch,
           classifierPartType,
           latestHasProductSpecificity,
+          broadInquiryFrame,
         },
       });
     }
@@ -1670,6 +1678,8 @@ export async function processLineAiReply(
       !directProductCode &&
       !gateBlocksSearch &&
       !imageOnlyLowConfidence &&
+      !isBroadChatPartType(inquiryFrame?.partType) &&
+      !isBroadChatPartType(consolidatedQuery ?? processText) &&
       Boolean(consolidatedQuery ?? processText)
     ) {
       const correction = await (dependencies.correctPartSpelling ?? correctPartSpelling)(processText, {
@@ -1757,11 +1767,13 @@ export async function processLineAiReply(
     // overrides a genuinely non-product turn (greeting/payment) — those are already
     // excluded from codeCandidates via hardGuard / payment-slip above.
     const productSearch =
-      isNonProductTurn || (!directProductCode && (gateBlocksSearch || imageOnlyLowConfidence))
+      isNonProductTurn || (!directProductCode && (classifierUncertain || gateBlocksSearch || imageOnlyLowConfidence))
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
             ? "IMAGE_LOW_CONFIDENCE"
+            : classifierUncertain
+              ? "CLASSIFIER_UNCERTAIN"
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
               : "NON_PRODUCT_TURN",
@@ -2053,13 +2065,29 @@ export async function processLineAiReply(
       // guessing ("ห้ามเดา"). Never a hand-off; the AI stays active.
       liveMode && imageOnlyLowConfidence
         ? {
-            message: buildJuneAskDetailsReply(),
-            reason: "IMAGE_LOW_CONFIDENCE_ASK",
-            handoff: false,
-            audit: "AI_IMAGE_LOW_CONFIDENCE_ASK",
+            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+            reason: "IMAGE_LOW_CONFIDENCE_HANDOFF",
+            handoff: true,
+            audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, confidence: "LOW" },
           }
       // Never a hand-off — the AI stays active and waits for the answer.
+      : liveMode && classifierUncertain
+        ? {
+            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+            reason: "CLASSIFIER_UNCERTAIN_HANDOFF",
+            handoff: true,
+            audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, reason: "CLASSIFIER_UNCERTAIN" },
+          }
+      : liveMode && gateBlocksSearch && gateDecision?.reason === "BROAD_PART_TYPE"
+        ? {
+            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+            reason: "BROAD_PART_TYPE_HANDOFF",
+            handoff: true,
+            audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, reason: gateDecision.reason },
+          }
       : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
             message: buildChatSearchAskReply(gateDecision.ask),

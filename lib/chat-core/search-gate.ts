@@ -26,11 +26,32 @@ export type ChatSearchGateDecision =
   | { action: "search"; followUp: "ask_year" | "ask_part" | null; reason: string }
   | { action: "ask"; ask: "need_car" | "need_part" | "need_both" | "too_broad"; reason: string };
 
+export const CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY =
+  "\u0e08\u0e39\u0e19\u0e02\u0e2d\u0e2a\u0e48\u0e07\u0e40\u0e23\u0e37\u0e48\u0e2d\u0e07\u0e43\u0e2b\u0e49\u0e41\u0e2d\u0e14\u0e21\u0e34\u0e19\u0e0a\u0e48\u0e27\u0e22\u0e40\u0e0a\u0e47\u0e01\u0e43\u0e2b\u0e49\u0e25\u0e30\u0e40\u0e2d\u0e35\u0e22\u0e14\u0e01\u0e48\u0e2d\u0e19\u0e19\u0e30\u0e04\u0e30 \uD83D\uDE4F \u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e23\u0e16\u0e1a\u0e23\u0e23\u0e17\u0e38\u0e01\u0e21\u0e35\u0e2b\u0e25\u0e32\u0e22\u0e23\u0e38\u0e48\u0e19\u0e21\u0e32\u0e01 \u0e40\u0e14\u0e35\u0e4b\u0e22\u0e27\u0e23\u0e2d\u0e41\u0e2d\u0e14\u0e21\u0e34\u0e19\u0e15\u0e34\u0e14\u0e15\u0e48\u0e2d\u0e01\u0e25\u0e31\u0e1a\u0e2a\u0e31\u0e01\u0e04\u0e23\u0e39\u0e48\u0e04\u0e48\u0e30 \uD83D\uDE0A";
+
+const BROAD_PART_TYPE_PATTERNS = [
+  /อะไหล่\s*แอ[รร์]/i,
+  /อะไหล่\s*รถ/i,
+  /อะไหล่\s*สิบล้อ/i,
+  /อะไหล่\s*บรรทุก/i,
+  /ระบบ\s*แอ[รร์]/i,
+];
+
+export function isBroadChatPartType(value?: string | null): boolean {
+  const text = value?.trim();
+  if (!text) return false;
+  return BROAD_PART_TYPE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 export function decideChatSearchGate(fields: ChatSearchGateFields): ChatSearchGateDecision {
   const hasPart = Boolean(fields.partType);
   const hasCar = Boolean(fields.carBrand || fields.carModel);
   const hasYear = fields.year !== null && fields.year !== undefined;
   const isUniversal = fields.partKind === "universal";
+
+  if (hasPart && isBroadChatPartType(fields.partType)) {
+    return { action: "ask", ask: "need_part", reason: "BROAD_PART_TYPE" };
+  }
 
   // Universal SKUs are searchable on their own name/spec — but a bare generic
   // word ("น็อต") is still too broad to be useful.

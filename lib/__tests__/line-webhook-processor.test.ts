@@ -1078,7 +1078,7 @@ test("part-image turn near the reply-token deadline still searches (no pre-searc
   assert.equal(calls.replies[0]?.replyToken, "reply-event-img-deadline");
 });
 
-test("lone low-confidence part image asks for details instead of guessing a search", async () => {
+test("lone low-confidence part image hands off instead of guessing a search", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     imageKind: "part_image",
@@ -1103,8 +1103,9 @@ test("lone low-confidence part image asks for details instead of guessing a sear
   // Never guesses — no search runs, and the AI stays active (no admin handoff).
   assert.deepEqual(calls.searches, []);
   assert.equal(calls.replies.length, 1);
-  assert.ok(calls.auditActions.includes("AI_IMAGE_LOW_CONFIDENCE_ASK"));
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.ok(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("search falls back to latest text when AI consolidation declines", async () => {
@@ -1456,6 +1457,61 @@ test("gate: fitment part with no car/year blocks search and asks for the vehicle
   assert.equal(calls.searches.length, 0, "search is gated off until we have a car");
   assert.ok(calls.replies[0]?.text.includes("ยี่ห้อ"), "asks for the vehicle");
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active, room not frozen");
+});
+
+test("broad aircon truck inquiry hands off immediately instead of guessing compressor products", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "อะไหล่แอร์ สิบล้อ HINO ISUZU",
+    intentPartType: "อะไหล่แอร์",
+    intentCarModel: "สิบล้อ HINO, ISUZU",
+    intentPartKind: "fitment",
+  });
+  dependencies.correctPartSpelling = async () => ({
+    original: "แอรื",
+    corrected: "แอร์",
+  });
+  dependencies.resolveChatFitmentFilters = async (filterInput) => ({
+    categoryName: filterInput.partType === "แอร์" ? "คอมแอร์ (Compressor)" : undefined,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีอะไหล่แอรื สิบล้อ HINO ISUZU บ้างไหมค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "must not search broad aircon/truck text");
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"), "June-style admin handoff reply");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "uncertain turn goes straight to admin");
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.deepEqual(calls.savedFrames, [], "broad non-specific frame must not be persisted");
+  assert.ok(!calls.auditActions.includes("CATEGORY_LLM_FALLBACK"), "must not map generic aircon to compressor");
+});
+
+test("broad stored frame plus price/photo follow-up hands off without re-searching", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: {
+      partType: "อะไหล่แอร์",
+      carModel: "สิบล้อ HINO, ISUZU",
+    },
+    nonProductTurn: true,
+    intentGroup: "price_negotiation",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีรูปพร้อมราคาให้ไหมค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "follow-up must not resurrect broad frame into search");
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("gate: fitment part + car (no year) searches and appends the year follow-up bubble", async () => {
