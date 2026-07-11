@@ -2743,6 +2743,7 @@ enum NotificationType {
   MESSENGER_NEW_CONVERSATION
   MESSENGER_PAYMENT_SLIP
   MESSENGER_HANDOFF
+  STOCK_OUT_DAILY
 }
 
 enum NotificationSeverity {

@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
+import { formatDateThai } from "@/lib/th-date";
 
 /**
  * In-app notification service (general-purpose; per-user fan-out rows).
@@ -323,6 +324,58 @@ export async function notifyLineCustomerLinked(input: {
     entityType: "Customer",
     entityId: input.customerId,
     dedupeKey: `line-customer-link:${input.customerId}:${input.kind}`,
+  });
+}
+
+/** Divider matching the shared Telegram header rule. */
+const STOCK_OUT_DIVIDER = "━━━━━━━━━━━━━━━";
+
+export type OutOfStockProduct = {
+  code: string;
+  name: string;
+  categoryName: string;
+};
+
+/**
+ * Builds the daily out-of-stock digest body (design A — grouped by category).
+ * Plain text + emoji only: `sendTelegramMessage` sends without `parse_mode`,
+ * so Telegram would render HTML/Markdown tags literally. Kept separate from the
+ * sender so it can be unit-inspected. Products are assumed pre-sorted by
+ * category then code.
+ */
+export function buildOutOfStockDigestBody(products: OutOfStockProduct[], at: Date): string {
+  const lines: string[] = [
+    `📅 ${formatDateThai(at)} · 18:30 น.`,
+    `รวม ${products.length} รายการ ที่ต้องสั่งเพิ่ม`,
+    STOCK_OUT_DIVIDER,
+  ];
+
+  let currentCategory: string | null = null;
+  for (const product of products) {
+    if (product.categoryName !== currentCategory) {
+      currentCategory = product.categoryName;
+      lines.push(`📂 ${currentCategory}`);
+    }
+    lines.push(` • ${product.code} ${product.name}`);
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Daily digest of ACTIVE products at zero (or negative) stock, so the shop can
+ * reorder. Routes through `createNotification()` → bell + Telegram together
+ * (iron rule §8). Caller must wrap in try/catch. No-op when the list is empty.
+ */
+export async function notifyOutOfStockDaily(products: OutOfStockProduct[], at: Date = new Date()): Promise<number> {
+  if (products.length === 0) return 0;
+
+  return createNotification({
+    type: NotificationType.STOCK_OUT_DAILY,
+    severity: NotificationSeverity.WARNING,
+    title: "สินค้าหมดสต๊อก (Stock = 0)",
+    body: buildOutOfStockDigestBody(products, at),
+    link: "/admin/products?stock=out",
   });
 }
 

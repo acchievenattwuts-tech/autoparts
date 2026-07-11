@@ -25,6 +25,7 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   MESSENGER_NEW_CONVERSATION: "ลูกค้า Messenger ทักครั้งแรก",
   MESSENGER_PAYMENT_SLIP: "สลิปโอนเงินจาก Messenger รอตรวจสอบ",
   MESSENGER_HANDOFF: "ลูกค้า Messenger รอแอดมินตอบ",
+  STOCK_OUT_DAILY: "สินค้าหมดสต๊อก (แจ้งเตือนประจำวัน)",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -95,6 +96,7 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   MESSENGER_NEW_CONVERSATION: "💬",
   MESSENGER_PAYMENT_SLIP: "🧾",
   MESSENGER_HANDOFF: "🙋",
+  STOCK_OUT_DAILY: "🔴",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays
