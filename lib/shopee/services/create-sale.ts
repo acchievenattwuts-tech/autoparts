@@ -1,4 +1,5 @@
 import { db, dbTx } from "@/lib/db";
+import { dispatchOutOfStockAlerts } from "@/lib/notifications";
 import { type AuditLogActor, safeWriteAuditLog } from "@/lib/audit-log";
 import { generateSaleNo } from "@/lib/doc-number";
 import {
@@ -328,6 +329,7 @@ export async function createSaleFromShopeeOrder(params: {
   const shippingMethod = mapShopeeCarrierToShippingMethod(extractShopeeCarrier(orderImport?.rawPayload ?? null));
   const shippingStatus = mapShopeeOrderStatusToShippingStatus(rawOrder?.order_status ?? orderImport?.shopeeStatus, trackingNo);
   let createdSaleId = "";
+  const stockCrossedToZero: string[] = [];
 
   try {
     await dbTx(async (tx) => {
@@ -435,7 +437,7 @@ export async function createSaleFromShopeeOrder(params: {
               priceIn: 0,
               detail: `ขาย Shopee ${line.qty} ${line.unitName}`,
               referenceId: saleItem.id,
-            })
+            }, stockCrossedToZero)
           : null;
 
         const selectedLots = lotSelections[lineKey(line.itemId, line.modelId)] ?? [];
@@ -492,6 +494,11 @@ export async function createSaleFromShopeeOrder(params: {
       entityRef: saleNo,
       meta: { event: "SHOPEE_SALE_CREATE", orderSn: draft.orderSn, channel: "SHOPEE" },
     });
+
+    // Real-time out-of-stock alert — AFTER commit, never blocks the import.
+    await dispatchOutOfStockAlerts(stockCrossedToZero).catch((err) =>
+      console.warn("[shopee] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
+    );
 
     return { ok: true, saleId: createdSaleId, saleNo };
   } catch (error) {

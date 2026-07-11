@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 
 /**
  * In-app notification service (general-purpose; per-user fan-out rows).
@@ -377,6 +377,70 @@ export async function notifyOutOfStockDaily(products: OutOfStockProduct[], at: D
     body: buildOutOfStockDigestBody(products, at),
     link: "/admin/products?stock=out",
   });
+}
+
+export type OutOfStockRealtimeProduct = {
+  id: string;
+  code: string;
+  name: string;
+  categoryName: string;
+};
+
+/**
+ * Real-time alert fired the moment a sale drives an ACTIVE product's stock
+ * across zero (was > 0, now <= 0). One notification per product, routed through
+ * `createNotification()` → bell + Telegram together (iron rule §8).
+ *
+ * MUST be called AFTER the sale transaction commits — never inside `dbTx()` —
+ * because Telegram is a network call. Caller wraps in try/catch so a delivery
+ * failure never affects the committed sale.
+ *
+ * Deduped per product per Thailand day (`stock-out:<productId>:<dateKey>`): the
+ * same product zeroing out repeatedly in one day only alerts once while the
+ * previous alert is still unread.
+ */
+export async function notifyProductOutOfStock(product: OutOfStockRealtimeProduct, at: Date = new Date()): Promise<number> {
+  const body = [
+    `📦 ${product.name} (${product.code})`,
+    `หมวด: ${product.categoryName}`,
+    "คงเหลือ: 0 ชิ้น",
+    `⏰ ${formatDateTimeThai(at)} น. · จากการขาย`,
+  ].join("\n");
+
+  return createNotification({
+    type: NotificationType.STOCK_OUT_REALTIME,
+    severity: NotificationSeverity.WARNING,
+    title: "สินค้าหมดสต๊อก",
+    body,
+    link: `/admin/products/${product.id}`,
+    entityType: "Product",
+    entityId: product.id,
+    dedupeKey: `stock-out:${product.id}:${getThailandDateKey(at)}`,
+  });
+}
+
+/**
+ * Post-commit dispatcher for real-time out-of-stock alerts. Given the productIds
+ * that crossed zero during a just-committed sale, loads the display fields with a
+ * single indexed `IN` query (only the crossed products — usually 0-1) and fires
+ * one deduped alert per still-active product. No-op on an empty list. Safe to
+ * call fire-and-forget; the caller should wrap in try/catch.
+ */
+export async function dispatchOutOfStockAlerts(productIds: string[], at: Date = new Date()): Promise<void> {
+  const uniqueIds = Array.from(new Set(productIds));
+  if (uniqueIds.length === 0) return;
+
+  const products = await db.product.findMany({
+    where: { id: { in: uniqueIds }, isActive: true },
+    select: { id: true, code: true, name: true, category: { select: { name: true } } },
+  });
+
+  for (const product of products) {
+    await notifyProductOutOfStock(
+      { id: product.id, code: product.code, name: product.name, categoryName: product.category.name },
+      at,
+    );
+  }
 }
 
 /**

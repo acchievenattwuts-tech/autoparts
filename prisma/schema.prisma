@@ -2744,6 +2744,7 @@ enum NotificationType {
   MESSENGER_PAYMENT_SLIP
   MESSENGER_HANDOFF
   STOCK_OUT_DAILY
+  STOCK_OUT_REALTIME
 }
 
 enum NotificationSeverity {

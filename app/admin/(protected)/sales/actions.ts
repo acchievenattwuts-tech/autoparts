@@ -12,6 +12,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
+import { dispatchOutOfStockAlerts } from "@/lib/notifications";
 import { generateSaleNo } from "@/lib/doc-number";
 import {
   AuditAction,
@@ -493,6 +494,7 @@ export async function createSale(
   const salePrefix = paymentType === "CREDIT_SALE" ? "SAC" : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
   let createdSaleId = "";
+  const stockCrossedToZero: string[] = [];
 
   try {
     const requestContext = await getRequestContext();
@@ -593,7 +595,7 @@ export async function createSale(
           priceIn:     0,
           detail:      `ขาย ${item.qty} ${item.unitName}`,
           referenceId: saleItem.id,
-        }) : null;
+        }, stockCrossedToZero) : null;
 
         // Lot Control - only if product has isLotControl=true
         if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
@@ -700,6 +702,11 @@ export async function createSale(
         },
       });
     }
+
+    // Real-time out-of-stock alert — AFTER commit, never blocks the sale.
+    await dispatchOutOfStockAlerts(stockCrossedToZero).catch((err) =>
+      console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
+    );
 
     revalidatePath("/admin");
     revalidatePath("/admin/sales");

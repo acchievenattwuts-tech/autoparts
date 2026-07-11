@@ -331,7 +331,16 @@ export async function recalculateStockCardMany(
  */
 export async function writeStockCard(
   tx: TxClient,
-  input: StockCardInput
+  input: StockCardInput,
+  /**
+   * Optional out-parameter: when supplied, the productId is appended if this
+   * write drives stock across zero (was > 0, now <= 0) via an outgoing qty.
+   * Detection is free — it reuses the balances already computed in the append
+   * fast path and never runs on the (rare) backdated recalculation path. The
+   * caller fires the real-time out-of-stock alert AFTER the transaction commits.
+   * Backward compatible: callers that omit it are completely unaffected.
+   */
+  crossedToZero?: string[]
 ): Promise<string> {
   await lockProductForStockMutation(tx, input.productId);
 
@@ -401,6 +410,14 @@ export async function writeStockCard(
       : pIn;
 
     const newBaQty = baQty + qIn - qOut;
+
+    // Zero-crossing detection for the real-time out-of-stock alert. Uses the
+    // balances already in hand (no extra query) and only flags the first
+    // crossing so a product that is already at/below zero never re-flags.
+    if (crossedToZero && qOut > 0 && baQty > 0 && newBaQty <= 0) {
+      crossedToZero.push(input.productId);
+    }
+
     let newBaPrice = 0;
     let newBaTotal = 0;
     let priceOut   = baPrice;
