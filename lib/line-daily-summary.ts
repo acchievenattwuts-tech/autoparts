@@ -4,6 +4,7 @@ import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
 import { queryDailyPaymentRows } from "@/lib/report-queries";
 import { getShopeeReportingSummary } from "@/lib/shopee/services/reporting";
+import { getWorkboardData } from "@/app/admin/(protected)/workboard/workboard-data";
 import {
   addThailandDays,
   formatDateThai,
@@ -46,6 +47,29 @@ type AccountBalanceItem = {
 type BalanceSection = {
   accounts: AccountBalanceItem[];
   totalBalance: number;
+};
+
+// Risk radar — money-at-risk and operational backlog surfaced from the same
+// tested queries the admin Workboard uses (getWorkboardData), so both stay in
+// sync. Rows are ordered by urgency and each carries its own count so compact
+// mode can hide the zero rows.
+type RiskRadarSection = {
+  overdueArCount: number;
+  overdueArAmount: number;
+  outOfStockCount: number;
+  dueApCount: number;
+  dueApAmount: number;
+  codWaitingCount: number;
+  codWaitingAmount: number;
+  expiringLotWithin30: number;
+  cashBankBelowCount: number;
+  pendingAndClaimCount: number;
+};
+
+export type RiskRadarItem = {
+  label: string;
+  value: string;
+  count: number;
 };
 
 type CountSection = {
@@ -91,6 +115,7 @@ export type LineDailySummary = {
   money: MoneySection;
   counts: CountSection;
   balances: BalanceSection;
+  risks: RiskRadarSection;
   message: string;
   messages: LinePushMessage[];
   flexMessage: LineFlexMessage;
@@ -158,6 +183,49 @@ function formatPercent(value: number) {
   })}%`;
 }
 
+// Severity dots (emoji) render identically on the LINE Flex card and the admin
+// preview, so both surfaces show the exact same radar. 🔴 = urgent cash/stock,
+// 🟠 = watch, ⚪ = routine backlog. Rows are already ordered by urgency here.
+export function buildRiskRadarItems(risks: RiskRadarSection): RiskRadarItem[] {
+  return [
+    {
+      label: `🔴 ลูกหนี้เกินกำหนด (${formatCount(risks.overdueArCount)} ราย)`,
+      value: `฿${formatMoney(risks.overdueArAmount)}`,
+      count: risks.overdueArCount,
+    },
+    {
+      label: "🔴 ของหมด (ขาดขาย)",
+      value: `${formatCount(risks.outOfStockCount)} รายการ`,
+      count: risks.outOfStockCount,
+    },
+    {
+      label: `🟠 หนี้ถึงกำหนดจ่ายซัพ (${formatCount(risks.dueApCount)} ราย)`,
+      value: `฿${formatMoney(risks.dueApAmount)}`,
+      count: risks.dueApCount,
+    },
+    {
+      label: `🟠 COD ค้างเก็บเงิน (${formatCount(risks.codWaitingCount)} ราย)`,
+      value: `฿${formatMoney(risks.codWaitingAmount)}`,
+      count: risks.codWaitingCount,
+    },
+    {
+      label: "🟠 lot ใกล้หมดอายุ ≤30 วัน",
+      value: `${formatCount(risks.expiringLotWithin30)} lot`,
+      count: risks.expiringLotWithin30,
+    },
+    {
+      label: "🟠 บัญชีเงินต่ำกว่าเกณฑ์",
+      value: `${formatCount(risks.cashBankBelowCount)} บัญชี`,
+      count: risks.cashBankBelowCount,
+    },
+    {
+      label: "⚪ รอจัดส่ง + เคลมรอผล",
+      value: `${formatCount(risks.pendingAndClaimCount)} รายการ`,
+      count: risks.pendingAndClaimCount,
+    },
+  ];
+}
+
 function shouldKeepSummaryFactItem(item: SummaryFactItem, compactMode: boolean) {
   if (!compactMode) return true;
   if (item.keepWhenZero) return true;
@@ -173,8 +241,9 @@ function renderEmojiLineDailySummaryMessage(summary: {
   money: MoneySection;
   counts: CountSection;
   balances: BalanceSection;
+  risks: RiskRadarSection;
 }) {
-  const { reportDateLabel, money, counts, balances } = summary;
+  const { reportDateLabel, money, balances, risks } = summary;
 
   return [
     `🌈 สรุปงานประจำวันที่ ${reportDateLabel}`,
@@ -208,21 +277,8 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- COD ค้างรับเงิน ${formatMoney(money.codOutstanding)} บาท`,
     `- เจ้าหนี้ค้างจ่าย ${formatMoney(money.apOutstanding)} บาท`,
     "",
-    "🚚 งานจัดส่ง",
-    `- รอจัดส่ง ${formatCount(counts.pendingDelivery)} รายการ`,
-    `- กำลังจัดส่ง ${formatCount(counts.outForDelivery)} รายการ`,
-    `- ส่งสำเร็จวันนี้ ${formatCount(counts.deliveredToday)} รายการ`,
-    "",
-    "📦 สต๊อก",
-    `- ต่ำกว่าขั้นต่ำ ${formatCount(counts.lowStockCount)} รายการ`,
-    `- ของหมด ${formatCount(counts.outOfStockCount)} รายการ`,
-    `- lot ใกล้หมดอายุ ${formatCount(counts.expiringLotCount)} lot`,
-    `- lot หมดอายุค้างสต๊อก ${formatCount(counts.expiredLotCount)} lot`,
-    "",
-    "🛠️ เคลม/เอกสารผิดปกติ",
-    `- เคลมค้างดำเนินการ ${formatCount(counts.openClaimCount)} รายการ`,
-    `- เอกสารถูกยกเลิกวันนี้ ${formatCount(counts.cancelledDocumentCount)} รายการ`,
-    `- ปรับสต๊อกวันนี้ ${formatCount(counts.stockAdjustmentCount)} เอกสาร`,
+    "📡 เรดาร์ความเสี่ยงวันนี้",
+    ...buildRiskRadarItems(risks).map((item) => `- ${item.label} ${item.value}`),
     "",
     "✨ สรุปเพิ่มเติม",
     `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
@@ -940,8 +996,9 @@ function buildLineDailySummaryFlexMessageV3(summary: {
   money: MoneySection;
   counts: CountSection;
   balances: BalanceSection;
+  risks: RiskRadarSection;
 }, options: SummaryRenderOptions = {}): LineFlexMessage {
-  const { reportDateLabel, money, counts, balances } = summary;
+  const { reportDateLabel, money, balances, risks } = summary;
   const compactMode = options.compactMode ?? false;
   const balanceFactItems: SummaryFactItem[] = [
     ...balances.accounts.map((account) => ({
@@ -955,12 +1012,11 @@ function buildLineDailySummaryFlexMessageV3(summary: {
       keepWhenZero: true,
     },
   ];
-  const followUpCount =
-    counts.pendingDelivery +
-    counts.lowStockCount +
-    counts.outOfStockCount +
-    counts.openClaimCount +
-    counts.cancelledDocumentCount;
+  const radarFactItems: SummaryFactItem[] = buildRiskRadarItems(risks).map((item) => ({
+    label: item.label,
+    value: item.value,
+    compactValue: item.count,
+  }));
 
   return {
     type: "flex",
@@ -1044,17 +1100,18 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                     contents: [
                       {
                         type: "text",
-                        text: "รายการต้องติดตาม",
+                        text: "เงินเข้าวันนี้",
                         size: "xs",
                         color: "#DCFCE7",
                       },
                       {
                         type: "text",
-                        text: formatCount(followUpCount),
+                        text: `฿${formatMoney(money.cashInTotal)}`,
                         margin: "sm",
                         size: "lg",
                         color: "#FFFFFF",
                         weight: "bold",
+                        wrap: true,
                       },
                     ],
                   },
@@ -1168,7 +1225,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
             contents: [
               {
                 type: "text",
-                text: "🚚 งานค้างและความเสี่ยง",
+                text: "📡 เรดาร์ความเสี่ยงวันนี้",
                 size: "md",
                 weight: "bold",
                 color: "#0F172A",
@@ -1179,18 +1236,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows(
-                  filterSummaryFactItems(
-                    [
-                      { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ`, compactValue: counts.pendingDelivery },
-                      { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ`, compactValue: counts.outForDelivery },
-                      { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ`, compactValue: counts.lowStockCount },
-                      { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ`, compactValue: counts.outOfStockCount },
-                      { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot`, compactValue: counts.expiringLotCount },
-                      { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ`, compactValue: counts.openClaimCount },
-                      { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ`, compactValue: counts.cancelledDocumentCount },
-                    ],
-                    compactMode
-                  )
+                  filterSummaryFactItems(radarFactItems, compactMode)
                 ),
               },
             ],
@@ -1260,6 +1306,7 @@ export async function buildLineDailySummary(
     cancelledCounts,
     lotCounts,
     balanceAccounts,
+    workboardData,
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
     runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end)),
@@ -1462,6 +1509,12 @@ export async function buildLineDailySummary(
         },
       },
     })),
+    // Reuse the admin Workboard's tested backlog/risk queries (overdue AR with
+    // aging, due AP, COD in transit, expiring lots, cash/bank below threshold,
+    // pending deliveries, supplier claims) so the LINE risk radar and the
+    // Workboard never drift. It computes "as of now", matching the existing
+    // snapshot behaviour of the other risk counts here.
+    runSummaryStep("risks.workboard", () => getWorkboardData()),
   ]);
 
   const money: MoneySection = {
@@ -1515,11 +1568,26 @@ export async function buildLineDailySummary(
     totalBalance: balanceItems.reduce((sum, account) => sum + account.balance, 0),
   };
 
+  const risks: RiskRadarSection = {
+    overdueArCount: workboardData.overdueAr.count,
+    overdueArAmount: workboardData.overdueAr.totalAmountRemain,
+    outOfStockCount: workboardData.lowStock.count,
+    dueApCount: workboardData.dueAp.count,
+    dueApAmount: workboardData.dueAp.totalAmountRemain,
+    codWaitingCount: workboardData.codWaiting.count,
+    codWaitingAmount: workboardData.codWaiting.totalAmountRemain,
+    expiringLotWithin30: workboardData.expiringLots.buckets.withinThirtyDays,
+    cashBankBelowCount: workboardData.cashBankBelow.count,
+    pendingAndClaimCount:
+      workboardData.pendingDeliveries.count + workboardData.supplierClaims.count,
+  };
+
   const message = renderEmojiLineDailySummaryMessage({
     reportDateLabel,
     money,
     counts,
     balances,
+    risks,
   });
   const flexMessage = buildLineDailySummaryFlexMessageV3(
     {
@@ -1527,6 +1595,7 @@ export async function buildLineDailySummary(
       money,
       counts,
       balances,
+      risks,
     },
     options
   );
@@ -1539,6 +1608,7 @@ export async function buildLineDailySummary(
     money,
     counts,
     balances,
+    risks,
     message,
     messages: [flexMessage],
     flexMessage,

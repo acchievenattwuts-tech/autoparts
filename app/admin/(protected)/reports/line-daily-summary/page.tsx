@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { LineRecipientType } from "@/lib/generated/prisma";
 import LineDailySummaryManager from "@/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager";
-import { buildLineDailySummary, resolveBangkokDayKey } from "@/lib/line-daily-summary";
+import { buildLineDailySummary, buildRiskRadarItems, resolveBangkokDayKey } from "@/lib/line-daily-summary";
 import { getLineDailySummaryQStashStatus } from "@/lib/line-daily-summary-qstash";
 import { getLineDailySummarySettings } from "@/lib/line-daily-summary-settings";
 import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
@@ -209,12 +209,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
       linkedUserName: recipient.userLinks?.user.name ?? null,
     }));
-  const followUpCount =
-    summary.counts.pendingDelivery +
-    summary.counts.lowStockCount +
-    summary.counts.outOfStockCount +
-    summary.counts.openClaimCount +
-    summary.counts.cancelledDocumentCount;
   const previewMoneyAndOutstandingItems = [
     keepPreviewItem(settings.compactMode, summary.money.cashInTotal, true)
       ? { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` }
@@ -255,29 +249,9 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       .map((account) => ({ label: account.label, value: `฿${fmtMoney(account.balance)}` })),
     { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}` },
   ];
-  const previewRiskItems = [
-    keepPreviewItem(settings.compactMode, summary.counts.pendingDelivery)
-      ? { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.outForDelivery)
-      ? { label: "กำลังจัดส่ง", value: `${summary.counts.outForDelivery} รายการ` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.lowStockCount)
-      ? { label: "สต๊อกต่ำขั้นต่ำ", value: `${summary.counts.lowStockCount} รายการ` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.outOfStockCount)
-      ? { label: "ของหมด", value: `${summary.counts.outOfStockCount} รายการ` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.expiringLotCount)
-      ? { label: "lot ใกล้หมดอายุ", value: `${summary.counts.expiringLotCount} lot` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.openClaimCount)
-      ? { label: "เคลมค้าง", value: `${summary.counts.openClaimCount} รายการ` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.counts.cancelledDocumentCount)
-      ? { label: "เอกสารถูกยกเลิก", value: `${summary.counts.cancelledDocumentCount} รายการ` }
-      : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
+  const previewRiskItems = buildRiskRadarItems(summary.risks)
+    .filter((item) => keepPreviewItem(settings.compactMode, item.count))
+    .map((item) => ({ label: item.label, value: item.value }));
 
   return (
     <div className="space-y-4">
@@ -426,8 +400,8 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                       </p>
                     </div>
                     <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">รายการต้องติดตาม</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">{followUpCount}</p>
+                      <p className="text-xs text-emerald-100">เงินเข้าวันนี้</p>
+                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.cashInTotal)}</p>
                     </div>
                   </div>
                 </div>
@@ -449,7 +423,7 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                   />
 
                   <FlexPreviewSection
-                    title="🚚 งานค้างและความเสี่ยง"
+                    title="📡 เรดาร์ความเสี่ยงวันนี้"
                     items={previewRiskItems}
                   />
 
