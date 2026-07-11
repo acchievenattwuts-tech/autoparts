@@ -5,7 +5,7 @@
 >
 > **ธงของเจ้าของงาน:** ห้ามส่งคำตอบมั่ว — ถ้าไม่มั่นใจให้ส่งเรื่องต่อแอดมินเท่านั้น
 >
-> สถานะเอกสาร: **แก้ข้อ A + F แล้ว** (2026-07-11) · C, D, E ยังรอทำ (ดู §5)
+> สถานะเอกสาร: **แก้ข้อ A + F + G1/G2 + Fix1/Fix2 + D + Relevance Gate (เคส 🔴1/2/3) แล้ว** (2026-07-11) · C, E ยังรอทำ (ดู §5)
 > วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5) · อัปเดต: 2026-07-11 (Claude Opus 4.8)
 
 ---
@@ -55,6 +55,8 @@
 ---
 
 ## 3. เคสเสี่ยง (เรียงตามความรุนแรง)
+
+> **อัปเดต 2026-07-11:** เคส 🔴1/2/3 **ถูกปิดที่ชั้นแชทแล้ว**ด้วย Relevance Gate (ดู §9 changelog) — engine ยังคืนของหลวม ๆ เหมือนเดิม แต่ processor ไม่โชว์เมื่อ `categoryName=null` และ match ไม่แข็งพอ (ส่งแอดมินแทน). ยังไม่แตะ engine → storefront เดิม.
 
 ### 🔴 1. ไม่มี relevance floor — ตัดแค่ `score > 0`
 - **จุด:** [product-search.ts:1506](../lib/product-search.ts) `WHERE ranked.score > 0`
@@ -118,7 +120,7 @@
 | **F** ✅ | **Model synonym grounding (ทำแล้ว 2026-07-11)**: ground "สตาด้า"↔"Strada" ผ่าน `SearchSynonym` ใน `guardChatSearchIntent` เพื่อไม่ให้รุ่นที่ลูกค้าพิมพ์ไทยถูกทิ้ง | ต้นเหตุ Strada | search-guards + processor | over-ground ต่ำ (lookup เฉพาะรุ่น) |
 | **B** | **categoryName null ต้องมี part-anchor เสมอ**: ขยาย `fitmentPartHeadNoun` ให้ครอบ image-hint/generic; ถ้าไม่มี part ระบุ (gate rule 2) → ไม่ค้น/ถามชนิดก่อน | 2,4,6 | search-gate + processor | **decision ก (โชว์ของรถให้ดูก่อน) หายไป — ต้องถามเจ้าของร้าน** |
 | **C** | จำกัด vector recall เมื่อ categoryName null (ปิด vectorCandidate หรือ require แต้ม lexical ควบ) | 3 | engine (กระทบ storefront — ระวัง) | semantic recall แคบลงตอนไม่มีหมวด |
-| **D** | แจ้ง note เมื่อผลมาจาก OR fallback (`mode`/`reason` บอกได้): "เป็นรายการใกล้เคียง อาจไม่ตรงทั้งหมด" | 2 | bridge + processor | เพิ่มความโปร่งใส ไม่กระทบ logic |
+| **D** ✅ | **OR-fallback near-match note (ทำแล้ว 2026-07-11)**: แจ้ง note "รายการใกล้เคียง อาจไม่ตรงทั้งหมด" เมื่อผลมาจาก broad OR recall | 2 | engine (flag additive) + bridge + processor | เพิ่มความโปร่งใส ไม่กระทบ ranking/logic/storefront |
 | **E** | ลบสมมติฐาน hardcode "ไม่มี thermostat" → ย้ายไป DB CategoryAlias ล้วน + review ลำดับ `PART_TYPE_CATEGORY_ALIASES` | 5 | fitment-resolve | ต้องเช็คว่ามีสินค้า thermostat/วาล์วน้ำ ในระบบหรือยัง |
 
 ### คำแนะนำลำดับ
@@ -132,7 +134,7 @@
 ## 6. คำถามที่ต้องเคลียร์ก่อนลงมือ (blockers)
 
 1. **Gate rule 2** — จะเปลี่ยนจาก "โชว์อะไหล่ของรถให้ดูก่อน" เป็น "ถามชนิดอะไหล่ก่อน" ได้ไหม? (decision ก เคยคอนเฟิร์มไว้ — ต้องเจ้าของร้านยืนยัน) → กระทบข้อ B
-2. **มีสินค้า thermostat / วาล์วน้ำ ในระบบหรือยัง?** ถ้ามี ต้องรีบทำข้อ E (สมมติฐาน hardcode ผิดทันที)
+2. ~~**มีสินค้า thermostat / วาล์วน้ำ ในระบบหรือยัง?**~~ → **เจ้าของยืนยัน 2026-07-11: ยังไม่มี** → ข้อ E ยังไม่เร่งด่วน (hardcode ยังถูกต้องอยู่ตอนนี้ แต่ต้องทำทันทีเมื่อจะเพิ่มสินค้ากลุ่มนี้)
 3. **relevance gate ของข้อ A** — เกณฑ์ "match แข็ง" ควรเข้มแค่ไหน? (เช่น ต้องมี fitment/name-exact เสมอ หรือยอม trigram สูง ๆ ได้)
 
 ---
@@ -180,3 +182,17 @@
   - **Fix 1:** เพิ่มเงื่อนไข `!sessionStale` — session ใหม่ไม่มี part เก่าให้ปกป้อง → เชื่อ partType ที่ classifier แก้มา
   - **Fix 2:** `lineValueHasCustomerTypoEvidence` ([search-guards.ts](../lib/chat-core/search-guards.ts)) — Damerau-OSA distance + sliding window บน glued Thai → typo ของ partType ("คอล์ย"↔"คอยล์") นับเป็น evidence → ไม่ตัด → ปล่อยไป resolve + ค้น + โชว์. hallucination guard เดิม (รถล้วน ไม่มีคำอะไหล่ → ไม่มี literal+typo evidence) ยังทำงาน
   - **ไม่แตะ engine.** Test: `line-search-guards.test.ts` (typo/hallucination), `line-webhook-processor.test.ts` (Fix1 stale keep+search, Fix2 live typo keep, hallucination guard เดิมยังผ่าน)
+- 2026-07-11: **แก้ข้อ D (OR-fallback near-match note)**
+  - **แก้ความเข้าใจผิดในเอกสารเดิม:** สมมติฐานว่า "`mode`/`reason` บอกว่าผลมาจาก OR fallback ได้" **ไม่จริง** — `searchProductIdsV2` คืน `mode:"v2"` เสมอ ([product-search.ts:1619](../lib/product-search.ts)) ไม่ว่า broad OR ([:1581](../lib/product-search.ts)) จะยิงหรือไม่. ส่วน `mode:"fallback"` ([:862](../lib/product-search.ts)) คือ legacy Prisma path คนละเรื่อง → engine เดิม**ไม่มีสัญญาณ**บอก caller ว่า OR fallback ทำงาน
+  - **แก้:** เพิ่ม field additive `usedBroadFallback?: boolean` ใน `ProductSearchResult` — set `true` เฉพาะเมื่อ precise AND = 0 แล้ว broad OR คืนแถวจริง. **ไม่กระทบ ranking/filtering** (แค่ field ใหม่ storefront เพิกเฉยได้) → ปลอดภัยกับหน้าเว็บ
+  - **bridge:** เพิ่ม field เดียวกันใน `ProductSearchOutput` (DI boundary) → `productSearch.result.usedBroadFallback` ถึง processor
+  - **processor:** note ใหม่ `BROAD_FALLBACK_NEAR_MATCH_NOTE` ([search-gate.ts](../lib/chat-core/search-gate.ts), shared) — วางในลำดับ note ใต้ did-you-mean (เจาะจงกว่า) เหนือ search follow-up. ทำทั้ง LINE ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) + Messenger ([messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts)) = parity
+  - Test: `line-product-search-bridge.test.ts` (flag propagate + precise ไม่ flag). `tsc --noEmit` ผ่าน. `line-webhook-processor.test.ts` = 71 pass / 5 fail เท่าเดิม (fail เดิมเป็น env `mock.module` ไม่เกี่ยวกับโค้ด)
+  - **ยังไม่ทำ:** C (จำกัด vector recall — กระทบ storefront), E (ลบ hardcode thermostat — ยืนยันแล้วว่า**ยังไม่มีสินค้า thermostat/วาล์วน้ำ** จึงยังไม่เร่งด่วน)
+- 2026-07-11: **แก้เคส 🔴1 + 🔴2 + 🔴3 พร้อมกันด้วย Chat-layer Relevance Gate** (แก่นของ audit — ปิดที่ต้นทางแทนไล่ปิดกลไก engine ทีละตัว)
+  - **เจ้าของเคาะเกณฑ์:** กฎ ก (แข็ง = code/oem/name/**keyword**/fitment) + ข้อยกเว้น (พิมพ์ part+car ครบ + trigram≥0.5) + สาย accessory (`ANCHORED`→โชว์ / `FALLBACK`→แอดมิน) ; สงสัยส่งแอดมิน ห้ามเดา. ยิง**เฉพาะเทิร์น `categoryName=null`** (categoryName resolve ได้ = hard filter ปลอดภัยเดิม ไม่แตะ)
+  - **หมวด "อะไหล่อื่นๆ"/universal:** ครอบด้วย ก อัตโนมัติ เพราะ ก จับที่**ข้อความของตัวสินค้าเอง** (ชื่อ/คำพ้อง) ไม่ขึ้นกับหมวด → สินค้า universal ที่ร้านมีจริง+ตั้งชื่อ/keyword ตรง จะไม่โดน over-block. `matchPartTypeToCategoryHint` **ถูกตัดออก**จากเงื่อนไข (พึ่ง keyword ใน ก แทน ไม่พึ่งตาราง hardcode ที่ไม่รู้จักอะไหล่อื่นๆ)
+  - **Engine (additive, ไม่แตะ ranking/filter):** เพิ่มคอลัมน์ `match_trigram_high` (`GREATEST(similarity code/oem/name/keyword/search_text) ≥ 0.5`, const `SEARCH_V2_CHAT_TRIGRAM_STRONG`) + คืน field `highTrigramProductIds`. **ไม่แตะ `matchReasons`** (มันคุม chip storefront ที่ [ProductMatchChips.tsx](../components/shared/ProductMatchChips.tsx))
+  - **Processor:** guard `weakCategoryMatchGuard` ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) → ตอบ `CHAT_WEAK_MATCH_HANDOFF_REPLY` + notify + audit `AI_WEAK_CATEGORY_MATCH_HANDOFF`. Messenger parity ใน `replyWithProductSearch` ([messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts)) — ใช้ fitment hints แทน frame (Messenger ไม่มี frame)
+  - **หมายเหตุ (นิยาม "name"):** `match_name` ยิงตั้งแต่ similarity 0.18 → ตามที่เจ้าของเลือก name อยู่ใน ก จึงเป็นเกณฑ์ที่ค่อนข้างผ่อนสำหรับชื่อ. หากอยากเข้มขึ้น (name เฉพาะ exact/prefix, fuzzy ให้ไปเข้า trigram≥0.5) แก้ได้ภายหลัง
+  - **ไม่แตะ ranking/filtering ของ engine** → ไม่กระทบ storefront. Test: `line-product-search-bridge.test.ts` (propagate highTrigram), `line-webhook-processor.test.ts` (weak→handoff, strong name→show). `tsc --noEmit` ผ่าน, ชุด LINE 73 pass/5 fail เท่า baseline (5 fail = env `mock.module`)

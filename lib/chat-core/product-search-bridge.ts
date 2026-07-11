@@ -21,6 +21,14 @@ type ProductSearchOutput = {
   total: number;
   mode: "v2" | "fallback";
   matchReasons?: Record<string, string[]>;
+  /** True when results came from the engine's broad OR recall (precise AND
+   *  matched nothing) — every row matched only PART of the query. Surfaced so
+   *  the chat reply can warn the customer these are near-matches. */
+  usedBroadFallback?: boolean;
+  /** Product ids whose best lexical trigram similarity reached the chat "strong"
+   *  threshold — the relevance gate uses this to allow a category-less near-match
+   *  through when the customer's text is genuinely close. */
+  highTrigramProductIds?: string[];
 };
 type ProductSearchFn = (input: ProductSearchInput) => Promise<ProductSearchOutput>;
 

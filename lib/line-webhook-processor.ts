@@ -99,11 +99,13 @@ import {
 import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
+  BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildChatSearchAskReply,
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
+  CHAT_WEAK_MATCH_HANDOFF_REPLY,
   decideChatSearchGate,
   isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
@@ -2019,6 +2021,45 @@ export async function processLineAiReply(
       !fitmentFilters.carModelName &&
       !fitmentFilters.carBrandName;
 
+    // Relevance gate — the search resolved NO category (categoryName=null), so no
+    // hard filter kept results on-topic. Decide whether the rows are trustworthy
+    // enough to show, or whether we hand off ("ไม่มั่นใจอย่าตอบมั่ว"). Three lanes:
+    //   1. Accessory/universal intent (junk-drawer "อะไหล่อื่นๆ"): the bridge's
+    //      head-noun anchor already tells us if the results stayed on the head noun
+    //      (ANCHORED → show) or drifted after dropping it (FALLBACK → hand off).
+    //   2. Fitment part: show when ANY shown row matched strongly on the product's
+    //      own text — code/oem/name/keyword/fitment — regardless of category, which
+    //      covers real "อะไหล่อื่นๆ" items the shop actually stocks.
+    //   3. Exception: the customer gave BOTH a part word and a car, and a shown row
+    //      is a genuinely-close trigram near-match (>= strong threshold) — allow it.
+    // Anything else with a category-less result set is too weak to show → hand off.
+    const STRONG_MATCH_REASONS = new Set(["code", "oem", "name", "keyword", "fitment"]);
+    const categoryUnresolved = !fitmentFilters.categoryName;
+    const shownMatchReasons = productSearch.searched
+      ? products.map((p) => productSearch.result.matchReasons?.[p.id] ?? [])
+      : [];
+    const hasStrongShownMatch = shownMatchReasons.some((reasons) =>
+      reasons.some((r) => STRONG_MATCH_REASONS.has(r)),
+    );
+    const highTrigramIds = new Set(
+      productSearch.searched ? productSearch.result.highTrigramProductIds ?? [] : [],
+    );
+    const partAndCarProvided = Boolean(
+      inquiryFrame?.partType && (inquiryFrame?.carBrand || inquiryFrame?.carModel),
+    );
+    const hasCloseTrigramShown = products.some((p) => highTrigramIds.has(p.id));
+    const trigramExceptionShow = partAndCarProvided && hasCloseTrigramShown;
+    const isAccessoryAnchored = productSearch.reason === "SEARCHED_ACCESSORY_HEAD_ANCHORED";
+    const isAccessoryFallback = productSearch.reason === "SEARCHED_ACCESSORY_HEAD_FALLBACK";
+    const weakCategoryMatchGuard =
+      liveMode &&
+      productSearch.searched &&
+      products.length > 0 &&
+      categoryUnresolved &&
+      !vehicleUnresolvedGuard &&
+      !isAccessoryAnchored &&
+      (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
+
     // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
     // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
     // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
@@ -2211,6 +2252,22 @@ export async function processLineAiReply(
             auditPayload: {
               lineEventId: input.lineEventId,
               carModel: guardedSearchIntent?.carModel ?? null,
+              total: productSearch.searched ? productSearch.result.total : 0,
+            },
+          }
+        // Relevance gate — category-less results too weakly linked to the query
+        // (no strong match, no close trigram near-match, or an accessory search
+        // that drifted off its head noun). Hand off instead of showing wrong parts.
+        : weakCategoryMatchGuard
+        ? {
+            message: CHAT_WEAK_MATCH_HANDOFF_REPLY,
+            reason: "WEAK_CATEGORY_MATCH_HANDOFF",
+            handoff: true,
+            audit: "AI_WEAK_CATEGORY_MATCH_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              searchReason: productSearch.searched ? productSearch.reason : null,
+              accessoryFallback: isAccessoryFallback ? "yes" : "no",
               total: productSearch.searched ? productSearch.result.total : 0,
             },
           }
@@ -2550,6 +2607,12 @@ export async function processLineAiReply(
       productSearch.searched && productSearch.didYouMean
         ? buildDidYouMeanNote(productSearch.didYouMean)
         : null;
+    // Transparency note (audit item D): results came from the engine's broad OR
+    // recall — every row matched only PART of the query (right car / wrong part,
+    // or right part / wrong car). Tell the customer these are near-matches so a
+    // half-match never reads as an exact hit. didYouMean already carries its own
+    // note (a more specific recovery), so it wins when both apply.
+    const usedBroadFallback = productSearch.searched && productSearch.result.usedBroadFallback === true;
     const followUpBubble =
       !forcedResponse && products.length > 0
         ? hiddenPriceWithProducts
@@ -2558,9 +2621,11 @@ export async function processLineAiReply(
             ? textMessage(PRICE_INQUIRY_DEFER_NOTE)
             : didYouMeanNote
               ? textMessage(didYouMeanNote)
-              : searchFollowUp
-                ? textMessage(buildChatSearchFollowUp(searchFollowUp))
-                : null
+              : usedBroadFallback
+                ? textMessage(BROAD_FALLBACK_NEAR_MATCH_NOTE)
+                : searchFollowUp
+                  ? textMessage(buildChatSearchFollowUp(searchFollowUp))
+                  : null
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),

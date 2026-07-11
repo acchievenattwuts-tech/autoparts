@@ -7,9 +7,11 @@ import {
 } from "@/lib/chat-core/ai-service";
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
 import {
+  BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildDidYouMeanNote,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
+  CHAT_WEAK_MATCH_HANDOFF_REPLY,
   decideChatSearchGate,
   isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
@@ -937,6 +939,51 @@ async function replyWithProductSearch(params: {
     return true;
   }
 
+  // Relevance gate (parity with LINE) — the search resolved NO category
+  // (categoryName=null), so nothing kept results on-topic. Hand off instead of
+  // showing weakly-linked rows. Lanes: accessory head-noun ANCHORED → show /
+  // FALLBACK → hand off; otherwise a strong own-text match (code/oem/name/keyword/
+  // fitment) → show; else a part+car turn with a close trigram near-match → show;
+  // anything else → hand off. Messenger has no inquiry-frame, so part/car come from
+  // the resolved fitment hints.
+  const STRONG_MATCH_REASONS = new Set(["code", "oem", "name", "keyword", "fitment"]);
+  const categoryUnresolved = !params.bridgeInput.fitmentHints?.categoryName;
+  if (products.length > 0 && categoryUnresolved) {
+    const hasStrongShownMatch = products.some((p) =>
+      (productSearch.result.matchReasons?.[p.id] ?? []).some((r) => STRONG_MATCH_REASONS.has(r)),
+    );
+    const highTrigramIds = new Set(productSearch.result.highTrigramProductIds ?? []);
+    const partAndCarProvided = Boolean(
+      params.bridgeInput.fitmentPartHeadNoun &&
+        (params.bridgeInput.fitmentHints?.carBrandName || params.bridgeInput.fitmentHints?.carModelName),
+    );
+    const hasCloseTrigramShown = products.some((p) => highTrigramIds.has(p.id));
+    const trigramExceptionShow = partAndCarProvided && hasCloseTrigramShown;
+    const isAccessoryAnchored = productSearch.reason === "SEARCHED_ACCESSORY_HEAD_ANCHORED";
+    const isAccessoryFallback = productSearch.reason === "SEARCHED_ACCESSORY_HEAD_FALLBACK";
+    const weakCategoryMatchGuard =
+      !isAccessoryAnchored && (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
+    if (weakCategoryMatchGuard) {
+      await escalateMessengerConversationToAdmin(params.conversationId);
+      safeNotify(
+        notifyMessengerNeedsAdmin({
+          conversationId: params.conversationId,
+          text: params.originalText,
+          messageType: "TEXT",
+        }),
+      );
+      await sendMessengerText({
+        pageAccessToken: params.pageAccessToken,
+        psid: params.psid,
+        text: CHAT_WEAK_MATCH_HANDOFF_REPLY,
+      });
+      await persistOutbound(params.conversationId, params.psid, CHAT_WEAK_MATCH_HANDOFF_REPLY, {
+        intent: params.route.intent,
+      });
+      return true;
+    }
+  }
+
   const suggestion = await generateChatSuggestion({
     intent: params.route.intent,
     originalText: params.originalText,
@@ -974,6 +1021,13 @@ async function replyWithProductSearch(params: {
   // filter dropped) so a corrected match never reads as an exact hit.
   if (products.length > 0 && productSearch.didYouMean) {
     const note = buildDidYouMeanNote(productSearch.didYouMean);
+    await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: note });
+    await persistOutbound(params.conversationId, params.psid, note, { intent: params.route.intent });
+  } else if (products.length > 0 && productSearch.result.usedBroadFallback === true) {
+    // Audit item D (parity with LINE): results came from the engine's broad OR
+    // recall — every row matched only PART of the query — so warn the customer
+    // they are near-matches, not exact hits. didYouMean (more specific) wins.
+    const note = BROAD_FALLBACK_NEAR_MATCH_NOTE;
     await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: note });
     await persistOutbound(params.conversationId, params.psid, note, { intent: params.route.intent });
   }

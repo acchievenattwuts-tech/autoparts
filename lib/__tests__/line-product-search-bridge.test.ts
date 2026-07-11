@@ -47,6 +47,61 @@ test("searchable product inquiry calls existing search contract", async () => {
   ]);
 });
 
+test("broad OR-fallback flag is propagated to the caller (audit item D)", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอมแอร์ vios 2012",
+      take: 3,
+    },
+    async () => ({
+      ids: ["p1"],
+      total: 1,
+      mode: "v2",
+      matchReasons: { p1: ["fitment"] },
+      usedBroadFallback: true,
+    }),
+  );
+
+  assert.equal(result.searched, true);
+  // The caller relies on result.usedBroadFallback to add the "near-match" note.
+  assert.equal(result.searched && result.result.usedBroadFallback, true);
+});
+
+test("a precise (non-fallback) search does not flag a broad fallback", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอมแอร์ vios 2012",
+      take: 3,
+    },
+    async () => ({ ids: ["p1"], total: 1, mode: "v2", matchReasons: { p1: ["name"] } }),
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(result.searched && result.result.usedBroadFallback === true, false);
+});
+
+test("high-trigram product ids are propagated to the caller (relevance gate)", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอมแอร์ vios 2012",
+      take: 3,
+    },
+    async () => ({
+      ids: ["p1", "p2"],
+      total: 2,
+      mode: "v2",
+      matchReasons: { p1: ["keyword"], p2: [] },
+      highTrigramProductIds: ["p2"],
+    }),
+  );
+
+  assert.equal(result.searched, true);
+  assert.deepEqual(result.searched ? result.result.highTrigramProductIds : null, ["p2"]);
+});
+
 test("non-searchable intents do not call search", async () => {
   const result = await searchChatProductInquiry(
     {

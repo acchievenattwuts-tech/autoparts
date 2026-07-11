@@ -64,6 +64,13 @@ const SEARCH_V2_CODE_SIMILARITY = 0.2;
 const SEARCH_V2_NAME_SIMILARITY = 0.18;
 const SEARCH_V2_TEXT_SIMILARITY = 0.12;
 const SEARCH_V2_OEM_SIMILARITY = 0.2;
+// Chat relevance-gate threshold: a row's BEST lexical trigram similarity must
+// reach this before the chat layer treats a category-less (categoryName=null)
+// near-match as "confident enough to show without a human". Well above the
+// candidate-admission floor (0.12) and the fuzzy-name floor (0.18) so only
+// genuinely-close text passes. Exposed per-row as `match_trigram_high`; used
+// ONLY by the chat gate — storefront ranking/filtering is unaffected.
+const SEARCH_V2_CHAT_TRIGRAM_STRONG = 0.5;
 
 // Candidate-selection trigram threshold for the `%` operator. Set to the SMALLEST
 // of the four per-column similarity floors above so the GIN-indexed `%` probe is
@@ -292,6 +299,17 @@ type ProductSearchResult = {
   mode: "v2" | "fallback";
   /** productId -> match reasons (Phase Q5). Empty map if no query. */
   matchReasons?: Record<string, ProductMatchReason[]>;
+  /** True ONLY when the precise AND query matched nothing and the broad OR
+   *  recall fallback (buildTsQuery(fallbackExpression)) produced these rows —
+   *  i.e. every row matched only PART of a multi-concept query. Purely
+   *  informational: callers may warn the customer these are near-matches. Does
+   *  not affect ranking/filtering, so storefront callers can safely ignore it. */
+  usedBroadFallback?: boolean;
+  /** Product ids (within this returned page) whose best lexical trigram
+   *  similarity reached SEARCH_V2_CHAT_TRIGRAM_STRONG. Chat relevance-gate signal
+   *  only — lets the chat layer allow a category-less near-match through when the
+   *  text is genuinely close. Storefront callers can ignore it. */
+  highTrigramProductIds?: string[];
 };
 
 type RankedSearchRow = {
@@ -303,6 +321,9 @@ type RankedSearchRow = {
   match_keyword?: boolean | null;
   match_fitment?: boolean | null;
   match_year?: boolean | null;
+  /** Best lexical trigram similarity across code/oem/name/keyword/search_text
+   *  reached SEARCH_V2_CHAT_TRIGRAM_STRONG. Chat-gate signal only. */
+  match_trigram_high?: boolean | null;
 };
 
 type ExactSearchRow = {
@@ -1438,6 +1459,17 @@ async function searchProductIdsV2(
           OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_keyword,
         (f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_fitment,
         (${yearBoostExpr} > 0) AS match_year,
+        -- Chat-gate signal (Phase: relevance gate): best lexical trigram across
+        -- the searchable text columns ≥ strong threshold. Same similarity() calls
+        -- as the score's trigram block below — this only thresholds them into a
+        -- boolean and does not alter ranking.
+        (GREATEST(
+          similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))),
+          similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))),
+          similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))),
+          similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))),
+          similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery})))
+        ) >= ${SEARCH_V2_CHAT_TRIGRAM_STRONG}) AS match_trigram_high,
         (
           -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
           CASE WHEN f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery})) THEN 1500 ELSE 0 END +
@@ -1501,6 +1533,7 @@ async function searchProductIdsV2(
       ranked.match_keyword,
       ranked.match_fitment,
       ranked.match_year,
+      ranked.match_trigram_high,
       COUNT(*) OVER() AS total_count
     FROM ranked
     WHERE ranked.score > 0
@@ -1578,6 +1611,7 @@ async function searchProductIdsV2(
     });
 
   let rows = primaryRows;
+  let usedBroadFallback = false;
   if (rows.length === 0 && hasMultipleConcepts && !input.disableBroadFallback) {
     // Rare path (precise AND matched nothing): reuse the already-recalled vector
     // matches and run the broad OR query in its own short transaction.
@@ -1586,6 +1620,9 @@ async function searchProductIdsV2(
       buildVectorFragments(vectorMatches),
       runRankedRaw,
     );
+    // Flag only when the OR fallback actually returned something — an empty
+    // fallback is indistinguishable (to the customer) from a plain no-match.
+    usedBroadFallback = rows.length > 0;
   }
 
   // `total` comes from COUNT(*) OVER() on the returned rows. A deep OFFSET can
@@ -1618,6 +1655,8 @@ async function searchProductIdsV2(
     total,
     mode: "v2",
     matchReasons: buildMatchReasons(rows),
+    usedBroadFallback,
+    highTrigramProductIds: buildHighTrigramIds(rows),
   };
 }
 
@@ -1699,6 +1738,9 @@ const buildMatchReasons = (rows: RankedSearchRow[]): Record<string, ProductMatch
   }
   return map;
 };
+
+const buildHighTrigramIds = (rows: RankedSearchRow[]): string[] =>
+  rows.filter((row) => row.match_trigram_high).map((row) => row.product_id);
 
 export async function searchProductIds(
   input: ProductSearchInput,

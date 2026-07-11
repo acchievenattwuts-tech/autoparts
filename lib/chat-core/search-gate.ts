@@ -38,6 +38,16 @@ export const CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY =
 export const CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY =
   "\u0e23\u0e1a\u0e01\u0e27\u0e19\u0e25\u0e39\u0e01\u0e04\u0e49\u0e32\u0e22\u0e37\u0e19\u0e22\u0e31\u0e19\u0e22\u0e35\u0e48\u0e2b\u0e49\u0e2d/\u0e23\u0e38\u0e48\u0e19\u0e23\u0e16\u0e2d\u0e35\u0e01\u0e04\u0e23\u0e31\u0e49\u0e07\u0e19\u0e30\u0e04\u0e30 \u0e40\u0e1e\u0e37\u0e48\u0e2d\u0e43\u0e2b\u0e49\u0e08\u0e39\u0e19\u0e40\u0e0a\u0e47\u0e04\u0e2d\u0e30\u0e44\u0e2b\u0e25\u0e48\u0e43\u0e2b\u0e49\u0e15\u0e23\u0e07\u0e23\u0e38\u0e48\u0e19\u0e23\u0e16\u0e17\u0e35\u0e48\u0e2a\u0e38\u0e14 \uD83D\uDE4F \u0e40\u0e14\u0e35\u0e4b\u0e22\u0e27\u0e08\u0e39\u0e19\u0e2a\u0e48\u0e07\u0e43\u0e2b\u0e49\u0e41\u0e2d\u0e14\u0e21\u0e34\u0e19\u0e0a\u0e48\u0e27\u0e22\u0e14\u0e39\u0e43\u0e2b\u0e49\u0e2d\u0e35\u0e01\u0e41\u0e23\u0e07\u0e19\u0e30\u0e04\u0e30 \uD83D\uDE0A";
 
+/**
+ * Sent when the search resolved NO category (categoryName=null) and the returned
+ * rows are only weakly linked to what the customer asked (no strong code/OEM/
+ * name/keyword/fitment match, and not a close-enough trigram near-match) — so
+ * showing them risks presenting the wrong item as if it fits. จูน hands off to an
+ * admin instead of guessing — the "ไม่มั่นใจอย่าตอบมั่ว ส่งแอดมิน" rule.
+ */
+export const CHAT_WEAK_MATCH_HANDOFF_REPLY =
+  "ขออนุญาตส่งเรื่องให้แอดมินช่วยเช็กให้แน่ใจก่อนนะคะ 🙏 อยากให้ได้อะไหล่ที่ตรงกับที่ต้องการจริง ๆ เดี๋ยวรอแอดมินติดต่อกลับสักครู่ค่ะ 😊";
+
 const BROAD_PART_TYPE_PATTERNS = [
   /อะไหล่\s*แอ[รร์]/i,
   /อะไหล่\s*รถ/i,
@@ -115,6 +125,16 @@ export function buildDidYouMeanNote(didYouMean: { suggestion: string; droppedYea
     ? `${base}\n(รายการนี้ยังไม่ได้กรองตามปีรถนะคะ ถ้าแจ้งปีมา จูนจะช่วยกรองให้ตรงรุ่นยิ่งขึ้นค่ะ 🚗)`
     : base;
 }
+
+/**
+ * Note shown AFTER the product cards when results came from the engine's broad
+ * OR recall (the precise AND query matched nothing, so every row matched only
+ * PART of the query — the right car but a different part, or the right part on a
+ * different car). Keeps the shop's "ไม่มั่นใจอย่าตอบมั่ว" flag honest by telling
+ * the customer these are near-matches, not exact hits, and inviting a re-check.
+ */
+export const BROAD_FALLBACK_NEAR_MATCH_NOTE =
+  'รายการนี้เป็นรายการ "ใกล้เคียง" ที่จูนหาให้ อาจไม่ตรงทั้งหมดนะคะ 🙏 ถ้ายังไม่ตรงที่ต้องการ รบกวนแจ้งรายละเอียดเพิ่ม (รุ่นรถ/ปี/ชนิดอะไหล่) หรือพิมพ์ใหม่อีกครั้ง จูนจะช่วยหาให้ตรงยิ่งขึ้นค่ะ';
 
 /** Reply used when the gate blocks the search and asks for the missing detail. */
 export function buildChatSearchAskReply(ask: "need_car" | "need_part" | "need_both" | "too_broad"): string {

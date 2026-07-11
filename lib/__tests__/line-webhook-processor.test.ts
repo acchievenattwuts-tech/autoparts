@@ -127,6 +127,13 @@ function createProcessorTestDeps(input?: {
   failedSearchCount?: number;
   searchTotal?: number;
   searchIds?: string[];
+  /** Per-id match reasons the stubbed engine returns (relevance-gate signal).
+   *  Defaults to a strong "name" match for every id so normal cases show cards. */
+  searchMatchReasons?: Record<string, string[]>;
+  /** Ids the stubbed engine flags as a close (>= strong) trigram near-match. */
+  searchHighTrigramIds?: string[];
+  /** Override the stubbed search reason (e.g. SEARCHED_ACCESSORY_HEAD_FALLBACK). */
+  searchReason?: string;
   purchaseIntent?: boolean;
   faqReply?: string;
   lastCustomerMessageAt?: Date | null;
@@ -188,6 +195,11 @@ function createProcessorTestDeps(input?: {
   const duplicateEventIds = new Set(input?.duplicateEventIds ?? []);
   const configuredSearchIds = input?.searchIds ?? ["product-1"];
   const configuredSearchTotal = input?.searchTotal ?? configuredSearchIds.length;
+  // Capture these BEFORE the search stub — its own `input` param shadows this
+  // config `input`, so they must be read from the outer scope here.
+  const configuredMatchReasons = input?.searchMatchReasons;
+  const configuredHighTrigramIds = input?.searchHighTrigramIds ?? [];
+  const configuredSearchReason = input?.searchReason;
 
   const dependencies: LineWebhookProcessorDependencies = {
     hasProcessedLineEvent: async (lineEventId) =>
@@ -265,9 +277,16 @@ function createProcessorTestDeps(input?: {
       // Mirror the real bridge: a specific fitment part that anchored to zero
       // matches surfaces the SEARCHED_FITMENT_PART_NO_MATCH reason.
       const stubReason =
-        input.fitmentPartHeadNoun && configuredSearchTotal === 0
+        configuredSearchReason ??
+        (input.fitmentPartHeadNoun && configuredSearchTotal === 0
           ? "SEARCHED_FITMENT_PART_NO_MATCH"
-          : "SEARCHED_PRODUCT_INQUIRY";
+          : "SEARCHED_PRODUCT_INQUIRY");
+      // Mirror the real engine, which always returns per-id match reasons. Default
+      // to a strong "name" match so ordinary cases show cards; weak-match tests
+      // override with empty reasons to exercise the category-less relevance gate.
+      const stubMatchReasons =
+        configuredMatchReasons ??
+        Object.fromEntries(configuredSearchIds.map((id) => [id, ["name"]]));
       return {
         searched: true,
         reason: stubReason,
@@ -276,6 +295,8 @@ function createProcessorTestDeps(input?: {
           ids: configuredSearchIds,
           total: configuredSearchTotal,
           mode: "v2",
+          matchReasons: stubMatchReasons,
+          highTrigramProductIds: configuredHighTrigramIds,
         },
         needsMoreInfo: configuredSearchTotal === 0 || configuredSearchIds.length === 0,
         appliedFilters: {
@@ -1713,6 +1734,68 @@ test("customer names a car we can't resolve → confirms vehicle + hands off, no
   assert.ok(!calls.replies[0]?.text.includes("D-Max"), "does not present another vehicle's part");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
+});
+
+test("relevance gate: category-less + weak match (no strong reason, no close trigram) → hands off", async () => {
+  // Customer gave part + car, the car RESOLVED (so the vehicle guard stays quiet),
+  // but the part word never mapped to a category (categoryName=null) and the
+  // returned row matched only weakly (empty reasons, not a close trigram). Showing
+  // it would risk the wrong item → hand off instead ("ไม่มั่นใจอย่าตอบมั่ว").
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "เทอร์โมสตัท vios",
+    intentPartType: "เทอร์โมสตัท",
+    intentCarModel: "Vios",
+    intentCarBrand: "Toyota",
+    // Car resolves to a hard filter, category does NOT.
+    fitmentFilters: { carBrandName: "Toyota", carModelName: "Vios" },
+    searchMatchReasons: { "product-1": [] },
+    searchHighTrigramIds: [],
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "สวิตช์ความร้อนหม้อน้ำ", code: "T9001", imageUrl: null, salePrice: 250, retailPrice: 250 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("เทอร์โมสตัท vios"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.auditActions.includes("AI_WEAK_CATEGORY_MATCH_HANDOFF"), "weak-match guard fires");
+  assert.ok(!calls.replies[0]?.text.includes("สวิตช์ความร้อน"), "does not show the weakly-matched part");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
+});
+
+test("relevance gate: category-less but a strong name match still shows cards", async () => {
+  // Same category-less situation, but the returned row matches strongly on the
+  // product's OWN name → it's trustworthy regardless of category (covers real
+  // "อะไหล่อื่นๆ" items the shop actually stocks). Must show, not hand off.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "เทอร์โมสตัท vios",
+    intentPartType: "เทอร์โมสตัท",
+    intentCarModel: "Vios",
+    intentCarBrand: "Toyota",
+    fitmentFilters: { carBrandName: "Toyota", carModelName: "Vios" },
+    searchMatchReasons: { "product-1": ["name"] },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "เทอร์โมสตัท Toyota Vios", code: "T9002", imageUrl: null, salePrice: 320, retailPrice: 320 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("เทอร์โมสตัท vios"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(!calls.auditActions.includes("AI_WEAK_CATEGORY_MATCH_HANDOFF"), "weak-match guard does NOT fire");
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active (not handed off)");
+  assert.equal(calls.notifyHandoffs.length, 0, "no admin hand-off notification");
 });
 
 test("specific part with no category that anchors to zero hands off (even without a car)", async () => {
