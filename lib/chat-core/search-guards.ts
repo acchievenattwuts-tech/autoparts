@@ -50,6 +50,69 @@ export function lineValueHasCustomerEvidence(
   );
 }
 
+/**
+ * Optimal String Alignment (Damerau-Levenshtein with adjacent transpositions)
+ * distance. Common Thai typos are a single edit or an adjacent character swap
+ * ("คอล์ย" for "คอยล์"), so a transposition-aware distance is what recognises them.
+ */
+function osaDistance(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const d: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i += 1) d[i][0] = i;
+  for (let j = 0; j <= n; j += 1) d[0][j] = j;
+  for (let i = 1; i <= m; i += 1) {
+    for (let j = 1; j <= n; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+
+const typoMaxEdits = (len: number): number => Math.max(1, Math.floor(len / 4));
+
+/**
+ * Typo-tolerant evidence: the customer's text contains a MISSPELLING of `value`
+ * (single edit / adjacent transposition), so a part word the customer really typed
+ * but mis-keyed ("คอล์ยเย็น" for "คอยล์เย็น") still counts as evidence and is NOT
+ * dropped as a hallucination. Slides a window over the space-stripped customer text
+ * so it works on glued Thai (the raw message before the classifier segmented it).
+ * Pure + exported for unit testing.
+ */
+export function lineValueHasCustomerTypoEvidence(
+  value: string | null | undefined,
+  latestText: string | null | undefined,
+  history: ChatReplyHistoryItem[],
+): boolean {
+  const target = normalizeSearchText(value).replace(/\s+/g, "");
+  // Below 4 chars a 1-edit window matches too much to be reliable evidence.
+  if (target.length < 4) return false;
+
+  const haystack = normalizeSearchText(
+    [
+      ...history.filter((turn) => turn.role === "customer").map((turn) => turn.text),
+      latestText ?? "",
+    ].join(" "),
+  ).replace(/\s+/g, "");
+  if (!haystack) return false;
+
+  const maxEdits = typoMaxEdits(target.length);
+  const lo = Math.max(1, target.length - maxEdits);
+  const hi = target.length + maxEdits;
+  for (let start = 0; start < haystack.length; start += 1) {
+    for (let len = lo; len <= hi && start + len <= haystack.length; len += 1) {
+      if (osaDistance(target, haystack.slice(start, start + len)) <= maxEdits) return true;
+    }
+  }
+  return false;
+}
+
 function lineModelHasCustomerAliasEvidence(
   value: string | null | undefined,
   latestText: string | null | undefined,
@@ -68,6 +131,44 @@ function lineModelHasCustomerAliasEvidence(
     for (const token of variant.split(/\s+/)) {
       if (token.length < 4) continue;
       if (evidenceTokens.has(token)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Thai↔English MODEL transliteration evidence. The classifier + master data use the
+ * English canonical model name ("Strada"), but customers type the Thai spelling
+ * ("สตาด้า") — and unlike brands, model transliterations are NOT in the hardcoded
+ * variant map. The `modelLookup` (built from the `SearchSynonym` table) bridges
+ * them: for the classifier's model, pull every accepted spelling and check the
+ * customer text (substring OR token) so a clearly-stated Thai model still grounds
+ * the classifier's English value instead of being dropped. Without this, a query
+ * like "สายแอร์…สตาด้า2500" loses the vehicle scope and drifts to other models.
+ */
+function lineModelHasCustomerSynonymEvidence(
+  value: string | null | undefined,
+  latestText: string | null | undefined,
+  history: ChatReplyHistoryItem[],
+  modelLookup?: ReadonlyMap<string, string[]> | null,
+) {
+  if (!value || !modelLookup) return false;
+  const variants = modelLookup.get(normalizeSearchText(value));
+  if (!variants || variants.length === 0) return false;
+
+  const customerText = normalizeSearchText(
+    [
+      ...history.filter((turn) => turn.role === "customer").map((turn) => turn.text),
+      latestText ?? "",
+    ].join(" "),
+  );
+  if (!customerText) return false;
+  const evidenceTokens = new Set(tokenizeSearchVariants(customerText));
+
+  for (const variant of variants) {
+    for (const spelling of buildSearchVariants(variant)) {
+      if (!spelling) continue;
+      if (evidenceTokens.has(spelling) || customerText.includes(spelling)) return true;
     }
   }
   return false;
@@ -114,15 +215,19 @@ export function guardChatSearchIntent(input: {
   history: ChatReplyHistoryItem[];
   /** DB-backed brand spelling lookup; falls back to the hardcoded map when omitted. */
   brandLookup?: ReadonlyMap<string, string[]> | null;
+  /** DB-backed model spelling lookup (SearchSynonym); grounds Thai↔English model
+   *  transliterations ("สตาด้า"↔"Strada"). Omitted → English-only evidence. */
+  modelLookup?: ReadonlyMap<string, string[]> | null;
 }) {
-  const { intent, latestText, history, brandLookup } = input;
+  const { intent, latestText, history, brandLookup, modelLookup } = input;
   if (!intent || !intent.isProductQuery) {
     return { intent, forceLiteralQuery: false, requiredTokens: [] as string[] };
   }
 
   const carModelGrounded =
     lineValueHasCustomerEvidence(intent.carModel, latestText, history) ||
-    lineModelHasCustomerAliasEvidence(intent.carModel, latestText, history);
+    lineModelHasCustomerAliasEvidence(intent.carModel, latestText, history) ||
+    lineModelHasCustomerSynonymEvidence(intent.carModel, latestText, history, modelLookup);
   const carBrandGrounded =
     lineValueHasCustomerEvidence(intent.carBrand, latestText, history, brandLookup) ||
     (carModelGrounded && Boolean(intent.carBrand) && Boolean(intent.carModel));

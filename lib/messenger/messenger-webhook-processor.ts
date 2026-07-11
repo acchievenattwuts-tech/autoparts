@@ -9,6 +9,7 @@ import { intentToGroup } from "@/lib/chat-core/intent-groups";
 import {
   buildDidYouMeanNote,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+  CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
   decideChatSearchGate,
   isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
@@ -18,6 +19,7 @@ import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-c
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
+import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import {
   applyChatPriceTier,
   getChatProductSummaries,
@@ -130,7 +132,10 @@ async function handoffUncertainMessengerProduct(input: {
   psid: string;
   originalText: string;
   intent: LineIntent;
+  /** Override reply; defaults to the generic uncertain-product handoff line. */
+  text?: string;
 }): Promise<void> {
+  const text = input.text ?? CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY;
   await escalateMessengerConversationToAdmin(input.conversationId);
   safeNotify(
     notifyMessengerNeedsAdmin({
@@ -142,9 +147,9 @@ async function handoffUncertainMessengerProduct(input: {
   await sendMessengerText({
     pageAccessToken: input.pageAccessToken,
     psid: input.psid,
-    text: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+    text,
   });
-  await persistOutbound(input.conversationId, input.psid, CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY, {
+  await persistOutbound(input.conversationId, input.psid, text, {
     intent: input.intent,
   });
 }
@@ -569,7 +574,7 @@ async function replyToMessengerTurn(params: {
   if (route.allowsSearch) {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
-    const { fitmentPartHeadNoun, shouldHandoffUncertain, ...fitmentHints } =
+    const { fitmentPartHeadNoun, shouldHandoffUncertain, vehicleNamedButUnresolved, ...fitmentHints } =
       await resolveMessengerFitmentHints(processText, history);
     if (shouldHandoffUncertain) {
       await handoffUncertainMessengerProduct({
@@ -578,6 +583,20 @@ async function replyToMessengerTurn(params: {
         psid,
         originalText: mergedText,
         intent: route.intent,
+      });
+      return;
+    }
+    // Option A — customer named a car we couldn't lock to a fitment filter → confirm
+    // the vehicle instead of running an unscoped search that lists other models'
+    // parts as if they fit (parity with the LINE vehicle-unresolved guard).
+    if (vehicleNamedButUnresolved) {
+      await handoffUncertainMessengerProduct({
+        pageAccessToken,
+        conversationId,
+        psid,
+        originalText: mergedText,
+        intent: route.intent,
+        text: CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
       });
       return;
     }
@@ -725,6 +744,10 @@ async function resolveMessengerFitmentHints(
    *  search so it can't drift to model-only unrelated parts (parity with LINE). */
   fitmentPartHeadNoun: string | null;
   shouldHandoffUncertain: boolean;
+  /** Option A — customer named a car model (evidence-grounded) that did NOT resolve
+   *  to a hard fitment filter (no model/brand scope). Search would be unscoped, so
+   *  the caller confirms the vehicle instead of showing other models' parts. */
+  vehicleNamedButUnresolved: boolean;
 }> {
   const empty = {
     categoryName: null,
@@ -733,6 +756,7 @@ async function resolveMessengerFitmentHints(
     fitmentYear: null,
     fitmentPartHeadNoun: null,
     shouldHandoffUncertain: false,
+    vehicleNamedButUnresolved: false,
   };
   try {
     const rawIntent = await extractChatSearchIntent({
@@ -743,8 +767,11 @@ async function resolveMessengerFitmentHints(
     if (!rawIntent) {
       return { ...empty, shouldHandoffUncertain: true };
     }
-    const brandLookup = await loadCarBrandVariantLookup().catch(() => null);
-    const guarded = guardChatSearchIntent({ intent: rawIntent, latestText: processText, history, brandLookup });
+    const [brandLookup, modelLookup] = await Promise.all([
+      loadCarBrandVariantLookup().catch(() => null),
+      loadCarModelVariantLookup().catch(() => null),
+    ]);
+    const guarded = guardChatSearchIntent({ intent: rawIntent, latestText: processText, history, brandLookup, modelLookup });
     const gi = guarded.intent;
 
     const gateDecision = gi
@@ -810,6 +837,9 @@ async function resolveMessengerFitmentHints(
     const fitmentPartHeadNoun =
       !filters.categoryName && gi?.partType && !gi.partType.includes("อะไหล่") ? gi.partType : null;
 
+    const vehicleNamedButUnresolved =
+      Boolean(gi?.carModel) && !filters.carModelName && !filters.carBrandName;
+
     return {
       categoryName: filters.categoryName ?? null,
       carBrandName: filters.carBrandName ?? null,
@@ -817,6 +847,7 @@ async function resolveMessengerFitmentHints(
       fitmentYear: gi?.year ?? null,
       fitmentPartHeadNoun,
       shouldHandoffUncertain: false,
+      vehicleNamedButUnresolved,
     };
   } catch {
     return empty;

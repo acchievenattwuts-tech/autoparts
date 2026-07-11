@@ -1,8 +1,28 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import { guardChatSearchIntent, lineValueHasCustomerTypoEvidence } from "@/lib/chat-core/search-guards";
 import type { ChatSearchIntent } from "@/lib/chat-core/ai-service";
+
+test("typo evidence: a misspelled part word in the customer text counts as evidence", () => {
+  // Real case: customer typed "คอล์ยเย็น" (ล/ย swapped); the classifier corrected it
+  // to "คอยล์เย็น". The corrected part must still be recognised as customer-typed.
+  assert.equal(
+    lineValueHasCustomerTypoEvidence("คอยล์เย็น", "คอล์ยเย็นนิสสันมาร์ค", []),
+    true,
+  );
+  // Exact spelling obviously matches too.
+  assert.equal(lineValueHasCustomerTypoEvidence("คอยล์เย็น", "คอยล์เย็น march", []), true);
+});
+
+test("typo evidence: a hallucinated part (no such word in the text) is NOT evidence", () => {
+  // Vehicle-only follow-up — the customer never typed a part; the classifier's
+  // "คอยล์เย็น" would be a hallucination and must stay ungrounded.
+  assert.equal(
+    lineValueHasCustomerTypoEvidence("คอยล์เย็น", "vios gen3 ปี2013", []),
+    false,
+  );
+});
 
 const baseIntent = (over: Partial<ChatSearchIntent>): ChatSearchIntent => ({
   group: "product",
@@ -98,4 +118,35 @@ test("grounds the model when a required-token anchor is present", () => {
     history: [],
   });
   assert.equal(intent?.carModel, null);
+});
+
+test("model synonym lookup grounds a Thai model glued to a cc anchor (Strada case)", () => {
+  // Regression: "สายแอร์ใหญ่สตาด้า2500" — the cc "2500" is a required-token anchor,
+  // so the model is grounded. The classifier returns the English "Strada" which does
+  // NOT literally appear in the Thai text; without a synonym lookup it was dropped
+  // → the vehicle scope vanished and the search drifted to other 2500cc models.
+  // With the SearchSynonym-backed lookup ("สตาด้า"→"Strada"), the model survives.
+  const modelLookup = new Map<string, string[]>([
+    ["strada", ["strada", "สตาด้า", "สตราด้า", "mitsubishi strada"]],
+    ["สตาด้า", ["strada", "สตาด้า", "สตราด้า", "mitsubishi strada"]],
+  ]);
+  // Segmented form (as `processText` reaches the guard) so the cc "2500" is a clean
+  // required-token anchor — this is what makes the model subject to grounding.
+  const latestText = "สายแอร์ใหญ่ สตาด้า 2500";
+  const withLookup = guardChatSearchIntent({
+    intent: baseIntent({ query: "สายแอร์ สตาด้า 2500", carBrand: null, carModel: "Strada", year: null }),
+    latestText,
+    history: [],
+    modelLookup,
+  });
+  assert.deepEqual(withLookup.requiredTokens, ["2500"]);
+  assert.equal(withLookup.intent?.carModel, "Strada");
+
+  // Without the lookup, the old behaviour drops it (proves the lookup is the fix).
+  const withoutLookup = guardChatSearchIntent({
+    intent: baseIntent({ query: "สายแอร์ สตาด้า 2500", carBrand: null, carModel: "Strada", year: null }),
+    latestText,
+    history: [],
+  });
+  assert.equal(withoutLookup.intent?.carModel, null);
 });

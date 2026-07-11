@@ -143,6 +143,8 @@ function createProcessorTestDeps(input?: {
     carModel?: string | null;
     year?: number | null;
   } | null;
+  /** updatedAt for the stored frame; pass an old date to simulate a stale session. */
+  storedFrameUpdatedAt?: Date;
   fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
   nonProductTurn?: boolean;
   intentGroup?:
@@ -415,7 +417,7 @@ function createProcessorTestDeps(input?: {
             carBrand: input.storedFrame.carBrand ?? null,
             carModel: input.storedFrame.carModel ?? null,
             year: input.storedFrame.year ?? null,
-            updatedAt: new Date(), // fresh → same session
+            updatedAt: input.storedFrameUpdatedAt ?? new Date(), // fresh → same session (unless overridden)
           }
         : null,
     updateLineInquiryFrame: async (frameInput) => {
@@ -437,6 +439,9 @@ function createProcessorTestDeps(input?: {
     // Hermetic: never touch the DB for brand aliases in unit tests (the guard
     // falls back to the hardcoded brand map).
     loadCarBrandVariantLookup: async () => new Map<string, string[]>(),
+    // Hermetic: never touch the DB for model synonyms either (guard falls back to
+    // English-only model evidence).
+    loadCarModelVariantLookup: async () => new Map<string, string[]>(),
   };
 
   return { calls, dependencies };
@@ -984,7 +989,9 @@ test("template/FAQ answers are suppressed once an admin has taken over", async (
 
 test("deadline fallback still replies on the free token when generate is too slow", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  const { calls, dependencies } = createProcessorTestDeps();
+  // The regex fallback reads "vios" as the model; in production it resolves to a
+  // hard filter, so configure it here (otherwise the vehicle-unresolved guard fires).
+  const { calls, dependencies } = createProcessorTestDeps({ fitmentFilters: { carModelName: "Vios" } });
   // Reply generation never returns in time.
   dependencies.generateChatSuggestion = () => new Promise<never>(() => {});
 
@@ -1015,6 +1022,7 @@ test("deadline fallback after search keeps complete text search results", async 
     intentCarModel: "D-Max",
     intentYear: 2015,
     intentPartKind: "fitment",
+    fitmentFilters: { carModelName: "D-Max" },
   });
   dependencies.generateChatSuggestion = () => new Promise<never>(() => {});
 
@@ -1490,6 +1498,92 @@ test("broad aircon truck inquiry hands off immediately instead of guessing compr
   assert.ok(!calls.auditActions.includes("CATEGORY_LLM_FALLBACK"), "must not map generic aircon to compressor");
 });
 
+test("G1: broad NEW ask after a specific turn hands off — a carried specific part must not mask it", async () => {
+  // Regression (conv cmq4ziq6l): the prior turn was a specific "สายแอร์ สตาด้า" query,
+  // so the frame carries partType "สายแอร์". THIS turn the customer asks broadly
+  // ("อะไหล่แอร์ สิบล้อ HINO ISUZU") and the classifier returns no partType, so the
+  // frame keeps "สายแอร์" (not broad) → the frame-based gate would search and answer
+  // with carried A/C-hose D-Max results. G1 reads the customer's actual broad text and
+  // forces the BROAD_PART_TYPE hand-off instead.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "สายแอร์", carModel: "Strada" },
+    consolidatedQuery: "อะไหล่แอร์ สิบล้อ HINO ISUZU",
+    // Classifier reads no specific part this turn → frame keeps the carried "สายแอร์".
+    intentCarModel: "สิบล้อ HINO, ISUZU",
+    fitmentFilters: { categoryName: "สายน้ำยา (A/C Hose)" },
+  });
+  // If the guard ever reached search, it would return these — the test proves it does NOT.
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0837", imageUrl: null, salePrice: 350, retailPrice: 350 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีอะไหล่แอรื สิบล้อ HINO ISUZU บ้างไหมค่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "broad NEW ask must not search (carried part must not mask it)");
+  assert.ok(!calls.replies[0]?.text.includes("D-Max"), "does not answer with carried wrong-vehicle results");
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"), "hands off to admin");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("G2: switching to a vehicle CLASS (no new part, no connective) drops the carried part → asks which part", async () => {
+  // After "สายแอร์ Strada", the customer asks about a truck class with no specific
+  // part and no continuation word: "มีของ Hino สิบล้อไหม". The carried "สายแอร์" must
+  // NOT hard-filter this class inquiry to A/C hoses — G2 drops it so the gate asks
+  // which part instead. (Not broad text, so G1 does not fire here.)
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "สายแอร์", carModel: "Strada" },
+    consolidatedQuery: "Hino สิบล้อ",
+    // Classifier reads a car but NO part this turn (a class-only ask is not a
+    // universal accessory).
+    intentCarModel: "สิบล้อ",
+    intentPartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีของ Hino สิบล้อไหม"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "carried part dropped → no search on the old category");
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.partType ?? null, null, "carried สายแอร์ is dropped on the class switch");
+});
+
+test("G2: a continuation ('แล้ว…ล่ะ') keeps the carried part even if it names a class", async () => {
+  // "แล้วสิบล้อ Hino ล่ะ" is a follow-up — the carried "สายแอร์" MUST stay so the
+  // search continues the same part on the new vehicle (owner's rule: connective
+  // continuations keep the frame; broadness would still win, but this isn't broad).
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "สายแอร์", carModel: "Strada" },
+    consolidatedQuery: "สายแอร์ สิบล้อ Hino",
+    intentCarModel: "สิบล้อ",
+    fitmentFilters: { categoryName: "สายน้ำยา (A/C Hose)" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "สายน้ำยาแอร์ Hino", code: "P1", imageUrl: null, salePrice: 500, retailPrice: 500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("แล้วสิบล้อ Hino ล่ะ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.partType, "สายแอร์", "continuation keeps the carried part");
+});
+
 test("broad stored frame plus price/photo follow-up hands off without re-searching", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
@@ -1521,6 +1615,7 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
     intentPartType: "หม้อน้ำ",
     intentCarModel: "D-Max",
     intentPartKind: "fitment",
+    fitmentFilters: { carModelName: "D-Max" },
   });
   // Search returns ids; provide matching summaries so flex cards (and thus the
   // follow-up bubble) are produced.
@@ -1582,6 +1677,44 @@ test("direct no-match with part + car replies once and hands off to admin", asyn
   assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
 });
 
+test("customer names a car we can't resolve → confirms vehicle + hands off, no unscoped cards (Strada case)", async () => {
+  // "สายแอร์…สตาด้า2500": the model is grounded (customer really typed it) but does
+  // NOT resolve to a hard fitment filter (no carModelName/carBrandName), while the
+  // search still returns rows scoped only by category + the "2500" cc anchor. Those
+  // rows are other vehicles' A/C hoses — showing them would be a confident mismatch.
+  // Option A must suppress the cards, ask to confirm the vehicle, and hand off.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "สายแอร์ สตาด้า 2500",
+    intentPartType: "สายแอร์",
+    intentCarModel: "Strada",
+    intentPartKind: "universal",
+    // Category resolves (A/C Hose) but the model does NOT → carModelName omitted.
+    fitmentFilters: { categoryName: "สายน้ำยา (A/C Hose)" },
+  });
+  // F: the synonym lookup grounds the Thai "สตาด้า" onto the English "Strada" so the
+  // model survives the guard (in production this comes from the SearchSynonym table).
+  dependencies.loadCarModelVariantLookup = async () =>
+    new Map<string, string[]>([["strada", ["strada", "สตาด้า", "mitsubishi strada"]]]);
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0836", imageUrl: null, salePrice: 430, retailPrice: 430 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("สายแอร์ใหญ่สตาด้า2500"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.auditActions.includes("AI_VEHICLE_UNRESOLVED_HANDOFF"), "vehicle-unresolved guard fires");
+  assert.ok(calls.replies[0]?.text.includes("ยืนยัน"), "asks the customer to confirm the vehicle");
+  // The other-model card (D-Max) must NOT be shown as a match.
+  assert.ok(!calls.replies[0]?.text.includes("D-Max"), "does not present another vehicle's part");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
+});
+
 test("specific part with no category that anchors to zero hands off (even without a car)", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
@@ -1620,6 +1753,7 @@ test("price inquiry with a searchable part → searches, shows products, then ha
     intentPartType: "หม้อน้ำ",
     intentCarModel: "D-Max",
     intentPartKind: "universal", // searchable directly; focus is the price path
+    fitmentFilters: { carModelName: "D-Max" },
   });
   dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
@@ -1648,6 +1782,7 @@ test("retail-tier customer naming a product + price → shows cards then hands o
     intentPartType: "คอยล์เย็น", // ข้อความระบุสินค้าเอง → โชว์การ์ดก่อน handoff
     intentCarModel: "Vigo",
     intentPartKind: "universal",
+    fitmentFilters: { carModelName: "Hilux Vigo" },
   });
   dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
@@ -1758,6 +1893,7 @@ test("wholesale-tier customer (garage) asking price → shows products then hand
     intentPartType: "หม้อน้ำ",
     intentCarModel: "D-Max",
     intentPartKind: "universal",
+    fitmentFilters: { carModelName: "D-Max" },
   });
   dependencies.getChatProductSummaries = async () => [
     { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
@@ -1921,6 +2057,67 @@ test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT
   // valve — the frame keeps "วาล์วแอร์".
   assert.equal(calls.savedFrames.at(-1)?.partType, "วาล์วแอร์");
   assert.equal(calls.savedFrames.at(-1)?.carModel, "Vios");
+});
+
+test("Fix 1: a fresh (stale-session) turn keeps the classifier's spell-corrected part — no re-ask (คอล์ยเย็น case)", async () => {
+  // Real case (conv cmr2xbf16): a NEW session ("คอล์ยเย็นนิสสันมาร์ค") after a
+  // 9-day gap. The classifier spell-corrects to "คอยล์เย็น", but a STALE stored part
+  // used to enable the evidence gate, which then dropped the corrected part (it isn't
+  // literally in the misspelled text) → CAR_ONLY re-ask. Fix 1: a stale session has no
+  // live part to protect → keep the classifier part → it searches + shows.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "ออนิว", carModel: "D-Max" },
+    storedFrameUpdatedAt: new Date(Date.now() - 9 * 24 * 60 * 60_000), // 9 days ago → stale
+    consolidatedQuery: "คอยล์เย็น นิสสัน มาร์ช",
+    intentPartType: "คอยล์เย็น",
+    intentCarBrand: "Nissan",
+    intentCarModel: "March",
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Nissan", carModelName: "March" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอล์ยเย็นนิสสันมาร์ค"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น", "corrected part is kept, not dropped");
+  assert.equal(calls.searches.length, 1, "searches instead of re-asking for the part");
+  assert.ok(!calls.auditActions.includes("AI_SEARCH_GATE_ASK"), "does not fall back to CAR_ONLY ask");
+});
+
+test("Fix 2: a MISSPELLED new part in a live session is kept via typo evidence (not dropped as hallucination)", async () => {
+  // Live session with a different stored part ("สายแอร์"). This turn the customer
+  // switches parts but mis-keys it ("คอล์ยเย็น"). The literal evidence check fails on
+  // the typo, but typo-tolerant evidence recognises it → the corrected "คอยล์เย็น"
+  // is kept and searched (topic shift), not silently replaced by the stored part.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "สายแอร์", carModel: "March" },
+    consolidatedQuery: "คอยล์เย็น นิสสัน มาร์ช",
+    intentPartType: "คอยล์เย็น",
+    intentCarBrand: "Nissan",
+    intentCarModel: "March",
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Nissan", carModelName: "March" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("คอล์ยเย็นนิสสันมาร์ค"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น", "misspelled new part is kept via typo evidence");
 });
 
 test("product-code fast-path: a part image with a catalog-resolvable OCR code still honors fitment filters first", async () => {

@@ -5,8 +5,8 @@
 >
 > **ธงของเจ้าของงาน:** ห้ามส่งคำตอบมั่ว — ถ้าไม่มั่นใจให้ส่งเรื่องต่อแอดมินเท่านั้น
 >
-> สถานะเอกสาร: **ตรวจสอบแล้ว ยังไม่แก้** (รอยืนยันก่อนลงมือข้อ A–E ด้านล่าง)
-> วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5)
+> สถานะเอกสาร: **แก้ข้อ A + F แล้ว** (2026-07-11) · C, D, E ยังรอทำ (ดู §5)
+> วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5) · อัปเดต: 2026-07-11 (Claude Opus 4.8)
 
 ---
 
@@ -114,7 +114,8 @@
 
 | # | ข้อเสนอ | แก้เคส | ทำที่ไหน | ความเสี่ยง |
 |---|---------|--------|----------|-----------|
-| **A** | **Relevance gate ที่ชั้นแชท**: ถ้า `categoryName` ไม่ resolve **และ** ผลลัพธ์ไม่มี matchReason แข็ง (code/oem/name-exact/fitment) → ถือว่า "ไม่มั่นใจ" → ไม่โชว์การ์ด แต่ถามต่อ/ส่งแอดมิน | 1,2,3 | bridge/processor (ไม่แตะ engine → ไม่กระทบ storefront) | recall ลดในเคสก้ำกึ่ง (ตรงธง) |
+| **A** ✅ | **Vehicle-unresolved gate (ทำแล้ว 2026-07-11)**: carModel grounded แต่ไม่กลายเป็น hard filter (carModelName/carBrandName ว่าง) + มีผลจะโชว์ → ไม่โชว์การ์ด, ถามยืนยันรุ่นรถ + ส่งแอดมิน | 1,2,3 | processor (ไม่แตะ engine → ไม่กระทบ storefront) | recall ลดในเคสก้ำกึ่ง (ตรงธง) |
+| **F** ✅ | **Model synonym grounding (ทำแล้ว 2026-07-11)**: ground "สตาด้า"↔"Strada" ผ่าน `SearchSynonym` ใน `guardChatSearchIntent` เพื่อไม่ให้รุ่นที่ลูกค้าพิมพ์ไทยถูกทิ้ง | ต้นเหตุ Strada | search-guards + processor | over-ground ต่ำ (lookup เฉพาะรุ่น) |
 | **B** | **categoryName null ต้องมี part-anchor เสมอ**: ขยาย `fitmentPartHeadNoun` ให้ครอบ image-hint/generic; ถ้าไม่มี part ระบุ (gate rule 2) → ไม่ค้น/ถามชนิดก่อน | 2,4,6 | search-gate + processor | **decision ก (โชว์ของรถให้ดูก่อน) หายไป — ต้องถามเจ้าของร้าน** |
 | **C** | จำกัด vector recall เมื่อ categoryName null (ปิด vectorCandidate หรือ require แต้ม lexical ควบ) | 3 | engine (กระทบ storefront — ระวัง) | semantic recall แคบลงตอนไม่มีหมวด |
 | **D** | แจ้ง note เมื่อผลมาจาก OR fallback (`mode`/`reason` บอกได้): "เป็นรายการใกล้เคียง อาจไม่ตรงทั้งหมด" | 2 | bridge + processor | เพิ่มความโปร่งใส ไม่กระทบ logic |
@@ -162,3 +163,20 @@
 
 ## 9. Changelog เอกสาร
 - 2026-07-10: สร้างเอกสาร — audit ความเสี่ยงสินค้ามั่ว/ผิดหมวด 7 เคส + ข้อเสนอ A–E (ยังไม่แก้)
+- 2026-07-11: **แก้ข้อ A + เพิ่มข้อ F** (เคสจริง "สายแอร์ใหญ่สตาด้า2500" → ขึ้น D-Max/Revo/Colorado)
+  - **สาเหตุจริง (replay audit log):** classifier ได้ carModel "Strada" แต่ evidence-grounding ทิ้งเพราะ "สตาด้า" (ไทย) ไม่ match "Strada" (อังกฤษ) — transliteration ไม่อยู่ใน evidence data. เหลือ hard filter แค่หมวด A/C Hose + requiredToken "2500" (ซีซี) → คืนสายแอร์รถรุ่นอื่นที่มีรุ่น 2500cc. **มาสเตอร์มี CarModel Strada + SearchSynonym "สตาด้า"→Strada ครบ** — จุดพังอยู่ที่ grounding ต้นน้ำ ไม่ใช่ข้อมูลขาด
+  - **F (model synonym grounding):** ใหม่ `lib/car-model-alias-cache.ts` + `lib/car-model-alias-loader.ts` (โหลด `SearchSynonym` แบบ cache) → ส่ง `modelLookup` เข้า `guardChatSearchIntent` ([search-guards.ts](../lib/chat-core/search-guards.ts) `lineModelHasCustomerSynonymEvidence`) เพื่อ ground "สตาด้า"→"Strada". wire ทั้ง LINE + Messenger processor
+  - **A (vehicle-unresolved gate):** เมื่อ carModel grounded แต่ resolve เป็น hard filter ไม่ได้ (carModelName/carBrandName ว่าง) + มีผลลัพธ์จะโชว์ → ไม่โชว์การ์ด, ตอบ `CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY` (ยืนยันรุ่นรถ) + ส่งแอดมิน. audit `AI_VEHICLE_UNRESOLVED_HANDOFF`. ทำทั้ง LINE ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) + Messenger ([messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts))
+  - **ไม่แตะ engine `product-search.ts`** → ไม่กระทบ storefront. Test: `line-search-guards.test.ts` (Strada grounding), `car-model-alias-cache.test.ts`, `line-webhook-processor.test.ts` (Strada gate end-to-end)
+  - **ยังไม่ทำ:** C (จำกัด vector recall), D (note OR-fallback), E (ลบ hardcode thermostat)
+- 2026-07-11: **แก้ข้อ G1 + G2** (เคสจริง "อะไหล่แอร์ สิบล้อ HINO ISUZU" → ตอบสายแอร์ D-Max กระบะ — เทิร์นถัดจาก Strada)
+  - **สาเหตุจริง (replay `LineAiAuditLog` conv `cmq4ziq6l…`):** classifier เทิร์นนี้ `partType=null` → inquiry-frame **carry "สายแอร์" + หมวด A/C Hose** จากเทิร์นก่อน → completeness gate ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) ตัดสินจาก **frame partType** ("สายแอร์" ไม่กว้าง) ไม่ใช่ข้อความลูกค้าจริง ("อะไหล่แอร์ สิบล้อ") → ค้น + hard-filter หมวดเดิม → คืน D-Max (กระบะ) ให้คำถามรถสิบล้อ. คนละบั๊กกับ A+F (frame-level ไม่ใช่ model-resolution)
+  - **G1 (broad-gate อ่านข้อความจริง):** gate เช็ค `isBroadChatPartType(consolidatedQuery ‖ processText)` เพิ่มจากเดิมที่อ่านแค่ frame partType → เทิร์นกว้างบังคับ BROAD_PART_TYPE handoff แม้ frame carry part เฉพาะ. **LINE-only** (Messenger มี `isBroadChatPartType(processText)` ใน `resolveMessengerFitmentHints` อยู่แล้ว = parity)
+  - **G2 เล็ก (decision เจ้าของ: ความกว้างมาก่อน + คำเชื่อมคง frame):** เทิร์นใหม่ระบุ**คลาสรถ** (สิบล้อ/รถบรรทุก/เทรลเลอร์) + ไม่มี part ใหม่ + ไม่มีคำเชื่อม (แล้ว/และ/หรือ/…ล่ะ) → drop partType เดิม ไม่ให้หมวดเดิม hard-filter → gate ถามชนิดอะไหล่. helper `namesVehicleClassTerm` / `hasFollowUpConnective` ([inquiry-frame.ts](../lib/chat-core/inquiry-frame.ts)), audit `droppedCarriedPartOnVehicleClassSwitch`. **LINE-only** (Messenger ไม่มี frame). คำเชื่อม → คง frame (follow-up จริง เช่น "แล้ว Vigo ล่ะ"); ความกว้างชนะเสมอ (G1 จับก่อน)
+  - **ไม่แตะ engine `product-search.ts`.** Test: `line-inquiry-frame.test.ts`, `line-webhook-processor.test.ts` (G1 broad-after-specific + G2 drop/keep)
+- 2026-07-11: **แก้ Fix 1 + Fix 2** (เคสจริง "คอล์ยเย็นนิสสันมาร์ค" — LINE ถามชนิดอะไหล่ซ้ำทั้งที่ลูกค้าพิมพ์มาแล้ว)
+  - **สาเหตุจริง (replay `LineAiAuditLog` conv `cmr2xbf16…`):** classifier **แก้ typo สำเร็จ** (`classifierPartType="คอยล์เย็น"`) แต่ `groundedLatestPartType` ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) โยนทิ้ง → frame `partType=null` → gate `CAR_ONLY` → ถามชนิดอะไหล่ + search ถูกบล็อกก่อน LLM category fallback ทำงาน. 2 ชั้น: (1) gate ไม่เช็ค `sessionStale` → frame เก่า 9 วันเปิด gate ทั้งที่เป็น session ใหม่; (2) evidence check เอาคำที่แก้ถูก ("คอยล์เย็น") เทียบ substring กับข้อความพิมพ์ผิด ("คอล์ย") → ไม่เจอ → drop
+  - **หลักการ (เจ้าของสั่ง):** ก่อนตัด partType ต้องผ่าน resolve/LLM/process ก่อน — หาก map สำเร็จต้องโชว์สินค้า ไม่ใช่ตัดทิ้งแล้วถามซ้ำ
+  - **Fix 1:** เพิ่มเงื่อนไข `!sessionStale` — session ใหม่ไม่มี part เก่าให้ปกป้อง → เชื่อ partType ที่ classifier แก้มา
+  - **Fix 2:** `lineValueHasCustomerTypoEvidence` ([search-guards.ts](../lib/chat-core/search-guards.ts)) — Damerau-OSA distance + sliding window บน glued Thai → typo ของ partType ("คอล์ย"↔"คอยล์") นับเป็น evidence → ไม่ตัด → ปล่อยไป resolve + ค้น + โชว์. hallucination guard เดิม (รถล้วน ไม่มีคำอะไหล่ → ไม่มี literal+typo evidence) ยังทำงาน
+  - **ไม่แตะ engine.** Test: `line-search-guards.test.ts` (typo/hallucination), `line-webhook-processor.test.ts` (Fix1 stale keep+search, Fix2 live typo keep, hallucination guard เดิมยังผ่าน)

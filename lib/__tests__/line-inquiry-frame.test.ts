@@ -6,9 +6,30 @@ import {
   isFrameStale,
   reconcileInquiryFrame,
   buildFrameQuery,
+  hasFollowUpConnective,
+  namesVehicleClassTerm,
   SESSION_IDLE_MS,
   type InquiryFrame,
 } from "@/lib/chat-core/inquiry-frame";
+
+test("namesVehicleClassTerm detects truck-class words, not specific models", () => {
+  for (const t of ["สิบล้อ HINO", "รถบรรทุก ISUZU", "หัวลาก", "เทรลเลอร์", "trailer"]) {
+    assert.equal(namesVehicleClassTerm(t), true, t);
+  }
+  for (const t of ["Vios", "D-Max", "สายแอร์ Strada", "", null]) {
+    assert.equal(namesVehicleClassTerm(t), false, String(t));
+  }
+});
+
+test("hasFollowUpConnective flags continuations, not car lists", () => {
+  for (const t of ["แล้ว Vigo ล่ะ", "และรุ่น 2015", "หรือมีตัวอื่น", "ส่วนคอยเย็นล่ะ", "อันนี้ล่ะครับ"]) {
+    assert.equal(hasFollowUpConnective(t), true, t);
+  }
+  // A fresh query that merely LISTS cars mid-sentence is NOT a continuation.
+  for (const t of ["Vigo และ Fortuner", "สายแอร์ สิบล้อ HINO ISUZU", "หม้อน้ำ Vios"]) {
+    assert.equal(hasFollowUpConnective(t), false, t);
+  }
+});
 
 const frame = (over: Partial<InquiryFrame> = {}): InquiryFrame => ({
   partType: null,

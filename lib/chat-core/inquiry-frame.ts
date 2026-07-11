@@ -161,6 +161,35 @@ export function reconcileInquiryFrame(
   };
 }
 
+// Vehicle CLASS words — a truck category, never a resolvable CarModel row. When a
+// customer switches to one of these, a specific part carried from a prior turn must
+// not silently hard-filter the (different-class) inquiry to the old category.
+const VEHICLE_CLASS_TERM_RE =
+  /(สิบล้อ|หกล้อ|สี่ล้อ|สิบสองล้อ|รถบรรทุก|รถพ่วง|รถ\s*พ่วง|หัวลาก|เทรลเลอร์|trailer)/i;
+
+/** True when the text names a vehicle CLASS (ten-wheel / truck / trailer …) rather
+ *  than a specific model. Pure + exported for unit testing. */
+export const namesVehicleClassTerm = (text: string | null | undefined): boolean => {
+  const value = text?.trim();
+  return value ? VEHICLE_CLASS_TERM_RE.test(value) : false;
+};
+
+// Continuation particles that signal a FOLLOW-UP to the previous subject rather than
+// a fresh inquiry: leading "แล้ว/และ/หรือ/ส่วน", or the trailing question particle
+// "ล่ะ" anywhere. Kept conservative (leading-only for the conjunctions, so a fresh
+// query that merely LISTS cars — "Vigo และ Fortuner" — is not mistaken for a
+// continuation). Broadness always wins over this (handled by the G1 gate).
+// No word boundary after the Thai conjunctions — Thai has no inter-character
+// boundary, so "และรุ่น" must still match the leading "และ".
+const FOLLOWUP_CONNECTIVE_RE = /(^\s*(แล้ว|และ|หรือ|ส่วน))|ล่ะ/;
+
+/** True when the text reads as a continuation of the previous turn (so the carried
+ *  frame should be kept). Pure + exported for unit testing. */
+export const hasFollowUpConnective = (text: string | null | undefined): boolean => {
+  const value = text?.trim();
+  return value ? FOLLOWUP_CONNECTIVE_RE.test(value) : false;
+};
+
 /** Clean search query rebuilt from the frame's subject (part + car). The model
  *  year is applied as a fitment filter, not a query token, so it never becomes a
  *  required token that zeroes out the search. Returns null when there's nothing. */

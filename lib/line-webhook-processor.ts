@@ -37,6 +37,7 @@ import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
+import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
@@ -93,6 +94,7 @@ import {
   extractChatRequiredSearchTokens,
   guardChatSearchIntent,
   lineValueHasCustomerEvidence,
+  lineValueHasCustomerTypoEvidence,
 } from "@/lib/chat-core/search-guards";
 import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
@@ -101,13 +103,16 @@ import {
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+  CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
   decideChatSearchGate,
   isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
 import {
   boundMessagesToSession,
   buildFrameQuery,
+  hasFollowUpConnective,
   isFrameStale,
+  namesVehicleClassTerm,
   reconcileInquiryFrame,
   type InquiryFrame,
 } from "@/lib/chat-core/inquiry-frame";
@@ -195,6 +200,10 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; loads the DB-backed Thai↔English brand spelling lookup
    *  (cached) so the search guard can ground a Thai-typed brand. */
   loadCarBrandVariantLookup?: typeof loadCarBrandVariantLookup;
+  /** Optional override; loads the DB-backed Thai↔English model spelling lookup
+   *  (SearchSynonym, cached) so the guard can ground a Thai-typed model
+   *  ("สตาด้า"→"Strada"). */
+  loadCarModelVariantLookup?: typeof loadCarModelVariantLookup;
   /** Optional override; AI-generates a scoped จูน-voiced reply for the
    *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
    *  scope and steers back to parts). */
@@ -249,6 +258,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   extractChatSearchIntent,
   resolveChatFitmentFilters,
   loadCarBrandVariantLookup,
+  loadCarModelVariantLookup,
   generateScopedConversationalReply,
   acquireLineConversationLock,
   releaseLineConversationLock,
@@ -1346,12 +1356,15 @@ export async function processLineAiReply(
     const isNonProductTurn = group !== "product";
     // DB-backed Thai↔English brand spellings (cached, best-effort) so the guard can
     // ground a brand the customer typed in Thai ("โตโยต้า" → "Toyota").
-    const brandLookup = isNonProductTurn
-      ? null
-      : await (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null);
+    const [brandLookup, modelLookup] = isNonProductTurn
+      ? [null, null]
+      : await Promise.all([
+          (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null),
+          (dependencies.loadCarModelVariantLookup ?? loadCarModelVariantLookup)().catch(() => null),
+        ]);
     const guardedSearch = isNonProductTurn
       ? { intent: effectiveSearchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardChatSearchIntent({ intent: effectiveSearchIntent, latestText: processText, history, brandLookup });
+      : guardChatSearchIntent({ intent: effectiveSearchIntent, latestText: processText, history, brandLookup, modelLookup });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null
@@ -1441,12 +1454,26 @@ export async function processLineAiReply(
       // whose "(English)" suffix the customer never types, so the raw evidence check
       // always fails and would wrongly drop a legitimate part. Trust rule-derived
       // partType verbatim; only evidence-gate the LLM classifier's partType.
+      // The classifier already spell-corrects the customer's part word (e.g. reads
+      // "คอล์ยเย็น" as "คอยล์เย็น"). Before dropping that corrected part as an
+      // ungrounded hallucination we must let it stand when there is ANY textual basis
+      // for it — literal OR a misspelling of it — so a real (mis-keyed) part flows on
+      // to category resolution / LLM correction and its products get shown, instead of
+      // re-asking for the part the customer already gave.
+      //  - Fix 1: a STALE session has no live stored part to protect, so never drop —
+      //    trust this turn's classifier part outright.
+      //  - Fix 2: a MISSPELLING of the part in the customer's text counts as evidence
+      //    (lineValueHasCustomerTypoEvidence), so a typo'd part is kept, not dropped.
+      // The hallucination guard still fires when the customer named NO part at all
+      // (vehicle-only follow-up): no literal AND no typo evidence → dropped as before.
       const groundedLatestPartType =
         imagePartType ??
         (!usedRuleIntent &&
+        !sessionStale &&
         stored?.partType &&
         classifierPartType &&
-        !lineValueHasCustomerEvidence(classifierPartType, processText, history)
+        !lineValueHasCustomerEvidence(classifierPartType, processText, history) &&
+        !lineValueHasCustomerTypoEvidence(classifierPartType, processText, history)
           ? null
           : classifierPartType);
 
@@ -1519,6 +1546,25 @@ export async function processLineAiReply(
           year: null,
         };
       }
+      // G2 (small) — the customer switched to a VEHICLE CLASS this turn (สิบล้อ /
+      // รถบรรทุก / เทรลเลอร์ — never a resolvable CarModel) while naming NO new part
+      // (classifier + image both silent) and it is NOT a continuation ("แล้ว/และ/
+      // หรือ/…ล่ะ"). A specific part carried from a prior turn ("สายแอร์") would
+      // otherwise hard-filter this class inquiry to the old category and surface
+      // another vehicle class's parts. Drop the carried part so the turn asks for the
+      // part / hands off. Broadness (the G1 gate) and continuations both take
+      // precedence per the owner's decision.
+      const droppedCarriedPartOnVehicleClassSwitch = Boolean(
+        inquiryFrame &&
+          inquiryFrame.partType &&
+          !classifierPartType &&
+          !imagePartType &&
+          namesVehicleClassTerm(processText) &&
+          !hasFollowUpConnective(processText),
+      );
+      if (droppedCarriedPartOnVehicleClassSwitch && inquiryFrame) {
+        inquiryFrame = { ...inquiryFrame, partType: null };
+      }
       const broadInquiryFrame = isBroadChatPartType(inquiryFrame.partType);
       if (!broadInquiryFrame) {
         await saveFrame({ conversationId: input.conversation.id, ...inquiryFrame }).catch(() => undefined);
@@ -1537,6 +1583,7 @@ export async function processLineAiReply(
           sessionStale,
           droppedVehicleCarryover,
           droppedStalePartOnVehicleSwitch,
+          droppedCarriedPartOnVehicleClassSwitch,
           classifierPartType,
           latestHasProductSpecificity,
           broadInquiryFrame,
@@ -1588,13 +1635,26 @@ export async function processLineAiReply(
             tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
-    const gateDecision =
-      rawGateDecision?.action === "ask" &&
-      rawGateDecision.ask === "need_car" &&
-      Boolean(
-        guardedSearch.requiredTokens.length ||
-          extractChatRequiredSearchTokens(trustedImageSearchHints.join(" ")).length,
-      )
+    // G1 — broad-inquiry detection on THIS turn's actual message. The gate above
+    // judges completeness from the carried FRAME partType, so a stale specific part
+    // ("สายแอร์" carried from a prior turn) can hide a broad NEW ask ("อะไหล่แอร์
+    // สิบล้อ HINO ISUZU") — which then searches and hard-filters to that carried
+    // category, answering with narrow, wrong-vehicle-class parts (e.g. D-Max pickup
+    // A/C hoses for a ten-wheel-truck question). When the customer's own text/query
+    // this turn is broad, force the BROAD_PART_TYPE ask so it hands off instead of
+    // masking the broad ask with carried results. (Messenger already does this via
+    // isBroadChatPartType(processText) in resolveMessengerFitmentHints.)
+    const latestTurnIsBroadInquiry =
+      !isNonProductTurn &&
+      (isBroadChatPartType(consolidatedQuery) || isBroadChatPartType(processText));
+    const gateDecision = latestTurnIsBroadInquiry
+      ? { action: "ask" as const, ask: "need_part" as const, reason: "BROAD_PART_TYPE" }
+      : rawGateDecision?.action === "ask" &&
+          rawGateDecision.ask === "need_car" &&
+          Boolean(
+            guardedSearch.requiredTokens.length ||
+              extractChatRequiredSearchTokens(trustedImageSearchHints.join(" ")).length,
+          )
         ? { action: "search" as const, followUp: null, reason: "specific_latest_turn_without_car" }
         : rawGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
@@ -1941,6 +2001,24 @@ export async function processLineAiReply(
       productSearch.result.total > 0 &&
       products.length === 0;
 
+    // Option A — vehicle-unresolved guard. The customer named a car model THIS turn
+    // (evidence-grounded, so it's real — not a hallucination) but it never became a
+    // resolved hard fitment filter (carModelName/carBrandName both null). Any rows
+    // returned are therefore NOT vehicle-scoped, so showing them would present other
+    // vehicles' parts as if they fit the customer's car — the exact
+    // "สายแอร์…สตาด้า2500 → D-Max/Revo/Colorado" mismatch. When there ARE rows to
+    // suppress (products.length > 0), hand off + ask the customer to confirm the
+    // vehicle instead of sending confident-but-wrong matches ("ไม่มั่นใจส่งแอดมิน").
+    // NOT triggered on a resolved brand-only scope (that is an acceptable filter),
+    // nor when total === 0 (the no-match handoffs below already cover that).
+    const vehicleUnresolvedGuard =
+      liveMode &&
+      productSearch.searched &&
+      products.length > 0 &&
+      Boolean(guardedSearchIntent?.carModel) &&
+      !fitmentFilters.carModelName &&
+      !fitmentFilters.carBrandName;
+
     // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
     // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
     // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
@@ -2118,6 +2196,21 @@ export async function processLineAiReply(
             audit: "AI_MATCHED_BUT_NONE_SHOWABLE",
             auditPayload: {
               lineEventId: input.lineEventId,
+              total: productSearch.searched ? productSearch.result.total : 0,
+            },
+          }
+        // Option A — customer named a car we couldn't lock to a fitment filter, and
+        // the results aren't vehicle-scoped → confirm the vehicle instead of showing
+        // other models' parts.
+        : vehicleUnresolvedGuard
+        ? {
+            message: CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
+            reason: "VEHICLE_UNRESOLVED_HANDOFF",
+            handoff: true,
+            audit: "AI_VEHICLE_UNRESOLVED_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              carModel: guardedSearchIntent?.carModel ?? null,
               total: productSearch.searched ? productSearch.result.total : 0,
             },
           }
