@@ -38,6 +38,16 @@ type MoneySection = {
   transfersToday: number;
 };
 
+type AccountBalanceItem = {
+  label: string;
+  balance: number;
+};
+
+type BalanceSection = {
+  accounts: AccountBalanceItem[];
+  totalBalance: number;
+};
+
 type CountSection = {
   pendingDelivery: number;
   outForDelivery: number;
@@ -80,6 +90,7 @@ export type LineDailySummary = {
   };
   money: MoneySection;
   counts: CountSection;
+  balances: BalanceSection;
   message: string;
   messages: LinePushMessage[];
   flexMessage: LineFlexMessage;
@@ -161,8 +172,9 @@ function renderEmojiLineDailySummaryMessage(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
+  balances: BalanceSection;
 }) {
-  const { reportDateLabel, money, counts } = summary;
+  const { reportDateLabel, money, counts, balances } = summary;
 
   return [
     `🌈 สรุปงานประจำวันที่ ${reportDateLabel}`,
@@ -184,6 +196,12 @@ function renderEmojiLineDailySummaryMessage(summary: {
     "💸 แยกตามช่องทางรับเงิน",
     `- เงินสด ${formatMoney(money.cashChannelTotal)} บาท`,
     `- เงินโอน ${formatMoney(money.transferChannelTotal)} บาท`,
+    "",
+    "💵 ยอดเงินคงเหลือแต่ละบัญชี",
+    ...balances.accounts.map(
+      (account) => `- ${account.label} ${formatMoney(account.balance)} บาท`
+    ),
+    `- รวมทุกบัญชี ${formatMoney(balances.totalBalance)} บาท`,
     "",
     "📌 ยอดค้าง",
     `- ลูกหนี้ค้างรับ ${formatMoney(money.arOutstanding)} บาท`,
@@ -921,9 +939,22 @@ function buildLineDailySummaryFlexMessageV3(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
+  balances: BalanceSection;
 }, options: SummaryRenderOptions = {}): LineFlexMessage {
-  const { reportDateLabel, money, counts } = summary;
+  const { reportDateLabel, money, counts, balances } = summary;
   const compactMode = options.compactMode ?? false;
+  const balanceFactItems: SummaryFactItem[] = [
+    ...balances.accounts.map((account) => ({
+      label: account.label,
+      value: `฿${formatMoney(account.balance)}`,
+      compactValue: account.balance,
+    })),
+    {
+      label: "รวมทุกบัญชี",
+      value: `฿${formatMoney(balances.totalBalance)}`,
+      keepWhenZero: true,
+    },
+  ];
   const followUpCount =
     counts.pendingDelivery +
     counts.lowStockCount +
@@ -1112,6 +1143,31 @@ function buildLineDailySummaryFlexMessageV3(summary: {
             contents: [
               {
                 type: "text",
+                text: "💵 ยอดเงินคงเหลือแต่ละบัญชี",
+                size: "md",
+                weight: "bold",
+                color: "#0F172A",
+              },
+              {
+                type: "box",
+                layout: "vertical",
+                margin: "lg",
+                spacing: "md",
+                contents: buildSummaryFactRows(
+                  filterSummaryFactItems(balanceFactItems, compactMode)
+                ),
+              },
+            ],
+          },
+          {
+            type: "box",
+            layout: "vertical",
+            cornerRadius: "18px",
+            paddingAll: "16px",
+            backgroundColor: "#FFFFFF",
+            contents: [
+              {
+                type: "text",
                 text: "🚚 งานค้างและความเสี่ยง",
                 size: "md",
                 weight: "bold",
@@ -1203,6 +1259,7 @@ export async function buildLineDailySummary(
     transfersTodayAgg,
     cancelledCounts,
     lotCounts,
+    balanceAccounts,
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
     runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end)),
@@ -1383,6 +1440,28 @@ export async function buildLineDailySummary(
       }),
     ])),
     runSummaryStep("counts.lotCounts", () => getLotExpiryCounts(start, end)),
+    // Latest running balance per active cash/bank account — mirrors the
+    // Cash/Bank Snapshot report so both surfaces stay in sync.
+    runSummaryStep("balances.accounts", () => db.cashBankAccount.findMany({
+      where: { isActive: true },
+      orderBy: [{ type: "asc" }, { code: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        openingBalance: true,
+        movements: {
+          orderBy: [
+            { txnDate: "desc" },
+            { sorder: "desc" },
+            { createdAt: "desc" },
+            { id: "desc" },
+          ],
+          take: 1,
+          select: { balanceAfter: true },
+        },
+      },
+    })),
   ]);
 
   const money: MoneySection = {
@@ -1427,16 +1506,27 @@ export async function buildLineDailySummary(
     stockAdjustmentCount: adjustmentCount,
   };
 
+  const balanceItems: AccountBalanceItem[] = balanceAccounts.map((account) => ({
+    label: account.name,
+    balance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
+  }));
+  const balances: BalanceSection = {
+    accounts: balanceItems,
+    totalBalance: balanceItems.reduce((sum, account) => sum + account.balance, 0),
+  };
+
   const message = renderEmojiLineDailySummaryMessage({
     reportDateLabel,
     money,
     counts,
+    balances,
   });
   const flexMessage = buildLineDailySummaryFlexMessageV3(
     {
       reportDateLabel,
       money,
       counts,
+      balances,
     },
     options
   );
@@ -1448,6 +1538,7 @@ export async function buildLineDailySummary(
     range: { start, end },
     money,
     counts,
+    balances,
     message,
     messages: [flexMessage],
     flexMessage,

@@ -249,6 +249,12 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       ? { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` }
       : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
+  const previewBalanceItems = [
+    ...summary.balances.accounts
+      .filter((account) => keepPreviewItem(settings.compactMode, account.balance))
+      .map((account) => ({ label: account.label, value: `฿${fmtMoney(account.balance)}` })),
+    { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}` },
+  ];
   const previewRiskItems = [
     keepPreviewItem(settings.compactMode, summary.counts.pendingDelivery)
       ? { label: "รอจัดส่ง", value: `${summary.counts.pendingDelivery} รายการ` }
@@ -435,6 +441,11 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
                   <FlexPreviewSection
                     title="💸 เงินเข้าและยอดค้าง"
                     items={previewMoneyAndOutstandingItems}
+                  />
+
+                  <FlexPreviewSection
+                    title="💵 ยอดเงินคงเหลือแต่ละบัญชี"
+                    items={previewBalanceItems}
                   />
 
                   <FlexPreviewSection
