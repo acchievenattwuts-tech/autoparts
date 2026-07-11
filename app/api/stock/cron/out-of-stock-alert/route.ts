@@ -4,6 +4,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
+import { InventoryTracking } from "@/lib/generated/prisma";
 import { notifyOutOfStockDaily, type OutOfStockProduct } from "@/lib/notifications";
 
 /**
@@ -37,7 +38,7 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const rows = await db.product.findMany({
-      where: { isActive: true, stock: { lte: 0 } },
+      where: { isActive: true, inventoryTracking: InventoryTracking.TRACKED, stock: { lte: 0 } },
       select: { code: true, name: true, category: { select: { name: true } } },
       orderBy: [{ category: { name: "asc" } }, { code: "asc" }],
     });

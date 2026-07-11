@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
+import { InventoryTracking, NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 
@@ -431,7 +431,7 @@ export async function dispatchOutOfStockAlerts(productIds: string[], at: Date = 
   if (uniqueIds.length === 0) return;
 
   const products = await db.product.findMany({
-    where: { id: { in: uniqueIds }, isActive: true },
+    where: { id: { in: uniqueIds }, isActive: true, inventoryTracking: InventoryTracking.TRACKED },
     select: { id: true, code: true, name: true, category: { select: { name: true } } },
   });
 
