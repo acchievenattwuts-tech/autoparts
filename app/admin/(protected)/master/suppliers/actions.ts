@@ -13,6 +13,7 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierCode } from "@/lib/entity-code";
 import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
+import { invalidateTransactionSupplierOptions } from "@/lib/transaction-options";
 
 const supplierSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อผู้จำหน่าย").max(200),
@@ -101,6 +102,7 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
       after: toAuditSupplier(supplier),
     });
     revalidatePath("/admin/master/suppliers");
+    invalidateTransactionSupplierOptions();
     return {};
   } catch {
     return { error: "ชื่อผู้จำหน่ายนี้มีอยู่แล้ว" };
@@ -191,6 +193,7 @@ export const updateSupplier = async (
       after: diff.after,
     });
     revalidatePath("/admin/master/suppliers");
+    invalidateTransactionSupplierOptions();
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขข้อมูลผู้จำหน่ายได้ ชื่อนี้อาจมีอยู่แล้ว" };
@@ -261,6 +264,7 @@ export const toggleSupplier = async (id: string, isActive: boolean): Promise<{ e
       meta: { isActive },
     });
     revalidatePath("/admin/master/suppliers");
+    invalidateTransactionSupplierOptions();
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

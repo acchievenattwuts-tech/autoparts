@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: must match createSale tx timeout (180s) + response time
 
-import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -9,45 +8,20 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
-import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getSaleProductOptions, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const NewSalePage = async () => {
   await requirePermission("sales.create");
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "sales.view");
 
-  const [rawProducts, customers, config, suppliers, cashBankAccounts] = await Promise.all([
-    db.product.findMany({
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true, salePrice: true, retailPrice: true, saleUnitName: true,
-        isActive: true,
-        warrantyDays: true, preferredSupplierId: true, inventoryTracking: true, isLotControl: true,
-        lotIssueMethod: true, allowExpiredIssue: true,
-        category: { select: { name: true } }, brand: { select: { name: true } },
-        aliases: { select: { alias: true } }, preferredSupplier: { select: { name: true, isActive: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
+  const [products, customers, config, suppliers, cashBankAccounts] = await Promise.all([
+    getSaleProductOptions(),
     getTransactionCustomers(),
     getSiteConfig(),
     getTransactionSuppliers(),
     getActiveCashBankAccountOptions(),
   ]);
-  const products = rawProducts.map((product) => ({
-    id: product.id, code: product.code, name: product.name, description: product.description,
-    salePrice: Number(product.salePrice), retailPrice: Number(product.retailPrice), saleUnitName: product.saleUnitName,
-    warrantyDays: product.warrantyDays, categoryName: product.category.name,
-    brandName: product.brand?.name ?? null, aliases: product.aliases.map((alias) => alias.alias),
-    units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
-    preferredSupplierId: product.preferredSupplier?.isActive ? product.preferredSupplierId : null,
-    preferredSupplierName: product.preferredSupplier?.isActive ? product.preferredSupplier.name : null,
-    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
-    lotIssueMethod: product.lotIssueMethod as string,
-    allowExpiredIssue: product.allowExpiredIssue,
-    isActive: product.isActive,
-  }));
 
   return (
     <div>

@@ -24,6 +24,7 @@ import {
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
+import { invalidateTransactionProductOptions } from "@/lib/transaction-options";
 import {
   buildProductImageObjectPath,
   isAllowedProductImageUrl,
@@ -169,6 +170,7 @@ type ProductImageInput = z.infer<typeof productImageSchema>;
 const revalidateStorefrontProductCaches = async (productId?: string) => {
   revalidatePath("/admin/products");
   updateProductSearchCache();
+  invalidateTransactionProductOptions();
   if (productId) {
     updateTag(`storefront-product:${productId}`);
   }

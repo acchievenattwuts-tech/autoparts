@@ -1,44 +1,23 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: must match createPurchase tx timeout (180s) + response time
 
-import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import PurchaseForm from "./PurchaseForm";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
-import { getTransactionSuppliers } from "@/lib/transaction-options";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getPurchaseProductOptions, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const NewPurchasePage = async () => {
   await requirePermission("purchases.create");
 
-  const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
-    db.product.findMany({
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true, purchaseUnitName: true, costPrice: true,
-        inventoryTracking: true, isLotControl: true, requireExpiryDate: true, isActive: true,
-        category: { select: { name: true } }, brand: { select: { name: true } },
-        aliases: { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
+  const [products, suppliers, config, cashBankAccounts] = await Promise.all([
+    getPurchaseProductOptions(),
     getTransactionSuppliers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
-  const products = rawProducts.map((product) => ({
-    id: product.id, code: product.code, name: product.name, description: product.description,
-    purchaseUnitName: product.purchaseUnitName, costPrice: Number(product.costPrice),
-    categoryName: product.category.name, brandName: product.brand?.name ?? null,
-    aliases: product.aliases.map((alias) => alias.alias),
-    units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
-    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
-    requireExpiryDate: product.requireExpiryDate,
-    isActive: product.isActive,
-  }));
 
   return (
     <div>

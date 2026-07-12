@@ -1,46 +1,23 @@
 export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: must match createCreditNote tx timeout (180s) + response time
 
-import { db } from "@/lib/db";
 import { getSiteConfig } from "@/lib/site-config";
 import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
-import { getTransactionCustomers } from "@/lib/transaction-options";
+import { getCreditNoteProductOptions, getTransactionCustomers } from "@/lib/transaction-options";
 
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
 
-  const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
-    db.product.findMany({
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true,
-        salePrice: true, saleUnitName: true, inventoryTracking: true, isLotControl: true,
-        isActive: true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
+  const [products, customers, config, cashBankAccounts] = await Promise.all([
+    getCreditNoteProductOptions(),
     getTransactionCustomers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
   ]);
-
-  const products = rawProducts.map((p) => ({
-    id: p.id, code: p.code, name: p.name, description: p.description,
-    salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
-    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
-    categoryName: p.category.name, brandName: p.brand?.name ?? null,
-    aliases: p.aliases.map((a) => a.alias),
-    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    isActive: p.isActive,
-  }));
 
   return (
     <div>

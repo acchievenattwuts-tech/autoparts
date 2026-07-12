@@ -9,6 +9,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateCustomerCode } from "@/lib/entity-code";
@@ -140,6 +141,7 @@ export async function createCustomer(
       after: toAuditCustomer(customer),
     });
     revalidatePath("/admin/customers");
+    invalidateTransactionCustomerOptions();
     return { success: true, id: customer.id };
   } catch (err) {
     console.error("[createCustomer]", err);
@@ -246,6 +248,7 @@ export async function updateCustomer(
       after: diff.after,
     });
     revalidatePath("/admin/customers");
+    invalidateTransactionCustomerOptions();
     revalidatePath(`/admin/customers/${id}`);
     return { success: true };
   } catch (err) {
@@ -329,6 +332,7 @@ export async function unlinkCustomerLine(
       meta: { lineUnlinkedByAdmin: true },
     });
     revalidatePath("/admin/customers");
+    invalidateTransactionCustomerOptions();
     revalidatePath(`/admin/customers/${id}`);
     revalidatePath(`/admin/customers/${id}/edit`);
     return { success: true };
@@ -405,6 +409,7 @@ export async function toggleCustomer(
       meta: { isActive },
     });
     revalidatePath("/admin/customers");
+    invalidateTransactionCustomerOptions();
     return { success: true };
   } catch (err) {
     console.error("[toggleCustomer]", err);

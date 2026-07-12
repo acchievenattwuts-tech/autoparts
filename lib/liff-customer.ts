@@ -2,6 +2,7 @@ import { getRequestContext, getRequestContextFromHeaders, safeWriteAuditLog } fr
 import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/customer-phone";
 import { db } from "@/lib/db";
 import { generateCustomerCode } from "@/lib/entity-code";
+import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { notifyLineCustomerLinked, type LineCustomerLinkKind } from "@/lib/notifications";
 
@@ -257,6 +258,8 @@ export async function resolveLiffCustomerFromPhone(input: {
       phone: normalizedPhone,
     });
 
+    // Phone changed on an existing active customer — refresh cached dropdown options.
+    invalidateTransactionCustomerOptions();
     return { status: "LINKED", customerId: customer.id, customerName: customer.name };
   }
 
@@ -289,5 +292,7 @@ export async function resolveLiffCustomerFromPhone(input: {
     phone: normalizedPhone,
   });
 
+  // New active customer created — it must appear in the cached dropdown options.
+  invalidateTransactionCustomerOptions();
   return { status: "REGISTERED", customerId: customer.id, customerName: customer.name };
 }

@@ -3,6 +3,7 @@
 import { AuditAction } from "@/lib/generated/prisma";
 import { safeWriteAuditLog, writeAuditLogTx } from "@/lib/audit-log";
 import { db } from "@/lib/db";
+import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { requirePermission } from "@/lib/require-auth";
 import { z } from "zod";
 
@@ -117,6 +118,8 @@ export async function updateSaleAndCustomerDestinationPin(
       });
     });
 
+    // Customer default lat/long is part of the cached transaction dropdown options.
+    invalidateTransactionCustomerOptions();
     return { success: true };
   } catch (error) {
     if (error instanceof Error && error.message === "SALE_NOT_FOUND") {

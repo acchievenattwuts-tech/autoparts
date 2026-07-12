@@ -13,14 +13,17 @@ test("maps colloquial part-types to the right category hint", async () => {
   assert.equal(matchPartTypeToCategoryHint("กรองแอร์"), "Cabin air filter");
 });
 
-test("maps common วาล์ว misspellings (วาว์ล/วาวล์) to Expansion Valve", async () => {
+test("explicit A/C valve terms map to Expansion Valve; bare valve stays ambiguous", async () => {
   const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");
-  // Letter-order swap the store sees often; no thermostat/water-valve product
-  // exists so a bare valve word is always the A/C expansion valve.
-  assert.equal(matchPartTypeToCategoryHint("วาว์ล"), "(Expansion Valve)");
-  assert.equal(matchPartTypeToCategoryHint("วาวล์"), "(Expansion Valve)");
+  // A/C-explicit spellings (incl. the letter-order misspellings + "แอร์") still map.
   assert.equal(matchPartTypeToCategoryHint("วาว์ลแอร์"), "(Expansion Valve)");
   assert.equal(matchPartTypeToCategoryHint("วาวล์แอร์"), "(Expansion Valve)");
+  // Bare "วาล์ว" / "วาว์ล" / "วาวล์" are ambiguous (A/C expansion valve vs engine
+  // water valve / thermostat) → NOT hardcoded; resolve via DB CategoryAlias or the
+  // chat relevance gate hands off instead of guessing.
+  assert.equal(matchPartTypeToCategoryHint("วาล์ว"), null);
+  assert.equal(matchPartTypeToCategoryHint("วาว์ล"), null);
+  assert.equal(matchPartTypeToCategoryHint("วาวล์"), null);
 });
 
 test("normalizes colloquial Isuzu all-new model aliases to D-Max", async () => {

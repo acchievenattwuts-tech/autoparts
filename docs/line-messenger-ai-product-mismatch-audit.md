@@ -5,7 +5,7 @@
 >
 > **ธงของเจ้าของงาน:** ห้ามส่งคำตอบมั่ว — ถ้าไม่มั่นใจให้ส่งเรื่องต่อแอดมินเท่านั้น
 >
-> สถานะเอกสาร: **แก้ข้อ A + F + G1/G2 + Fix1/Fix2 + D + Relevance Gate (เคส 🔴1/2/3) แล้ว** (2026-07-11) · C, E ยังรอทำ (ดู §5)
+> สถานะเอกสาร: **แก้ข้อ A + F + G1/G2 + Fix1/Fix2 + D + E + Relevance Gate (เคส 🔴1/2/3) แล้ว** (2026-07-11) · เหลือ C (ดู §5)
 > วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5) · อัปเดต: 2026-07-11 (Claude Opus 4.8)
 
 ---
@@ -188,7 +188,11 @@
   - **bridge:** เพิ่ม field เดียวกันใน `ProductSearchOutput` (DI boundary) → `productSearch.result.usedBroadFallback` ถึง processor
   - **processor:** note ใหม่ `BROAD_FALLBACK_NEAR_MATCH_NOTE` ([search-gate.ts](../lib/chat-core/search-gate.ts), shared) — วางในลำดับ note ใต้ did-you-mean (เจาะจงกว่า) เหนือ search follow-up. ทำทั้ง LINE ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) + Messenger ([messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts)) = parity
   - Test: `line-product-search-bridge.test.ts` (flag propagate + precise ไม่ flag). `tsc --noEmit` ผ่าน. `line-webhook-processor.test.ts` = 71 pass / 5 fail เท่าเดิม (fail เดิมเป็น env `mock.module` ไม่เกี่ยวกับโค้ด)
-  - **ยังไม่ทำ:** C (จำกัด vector recall — กระทบ storefront), E (ลบ hardcode thermostat — ยืนยันแล้วว่า**ยังไม่มีสินค้า thermostat/วาล์วน้ำ** จึงยังไม่เร่งด่วน)
+  - **ยังไม่ทำ:** C (จำกัด vector recall — กระทบ storefront), E (ลบ hardcode thermostat)
+- 2026-07-11: **แก้ข้อ E (ลบ hardcode "บาร์ วาล์ว = Expansion Valve เสมอ")** — เจ้าของกำลังจะสร้างหมวด thermostat/วาล์วน้ำ ใหม่
+  - **เปลี่ยน** ([fitment-resolve.ts](../lib/chat-core/fitment-resolve.ts) `PART_TYPE_CATEGORY_ALIASES`): เอาคำกำกวม `"วาล์ว"`/`"วาว์ล"`/`"วาวล์"` ออก, เก็บคำ A/C ชัด (`วาล์วแอร์`/`วาล์วตู้`/`expansion valve`/`วาว์ลแอร์`/`วาวล์แอร์`)
+  - **ผล:** "วาล์ว" ลอย ๆ → categoryName=null → ตกไป **DB CategoryAlias** (admin ตั้ง, precedence สูงกว่า hardcode) หรือ **relevance gate ส่งแอดมิน** (ไม่เดาเป็น expansion valve). พร้อมรับหมวด thermostat/วาล์วน้ำ ใหม่โดยไม่ชนกัน
+  - Test: `line-fitment-resolve.test.ts` (บาร์ valve → null, A/C-explicit → Expansion Valve). `tsc` ผ่าน, LINE 109 pass/5 fail เท่า baseline
 - 2026-07-11: **แก้เคส 🔴1 + 🔴2 + 🔴3 พร้อมกันด้วย Chat-layer Relevance Gate** (แก่นของ audit — ปิดที่ต้นทางแทนไล่ปิดกลไก engine ทีละตัว)
   - **เจ้าของเคาะเกณฑ์:** กฎ ก (แข็ง = code/oem/name/**keyword**/fitment) + ข้อยกเว้น (พิมพ์ part+car ครบ + trigram≥0.5) + สาย accessory (`ANCHORED`→โชว์ / `FALLBACK`→แอดมิน) ; สงสัยส่งแอดมิน ห้ามเดา. ยิง**เฉพาะเทิร์น `categoryName=null`** (categoryName resolve ได้ = hard filter ปลอดภัยเดิม ไม่แตะ)
   - **หมวด "อะไหล่อื่นๆ"/universal:** ครอบด้วย ก อัตโนมัติ เพราะ ก จับที่**ข้อความของตัวสินค้าเอง** (ชื่อ/คำพ้อง) ไม่ขึ้นกับหมวด → สินค้า universal ที่ร้านมีจริง+ตั้งชื่อ/keyword ตรง จะไม่โดน over-block. `matchPartTypeToCategoryHint` **ถูกตัดออก**จากเงื่อนไข (พึ่ง keyword ใน ก แทน ไม่พึ่งตาราง hardcode ที่ไม่รู้จักอะไหล่อื่นๆ)

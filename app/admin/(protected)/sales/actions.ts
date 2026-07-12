@@ -10,6 +10,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { dispatchOutOfStockAlerts } from "@/lib/notifications";
@@ -666,6 +667,17 @@ export async function createSale(
       }
     }, { timeout: 180_000 });
 
+    // Customer default lat/long feeds the cached transaction dropdown options.
+    if (
+      saveAsCustomerDefault === "1" &&
+      customerId &&
+      fulfillmentType === FulfillmentType.DELIVERY &&
+      destLatitude !== undefined &&
+      destLongitude !== undefined
+    ) {
+      invalidateTransactionCustomerOptions();
+    }
+
     const afterSnapshot = createdSaleId
       ? await getSaleAuditSnapshot(createdSaleId)
       : null;
@@ -1321,6 +1333,17 @@ export async function updateSale(
         });
       }
     }, { timeout: 180_000 });
+
+    // Customer default lat/long feeds the cached transaction dropdown options.
+    if (
+      saveAsCustomerDefault === "1" &&
+      customerId &&
+      fulfillmentType === FulfillmentType.DELIVERY &&
+      destLatitude !== undefined &&
+      destLongitude !== undefined
+    ) {
+      invalidateTransactionCustomerOptions();
+    }
 
     const afterSnapshot = await getSaleAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
