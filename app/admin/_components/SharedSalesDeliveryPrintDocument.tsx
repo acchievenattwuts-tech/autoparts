@@ -47,6 +47,7 @@ type SalePrintItem = {
   showPricePerUnit?: NumericLike | null;
   unitScale?: NumericLike | null;
   moreDetail?: string | null;
+  warrantyDays?: NumericLike | null;
   lotItems: SalePrintLotItem[];
   product: SalePrintProduct;
 };
@@ -242,6 +243,7 @@ const SharedSalesDeliveryPrintDocument = ({
             const displayPrice = item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice);
             const listPrice = item.unitListPrice != null ? Number(item.unitListPrice) : 0;
             const hasLineDiscount = listPrice - displayPrice > 0.009;
+            const warrantyDays = item.warrantyDays != null ? Number(item.warrantyDays) : 0;
 
             return (
               <tr key={item.id}>
@@ -250,6 +252,9 @@ const SharedSalesDeliveryPrintDocument = ({
                 <td className={PRINT_TABLE_CELL_CLASS}>
                   <div className="font-medium text-gray-900">
                     {item.product.name}
+                    {warrantyDays > 0 ? (
+                      <span className="font-normal text-gray-700"> (รับประกัน {warrantyDays.toLocaleString("th-TH")} วัน)</span>
+                    ) : null}
                     {item.moreDetail ? <span className="font-normal text-gray-700"> {item.moreDetail}</span> : null}
                   </div>
                   {item.lotItems.length > 0 ? (

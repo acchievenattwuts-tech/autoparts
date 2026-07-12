@@ -104,6 +104,7 @@ export default async function LiffOrderReceiptPage({
           showPricePerUnit: true,
           unitScale: true,
           moreDetail: true,
+          warrantyDays: true,
           lotItems: { select: { lotNo: true, qty: true } },
           product: { select: { code: true, name: true, reportUnitName: true } },
         },
