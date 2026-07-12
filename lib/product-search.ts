@@ -270,6 +270,13 @@ type ProductSearchInput = {
 const normalizeStringArray = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
+// Escape every POSIX-regex metacharacter so a user query can be embedded as a
+// literal inside a Postgres `~` regex operand. Without this a query containing an
+// unbalanced bracket (e.g. "เบรค[") produces an invalid regex and Postgres throws
+// 2201B "invalid regular expression: brackets [] not balanced", crashing Search V2.
+const escapePosixRegexLiteral = (value: string): string =>
+  value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+
 const normalizeRequiredTokens = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => normalizeSearchText(value)).filter(Boolean)));
 
@@ -913,6 +920,9 @@ async function searchProductIdsV2(
   const take = input.take ?? 30;
   const prefixQuery = `${normalizedQuery}%`;
   const containsQuery = `%${normalizedQuery}%`;
+  // OEM whitespace-boundary match uses the `~` regex operator, so the query must
+  // be regex-escaped (LIKE/similarity/exact usages below treat it as a literal).
+  const oemRegexQuery = escapePosixRegexLiteral(normalizedQuery);
 
   // Year resolution (which may issue its own vehicle-evidence query) and synonym
   // token expansion are independent of each other, so run them in parallel to
@@ -1450,7 +1460,7 @@ async function searchProductIdsV2(
         -- Phase Q5: per-row match reasons (booleans) for UI chip display
         (f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
           OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))) AS match_code,
-        (f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${normalizedQuery})) || '($|\s)')
+        (f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)')
           OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_oem,
         (f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
           OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
@@ -1473,7 +1483,7 @@ async function searchProductIdsV2(
         (
           -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
           CASE WHEN f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery})) THEN 1500 ELSE 0 END +
-          CASE WHEN f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${normalizedQuery})) || '($|\s)') THEN 1400 ELSE 0 END +
+          CASE WHEN f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)') THEN 1400 ELSE 0 END +
           CASE WHEN f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery})) THEN 1000 ELSE 0 END +
           CASE WHEN f_unaccent(lower(psd.search_text)) = f_unaccent(lower(${normalizedQuery})) THEN 800 ELSE 0 END +
 
