@@ -338,13 +338,20 @@ export type OutOfStockProduct = {
 };
 
 /**
- * Builds the daily out-of-stock digest body (design A — grouped by category).
+ * Builds the daily out-of-stock digest body. Grouped by category with a clear
+ * category header (`🟠 หมวด · N รายการ`) and one product per line (`รหัส · ชื่อ`),
+ * blank line between category groups so long product names stay readable.
  * Plain text + emoji only: `sendTelegramMessage` sends without `parse_mode`,
  * so Telegram would render HTML/Markdown tags literally. Kept separate from the
  * sender so it can be unit-inspected. Products are assumed pre-sorted by
  * category then code.
  */
 export function buildOutOfStockDigestBody(products: OutOfStockProduct[], at: Date): string {
+  const countByCategory = new Map<string, number>();
+  for (const product of products) {
+    countByCategory.set(product.categoryName, (countByCategory.get(product.categoryName) ?? 0) + 1);
+  }
+
   const lines: string[] = [
     `📅 ${formatDateThai(at)} · 18:30 น.`,
     `รวม ${products.length} รายการ ที่ต้องสั่งเพิ่ม`,
@@ -352,12 +359,16 @@ export function buildOutOfStockDigestBody(products: OutOfStockProduct[], at: Dat
   ];
 
   let currentCategory: string | null = null;
+  let indexInCategory = 0;
   for (const product of products) {
     if (product.categoryName !== currentCategory) {
+      if (currentCategory !== null) lines.push("");
       currentCategory = product.categoryName;
-      lines.push(`📂 ${currentCategory}`);
+      indexInCategory = 0;
+      lines.push(`🟠 ${currentCategory} · ${countByCategory.get(currentCategory) ?? 0} รายการ`);
     }
-    lines.push(` • ${product.code} ${product.name}`);
+    indexInCategory += 1;
+    lines.push(`${indexInCategory}.${product.code} · ${product.name}`);
   }
 
   return lines.join("\n");

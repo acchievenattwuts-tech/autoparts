@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoaderCircle, RefreshCw } from "lucide-react";
+import { ChevronRight, LoaderCircle, RefreshCw } from "lucide-react";
 
 import type { AdminNotificationSection } from "@/components/shared/admin-notification-center-types";
 import {
@@ -36,6 +36,18 @@ const SEVERITY_DOT: Record<Severity, string> = {
   INFO: "bg-sky-500",
   WARNING: "bg-amber-500",
   ERROR: "bg-rose-500",
+};
+
+/** Daily out-of-stock digest carries the full product list in its body (for Telegram). */
+const STOCK_OUT_DAILY_TYPE = "STOCK_OUT_DAILY";
+
+/** Pulls "รวม N รายการ" out of the digest body so the bell can show a one-line summary. */
+const parseOutOfStockCount = (body: string | null): number | null => {
+  if (!body) return null;
+  const match = body.match(/รวม\s+([\d,]+)\s+รายการ/);
+  if (!match) return null;
+  const count = Number(match[1].replace(/,/g, ""));
+  return Number.isFinite(count) ? count : null;
 };
 
 const formatWhen = (value: string) =>
@@ -226,6 +238,8 @@ export function useAdminSystemNotificationSource({
     <>
       {items.map((item) => {
         const isUnread = !item.readAt;
+        const stockOutCount = item.type === STOCK_OUT_DAILY_TYPE ? parseOutOfStockCount(item.body) : null;
+        const isStockOutDigest = stockOutCount !== null;
         const contentNode = (
           <div
             className={cn(
@@ -235,11 +249,23 @@ export function useAdminSystemNotificationSource({
           >
             <div className="flex items-start gap-2">
               <span className={cn("mt-1.5 h-2 w-2 shrink-0 rounded-full", SEVERITY_DOT[item.severity])} />
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{item.title}</p>
-                {item.body ? <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{item.body}</p> : null}
+                {isStockOutDigest ? (
+                  <p className="mt-0.5 truncate text-xs text-slate-600 dark:text-slate-300">
+                    ต้องสั่งเพิ่ม{" "}
+                    <span className="font-semibold text-amber-700 dark:text-amber-300">
+                      {stockOutCount.toLocaleString("th-TH")} รายการ
+                    </span>
+                  </p>
+                ) : item.body ? (
+                  <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-300">{item.body}</p>
+                ) : null}
                 <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{formatWhen(item.createdAt)}</p>
               </div>
+              {isStockOutDigest ? (
+                <ChevronRight size={16} className="mt-0.5 shrink-0 text-slate-300 dark:text-slate-600" />
+              ) : null}
             </div>
           </div>
         );
