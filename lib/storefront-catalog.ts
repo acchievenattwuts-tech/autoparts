@@ -5,33 +5,36 @@ const PRODUCTS_PER_PAGE = 24;
 const STOREFRONT_LANDING_REVALIDATE_SECONDS = 1800;
 
 export const getStorefrontProductFilters = unstable_cache(
-  async () => {
-    const categories = await db.category.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    });
-    const carBrands = await db.carBrand.findMany({
-      where: { isActive: true },
-      select: {
-        id: true,
-        name: true,
-        carModels: {
-          where: { isActive: true },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
+  // Retry once on a transient pooler drop so a background ISR revalidation does
+  // not fail (and log an error) on a single dropped connection during a crawl.
+  async () =>
+    withDbRetry(async () => {
+      const categories = await db.category.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
+      const carBrands = await db.carBrand.findMany({
+        where: { isActive: true },
+        select: {
+          id: true,
+          name: true,
+          carModels: {
+            where: { isActive: true },
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+          },
         },
-      },
-      orderBy: { name: "asc" },
-    });
-    const partsBrands = await db.partsBrand.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    });
+        orderBy: { name: "asc" },
+      });
+      const partsBrands = await db.partsBrand.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      });
 
-    return { categories, carBrands, partsBrands };
-  },
+      return { categories, carBrands, partsBrands };
+    }),
   ["storefront-product-filters-v3"],
   { tags: ["storefront-product-filters"], revalidate: 300 },
 );

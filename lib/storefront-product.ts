@@ -1,9 +1,12 @@
 import { unstable_cache } from "next/cache";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 
 export const getActiveStorefrontProductById = async (productId: string) => {
   return unstable_cache(
+    // Retry once on a transient pooler drop so a background ISR revalidation does
+    // not fail (and log an error) on a single dropped connection during a crawl.
     async () =>
+      withDbRetry(() =>
       db.product.findFirst({
         where: {
           id: productId,
@@ -56,6 +59,7 @@ export const getActiveStorefrontProductById = async (productId: string) => {
           updatedAt: true,
         },
       }),
+    ),
     [`storefront-product:${productId}`],
     { tags: ["storefront:products", `storefront-product:${productId}`] },
   )();
@@ -69,7 +73,10 @@ export const getRelatedStorefrontProductsByCategory = async ({
   currentProductId: string;
 }) => {
   return unstable_cache(
+    // Retry once on a transient pooler drop so a background ISR revalidation does
+    // not fail (and log an error) on a single dropped connection during a crawl.
     async () =>
+      withDbRetry(() =>
       db.product.findMany({
         where: {
           isActive: true,
@@ -108,6 +115,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
         orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
         take: 9,
       }),
+    ),
     [`storefront-related-products:${categoryId}:${currentProductId}`],
     { tags: ["storefront:products", `storefront-product:${currentProductId}`] },
   )();
