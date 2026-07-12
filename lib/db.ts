@@ -125,26 +125,44 @@ const collectErrorMessages = (error: unknown, depth = 0): string => {
 const isTransientDbError = (error: unknown): boolean =>
   TRANSIENT_DB_ERROR_PATTERN.test(collectErrorMessages(error));
 
-const RETRY_BACKOFF_MS = 150;
+// Base backoff, doubled per attempt (150ms → 300ms), plus random jitter up to
+// one base window. A fixed backoff makes parallel revalidations (e.g. the 3 admin
+// master-option dropdowns loaded together on /admin/products/new) retry in
+// lockstep and collide in the same pool-starvation window; jitter spreads them so
+// the second attempt lands after the transient burst has cleared.
+const RETRY_BASE_BACKOFF_MS = 150;
+const DEFAULT_DB_RETRIES = 2;
+
+const computeRetryDelayMs = (attempt: number): number => {
+  const exponential = RETRY_BASE_BACKOFF_MS * 2 ** attempt;
+  const jitter = Math.random() * RETRY_BASE_BACKOFF_MS;
+  return exponential + jitter;
+};
 
 /**
- * Run a read-only DB operation, retrying once on a transient connection-level
- * failure. Use ONLY for idempotent reads (counts, findMany) — never for writes,
- * since a retry could double-apply an operation that actually reached Postgres.
+ * Run a read-only DB operation, retrying on a transient connection-level failure
+ * with exponential backoff + jitter. Use ONLY for idempotent reads (counts,
+ * findMany, findFirst) — never for writes, since a retry could double-apply an
+ * operation that actually reached Postgres.
  */
 export async function withDbRetry<T>(
   fn: () => Promise<T>,
-  retries = 1,
+  retries = DEFAULT_DB_RETRIES,
 ): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    if (retries > 0 && isTransientDbError(error)) {
-      await new Promise((resolve) => setTimeout(resolve, RETRY_BACKOFF_MS));
-      return withDbRetry(fn, retries - 1);
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt < retries && isTransientDbError(error)) {
+        await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs(attempt)));
+        continue;
+      }
+      throw error;
     }
-    throw error;
   }
+  throw lastError;
 }
 
 // Supabase statement_timeout = 2min (120s). TX_TIMEOUT must stay under that.
