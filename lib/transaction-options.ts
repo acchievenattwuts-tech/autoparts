@@ -3,6 +3,10 @@ import { unstable_cache, updateTag } from "next/cache";
 import { db, withDbRetry } from "@/lib/db";
 import type { InventoryTracking, LotIssueMethod, Prisma } from "@/lib/generated/prisma";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import {
+  compressJsonForCache,
+  decompressJsonFromCache,
+} from "@/lib/json-cache-compression";
 import { buildProductAliasSearchText } from "@/lib/product-search-select-presentation";
 
 const uniqueIds = (ids: Array<string | null | undefined>): string[] =>
@@ -148,6 +152,11 @@ export const getTransactionSuppliers = (
 //
 // NOTE: avgCost is deliberately NOT cached — it moves on every stock-in
 // (writeStockCard). purchase-returns merges a live avgCost lookup instead.
+//
+// The JSON form of this shared row set exceeds Next.js' 2 MiB Data Cache entry
+// limit in production. Store it as async gzip/base64 and decode after the cache
+// lookup. Forms still receive the exact same ProductOptionRow[] shape, while a
+// warm request avoids repeating the heavy product/alias query.
 // -----------------------------------------------------------------------------
 
 export const TRANSACTION_PRODUCT_OPTIONS_TAG = "admin-transaction:product-options";
@@ -216,14 +225,17 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
   }));
 };
 
-const getTransactionProductOptionRows = unstable_cache(
-  loadTransactionProductOptionRows,
-  ["admin-transaction-product-options-v1"],
+const getCompressedTransactionProductOptionRows = unstable_cache(
+  async () => compressJsonForCache(await loadTransactionProductOptionRows()),
+  ["admin-transaction-product-options-gzip-v2"],
   {
     tags: [TRANSACTION_PRODUCT_OPTIONS_TAG],
     revalidate: TRANSACTION_OPTIONS_REVALIDATE_SECONDS,
   },
 );
+
+const getTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =>
+  decompressJsonFromCache<ProductOptionRow[]>(await getCompressedTransactionProductOptionRows());
 
 /** Invalidate the cached transaction product-option list after a product mutation. */
 export const invalidateTransactionProductOptions = (): void => {
