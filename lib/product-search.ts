@@ -1302,6 +1302,11 @@ async function searchProductIdsV2(
       ${requiredTokensClause}
   `;
 
+  const exactOemTokenMatch = Prisma.sql`
+    f_unaccent(lower(psd.oem_text)) ~
+      ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)')
+  `;
+
   const exactRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
     WITH exact_matches AS (
       SELECT
@@ -1310,13 +1315,7 @@ async function searchProductIdsV2(
         (
           f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
         ) AS match_code,
-        (
-          f_unaccent(psd.oem_text) ILIKE f_unaccent(${`%${normalizedQuery}%`})
-          AND EXISTS (
-            SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
-            WHERE f_unaccent(lower(tok.tok)) = f_unaccent(lower(${normalizedQuery}))
-          )
-        ) AS match_oem,
+        (${exactOemTokenMatch}) AS match_oem,
         (
           f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
         ) AS match_name
@@ -1324,13 +1323,7 @@ async function searchProductIdsV2(
       ${exactScope}
         AND (
           f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
-          OR (
-            f_unaccent(psd.oem_text) ILIKE f_unaccent(${`%${normalizedQuery}%`})
-            AND EXISTS (
-              SELECT 1 FROM regexp_split_to_table(psd.oem_text, '\s+') AS tok(tok)
-              WHERE f_unaccent(lower(tok.tok)) = f_unaccent(lower(${normalizedQuery}))
-            )
-          )
+          OR ${exactOemTokenMatch}
           OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
         )
     ),

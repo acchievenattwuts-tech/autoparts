@@ -3,6 +3,7 @@ import { unstable_cache, updateTag } from "next/cache";
 import { db, withDbRetry } from "@/lib/db";
 import type { InventoryTracking, LotIssueMethod, Prisma } from "@/lib/generated/prisma";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { buildProductAliasSearchText } from "@/lib/product-search-select-presentation";
 
 const uniqueIds = (ids: Array<string | null | undefined>): string[] =>
   [...new Set(ids.filter((id): id is string => Boolean(id)))];
@@ -172,7 +173,7 @@ type ProductOptionRow = {
   preferredSupplierActive: boolean;
   categoryName: string;
   brandName: string | null;
-  aliases: string[];
+  aliasSearchText: string;
   units: { name: string; scale: number; isBase: boolean }[];
   isActive: boolean;
 };
@@ -209,7 +210,7 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
     preferredSupplierName: product.preferredSupplier?.name ?? null,
     preferredSupplierActive: product.preferredSupplier?.isActive ?? false,
     categoryName: product.category.name, brandName: product.brand?.name ?? null,
-    aliases: product.aliases.map((alias) => alias.alias),
+    aliasSearchText: buildProductAliasSearchText(product.aliases.map((alias) => alias.alias)),
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
     isActive: product.isActive,
   }));
@@ -235,7 +236,7 @@ export const getSaleProductOptions = async () => {
     id: product.id, code: product.code, name: product.name, description: product.description,
     salePrice: product.salePrice, retailPrice: product.retailPrice, saleUnitName: product.saleUnitName,
     warrantyDays: product.warrantyDays, categoryName: product.categoryName,
-    brandName: product.brandName, aliases: product.aliases,
+    brandName: product.brandName, aliasSearchText: product.aliasSearchText,
     units: product.units,
     preferredSupplierId: product.preferredSupplierActive ? product.preferredSupplierId : null,
     preferredSupplierName: product.preferredSupplierActive ? product.preferredSupplierName : null,
@@ -251,7 +252,7 @@ export const getPurchaseProductOptions = async () => {
   return rows.map((product) => ({
     id: product.id, code: product.code, name: product.name, description: product.description,
     purchaseUnitName: product.purchaseUnitName, costPrice: product.costPrice,
-    categoryName: product.categoryName, brandName: product.brandName, aliases: product.aliases,
+    categoryName: product.categoryName, brandName: product.brandName, aliasSearchText: product.aliasSearchText,
     units: product.units,
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
     requireExpiryDate: product.requireExpiryDate,
@@ -265,7 +266,7 @@ export const getCreditNoteProductOptions = async () => {
     id: product.id, code: product.code, name: product.name, description: product.description,
     salePrice: product.salePrice, saleUnitName: product.saleUnitName ?? "",
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
-    categoryName: product.categoryName, brandName: product.brandName, aliases: product.aliases,
+    categoryName: product.categoryName, brandName: product.brandName, aliasSearchText: product.aliasSearchText,
     units: product.units,
     isActive: product.isActive,
   }));
@@ -284,7 +285,7 @@ export const getPurchaseReturnProductOptions = async () => {
     avgCost: avgCostById.get(product.id) ?? 0, costPrice: product.costPrice,
     inventoryTracking: product.inventoryTracking,
     isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
-    categoryName: product.categoryName, brandName: product.brandName, aliases: product.aliases,
+    categoryName: product.categoryName, brandName: product.brandName, aliasSearchText: product.aliasSearchText,
     units: product.units,
     isActive: product.isActive,
   }));

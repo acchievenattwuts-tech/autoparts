@@ -33,6 +33,7 @@ interface ProductOption {
   categoryName: string;
   brandName?: string | null;
   aliases?: string[];
+  aliasSearchText?: string;
   units: { name: string; scale: number; isBase: boolean }[];
   preferredSupplierId:   string | null;
   preferredSupplierName: string | null;

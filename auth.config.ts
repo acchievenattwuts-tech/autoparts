@@ -1,5 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 import { getRoutePermission } from "@/lib/access-control";
+import { db, withDbRetry } from "@/lib/db";
+import { isSessionRevisionInvalid } from "@/lib/auth-session-revocation";
 
 export const authConfig: NextAuthConfig = {
   pages: {
@@ -10,6 +12,7 @@ export const authConfig: NextAuthConfig = {
       const isLoggedIn = !!auth?.user;
       const isAdmin = auth?.user?.role === "ADMIN";
       const mustChangePassword = Boolean(auth?.user?.mustChangePassword);
+      const sessionInvalid = Boolean(auth?.user?.sessionInvalid);
       const permissions = auth?.user?.permissions ?? [];
       const hasAppRole = !!auth?.user?.appRoleId;
       const isAdminRoute = nextUrl.pathname.startsWith("/admin");
@@ -18,7 +21,7 @@ export const authConfig: NextAuthConfig = {
       const requiredPermission = getRoutePermission(nextUrl.pathname);
 
       if (isLoginPage) {
-        if (isAdmin || hasAppRole) {
+        if (!sessionInvalid && (isAdmin || hasAppRole)) {
           const destination = mustChangePassword ? "/admin/profile/change-password" : "/admin";
           return Response.redirect(new URL(destination, nextUrl));
         }
@@ -26,7 +29,7 @@ export const authConfig: NextAuthConfig = {
       }
 
       if (isAdminRoute) {
-        if (!isLoggedIn) {
+        if (!isLoggedIn || sessionInvalid) {
           return Response.redirect(new URL("/admin/login", nextUrl));
         }
         if (mustChangePassword && !isChangePasswordPage) {
@@ -41,13 +44,39 @@ export const authConfig: NextAuthConfig = {
 
       return true;
     },
-    jwt({ token, user }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
         token.appRoleId = user.appRoleId ?? null;
         token.permissions = user.permissions ?? [];
         token.mustChangePassword = user.mustChangePassword ?? false;
+        token.authVersion = user.authVersion ?? 0;
+        token.sessionInvalid = false;
+        return token;
+      }
+
+      if (typeof token.id !== "string" || !token.id) {
+        token.sessionInvalid = true;
+        return token;
+      }
+
+      try {
+        const current = await withDbRetry(() =>
+          db.user.findUnique({
+            where: { id: token.id as string },
+            select: { authVersion: true, isActive: true },
+          }),
+        );
+        token.sessionInvalid = isSessionRevisionInvalid({
+          tokenVersion: token.authVersion,
+          currentVersion: current?.authVersion,
+          isActive: current?.isActive,
+        });
+      } catch (error) {
+        // Authorization must fail closed when the revocation check cannot run.
+        console.error("[auth] session revocation check failed", error);
+        token.sessionInvalid = true;
       }
       return token;
     },
@@ -60,6 +89,7 @@ export const authConfig: NextAuthConfig = {
           ? token.permissions.map((permission) => String(permission))
           : [];
         session.user.mustChangePassword = Boolean(token.mustChangePassword);
+        session.user.sessionInvalid = Boolean(token.sessionInvalid);
       }
       return session;
     },

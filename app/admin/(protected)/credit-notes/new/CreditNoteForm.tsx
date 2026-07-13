@@ -38,6 +38,7 @@ interface ProductOption {
   categoryName: string;
   brandName?: string | null;
   aliases?: string[];
+  aliasSearchText?: string;
   units: { name: string; scale: number; isBase: boolean }[];
 }
 

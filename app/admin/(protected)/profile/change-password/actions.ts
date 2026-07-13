@@ -67,6 +67,7 @@ export async function changeOwnPassword(
       data: {
         password: hashedPassword,
         mustChangePassword: false,
+        authVersion: { increment: 1 },
       },
     });
 

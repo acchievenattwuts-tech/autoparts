@@ -13,6 +13,7 @@ export type ProductSearchOptionLike = {
   categoryName: string;
   brandName?: string | null;
   aliases?: string[];
+  aliasSearchText?: string;
   isActive?: boolean;
 };
 
@@ -32,10 +33,21 @@ export function filterProductSearchOptions<T extends ProductSearchOptionLike>(
         (product.description?.toLowerCase().includes(normalizedQuery) ?? false) ||
         (product.brandName?.toLowerCase().includes(normalizedQuery) ?? false) ||
         product.categoryName.toLowerCase().includes(normalizedQuery) ||
+        (product.aliasSearchText?.includes(normalizedQuery) ?? false) ||
         (product.aliases?.some((alias) => alias.toLowerCase().includes(normalizedQuery)) ?? false)
       );
     })
     .slice(0, maxResults);
+}
+
+/**
+ * Compact, pre-normalized equivalent of aliases.some(alias => alias includes query).
+ * A newline prevents a match from spanning two adjacent aliases; the product
+ * picker is a single-line input, so users cannot submit that delimiter. Duplicate
+ * aliases are irrelevant to `.some()` and are removed case-insensitively.
+ */
+export function buildProductAliasSearchText(aliases: readonly string[]): string {
+  return [...new Set(aliases.map((alias) => alias.toLowerCase()))].join("\n");
 }
 
 export function getProductSearchOptionState(

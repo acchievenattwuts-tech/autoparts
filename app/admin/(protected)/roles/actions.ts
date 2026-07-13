@@ -186,6 +186,12 @@ export async function updateRole(
       where: { key: { in: permissionKeys } },
       select: { id: true },
     });
+    const currentPermissionKeys = role.permissions
+      .map((item) => item.permission.key)
+      .sort((left, right) => left.localeCompare(right));
+    const nextPermissionKeys = [...permissionKeys].sort((left, right) => left.localeCompare(right));
+    const permissionChanged =
+      JSON.stringify(currentPermissionKeys) !== JSON.stringify(nextPermissionKeys);
 
     await db.$transaction(async (tx) => {
       await tx.appRole.update({
@@ -207,6 +213,13 @@ export async function updateRole(
         })),
         skipDuplicates: true,
       });
+
+      if (permissionChanged) {
+        await tx.user.updateMany({
+          where: { appRoleId: id },
+          data: { authVersion: { increment: 1 } },
+        });
+      }
     });
 
     const updatedRole = await db.appRole.findUnique({
@@ -226,9 +239,6 @@ export async function updateRole(
       const beforeRole = toAuditRole(role);
       const afterRole = toAuditRole(updatedRole);
       const diff = diffEntity(beforeRole, afterRole);
-      const permissionChanged =
-        JSON.stringify(beforeRole.permissionKeys) !== JSON.stringify(afterRole.permissionKeys);
-
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
         ...requestContext,

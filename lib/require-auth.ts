@@ -1,6 +1,5 @@
 import { auth } from "@/auth";
 import { getAllPermissionKeys, getUserPermissionKeys, type PermissionKey } from "@/lib/access-control";
-import { db } from "@/lib/db";
 import type { Session } from "next-auth";
 
 export type UserRole = "ADMIN" | "STAFF";
@@ -11,7 +10,7 @@ function hasRole(session: Session | null, role: UserRole): session is Session {
 
 export const getRequiredSession = async (): Promise<Session> => {
   const session = await auth();
-  if (!session?.user) {
+  if (!session?.user || session.user.sessionInvalid) {
     throw new Error("UNAUTHORIZED");
   }
 
@@ -62,15 +61,6 @@ export const requirePermission = async (permission: PermissionKey): Promise<Sess
     return session;
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { isActive: true },
-  });
-
-  if (!user?.isActive) {
-    throw new Error("FORBIDDEN");
-  }
-
   const permissionKeys = await getUserPermissionKeys(session.user.id);
   if (!permissionKeys.includes(permission)) {
     throw new Error("FORBIDDEN");
@@ -84,15 +74,6 @@ export const requireAnyPermission = async (permissions: PermissionKey[]): Promis
 
   if (session.user.role === "ADMIN") {
     return session;
-  }
-
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { isActive: true },
-  });
-
-  if (!user?.isActive) {
-    throw new Error("FORBIDDEN");
   }
 
   const permissionKeys = await getUserPermissionKeys(session.user.id);

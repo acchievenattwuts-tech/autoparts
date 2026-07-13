@@ -123,6 +123,7 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
           appRoleId: user.appRoleId,
           permissions,
           mustChangePassword: user.mustChangePassword,
+          authVersion: user.authVersion,
         };
       },
     }),

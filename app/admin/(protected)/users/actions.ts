@@ -222,6 +222,12 @@ export async function updateUser(
     }
 
     const hasSignatureChanged = (existingUser?.signatureUrl ?? "") !== signatureUrl;
+    const nextAppRoleId = appRoleId || null;
+    const authChanged =
+      Boolean(password) ||
+      role !== existingUser.role ||
+      nextAppRoleId !== existingUser.appRoleId ||
+      mustChangePassword !== existingUser.mustChangePassword;
 
     const updatedUser = await db.user.update({
       where: { id },
@@ -231,13 +237,14 @@ export async function updateUser(
         email: username,
         phone: phone || null,
         role,
-        appRoleId: appRoleId || null,
+        appRoleId: nextAppRoleId,
         mustChangePassword,
         signatureUrl: signatureUrl || null,
         ...(hasSignatureChanged
           ? { signatureUpdatedAt: signatureUrl ? new Date() : null }
           : {}),
         ...(password ? { password: await bcrypt.hash(password, 12) } : {}),
+        ...(authChanged ? { authVersion: { increment: 1 } } : {}),
       },
       select: {
         id: true,
@@ -327,7 +334,12 @@ export async function toggleUserActive(
 
     const updatedUser = await db.user.update({
       where: { id },
-      data: { isActive },
+      data: {
+        isActive,
+        ...(isActive !== existingUser.isActive
+          ? { authVersion: { increment: 1 } }
+          : {}),
+      },
       select: {
         id: true,
         name: true,

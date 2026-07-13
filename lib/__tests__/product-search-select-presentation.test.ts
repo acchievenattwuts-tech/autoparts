@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildProductAliasSearchText,
   filterProductSearchOptions,
   getProductSearchOptionState,
 } from "@/lib/product-search-select-presentation";
@@ -34,6 +35,41 @@ test("product dropdown search keeps inactive matches visible", () => {
     filterProductSearchOptions(products, "condenser", 50).map((product) => product.id),
     ["inactive"],
   );
+});
+
+test("compact alias search text preserves alias-array search results", () => {
+  const aliases = ["Old Condenser", "คอนเดนเซอร์ รุ่นเก่า", "ABC-123"];
+  const compactProducts = products.map((product) => ({
+    ...product,
+    aliasSearchText: buildProductAliasSearchText(product.aliases),
+    aliases: undefined,
+  }));
+
+  for (const query of ["old", "CONDENSER", "รุ่น", "abc-1", "not-found"]) {
+    assert.deepEqual(
+      filterProductSearchOptions(compactProducts, query, 50).map((product) => product.id),
+      filterProductSearchOptions(products, query, 50).map((product) => product.id),
+    );
+  }
+
+  const aliasOnly = [{
+    id: "alias-only",
+    code: "ZZZ",
+    name: "No direct match",
+    categoryName: "Other",
+    aliases,
+  }];
+  const compactAliasOnly = [{
+    ...aliasOnly[0],
+    aliases: undefined,
+    aliasSearchText: buildProductAliasSearchText(aliases),
+  }];
+  for (const query of ["condenser", "รุ่นเก่า", "ABC-123"]) {
+    assert.deepEqual(
+      filterProductSearchOptions(compactAliasOnly, query, 50).map((product) => product.id),
+      filterProductSearchOptions(aliasOnly, query, 50).map((product) => product.id),
+    );
+  }
 });
 
 test("product dropdown marks inactive options as disabled with inactive row styling", () => {

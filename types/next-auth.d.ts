@@ -8,6 +8,7 @@ declare module "next-auth" {
       appRoleId?: string | null;
       permissions: string[];
       mustChangePassword: boolean;
+      sessionInvalid: boolean;
     } & DefaultSession["user"];
   }
 
@@ -16,6 +17,7 @@ declare module "next-auth" {
     appRoleId?: string | null;
     permissions?: string[];
     mustChangePassword?: boolean;
+    authVersion?: number;
   }
 }
 
@@ -26,5 +28,7 @@ declare module "next-auth/jwt" {
     appRoleId?: string | null;
     permissions?: string[];
     mustChangePassword?: boolean;
+    authVersion?: number;
+    sessionInvalid?: boolean;
   }
 }
