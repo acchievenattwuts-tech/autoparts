@@ -7,15 +7,17 @@ import {
   compressJsonForCache,
   decompressJsonFromCache,
 } from "@/lib/json-cache-compression";
-import { buildProductAliasSearchText } from "@/lib/product-search-select-presentation";
 
 const uniqueIds = (ids: Array<string | null | undefined>): string[] =>
   [...new Set(ids.filter((id): id is string => Boolean(id)))];
 
-// Shared safety-net revalidate window for cached transaction dropdown options
-// (matches lib/admin-master-options.ts). Tag invalidation is the primary path;
-// this bounds staleness if an invalidation is ever missed.
-const TRANSACTION_OPTIONS_REVALIDATE_SECONDS = 300;
+// Shared safety-net revalidate window for cached transaction dropdown options.
+// Tag invalidation is the primary path (every product/customer/supplier mutation
+// calls updateTag), so fresh data still arrives immediately; this window only
+// bounds staleness if an invalidation is ever missed. Kept long (24h) because
+// each full-catalog refetch pulls the whole product master + alias set from the
+// database — a major Supabase egress cost when it ran every few minutes.
+const TRANSACTION_OPTIONS_REVALIDATE_SECONDS = 86_400;
 
 export const activeOrReferencedWhere = (
   referencedIds: Array<string | null | undefined> = [],
@@ -187,27 +189,60 @@ type ProductOptionRow = {
   isActive: boolean;
 };
 
-const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> => {
+// Dropdown search matches on description via `.includes`, but descriptions
+// average ~1.5k chars (≈1.3 MB per full-catalog fetch). Keeping the first 300
+// chars preserves nearly all search value at a fraction of the egress.
+const PRODUCT_OPTION_DESCRIPTION_MAX_CHARS = 300;
+
+const truncateOptionDescription = (description: string | null): string | null =>
+  description && description.length > PRODUCT_OPTION_DESCRIPTION_MAX_CHARS
+    ? description.slice(0, PRODUCT_OPTION_DESCRIPTION_MAX_CHARS)
+    : description;
+
+/**
+ * Pre-aggregated `aliasSearchText` per product, built in SQL. Produces the same
+ * value as `buildProductAliasSearchText(aliases)` — lowercased, de-duplicated,
+ * newline-joined — but returns one row per product instead of streaming all
+ * ~36k alias rows to the app (the alias fetch dominated this loader's egress).
+ * Only the internal line order differs, which `.includes()` matching never sees.
+ */
+const loadAliasSearchTextByProduct = async (): Promise<Map<string, string>> => {
   const rows = await withDbRetry(() =>
-    db.product.findMany({
-      orderBy: { code: "asc" },
-      select: {
-        id: true, code: true, name: true, description: true,
-        salePrice: true, retailPrice: true, costPrice: true,
-        saleUnitName: true, purchaseUnitName: true, warrantyDays: true,
-        inventoryTracking: true, isLotControl: true, lotIssueMethod: true,
-        allowExpiredIssue: true, requireExpiryDate: true,
-        preferredSupplierId: true, isActive: true,
-        category: { select: { name: true } },
-        brand: { select: { name: true } },
-        aliases: { select: { alias: true } },
-        preferredSupplier: { select: { name: true, isActive: true } },
-        units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-      },
-    }),
+    db.$queryRaw<Array<{ productId: string; aliasSearchText: string | null }>>`
+      SELECT
+        "productId",
+        string_agg(DISTINCT lower(alias), E'\\n' ORDER BY lower(alias)) AS "aliasSearchText"
+      FROM "ProductAlias"
+      GROUP BY "productId"
+    `,
   );
+  return new Map(rows.map((row) => [row.productId, row.aliasSearchText ?? ""]));
+};
+
+const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> => {
+  const [rows, aliasSearchTextByProduct] = await Promise.all([
+    withDbRetry(() =>
+      db.product.findMany({
+        orderBy: { code: "asc" },
+        select: {
+          id: true, code: true, name: true, description: true,
+          salePrice: true, retailPrice: true, costPrice: true,
+          saleUnitName: true, purchaseUnitName: true, warrantyDays: true,
+          inventoryTracking: true, isLotControl: true, lotIssueMethod: true,
+          allowExpiredIssue: true, requireExpiryDate: true,
+          preferredSupplierId: true, isActive: true,
+          category: { select: { name: true } },
+          brand: { select: { name: true } },
+          preferredSupplier: { select: { name: true, isActive: true } },
+          units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
+        },
+      }),
+    ),
+    loadAliasSearchTextByProduct(),
+  ]);
   return rows.map((product) => ({
-    id: product.id, code: product.code, name: product.name, description: product.description,
+    id: product.id, code: product.code, name: product.name,
+    description: truncateOptionDescription(product.description),
     salePrice: Number(product.salePrice), retailPrice: Number(product.retailPrice),
     costPrice: Number(product.costPrice),
     saleUnitName: product.saleUnitName, purchaseUnitName: product.purchaseUnitName,
@@ -219,7 +254,7 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
     preferredSupplierName: product.preferredSupplier?.name ?? null,
     preferredSupplierActive: product.preferredSupplier?.isActive ?? false,
     categoryName: product.category.name, brandName: product.brand?.name ?? null,
-    aliasSearchText: buildProductAliasSearchText(product.aliases.map((alias) => alias.alias)),
+    aliasSearchText: aliasSearchTextByProduct.get(product.id) ?? "",
     units: product.units.map((unit) => ({ name: unit.name, scale: Number(unit.scale), isBase: unit.isBase })),
     isActive: product.isActive,
   }));
@@ -227,7 +262,9 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
 
 const getCompressedTransactionProductOptionRows = unstable_cache(
   async () => compressJsonForCache(await loadTransactionProductOptionRows()),
-  ["admin-transaction-product-options-gzip-v2"],
+  // v3: description truncated to PRODUCT_OPTION_DESCRIPTION_MAX_CHARS and
+  // aliasSearchText aggregated in SQL — bumped so stale v2 payloads are not served.
+  ["admin-transaction-product-options-gzip-v3"],
   {
     tags: [TRANSACTION_PRODUCT_OPTIONS_TAG],
     revalidate: TRANSACTION_OPTIONS_REVALIDATE_SECONDS,

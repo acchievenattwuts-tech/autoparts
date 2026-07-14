@@ -230,7 +230,15 @@
   - [x] รัน apply backfill + flip flag เสร็จแล้ว: `npm run backfill:payment-slips-blob -- --apply` → `IMAGE_STORAGE_PAYMENT_SLIPS=blob`
 - [ ] Phase 4 — Cleanup: ลบไฟล์เก่า 3 bucket ใน Supabase, ลบโค้ด Supabase storage เฉพาะ 3 bucket (คง purchase-ocr), เอา flag ออก
 
-### 8. Facebook Messenger AI Agent (2026-07-04)
+### 8. Database Egress Reduction — Supabase Pro (2026-07-14)
+- บริบท: egress รอบบิล 6.44GB (~320MB/วัน ≈ 10GB/เดือน) เกินธงภายใน 5GB/เดือน — วินิจฉัยจาก `pg_stat_statements` + `pg_stat_activity` + `storage.objects`: ไม่มี replication/backup รั่ว, ตัวการคือ query ที่ดึง "ทั้ง catalog / ทั้งตาราง" ซ้ำบ่อย (Product ~64k แถว/วัน ที่แถวกว้าง ~4.9KB, ProductAlias ~157k แถว/วัน, StockCard ~87k แถว/วัน)
+- [x] `lib/transaction-options.ts` — ลด egress ของ product-option superset: truncate `description` เหลือ 300 ตัวอักษรแรก (ใช้ค้นใน dropdown เท่านั้น ไม่เคยถูกบันทึก/แสดง), aliasSearchText เปลี่ยนเป็น `string_agg(DISTINCT lower(alias))` ฝั่ง SQL (902 แถวแทน 36k แถว — ยืนยัน membership ตรงกับ logic JS เดิม 100%), revalidate safety-net 300s → 86,400s (tag invalidation ยังเป็น path หลัก), bump cache key เป็น `-v3`; **เงื่อนไขแสดงสินค้าทุกตัว active+inactive คงเดิม**
+- [x] `lib/stock-card-latest-balance.ts` (ใหม่) — `getLatestStockBalances()` ใช้ SQL `DISTINCT ON ("productId") … ORDER BY "productId","docDate" DESC,sorder DESC` แทน Prisma `distinct` (ซึ่ง dedupe ฝั่งแอป = ลาก StockCard ทั้งประวัติมาทุกครั้ง); ใช้ค่า 4 ตำแหน่งจาก ledger เหมือนเดิมทุกไบต์ (ยืนยันเทียบ 887 สินค้า mismatch=0) — เปลี่ยน call site ใน `lib/product-report-queries.ts` + `lib/ar-ap-stock-report-queries.ts`
+- [x] sitemap revalidate 900s → 21,600s (6 ชม.) ทั้ง `app/sitemap.ts` + `lib/storefront-sitemap.ts` (bot crawl ทำให้ refetch สินค้าทุกตัวได้ ~96 รอบ/วัน)
+- [ ] (Ops) เฝ้าดูกราฟ egress 3–5 วันหลัง deploy — คาดลดจาก ~320MB/วัน เหลือระดับ ~150MB/วัน (<5GB/เดือน)
+- หมายเหตุที่พบระหว่างตรวจ: bucket `products` เก่าบน Supabase ยังมี 2,502 ไฟล์ / 417MB (public) แม้ DB ชี้ Blob ครบแล้ว — เป็นงาน Phase 4 Cleanup ของ ข้อ 7 อยู่แล้ว
+
+### 9. Facebook Messenger AI Agent (2026-07-04)
 - สถานะ: **Phase B–E เสร็จครบ** (B: สมองกลาง `lib/chat-core/`; C: 4 model; D: webhook + Send API + processor เต็ม text/รูป/สลิป/coalescing/24h/cron; E: admin inbox + permission 5 ขั้น + audit กลาง + notification bell+Telegram + handoff escalation — reuse chat-core ไม่แตะ LINE) · เหลือ **Phase A (Meta App Review — งานเจ้าของร้าน)** + **Phase F (rollout/QA)** — checklist เต็มดู [PLAN-MESSENGER.md](/D:/autoparts/PLAN-MESSENGER.md)
 - เป้าหมาย: AI ตอบ DM Facebook ใช้สมอง + logic ค้นหาชุดเดียวกับ LINE OA (แก้ที่เดียว) — ตารางแยกใหม่ `MessengerConversation`, parity เต็มเท่า LINE, webhook `www.sriwanparts.com/api/messenger/webhook`
 - หลักการ: extract `lib/chat-core/` (channel-agnostic) แบบ clean repo-wide ไม่ใช้ shim → LINE ต้องทำงานเหมือนเดิม 100% (build เขียว + test เดิมผ่านทุกตัว)

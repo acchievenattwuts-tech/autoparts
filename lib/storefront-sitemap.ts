@@ -5,7 +5,10 @@ import { knowledgeArticles } from "@/lib/knowledge-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 import { ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
 
-const SITEMAP_REVALIDATE_SECONDS = 900;
+// 6h: bots crawl /sitemap.xml frequently; every cache miss refetches the whole
+// active-product list from the database. Product/category mutations are not
+// time-critical for the sitemap, so a long window sharply cuts Supabase egress.
+const SITEMAP_REVALIDATE_SECONDS = 21_600;
 
 const getStorefrontSitemapData = unstable_cache(
   async () => {

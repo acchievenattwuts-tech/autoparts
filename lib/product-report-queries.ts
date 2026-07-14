@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { parseAdminProductFilterParams } from "@/lib/admin-product-filter-params";
 import { db } from "@/lib/db";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { getLatestStockBalances } from "@/lib/stock-card-latest-balance";
 
 const BOM = "\uFEFF";
 const MAX_EXPORT_ROWS = 10000;
@@ -135,23 +136,8 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
     searchResult.ids,
   );
 
-  const latestBalances = rawProducts.length
-    ? await db.stockCard.findMany({
-        where: { productId: { in: rawProducts.map((product) => product.id) } },
-        orderBy: [{ productId: "asc" }, { docDate: "desc" }, { sorder: "desc" }],
-        distinct: ["productId"],
-        select: {
-          productId: true,
-          qtyBalance: true,
-          priceBalance: true,
-        },
-      })
-    : [];
-  const latestBalanceMap = new Map(
-    latestBalances.map((row) => [
-      row.productId,
-      { stock: Number(row.qtyBalance), avgCost: Number(row.priceBalance) },
-    ]),
+  const latestBalanceMap = await getLatestStockBalances(
+    rawProducts.map((product) => product.id),
   );
 
   return rawProducts

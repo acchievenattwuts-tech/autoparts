@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitPrice, toReportUnitQty } from "@/lib/report-unit";
+import { getLatestStockBalances } from "@/lib/stock-card-latest-balance";
 import {
   formatDateOnlyForInput,
   formatDateThai,
@@ -483,28 +484,7 @@ export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRo
     },
   });
 
-  const latestBalances = rows.length
-    ? await db.stockCard.findMany({
-        where: { productId: { in: rows.map((row) => row.id) } },
-        orderBy: [{ productId: "asc" }, { docDate: "desc" }, { sorder: "desc" }],
-        distinct: ["productId"],
-        select: {
-          productId: true,
-          qtyBalance: true,
-          priceBalance: true,
-        },
-      })
-    : [];
-
-  const latestBalanceMap = new Map(
-    latestBalances.map((row) => [
-      row.productId,
-      {
-        stock: Number(row.qtyBalance),
-        avgCost: Number(row.priceBalance),
-      },
-    ]),
-  );
+  const latestBalanceMap = await getLatestStockBalances(rows.map((row) => row.id));
 
   return rows
     .map((r) => {
