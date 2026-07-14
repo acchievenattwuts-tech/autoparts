@@ -107,6 +107,32 @@ function stickerPayload(lineEventId = "event-sticker-1") {
   };
 }
 
+// A product-turn classifier result. The shared default `extractChatSearchIntent`
+// returns `null` (which the processor treats as a classify-failure → the
+// classifier-uncertain hand-off). Tests that predate that guard and exercise the
+// normal product / search / FAQ / escalation paths override the classifier with
+// this so the turn is a resolved product turn instead of an uncertain hand-off.
+const productSearchIntent = (query: string) => ({
+  group: "product" as const,
+  query,
+  isProductQuery: true,
+  partType: null,
+  carBrand: null,
+  carModel: null,
+  year: null,
+  partKind: "universal" as const,
+  tooBroad: false,
+});
+
+// Deterministic AI reply so tests that reach the generation path don't depend on
+// a real Gemini call (wording/latency). Used only where the assertion is about
+// structure/routing, not the reply text.
+const stubChatSuggestion = () => ({
+  suggestedReply: "เจอสินค้าที่ตรงกับที่แจ้งค่ะ 😊",
+  confidence: LineAiConfidence.POSSIBLE_MATCH,
+  reasoningSummary: "TEST_STUB",
+});
+
 function createProcessorTestDeps(input?: {
   duplicate?: boolean;
   duplicateEventIds?: string[];
@@ -498,6 +524,9 @@ test("processor ignores duplicate webhook events without appending messages", as
 test("processor creates conversation message and sends webhook reply via replyMessage", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();
+  // Normal product turn with a deterministic reply (see helper notes).
+  dependencies.extractChatSearchIntent = async () => productSearchIntent("vios 1234");
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
 
   const result = await processLineWebhookPayload(
     textPayload("vios 1234"),
@@ -1140,6 +1169,24 @@ test("lone low-confidence part image hands off instead of guessing a search", as
 test("search falls back to latest text when AI consolidation declines", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ consolidatedQuery: null });
+  // "AI consolidation declines" = the classifier ran (product turn) but echoed the
+  // raw text instead of rewriting it into a different consolidated query, so search
+  // runs on the latest text. Returning the raw text (not a null intent) keeps it a
+  // product turn instead of tripping the uncertain hand-off.
+  dependencies.extractChatSearchIntent = async () => productSearchIntent("คอยเย็น vios");
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
+  // Capture the consolidated-query audit payload (if any) to prove there was no
+  // divergent rewrite — the ungrounded query is force-literalled to the raw text.
+  let consolidatedQueryLogged: string | null = null;
+  const basePushAudit = dependencies.storeLineAiAudit!;
+  dependencies.storeLineAiAudit = async (a) => {
+    if (a.action === "SEARCH_QUERY_CONSOLIDATED") {
+      consolidatedQueryLogged = String(
+        (a.payload as { consolidatedQuery?: unknown } | undefined)?.consolidatedQuery ?? "",
+      );
+    }
+    return basePushAudit(a);
+  };
 
   const result = await processLineWebhookPayload(
     textPayload("คอยเย็น vios"),
@@ -1149,12 +1196,18 @@ test("search falls back to latest text when AI consolidation declines", async ()
 
   assert.equal(result.processedCount, 1);
   assert.deepEqual(calls.searches, ["คอยเย็น vios"]);
-  assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
+  // The classifier declined to rewrite, so the query used is the raw latest text —
+  // either no consolidation, or a literal fallback equal to it — never a divergent
+  // rewritten query.
+  assert.equal(consolidatedQueryLogged ?? "คอยเย็น vios", "คอยเย็น vios");
 });
 
 test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ faqReply: "ร้านส่งต่างจังหวัดได้ค่ะ 🙏" });
+  // Resolved product turn (not a null/uncertain classification) whose search comes
+  // back empty → the FAQ branch gets a chance before asking-more/escalating.
+  dependencies.extractChatSearchIntent = async () => productSearchIntent("asdf qwer");
   // Empty product search → FAQ gets a chance before asking-more/escalating.
   dependencies.searchChatProductInquiry = async () => ({
     searched: true,
@@ -1234,6 +1287,9 @@ test("search matched rows but none are showable → hands off + notifies (no sil
 test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
+  // Resolved product turn (not a null/uncertain classification) so the repeated
+  // empty-search escalation is what fires — not the classifier-uncertain hand-off.
+  dependencies.extractChatSearchIntent = async () => productSearchIntent("vios 1234");
   dependencies.searchChatProductInquiry = async () => ({
     searched: true,
     reason: "SEARCHED_PRODUCT_INQUIRY",
