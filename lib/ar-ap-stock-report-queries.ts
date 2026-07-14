@@ -12,7 +12,7 @@ import {
   parseDateOnlyToEndOfDay,
 } from "@/lib/th-date";
 
-// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── helpers ────────────────────────────────────────────────────────────────
 
 const BOM = "\uFEFF";
 
@@ -63,7 +63,7 @@ function styleHeader(ws: ExcelJS.Worksheet) {
   row.height = 22;
 }
 
-// â”€â”€â”€ filter parser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── filter parser ───────────────────────────────────────────────────────────
 
 export type ARAPStockFilters = {
   from: Date;
@@ -116,7 +116,7 @@ export function parseARAPStockFilters(
   };
 }
 
-// â”€â”€â”€ AR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AR ─────────────────────────────────────────────────────────────────────
 
 export type ARRow = {
   id: string;
@@ -184,7 +184,7 @@ export async function queryARRows(filters: ARAPStockFilters): Promise<ARRow[]> {
 }
 
 export function buildARCsv(rows: ARRow[]): string {
-  const header = csvRow(["à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸‚à¸²à¸¢", "à¸¥à¸¹à¸à¸„à¹‰à¸²", "à¸¢à¸­à¸”à¸‚à¸²à¸¢", "à¸„à¹‰à¸²à¸‡à¸Šà¸³à¸£à¸°", "à¹€à¸„à¸£à¸”à¸´à¸• (à¸§à¸±à¸™)"]);
+  const header = csvRow(["เลขที่", "วันที่ขาย", "ลูกค้า", "ยอดขาย", "ค้างชำระ", "เครดิต (วัน)"]);
   const body = rows.map((r) =>
     csvRow([
       r.saleNo,
@@ -203,12 +203,12 @@ export async function buildARExcel(rows: ARRow[], title: string): Promise<Blob> 
   const ws = wb.addWorksheet(title);
 
   ws.columns = [
-    { header: "à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", key: "saleNo", width: 16 },
-    { header: "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸‚à¸²à¸¢", key: "saleDate", width: 12 },
-    { header: "à¸¥à¸¹à¸à¸„à¹‰à¸²", key: "customerName", width: 28 },
-    { header: "à¸¢à¸­à¸”à¸‚à¸²à¸¢", key: "totalAmount", width: 14 },
-    { header: "à¸„à¹‰à¸²à¸‡à¸Šà¸³à¸£à¸°", key: "amountRemain", width: 14 },
-    { header: "à¹€à¸„à¸£à¸”à¸´à¸• (à¸§à¸±à¸™)", key: "creditTerm", width: 12 },
+    { header: "เลขที่", key: "saleNo", width: 16 },
+    { header: "วันที่ขาย", key: "saleDate", width: 12 },
+    { header: "ลูกค้า", key: "customerName", width: 28 },
+    { header: "ยอดขาย", key: "totalAmount", width: 14 },
+    { header: "ค้างชำระ", key: "amountRemain", width: 14 },
+    { header: "เครดิต (วัน)", key: "creditTerm", width: 12 },
   ];
   styleHeader(ws);
 
@@ -227,7 +227,7 @@ export async function buildARExcel(rows: ARRow[], title: string): Promise<Blob> 
   }
 
   const totalRow = ws.addRow({});
-  totalRow.getCell(3).value = "à¸£à¸§à¸¡";
+  totalRow.getCell(3).value = "รวม";
   totalRow.getCell(3).font = { bold: true };
   totalRow.getCell(3).alignment = { horizontal: "right" };
   totalRow.getCell(4).value = rows.reduce((s, r) => s + r.totalAmount, 0);
@@ -242,7 +242,7 @@ export async function buildARExcel(rows: ARRow[], title: string): Promise<Blob> 
   return new Blob([buf]);
 }
 
-// â”€â”€â”€ AP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── AP ─────────────────────────────────────────────────────────────────────
 
 export type APData = {
   purchases: { id: string; purchaseNo: string; purchaseDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
@@ -340,22 +340,22 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
 export function buildAPCsv(data: APData): string {
   const sections: string[] = [];
 
-  sections.push(csvRow(["=== à¸„à¹‰à¸²à¸‡à¸ˆà¹ˆà¸²à¸¢à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ (à¸‹à¸·à¹‰à¸­à¹€à¸Šà¸·à¹ˆà¸­) ==="]));
-  sections.push(csvRow(["à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸‹à¸·à¹‰à¸­", "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", "à¸¢à¸­à¸”à¸‹à¸·à¹‰à¸­", "à¸„à¹‰à¸²à¸‡à¸ˆà¹ˆà¸²à¸¢"]));
+  sections.push(csvRow(["=== ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ) ==="]));
+  sections.push(csvRow(["เลขที่", "วันที่ซื้อ", "ซัพพลายเออร์", "ยอดซื้อ", "ค้างจ่าย"]));
   for (const r of data.purchases) {
     sections.push(csvRow([r.purchaseNo, fmtDate(r.purchaseDate), r.supplierName, r.totalAmount, r.amountRemain]));
   }
 
   sections.push(csvRow([]));
-  sections.push(csvRow(["=== à¹€à¸‡à¸´à¸™à¸¡à¸±à¸”à¸ˆà¸³à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œà¸„à¸‡à¹€à¸«à¸¥à¸·à¸­ ==="]));
-  sections.push(csvRow(["à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", "à¸§à¸±à¸™à¸—à¸µà¹ˆ", "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", "à¸¢à¸­à¸”à¸¡à¸±à¸”à¸ˆà¸³", "à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­"]));
+  sections.push(csvRow(["=== เงินมัดจำซัพพลายเออร์คงเหลือ ==="]));
+  sections.push(csvRow(["เลขที่", "วันที่", "ซัพพลายเออร์", "ยอดมัดจำ", "คงเหลือ"]));
   for (const r of data.advances) {
     sections.push(csvRow([r.advanceNo, fmtDate(r.advanceDate), r.supplierName, r.totalAmount, r.amountRemain]));
   }
 
   sections.push(csvRow([]));
-  sections.push(csvRow(["=== à¹€à¸„à¸£à¸”à¸´à¸• CN à¸„à¸·à¸™à¸ªà¸´à¸™à¸„à¹‰à¸² à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­ ==="]));
-  sections.push(csvRow(["à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸„à¸·à¸™", "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", "à¸¢à¸­à¸”à¸„à¸·à¸™", "à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­"]));
+  sections.push(csvRow(["=== เครดิต CN คืนสินค้า คงเหลือ ==="]));
+  sections.push(csvRow(["เลขที่", "วันที่คืน", "ซัพพลายเออร์", "ยอดคืน", "คงเหลือ"]));
   for (const r of data.cnCredits) {
     sections.push(csvRow([r.returnNo, fmtDate(r.returnDate), r.supplierName, r.totalAmount, r.amountRemain]));
   }
@@ -384,7 +384,7 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
     if (rows.length > 0) {
       const totalRow = ws.addRow({});
       const lastLabelCol = headers.length - amountKeys.length;
-      totalRow.getCell(lastLabelCol).value = "à¸£à¸§à¸¡";
+      totalRow.getCell(lastLabelCol).value = "รวม";
       totalRow.getCell(lastLabelCol).font = { bold: true };
       totalRow.getCell(lastLabelCol).alignment = { horizontal: "right" };
       amountKeys.forEach((k, i) => {
@@ -399,39 +399,39 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
   };
 
   makeSheet(
-    "à¸„à¹‰à¸²à¸‡à¸ˆà¹ˆà¸²à¸¢à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ",
+    "ค้างจ่ายซัพพลายเออร์",
     [
-      { header: "à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", key: "purchaseNo", width: 16 },
-      { header: "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸‹à¸·à¹‰à¸­", key: "purchaseDate", width: 12 },
-      { header: "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", key: "supplierName", width: 28 },
-      { header: "à¸¢à¸­à¸”à¸‹à¸·à¹‰à¸­", key: "totalAmount", width: 14 },
-      { header: "à¸„à¹‰à¸²à¸‡à¸ˆà¹ˆà¸²à¸¢", key: "amountRemain", width: 14 },
+      { header: "เลขที่", key: "purchaseNo", width: 16 },
+      { header: "วันที่ซื้อ", key: "purchaseDate", width: 12 },
+      { header: "ซัพพลายเออร์", key: "supplierName", width: 28 },
+      { header: "ยอดซื้อ", key: "totalAmount", width: 14 },
+      { header: "ค้างจ่าย", key: "amountRemain", width: 14 },
     ],
     data.purchases.map((r) => ({ ...r, purchaseDate: fmtDate(r.purchaseDate) })),
     ["totalAmount", "amountRemain"],
   );
 
   makeSheet(
-    "à¹€à¸‡à¸´à¸™à¸¡à¸±à¸”à¸ˆà¸³à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­",
+    "เงินมัดจำคงเหลือ",
     [
-      { header: "à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", key: "advanceNo", width: 16 },
-      { header: "à¸§à¸±à¸™à¸—à¸µà¹ˆ", key: "advanceDate", width: 12 },
-      { header: "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", key: "supplierName", width: 28 },
-      { header: "à¸¢à¸­à¸”à¸¡à¸±à¸”à¸ˆà¸³", key: "totalAmount", width: 14 },
-      { header: "à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­", key: "amountRemain", width: 14 },
+      { header: "เลขที่", key: "advanceNo", width: 16 },
+      { header: "วันที่", key: "advanceDate", width: 12 },
+      { header: "ซัพพลายเออร์", key: "supplierName", width: 28 },
+      { header: "ยอดมัดจำ", key: "totalAmount", width: 14 },
+      { header: "คงเหลือ", key: "amountRemain", width: 14 },
     ],
     data.advances.map((r) => ({ ...r, advanceDate: fmtDate(r.advanceDate) })),
     ["totalAmount", "amountRemain"],
   );
 
   makeSheet(
-    "CN à¹€à¸„à¸£à¸”à¸´à¸•à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­",
+    "CN เครดิตคงเหลือ",
     [
-      { header: "à¹€à¸¥à¸‚à¸—à¸µà¹ˆ", key: "returnNo", width: 16 },
-      { header: "à¸§à¸±à¸™à¸—à¸µà¹ˆà¸„à¸·à¸™", key: "returnDate", width: 12 },
-      { header: "à¸‹à¸±à¸žà¸žà¸¥à¸²à¸¢à¹€à¸­à¸­à¸£à¹Œ", key: "supplierName", width: 28 },
-      { header: "à¸¢à¸­à¸”à¸„à¸·à¸™", key: "totalAmount", width: 14 },
-      { header: "à¸„à¸‡à¹€à¸«à¸¥à¸·à¸­", key: "amountRemain", width: 14 },
+      { header: "เลขที่", key: "returnNo", width: 16 },
+      { header: "วันที่คืน", key: "returnDate", width: 12 },
+      { header: "ซัพพลายเออร์", key: "supplierName", width: 28 },
+      { header: "ยอดคืน", key: "totalAmount", width: 14 },
+      { header: "คงเหลือ", key: "amountRemain", width: 14 },
     ],
     data.cnCredits.map((r) => ({ ...r, returnDate: fmtDate(r.returnDate) })),
     ["totalAmount", "amountRemain"],
@@ -441,7 +441,7 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
   return new Blob([buf]);
 }
 
-// â”€â”€â”€ Stock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stock ───────────────────────────────────────────────────────────────────
 
 export type StockRow = {
   id: string;

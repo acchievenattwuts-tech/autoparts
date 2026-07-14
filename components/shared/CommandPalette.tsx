@@ -333,7 +333,7 @@ const CommandPalette = ({ role, permissions, userId }: CommandPaletteProps) => {
           )}
           {false && isCommandMode && (
             <Command.Empty className="px-4 py-8 text-center text-sm text-gray-500 dark:text-slate-400">
-              à¹„à¸¡à¹ˆà¸žà¸šà¸„à¸³à¸ªà¸±à¹ˆà¸‡à¸ªà¸³à¸«à¸£à¸±à¸š &quot;{searchValue}&quot;
+              ไม่พบคำสั่งสำหรับ &quot;{searchValue}&quot;
             </Command.Empty>
           )}
           {showEmpty && (
