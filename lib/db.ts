@@ -215,6 +215,11 @@ export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T>
 // statement would land on a different backend and silently do nothing.
 const SEARCH_STATEMENT_TIMEOUT_MS = 8_000;
 const SEARCH_TX_MAX_WAIT_MS = 10_000;
+// Server-side backstop for a serverless runtime that is frozen between two
+// statements in an interactive search transaction. Prisma's JS timeout cannot
+// fire while the event loop is suspended, but Postgres continues counting idle
+// transaction time and releases the pooled connection independently.
+const SEARCH_IDLE_IN_TX_TIMEOUT_MS = 20_000;
 // Prisma's interactive-transaction timeout defaults to 5s — below our 8s
 // statement cap, so it would abort the query first. Give the transaction a
 // little headroom past the statement timeout so Postgres is the one that fires.
@@ -233,7 +238,9 @@ export async function dbSearchRaw<T>(query: Prisma.Sql): Promise<T> {
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`
-        SELECT set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true)
+        SELECT
+          set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true),
+          set_config('idle_in_transaction_session_timeout', ${String(SEARCH_IDLE_IN_TX_TIMEOUT_MS)}, true)
       `;
       return tx.$queryRaw<T>(query);
     },
@@ -261,7 +268,9 @@ export async function dbSearchTx<T>(
   return db.$transaction(
     async (tx) => {
       await tx.$executeRaw`
-        SELECT set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true)
+        SELECT
+          set_config('statement_timeout', ${String(SEARCH_STATEMENT_TIMEOUT_MS)}, true),
+          set_config('idle_in_transaction_session_timeout', ${String(SEARCH_IDLE_IN_TX_TIMEOUT_MS)}, true)
       `;
       return fn(tx);
     },

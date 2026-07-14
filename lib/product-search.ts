@@ -10,6 +10,7 @@ import {
 import { expandQueryTokenGroups } from "@/lib/search-synonyms";
 import { buildSearchVariants, normalizeSearchText } from "@/lib/search-normalization";
 import { embedQuery, toPgVectorLiteral } from "@/lib/embeddings";
+import { runProductSearchRefreshWithRequestLifetime } from "@/lib/product-search-request-lifecycle";
 
 // Hybrid search (Phase 1): how many nearest-neighbour products to pull by vector
 // similarity, and how much a perfect semantic match (cosine sim = 1) adds to the
@@ -1781,7 +1782,7 @@ export async function searchProductIds(
   });
 
   return unstable_cache(
-    async () => {
+    () => runProductSearchRefreshWithRequestLifetime(async () => {
       const normalizedQuery = normalizeSearchQuery(input.query);
 
       if (!normalizedQuery) {
@@ -1794,7 +1795,7 @@ export async function searchProductIds(
         console.error("Search V2 failed, falling back to Prisma contains search.", error);
         return searchProductIdsFallback(input);
       }
-    },
+    }),
     [`product-search:${cacheKey}`],
     {
       tags: [PRODUCT_SEARCH_TAG],
