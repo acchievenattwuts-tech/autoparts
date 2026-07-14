@@ -2012,6 +2012,36 @@ test("genuine purchase intent still hands off to admin", async () => {
   assert.equal(calls.searches.length, 0);
 });
 
+test("purchase intent wins over an FAQ auto-answer (regression: 'เอาตัว900')", async () => {
+  // Reproduces the production regression on conversation 'ช่าง ชาร์ป': the AI group
+  // classifier correctly flags the turn as `purchase` (route → PURCHASE_INTENT), but
+  // because it's a non-product turn the FAQ layer ALSO decided it could answer, and
+  // the FAQ branch used to sit ABOVE the purchase hand-off — so จูน replied with a
+  // generic "ขอทราบรุ่นรถ ปีรถ" ask instead of handing the sale to a human.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    nonProductTurn: true,
+    intentGroup: "purchase",
+    // FAQ WOULD answer this non-product turn with the pre-empting "ask for car" line.
+    faqReply: "สวัสดีค่ะ รบกวนขอทราบชื่อรุ่นรถ ปีรถ ด้วยนะคะ",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("เอาตัว900"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.replies[0]?.text.includes("แอดมิน"), "purchase commitment hands off to a human");
+  assert.ok(
+    !calls.replies[0]?.text.includes("รุ่นรถ"),
+    "the FAQ ask-for-details reply must not pre-empt the purchase hand-off",
+  );
+  assert.ok(calls.auditActions.includes("AI_PURCHASE_HANDOFF"), "logged as a purchase hand-off");
+  assert.equal(calls.searches.length, 0, "a purchase commitment never runs a product search");
+});
+
 test("noise text ('...') stays silent — never searches or resurrects old history", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   // consolidatedQuery is set to simulate the classifier WANTING to pull old context;

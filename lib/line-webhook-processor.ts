@@ -2169,6 +2169,11 @@ export async function processLineAiReply(
     const anchoredProductNoMatch = Boolean(!isNonProductTurn && inquiryFrame?.partType);
     const faqAnswer =
       liveMode &&
+      // A purchase-commitment turn ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") is classified as
+      // a non-product turn, which would otherwise match the FAQ gate below and let an
+      // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase
+      // hand-off. Skip FAQ entirely for purchase turns (also avoids a wasted call).
+      !isPurchaseIntent &&
       (tryFaqThenAsk ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
         (productSearch.searched &&
@@ -2352,9 +2357,13 @@ export async function processLineAiReply(
               audit: "AI_ESCALATE_NO_RESULTS",
               auditPayload: { lineEventId: input.lineEventId, failedSearchCount },
             }
-        : faqAnswer.answered
-          ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
-          : liveMode && isPurchaseIntent
+        // Purchase intent MUST win over a FAQ auto-answer: once the customer commits
+        // to buy ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") they are closing the sale, so an
+        // LLM FAQ reply (which decides its own `answered`) must never gloss over it
+        // with a generic "ขอทราบรุ่นรถ" ask and keep the room AI-owned with nobody
+        // notified. (Belt-and-suspenders: `faqAnswer` is also gated off for purchase
+        // turns above, so it should already be `answered: false` here.)
+        : liveMode && isPurchaseIntent
           ? {
               message: PURCHASE_HANDOFF_MESSAGE,
               reason: "PURCHASE_INTENT",
@@ -2362,6 +2371,8 @@ export async function processLineAiReply(
               audit: "AI_PURCHASE_HANDOFF",
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
+          : faqAnswer.answered
+          ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
           : liveMode && route.intent === LineIntent.SHOP_INFO
             ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
             : liveMode && tryFaqThenAsk
