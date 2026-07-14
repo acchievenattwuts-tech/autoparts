@@ -237,6 +237,7 @@
 - [x] sitemap revalidate 900s → 21,600s (6 ชม.) ทั้ง `app/sitemap.ts` + `lib/storefront-sitemap.ts` (bot crawl ทำให้ refetch สินค้าทุกตัวได้ ~96 รอบ/วัน)
 - [ ] (Ops) เฝ้าดูกราฟ egress 3–5 วันหลัง deploy — คาดลดจาก ~320MB/วัน เหลือระดับ ~150MB/วัน (<5GB/เดือน)
 - หมายเหตุที่พบระหว่างตรวจ: bucket `products` เก่าบน Supabase ยังมี 2,502 ไฟล์ / 417MB (public) แม้ DB ชี้ Blob ครบแล้ว — เป็นงาน Phase 4 Cleanup ของ ข้อ 7 อยู่แล้ว
+- [x] (follow-up 2026-07-14) พบ+แก้ภาษาไทยเพี้ยน (cp1252 double-encode) 5 ไฟล์: `ar-ap-stock-report-queries.ts` (หัวตาราง export AR/AP เพี้ยนตั้งแต่ 16 เม.ย.), cash-bank report 2 หน้า, `CommandPalette.tsx`, `AGENTS.md` — กู้คืนด้วย decode ย้อน ยืนยันตรงกับ git ก่อนเพี้ยน + เพิ่ม guard กันเกิดซ้ำ: `scripts/check-mojibake.mjs` + pre-commit hook (`.githooks/`, เปิดใช้อัตโนมัติผ่าน postinstall → `scripts/setup-git-hooks.mjs`), สแกนมือได้ด้วย `npm run check:mojibake`
 
 ### 9. Facebook Messenger AI Agent (2026-07-04)
 - สถานะ: **Phase B–E เสร็จครบ** (B: สมองกลาง `lib/chat-core/`; C: 4 model; D: webhook + Send API + processor เต็ม text/รูป/สลิป/coalescing/24h/cron; E: admin inbox + permission 5 ขั้น + audit กลาง + notification bell+Telegram + handoff escalation — reuse chat-core ไม่แตะ LINE) · เหลือ **Phase A (Meta App Review — งานเจ้าของร้าน)** + **Phase F (rollout/QA)** — checklist เต็มดู [PLAN-MESSENGER.md](/D:/autoparts/PLAN-MESSENGER.md)
