@@ -8,6 +8,7 @@ import {
 } from "@/lib/liff-customer";
 import { createLiffSessionTransferToken, setLiffCustomerSession } from "@/lib/liff-session";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { revalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,20 @@ function getVerifyLinkErrorMessage(error: unknown) {
   }
 
   return "ไม่สามารถยืนยันบัญชี LINE ได้ กรุณาลองใหม่อีกครั้ง";
+}
+
+function safelyRevalidateCustomerOptions() {
+  try {
+    revalidateTransactionCustomerOptions();
+  } catch (error) {
+    // The customer link is already committed at this point. Cache maintenance
+    // must not turn a successful registration into a 400 or prevent the LIFF
+    // session from being created.
+    console.warn(
+      "[liff/verify-link] Customer option cache revalidation skipped:",
+      error instanceof Error ? error.message : "unknown error",
+    );
+  }
 }
 
 export async function POST(request: Request) {
@@ -54,6 +69,8 @@ export async function POST(request: Request) {
     });
 
     if (result.status === "LINKED" || result.status === "REGISTERED") {
+      safelyRevalidateCustomerOptions();
+
       const session = {
         customerId: result.customerId,
         lineUserId: identity.lineUserId,

@@ -1,4 +1,4 @@
-import { unstable_cache, updateTag } from "next/cache";
+import { revalidateTag, unstable_cache, updateTag } from "next/cache";
 
 import { db, withDbRetry } from "@/lib/db";
 import type { InventoryTracking, LotIssueMethod, Prisma } from "@/lib/generated/prisma";
@@ -69,6 +69,15 @@ const getActiveTransactionCustomers = unstable_cache(
 /** Invalidate the cached active-customer option list after a customer mutation. */
 export const invalidateTransactionCustomerOptions = (): void => {
   updateTag(TRANSACTION_CUSTOMER_OPTIONS_TAG);
+};
+
+/**
+ * Expire customer options after a mutation handled by a Route Handler.
+ * `updateTag` is Server-Action-only in Next.js 16, so non-action entrypoints
+ * must use `revalidateTag` instead.
+ */
+export const revalidateTransactionCustomerOptions = (): void => {
+  revalidateTag(TRANSACTION_CUSTOMER_OPTIONS_TAG, { expire: 0 });
 };
 
 export const getTransactionCustomers = (

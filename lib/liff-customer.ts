@@ -2,7 +2,6 @@ import { getRequestContext, getRequestContextFromHeaders, safeWriteAuditLog } fr
 import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/customer-phone";
 import { db } from "@/lib/db";
 import { generateCustomerCode } from "@/lib/entity-code";
-import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { notifyLineCustomerLinked, type LineCustomerLinkKind } from "@/lib/notifications";
 
@@ -181,12 +180,25 @@ export async function resolveLiffCustomerFromPhone(input: {
   phone: string;
   throttleKeys: string[];
 }): Promise<LiffLinkResult> {
-  await assertLiffPhoneLookupAllowed(input.throttleKeys);
+  // A verified LINE identity that is already linked must be able to recreate
+  // its LIFF session without requiring the phone again, mutating the customer,
+  // consuming lookup attempts, writing duplicate audits, or dispatching another
+  // notification.
+  const alreadyLinkedCustomer = await resolveCustomerByLineUserId(input.lineUserId);
+  if (alreadyLinkedCustomer) {
+    return {
+      status: "LINKED",
+      customerId: alreadyLinkedCustomer.id,
+      customerName: alreadyLinkedCustomer.name,
+    };
+  }
 
   const normalizedPhone = normalizeCustomerPhone(input.phone);
   if (!normalizedPhone) {
     throw new Error(PHONE_REQUIRED_MESSAGE);
   }
+
+  await assertLiffPhoneLookupAllowed(input.throttleKeys);
 
   const phoneVariants = buildCustomerPhoneLookupValues(normalizedPhone);
   const matchedCustomers = await db.customer.findMany({
@@ -258,8 +270,6 @@ export async function resolveLiffCustomerFromPhone(input: {
       phone: normalizedPhone,
     });
 
-    // Phone changed on an existing active customer — refresh cached dropdown options.
-    invalidateTransactionCustomerOptions();
     return { status: "LINKED", customerId: customer.id, customerName: customer.name };
   }
 
@@ -292,7 +302,5 @@ export async function resolveLiffCustomerFromPhone(input: {
     phone: normalizedPhone,
   });
 
-  // New active customer created — it must appear in the cached dropdown options.
-  invalidateTransactionCustomerOptions();
   return { status: "REGISTERED", customerId: customer.id, customerName: customer.name };
 }
