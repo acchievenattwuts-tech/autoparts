@@ -71,3 +71,4 @@ env
 
 # Image-storage migration rollback maps (contain URLs, run-local only)
 backfill-blob-rollback-*.json
+supabase-storage-delete-manifest-*.json
