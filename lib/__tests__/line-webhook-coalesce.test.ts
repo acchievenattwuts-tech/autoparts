@@ -129,7 +129,9 @@ function createCoalesceHarness(options?: {
         searched: true,
         reason: "SEARCHED_PRODUCT_INQUIRY",
         query: input.text ?? "",
-        result: { ids: ["product-1"], total: 1, mode: "v2" },
+        // Strong "name" match so the relevance gate (weakCategoryMatchGuard)
+        // treats the shown product as genuinely linked to the query.
+        result: { ids: ["product-1"], total: 1, mode: "v2", matchReasons: { "product-1": ["name"] } },
         needsMoreInfo: false,
         appliedFilters: {
           categoryName: null,
@@ -180,6 +182,8 @@ function createCoalesceHarness(options?: {
     countConsecutiveFailedLineSearches: async () => 0,
     countPendingPaymentSlipsForConversation: async () => 0,
     classifyPurchaseIntent: async () => false,
+    // WHOLESALE → salePrice shown (mirrors the processor test harness default).
+    resolveLinePriceTier: async () => "WHOLESALE",
     answerFromChatFaq: async () => ({ answered: false, reply: "" }),
     extractChatSearchIntent: async () => options?.textIntent ?? null,
     resolveChatFitmentFilters: async () => ({}),
@@ -650,7 +654,18 @@ test("post-search budget fallback sends searched products and flex without start
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const previousNextAuthUrl = process.env.NEXTAUTH_URL;
   process.env.NEXTAUTH_URL = "https://shop.example.com";
-  const { calls, dependencies } = createCoalesceHarness({});
+  // A resolved product intent (part + car, with a hard fitment filter) — the shared
+  // default classifier returns null (classifier-uncertain hand-off) and a part-only
+  // intent is blocked by the search gate (GATE_ASK need_car) before any search runs.
+  const { calls, dependencies } = createCoalesceHarness({
+    textIntent: productIntent({
+      query: "หม้อน้ำ D-Max",
+      partType: "หม้อน้ำ",
+      carModel: "D-Max",
+      partKind: "fitment",
+    }),
+  });
+  dependencies.resolveChatFitmentFilters = async () => ({ carModelName: "D-Max" });
   const auditPayloads: unknown[] = [];
   const pushedMessages: unknown[][] = [];
   dependencies.storeLineAiAudit = async (input) => {

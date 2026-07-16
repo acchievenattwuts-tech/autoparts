@@ -1039,9 +1039,15 @@ test("template/FAQ answers are suppressed once an admin has taken over", async (
 
 test("deadline fallback still replies on the free token when generate is too slow", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  // The regex fallback reads "vios" as the model; in production it resolves to a
-  // hard filter, so configure it here (otherwise the vehicle-unresolved guard fires).
-  const { calls, dependencies } = createProcessorTestDeps({ fitmentFilters: { carModelName: "Vios" } });
+  // A resolved product turn ("vios" locks to a hard fitment filter — otherwise the
+  // vehicle-unresolved guard fires) whose reply generation never returns in time.
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยล์เย็น vios",
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: "Vios",
+    intentPartKind: "fitment",
+    fitmentFilters: { carModelName: "Vios" },
+  });
   // Reply generation never returns in time.
   dependencies.generateChatSuggestion = () => new Promise<never>(() => {});
 

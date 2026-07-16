@@ -9,7 +9,20 @@ import {
   LineMessageType,
 } from "@/lib/generated/prisma";
 
-test("Messenger normalizes glued model-year queries and hands off product no-matches", async () => {
+// The import graph reaches lib/db.ts, which throws without a connection string.
+process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
+
+// `mock.module` only exists when node runs with --experimental-test-module-mocks
+// (use `npm run test:messenger-webhook`). Skip instead of crashing when a plain
+// `npx tsx --test` sweep picks this file up without the flag.
+const moduleMocksUnavailable =
+  typeof (mock as { module?: unknown }).module !== "function" &&
+  "requires --experimental-test-module-mocks — run via `npm run test:messenger-webhook`";
+
+test(
+  "Messenger normalizes glued model-year queries and hands off product no-matches",
+  { skip: moduleMocksUnavailable },
+  async () => {
   const calls = {
     searches: [] as Array<{ text?: string | null }>,
     textReplies: [] as string[],
