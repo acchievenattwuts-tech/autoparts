@@ -1309,7 +1309,7 @@ test("escalates to admin (waiting + notify + send-off message) after repeated em
 
   assert.equal(result.repliedCount, 1);
   assert.equal(calls.replies.length, 1);
-  assert.match(calls.replies[0]?.text ?? "", /ส่งต่อให้แอดมิน/);
+  assert.match(calls.replies[0]?.text ?? "", /ส่งเรื่องให้แอดมิน/);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.ok(calls.auditActions.includes("AI_ESCALATE_NO_RESULTS"));
   assert.equal(calls.notifyHandoffs.length, 1);
@@ -1745,9 +1745,9 @@ test("direct no-match with part + car replies once and hands off to admin", asyn
   assert.equal(result.repliedCount, 1);
   assert.equal(calls.searches.length, 1);
   assert.equal(calls.replies.length, 1);
-  assert.ok(calls.replies[0]?.text.includes("ยังไม่มีรายการนี้ในระบบโดยตรง"));
+  assert.ok(calls.replies[0]?.text.includes("ช่วยเช็กสต็อกและตัวที่เข้ากันให้ชัวร์"));
   assert.ok(calls.replies[0]?.text.includes("แผงแอร์"), "part-aware: names the requested part");
-  assert.ok(calls.replies[0]?.text.includes("ส่งต่อให้แอดมิน"));
+  assert.ok(calls.replies[0]?.text.includes("ให้แอดมิน"));
   assert.ok(!calls.replies[0]?.text.includes("FAQ should not answer"));
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
@@ -1878,8 +1878,8 @@ test("specific part with no category that anchors to zero hands off (even withou
 
   assert.equal(result.repliedCount, 1);
   assert.ok(calls.replies[0]?.text.includes("เทอร์โมสตรัท"), "acknowledges the requested part");
-  assert.ok(calls.replies[0]?.text.includes("ยังไม่มีรายการนี้ในระบบโดยตรง"));
-  assert.ok(calls.replies[0]?.text.includes("ส่งต่อให้แอดมิน"));
+  assert.ok(calls.replies[0]?.text.includes("ช่วยเช็กสต็อกและตัวที่เข้ากันให้ชัวร์"));
+  assert.ok(calls.replies[0]?.text.includes("ให้แอดมิน"));
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
   assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));

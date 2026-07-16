@@ -283,7 +283,7 @@ const REPLY_DEADLINE_MARGIN_MS = 5_000;
 const WEBHOOK_MAX_DURATION_MS = 60_000;
 const POST_SEARCH_DELIVERY_FALLBACK_MIN_BUDGET_MS = 12_000;
 const NO_RESULTS_ESCALATION_MESSAGE =
-  "ขอโทษนะคะ 🙏 จูนยังหาตัวที่ตรงกับที่แจ้งไม่เจอในระบบค่ะ ขอส่งต่อให้แอดมินช่วยตรวจสอบและติดต่อกลับอีกครั้งนะคะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
+  "จูนขอส่งเรื่องให้แอดมินช่วยเช็กตัวที่ตรงให้ชัวร์ก่อนนะคะ 🙏 เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
 // Sent as a bubble AFTER the matched products on a price inquiry — the customer
@@ -777,7 +777,7 @@ const MULTI_SUBJECT_REPLACE_CUE_RE = /แทน|เปลี่ยนเป็�
 
 function buildSubjectNoMatchLine(partType: string | null, car: string | null): string {
   const subject = partType ? (car ? `${partType} ${car}` : partType) : "อะไหล่ที่แจ้ง";
-  return `${subject} — ยังไม่เจอในระบบค่ะ เดี๋ยวจูนแจ้งแอดมินช่วยเช็กให้นะคะ 🙏`;
+  return `${subject} — จูนขอให้แอดมินช่วยเช็กให้ชัวร์ก่อนนะคะ เดี๋ยวติดต่อกลับค่ะ 🙏`;
 }
 
 /** Packs whole subject blocks into LINE sends without splitting a block across

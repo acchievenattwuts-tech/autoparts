@@ -798,7 +798,7 @@ test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", a
   await processLineWebhookPayload({ events: [textEvent("e1", "คอมแอร์กับคอยเย็น D-Max")] }, baseConfig, dependencies);
 
   assert.ok(auditActions.includes("AI_MULTI_SUBJECT"));
-  assert.ok(allReplyTexts.some((t) => t.includes("ยังไม่เจอในระบบ")), "missing category shows a no-match line");
+  assert.ok(allReplyTexts.some((t) => t.includes("ช่วยเช็กให้ชัวร์ก่อน")), "missing category shows a no-match line");
   assert.equal(notifyCount, 1, "admin notified about the missing category");
   assert.ok(!calls.statePatches.includes("waiting_admin"), "room NOT frozen (other category answered)");
 });
