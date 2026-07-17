@@ -1,7 +1,66 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { buildCarModelVariantLookup } from "@/lib/car-model-alias-cache";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
+
+test("canonicalizes model aliases with safe generation and engine qualifiers", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup([
+    { term: "Mazda", synonyms: [] },
+    { term: "MG", synonyms: [] },
+    { term: "CRV", synonyms: ["CR-V", "ซีอาร์วี"] },
+    { term: "HRV", synonyms: ["HR-V", "เอชอาร์วี"] },
+    { term: "BRV", synonyms: ["BR-V", "บีอาร์วี"] },
+    { term: "CX-3", synonyms: ["CX3", "ซีเอ็กซ์3"] },
+    { term: "CX-5", synonyms: ["CX5", "ซีเอ็กซ์5"] },
+    { term: "BT-50", synonyms: ["BT50", "บีที50"] },
+    { term: "MU-X", synonyms: ["MUX", "MU X"] },
+    { term: "D-Max", synonyms: ["DMax", "D Max"] },
+    { term: "Mazda3", synonyms: ["Mazda 3"] },
+    { term: "MG3", synonyms: ["MG 3"] },
+  ]);
+
+  const cases = [
+    ["CR-V G3 2.0", "crv", "g3 2.0"],
+    ["HR-V Gen 2 1.8", "hrv", "gen 2 1.8"],
+    ["BR-V G2 1.5", "brv", "g2 1.5"],
+    ["CX3 G2 2.0", "cx-3", "g2 2.0"],
+    ["CX5 Gen 2 2.5", "cx-5", "gen 2 2.5"],
+    ["BT50 G2 3.2", "bt-50", "g2 3.2"],
+    ["MU X Gen 2 1.9", "mu-x", "gen 2 1.9"],
+    ["D Max G2 1.9", "d-max", "g2 1.9"],
+    ["Mazda 3 2.0", "mazda3", "2.0"],
+    ["MG 3 1.5", "mg3", "1.5"],
+  ] as const;
+
+  for (const [input, canonicalModel, qualifier] of cases) {
+    assert.deepEqual(
+      resolveCanonicalCarModelHint(input, lookup),
+      { canonicalModel, qualifier },
+      input,
+    );
+  }
+});
+
+test("does not strip digits from real model names or arbitrary model suffixes", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup([
+    { term: "MG3", synonyms: ["MG 3"] },
+    { term: "CX-3", synonyms: ["CX3"] },
+  ]);
+
+  assert.deepEqual(resolveCanonicalCarModelHint("MG3", lookup), {
+    canonicalModel: "mg3",
+    qualifier: null,
+  });
+  assert.deepEqual(resolveCanonicalCarModelHint("CX-3", lookup), {
+    canonicalModel: "cx-3",
+    qualifier: null,
+  });
+  assert.equal(resolveCanonicalCarModelHint("MG3 hatchback", lookup), null);
+  assert.equal(resolveCanonicalCarModelHint("CX3 diesel turbo", lookup), null);
+});
 
 test("maps colloquial part-types to the right category hint", async () => {
   const { matchPartTypeToCategoryHint } = await import("@/lib/chat-core/fitment-resolve");

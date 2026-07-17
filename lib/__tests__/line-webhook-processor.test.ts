@@ -1798,6 +1798,97 @@ test("customer names a car we can't resolve → confirms vehicle + hands off, no
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
 });
 
+test("CR-V G3 resolves to CRV, searches, and suppresses only the opposite-side product", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const customerText = "มอเตอร์พัดลมหน้าเครื่องฝั่งคนขับ crv g3 2.0 มีของเลยไหมครับ";
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: customerText,
+    intentPartType: "มอเตอร์พัดลมหน้าเครื่อง",
+    intentCarBrand: "Honda",
+    intentCarModel: "CR-V G3",
+    intentPartKind: "fitment",
+    searchIds: ["P0903", "P0270", "P0594"],
+    searchTotal: 3,
+  });
+  dependencies.resolveChatFitmentFilters = async () => ({
+    categoryName: "มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)",
+    carBrandName: "Honda",
+    carModelName: "CRV",
+    carModelOriginal: "CR-V G3",
+    carModelQualifier: "g3",
+    carModelResolutionSource: "search_synonym",
+  });
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
+  dependencies.getChatProductSummaries = async () => [
+    {
+      id: "P0903",
+      name: "มอเตอร์พัดลม CRV G3 ฝั่งคนขับ",
+      code: "P0903",
+      imageUrl: null,
+      salePrice: 1000,
+      retailPrice: 1000,
+      fitments: [{
+        carBrandName: "Honda",
+        carModelName: "CRV",
+        submodel: null,
+        engineSize: null,
+        note: "CRV G3 07-12 ฝั่งคนขับ",
+      }],
+    },
+    {
+      id: "P0270",
+      name: "มอเตอร์พัดลม CRV G3",
+      code: "P0270",
+      imageUrl: null,
+      salePrice: 900,
+      retailPrice: 900,
+      fitments: [{
+        carBrandName: "Honda",
+        carModelName: "CRV",
+        submodel: null,
+        engineSize: null,
+        note: "CRV G3 07-12 ฝั่งคนนั่ง",
+      }],
+    },
+    {
+      id: "P0594",
+      name: "มอเตอร์พัดลม CRV G3 ฝั่งคนนั่ง",
+      code: "P0594",
+      imageUrl: null,
+      salePrice: 950,
+      retailPrice: 950,
+      fitments: [{
+        carBrandName: "Honda",
+        carModelName: "CRV",
+        submodel: null,
+        engineSize: null,
+        note: "CRV G3 07-12 ฝั่งคนนั่ง",
+      }],
+    },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload(customerText),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)",
+    carBrandName: "Honda",
+    carModelName: "CRV",
+    fitmentYear: null,
+  });
+  assert.ok(calls.auditActions.includes("AI_PRODUCT_CONFLICT_FILTER"));
+  assert.ok(!calls.auditActions.includes("AI_VEHICLE_UNRESOLVED_HANDOFF"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.match(calls.replies[0]?.text ?? "", /เครื่อง 2\.0/);
+  assert.match(calls.replies[0]?.text ?? "", /เทียบรูปอะไหล่เดิม/);
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /ยืนยันยี่ห้อ|ยืนยันรุ่นรถ/);
+});
+
 test("relevance gate: category-less + weak match (no strong reason, no close trigram) → hands off", async () => {
   // Customer gave part + car, the car RESOLVED (so the vehicle guard stays quiet),
   // but the part word never mapped to a category (categoryName=null) and the

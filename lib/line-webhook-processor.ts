@@ -36,6 +36,10 @@ import {
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import {
+  appendChatCompatibilityNote,
+  filterChatProductsByVehicleCompatibility,
+} from "@/lib/chat-core/product-compatibility";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
@@ -1874,6 +1878,7 @@ export async function processLineAiReply(
             carModel: inquiryFrame.carModel,
             queryText: consolidatedQuery ?? processText,
             rawText: processText,
+            modelLookup,
           }).catch((): ChatFitmentFilters => ({}))
         : {};
     const hasCurrentTurnFitmentEvidence = Boolean(
@@ -1918,6 +1923,7 @@ export async function processLineAiReply(
           carModel: inquiryFrame?.carModel ?? null,
           queryText: correction.corrected,
           rawText: correction.corrected,
+          modelLookup,
         }).catch((): ChatFitmentFilters => ({}));
         if (remapped.categoryName) {
           fitmentFilters = {
@@ -2077,6 +2083,9 @@ export async function processLineAiReply(
           categoryName: fitmentFilters.categoryName ?? null,
           carBrandName: fitmentFilters.carBrandName ?? null,
           carModelName: fitmentFilters.carModelName ?? null,
+          carModelOriginal: fitmentFilters.carModelOriginal ?? null,
+          carModelQualifier: fitmentFilters.carModelQualifier ?? null,
+          carModelResolutionSource: fitmentFilters.carModelResolutionSource ?? null,
           fitmentYear: guardedSearchIntent?.year ?? null,
           forceLiteralQuery: guardedSearch.forceLiteralQuery,
           requiredTokens: guardedSearch.requiredTokens,
@@ -2168,12 +2177,42 @@ export async function processLineAiReply(
         payload: { lineEventId: input.lineEventId, path: "single" },
       });
     }
-    const products = applyChatPriceTier(
+    const rawProducts =
       productSearch.searched && productSearch.result.ids.length > 0
         ? await dependencies.getChatProductSummaries(productSearch.result.ids).catch(() => [])
-        : [],
-      priceTier,
-    );
+        : [];
+    const compatibility = filterChatProductsByVehicleCompatibility({
+      products: rawProducts,
+      customerText: consolidatedQuery ?? processText ?? input.text,
+      carBrandName: fitmentFilters.carBrandName,
+      carModelName: fitmentFilters.carModelName,
+    });
+    const products = applyChatPriceTier(compatibility.products, priceTier);
+    const displayProductSearch =
+      productSearch.searched && compatibility.suppressed.length > 0
+        ? {
+            ...productSearch,
+            result: {
+              ...productSearch.result,
+              ids: products.map((product) => product.id),
+              total: products.length,
+            },
+            needsMoreInfo: products.length === 0,
+          }
+        : productSearch;
+
+    if (compatibility.suppressed.length > 0) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "AI_PRODUCT_CONFLICT_FILTER",
+        payload: {
+          lineEventId: input.lineEventId,
+          constraints: compatibility.constraints,
+          suppressed: compatibility.suppressed,
+          shownIds: products.map((product) => product.id),
+        },
+      });
+    }
 
     // The search matched rows (total > 0) but NONE are showable — every id was
     // filtered out by getChatProductSummaries (product turned inactive / hidden
@@ -2296,7 +2335,7 @@ export async function processLineAiReply(
       ? generateSuggestion({
           intent: route.intent,
           originalText: input.text,
-          productSearch,
+          productSearch: displayProductSearch,
           history,
           products,
         }).catch(() => null)
@@ -2625,7 +2664,7 @@ export async function processLineAiReply(
         }),
         confidence: LineAiConfidence.POSSIBLE_MATCH,
         reasoningSummary: "POST_SEARCH_DELIVERY_FALLBACK",
-        matchedProducts: productSearch.searched ? productSearch.result : null,
+        matchedProducts: displayProductSearch.searched ? displayProductSearch.result : null,
       };
       postSearchDeliveryFallbackAuditPayload = {
         lineEventId: input.lineEventId,
@@ -2647,7 +2686,7 @@ export async function processLineAiReply(
           generateSuggestion({
             intent: route.intent,
             originalText: input.text,
-            productSearch,
+            productSearch: displayProductSearch,
             history,
             products,
           }).catch(() => null);
@@ -2696,7 +2735,7 @@ export async function processLineAiReply(
             : raced === DEADLINE
               ? "DEADLINE_FALLBACK"
               : "GENERATE_FAILED_FALLBACK",
-          matchedProducts: productSearch.searched ? productSearch.result : null,
+          matchedProducts: displayProductSearch.searched ? displayProductSearch.result : null,
         };
         // An admin-owned room reaches here by design (generation skipped), not
         // because the deadline was missed — don't pollute the fallback audit.
@@ -2770,6 +2809,16 @@ export async function processLineAiReply(
       handoffAfterSend = true;
     }
 
+    if (!forcedResponse && !handoffAfterSend && products.length > 0) {
+      suggestion = {
+        ...suggestion,
+        suggestedReply: appendChatCompatibilityNote(
+          suggestion.suggestedReply,
+          compatibility.verificationNote,
+        ),
+      };
+    }
+
     await dependencies.storeLineAiSuggestion({
       conversationId: input.conversation.id,
       lineMessageId: input.inboundMessage.id,
@@ -2804,20 +2853,20 @@ export async function processLineAiReply(
       ? null
       : buildProductFlexMessage({
           products,
-          searchQuery: productSearch.searched ? productSearch.query : null,
-          total: productSearch.searched ? productSearch.result.total : 0,
+          searchQuery: displayProductSearch.searched ? displayProductSearch.query : null,
+          total: displayProductSearch.searched ? displayProductSearch.result.total : 0,
           placeholderImageUrl,
           // Mirror the fitment filters the LINE search ACTUALLY applied so the
           // "view all on web" link lands on the SAME set the customer saw. After a
           // did-you-mean retry the year is dropped, so we must use the search's
           // appliedFilters — not the original frame's year (which would re-add a
           // contradictory hard year-filter and zero out the web results).
-          filters: productSearch.searched
+          filters: displayProductSearch.searched
             ? {
-                categoryName: productSearch.appliedFilters.categoryName,
-                carBrandName: productSearch.appliedFilters.carBrandName,
-                carModelName: productSearch.appliedFilters.carModelName,
-                year: productSearch.appliedFilters.fitmentYear,
+                categoryName: displayProductSearch.appliedFilters.categoryName,
+                carBrandName: displayProductSearch.appliedFilters.carBrandName,
+                carModelName: displayProductSearch.appliedFilters.carModelName,
+                year: displayProductSearch.appliedFilters.fitmentYear,
               }
             : undefined,
         });

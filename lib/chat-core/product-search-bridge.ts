@@ -115,6 +115,14 @@ export type ChatMatchedProductSummary = {
   salePrice: number;
   /** ราคาขายปลีก (Product.retailPrice) — ใช้เลือกราคาตามระดับราคาของลูกค้า */
   retailPrice: number;
+  /** Catalog fitment evidence used by the chat compatibility guard. */
+  fitments?: Array<{
+    carBrandName: string | null;
+    carModelName: string | null;
+    submodel: string | null;
+    engineSize: string | null;
+    note: string | null;
+  }>;
 };
 
 /**
@@ -132,7 +140,27 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       isActive: true,
       isStorefrontVisible: true,
     },
-    select: { id: true, name: true, code: true, imageUrl: true, salePrice: true, retailPrice: true },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      imageUrl: true,
+      salePrice: true,
+      retailPrice: true,
+      carModels: {
+        select: {
+          submodel: true,
+          engineSize: true,
+          note: true,
+          carModel: {
+            select: {
+              name: true,
+              carBrand: { select: { name: true } },
+            },
+          },
+        },
+      },
+    },
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return ids
@@ -145,6 +173,13 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       imageUrl: row.imageUrl,
       salePrice: Number(row.salePrice),
       retailPrice: Number(row.retailPrice),
+      fitments: row.carModels.map((fitment) => ({
+        carBrandName: fitment.carModel.carBrand.name,
+        carModelName: fitment.carModel.name,
+        submodel: fitment.submodel,
+        engineSize: fitment.engineSize,
+        note: fitment.note,
+      })),
     }));
 }
 

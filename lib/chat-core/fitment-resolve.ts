@@ -1,6 +1,8 @@
 import { db } from "@/lib/db";
 import { getCachedCategoryAliasRows } from "@/lib/category-alias-cache";
 import { matchCategoryAliasRows } from "@/lib/category-alias-resolver";
+import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
+import type { CarModelVariantLookup } from "@/lib/car-model-alias-cache";
 
 /**
  * Resolves the AI-extracted fitment hints (free-text brand/model/part type) to the
@@ -31,12 +33,25 @@ export type ChatFitmentFilterInput = {
    * "พัดลมโบ" → Blower Motor) effective regardless of how the AI rewrote it.
    */
   rawText?: string | null;
+  /**
+   * Cached SearchSynonym lookup already loaded by the channel processor. When it
+   * is omitted (for example the LINE multi-subject path), the resolver loads the
+   * same cached lookup itself. This keeps canonical model resolution shared by
+   * LINE and Messenger without adding an uncached DB read per subject.
+   */
+  modelLookup?: ReadonlyMap<string, string[]> | null;
 };
 
 export type ChatFitmentFilters = {
   categoryName?: string;
   carBrandName?: string;
   carModelName?: string;
+  /** Original AI/customer-facing model hint retained for audit/debugging. */
+  carModelOriginal?: string;
+  /** Safe suffix left after canonical model matching (for example "G3 2.0"). */
+  carModelQualifier?: string;
+  /** Set when SearchSynonym canonicalization resolved the master model. */
+  carModelResolutionSource?: "search_synonym";
 };
 
 const trimOrNull = (value?: string | null): string | null => {
@@ -49,6 +64,84 @@ const normalizeAliasText = (value?: string | null): string =>
     .trim()
     .toLowerCase()
     .replace(/[\s_-]+/g, "");
+
+const normalizeModelSpelling = (value?: string | null): string =>
+  (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Only these suffixes may be stripped from a synonym spelling before it becomes
+ * a hard model filter. Keeping the grammar deliberately narrow prevents a short
+ * synonym from swallowing arbitrary words or another real model name.
+ *
+ * Examples accepted: "CR-V G3", "CRV Gen 3", "CR-V G3 2.0".
+ * A direct synonym match (for example the real model "MG3") is checked first and
+ * therefore never gets mistaken for a G3 qualifier.
+ */
+const SAFE_MODEL_QUALIFIER_RE = /^(?:(?:g|gen(?:eration)?|เจน)\s*-?\s*\d+[a-z]?|\d+(?:\.\d+)?(?:\s*(?:l|liter|litre|ลิตร|cc))?)(?:[\s,/+-]+(?:(?:g|gen(?:eration)?|เจน)\s*-?\s*\d+[a-z]?|\d+(?:\.\d+)?(?:\s*(?:l|liter|litre|ลิตร|cc))?))*$/i;
+
+export type CanonicalCarModelHint = {
+  canonicalModel: string;
+  qualifier: string | null;
+};
+
+/**
+ * Resolves a free-form model hint through the existing SearchSynonym clusters.
+ * The first cluster member is the canonical `term` (the cache preserves row
+ * order). A suffix match is accepted only when it is made entirely of known
+ * generation/engine qualifiers and maps to exactly one canonical cluster.
+ */
+export function resolveCanonicalCarModelHint(
+  value: string | null | undefined,
+  lookup: ReadonlyMap<string, string[]> | null | undefined,
+): CanonicalCarModelHint | null {
+  const candidate = normalizeModelSpelling(value);
+  if (!candidate || !lookup || lookup.size === 0) return null;
+
+  const direct = lookup.get(candidate);
+  if (direct?.[0]) {
+    return { canonicalModel: direct[0], qualifier: null };
+  }
+
+  const matches = new Map<string, string>();
+  let longestMatchedSpelling = 0;
+  for (const [spelling, cluster] of lookup.entries()) {
+    const canonicalModel = cluster[0]?.trim();
+    const normalizedSpelling = normalizeModelSpelling(spelling);
+    // One-character spellings are too ambiguous for prefix-with-suffix matching.
+    // They still work through the exact/direct path above.
+    if (!canonicalModel || normalizedSpelling.length < 2) continue;
+
+    const match = candidate.match(
+      new RegExp(`^${escapeRegex(normalizedSpelling)}[\\s/_-]+(.+)$`, "i"),
+    );
+    const qualifier = match?.[1]?.trim();
+    if (!qualifier || !SAFE_MODEL_QUALIFIER_RE.test(qualifier)) continue;
+    // Prefer the most-specific spelling. The live master data legitimately has
+    // generic models named "Mazda" / "MG" as well as "Mazda 3" / "MG 3".
+    // Without maximal matching, "Mazda 3 2.0" yields two valid prefixes
+    // (Mazda + "3 2.0", Mazda 3 + "2.0") and resolves to neither.
+    if (normalizedSpelling.length < longestMatchedSpelling) continue;
+    if (normalizedSpelling.length > longestMatchedSpelling) {
+      matches.clear();
+      longestMatchedSpelling = normalizedSpelling.length;
+    }
+    matches.set(canonicalModel.toLowerCase(), qualifier);
+  }
+
+  if (matches.size !== 1) return null;
+  const [canonicalKey, qualifier] = matches.entries().next().value as [string, string];
+  // Recover canonical casing from the matched cluster rather than returning the
+  // lowercased map key.
+  const canonicalModel = Array.from(lookup.values())
+    .map((cluster) => cluster[0]?.trim())
+    .find((term) => term?.toLowerCase() === canonicalKey);
+  return canonicalModel ? { canonicalModel, qualifier } : null;
+}
 
 type HardModelAliasRule = {
   brandName: string;
@@ -339,6 +432,10 @@ export async function resolveChatFitmentFilters(
   const partType = trimOrNull(input.partType);
   const queryText = trimOrNull(input.queryText);
   const rawText = trimOrNull(input.rawText);
+  const modelLookup: ReadonlyMap<string, string[]> =
+    input.modelLookup ?? (await loadCarModelVariantLookup().catch((): CarModelVariantLookup => new Map()));
+  const canonicalModelHint = resolveCanonicalCarModelHint(carModel, modelLookup);
+  const carModelForResolution = canonicalModelHint?.canonicalModel ?? carModel;
 
   const filters: ChatFitmentFilters = {};
   const colloquialModel = resolveColloquialCarModelAlias({
@@ -421,13 +518,13 @@ export async function resolveChatFitmentFilters(
       return filters;
     }
 
-    if (brandRow && carModel) {
+    if (brandRow && carModelForResolution) {
       const modelRow =
         (await db.carModel.findFirst({
           where: {
             isActive: true,
             carBrandId: brandRow.id,
-            name: { equals: carModel, mode: "insensitive" },
+            name: { equals: carModelForResolution, mode: "insensitive" },
           },
           select: { name: true },
         })) ??
@@ -435,12 +532,17 @@ export async function resolveChatFitmentFilters(
           where: {
             isActive: true,
             carBrandId: brandRow.id,
-            name: { contains: carModel, mode: "insensitive" },
+            name: { contains: carModelForResolution, mode: "insensitive" },
           },
           select: { name: true },
         }));
       if (modelRow) {
         filters.carModelName = modelRow.name;
+        if (canonicalModelHint) {
+          filters.carModelOriginal = carModel ?? undefined;
+          filters.carModelQualifier = canonicalModelHint.qualifier ?? undefined;
+          filters.carModelResolutionSource = "search_synonym";
+        }
       } else {
         // Cross-brand correction: the brand resolved (e.g. carried-over "Toyota")
         // but the model does NOT belong to it. The model is the more specific
@@ -448,19 +550,29 @@ export async function resolveChatFitmentFilters(
         // in the catalog, trust the model and override the brand to the model's
         // real brand (e.g. "Toyota" + "D-Max" → Isuzu D-Max). Exact-only keeps
         // ambiguous short names ("2", "City") from hijacking the brand.
-        const corrected = await resolveModelExact(carModel);
+        const corrected = await resolveModelExact(carModelForResolution);
         if (corrected) {
           filters.carBrandName = corrected.brandName;
           filters.carModelName = corrected.modelName;
+          if (canonicalModelHint) {
+            filters.carModelOriginal = carModel ?? undefined;
+            filters.carModelQualifier = canonicalModelHint.qualifier ?? undefined;
+            filters.carModelResolutionSource = "search_synonym";
+          }
         }
       }
-    } else if (!brandRow && carModel) {
+    } else if (!brandRow && carModelForResolution) {
       // No brand given (customer typed only a model, e.g. "คอมแอร์ Mu-x"). Resolve
       // the brand FROM the model when it is unambiguous.
-      const corrected = await resolveModelExact(carModel);
+      const corrected = await resolveModelExact(carModelForResolution);
       if (corrected) {
         filters.carBrandName = corrected.brandName;
         filters.carModelName = corrected.modelName;
+        if (canonicalModelHint) {
+          filters.carModelOriginal = carModel ?? undefined;
+          filters.carModelQualifier = canonicalModelHint.qualifier ?? undefined;
+          filters.carModelResolutionSource = "search_synonym";
+        }
       }
     }
   } catch {

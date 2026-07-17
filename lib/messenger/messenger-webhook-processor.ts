@@ -33,6 +33,10 @@ import {
 import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-product-subjects";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import {
+  appendChatCompatibilityNote,
+  filterChatProductsByVehicleCompatibility,
+} from "@/lib/chat-core/product-compatibility";
 import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import {
   classifyMessengerImage,
@@ -800,6 +804,7 @@ async function resolveMessengerFitmentHints(
       carModel: gi?.carModel ?? null,
       queryText: processText,
       rawText: processText,
+      modelLookup,
     }).catch((): ChatFitmentFilters => ({}));
 
     // LLM category fallback + auto-stage (same helpers/behaviour as LINE).
@@ -815,6 +820,7 @@ async function resolveMessengerFitmentHints(
           carModel: gi?.carModel ?? null,
           queryText: correction.corrected,
           rawText: correction.corrected,
+          modelLookup,
         }).catch((): ChatFitmentFilters => ({}));
         if (remapped.categoryName) {
           filters = {
@@ -914,10 +920,25 @@ async function replyWithProductSearch(params: {
   // retail pricing (a wholesale/garage customer would see the wrong, higher price).
   // "UNKNOWN" makes applyChatPriceTier hide every price behind "สอบถามราคา".
   const priceTier = await resolveMessengerPriceTier(params.conversationId).catch(() => "UNKNOWN" as const);
-  const products: ChatMatchedProductSummary[] = applyChatPriceTier(
-    await getChatProductSummaries(ids).catch(() => []),
-    priceTier,
-  );
+  const compatibility = filterChatProductsByVehicleCompatibility({
+    products: await getChatProductSummaries(ids).catch(() => []),
+    customerText: params.bridgeInput.text ?? params.originalText,
+    carBrandName: params.bridgeInput.fitmentHints?.carBrandName,
+    carModelName: params.bridgeInput.fitmentHints?.carModelName,
+  });
+  const products: ChatMatchedProductSummary[] = applyChatPriceTier(compatibility.products, priceTier);
+  const displayProductSearch =
+    compatibility.suppressed.length > 0
+      ? {
+          ...productSearch,
+          result: {
+            ...productSearch.result,
+            ids: products.map((product) => product.id),
+            total: products.length,
+          },
+          needsMoreInfo: products.length === 0,
+        }
+      : productSearch;
 
   // The search matched rows but none are showable (all filtered out by
   // getChatProductSummaries — product inactive / hidden / fetch failed). Sending a
@@ -984,13 +1005,20 @@ async function replyWithProductSearch(params: {
     }
   }
 
-  const suggestion = await generateChatSuggestion({
+  const generatedSuggestion = await generateChatSuggestion({
     intent: params.route.intent,
     originalText: params.originalText,
-    productSearch,
+    productSearch: displayProductSearch,
     history: params.history,
     products: products.map((p) => ({ name: p.name, code: p.code, salePrice: p.salePrice })),
   });
+  const suggestion = {
+    ...generatedSuggestion,
+    suggestedReply: appendChatCompatibilityNote(
+      generatedSuggestion.suggestedReply,
+      compatibility.verificationNote,
+    ),
+  };
 
   await sendMessengerText({
     pageAccessToken: params.pageAccessToken,
@@ -1001,10 +1029,10 @@ async function replyWithProductSearch(params: {
     const elements = products.map((p) => productToCarouselElement(p));
     // Append a "view all on web" card when the catalog has more matches than the
     // carousel shows, linking to the storefront filtered to the same result set.
-    if (productSearch.result.total > products.length) {
-      const url = storefrontSearchUrl(productSearch.query, productSearch.appliedFilters);
+    if (displayProductSearch.result.total > products.length) {
+      const url = storefrontSearchUrl(displayProductSearch.query, displayProductSearch.appliedFilters);
       elements.push({
-        title: `ดูสินค้าทั้งหมด ${productSearch.result.total} รายการ`,
+        title: `ดูสินค้าทั้งหมด ${displayProductSearch.result.total} รายการ`,
         subtitle: "เปิดหน้าเว็บเพื่อดูรายการที่ตรงกันทั้งหมด",
         defaultActionUrl: url,
         buttons: [{ type: "web_url", title: "ดูทั้งหมดบนเว็บ", url }],
