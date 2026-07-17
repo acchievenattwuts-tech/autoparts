@@ -337,7 +337,7 @@ test("part number seed takes precedence over free text", async () => {
       text: "ขอราคาคอมแอร์",
       extractedPartNumber: "447220-1234",
     },
-    async (input) => ({ ids: ["p2"], total: 1, mode: "v2", matchReasons: { p2: ["code"] } }),
+    async () => ({ ids: ["p2"], total: 1, mode: "v2", matchReasons: { p2: ["code"] } }),
   );
 
   assert.equal(result.searched, true);
@@ -584,6 +584,55 @@ test("did-you-mean retry is capped at the top 2 suggestions (C1)", async () => {
   // Primary search + exactly 2 retries — the 3rd suggestion is never searched.
   assert.deepEqual(queries, ["คอมแarr", "ตัวเลือกแรก", "ตัวเลือกที่สอง"]);
   if (result.searched) assert.equal(result.didYouMean, null);
+});
+
+test("fan blade size/direction stay hard-required and empty result becomes direct spec no-match", async () => {
+  const calls: Array<string[][] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "พัดลมเป่า 14นิ้วมีไหมคับ",
+      fitmentHints: { categoryName: "ใบพัดลม (Cooling Fan Blade)" },
+    },
+    async (input) => {
+      calls.push(input.requiredNameAliasTokenGroups ?? null);
+      return { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => [],
+  );
+
+  assert.equal(result.searched, true);
+  assert.deepEqual(calls, [[
+    ["14 นิ้ว", "14นิ้ว", "14 inch", "14inch", '14"'],
+    ["แบบเป่า", "พัดลมเป่า", "push fan", "pusher fan"],
+  ]]);
+  if (result.searched) {
+    assert.equal(result.reason, "SEARCHED_PRODUCT_SPEC_NO_MATCH");
+    assert.equal(result.result.total, 0);
+  }
+});
+
+test("fan blade spec groups survive did-you-mean retry", async () => {
+  const calls: Array<string[][] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "พัดลมดูด 10 นิ้ว 24V",
+      fitmentHints: { categoryName: "ใบพัดลม (Cooling Fan Blade)" },
+    },
+    async (input) => {
+      calls.push(input.requiredNameAliasTokenGroups ?? null);
+      return { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["พัดลมดูด 10 นิ้ว"],
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], calls[0]);
+  assert.deepEqual(calls[0]?.[0], ["10 นิ้ว", "10นิ้ว", "10 inch", "10inch", '10"']);
+  assert.deepEqual(calls[0]?.[1], ["แบบดูด", "พัดลมดูด", "pull fan", "suction fan"]);
+  assert.deepEqual(calls[0]?.[2], ["24v", "24 v", "24 โวลต์"]);
 });
 
 test("did-you-mean retry still recovers from the 2nd suggestion under the cap (C1)", async () => {

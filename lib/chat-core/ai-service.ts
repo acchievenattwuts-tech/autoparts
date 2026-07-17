@@ -633,8 +633,8 @@ export function buildJunePartImageNoMatchReply(known?: ChatKnownFitment | null):
 
 /**
  * Reply for a TEXT product inquiry where the customer named a specific part (and
- * usually a car) but the catalog search found no match — e.g. asking for a part
- * the shop doesn't carry ("เทอร์โมสตรัท Vios 2017"). Acknowledges the exact part +
+ * usually a car) but the automated catalog search needs human confirmation.
+ * Acknowledges the exact part +
  * car so it never reads like the request was ignored, then hands off to a human.
  * Mirrors {@link buildJunePartImageNoMatchReply} for the text channel. The part
  * label is cleaned of any "(English)" canonical suffix so the customer sees a

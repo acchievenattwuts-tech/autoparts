@@ -236,6 +236,13 @@ type ProductSearchInput = {
   carModelName?: string | null;
   carModelNames?: string[] | null;
   requiredTokens?: string[] | null;
+  /**
+   * Physical-identity constraints: AND between groups, OR between spelling
+   * variants. Deliberately matched only against product name + aliases so a
+   * warning in description (for example "do not use with 24V") cannot satisfy
+   * the opposite voltage/direction.
+   */
+  requiredNameAliasTokenGroups?: string[][] | null;
   /** Optional explicit fitment year filter (e.g. user selected from dropdown) */
   fitmentYear?: number | null;
   /** Multi-select storefront filters (Phase Filter-UI) */
@@ -280,6 +287,11 @@ const escapePosixRegexLiteral = (value: string): string =>
 
 const normalizeRequiredTokens = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => normalizeSearchText(value)).filter(Boolean)));
+
+const normalizeRequiredTokenGroups = (groups?: string[][] | null): string[][] =>
+  (groups ?? [])
+    .map((group) => normalizeRequiredTokens(group))
+    .filter((group) => group.length > 0);
 
 const normalizeYearBound = (value?: number | null): number | null => {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
@@ -559,6 +571,7 @@ const buildProductFilterWhere = (
     | "carModelName"
     | "carModelNames"
     | "requiredTokens"
+    | "requiredNameAliasTokenGroups"
     | "categoryNames"
     | "brandIds"
     | "carBrandNames"
@@ -585,6 +598,7 @@ const buildProductFilterWhere = (
   const searchWhere = buildProductSearchWhere(query);
   const normalizedCarModelNames = normalizeCarModelNames({ carModelName, carModelNames });
   const requiredTokens = normalizeRequiredTokens(input.requiredTokens);
+  const requiredNameAliasTokenGroups = normalizeRequiredTokenGroups(input.requiredNameAliasTokenGroups);
   const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
   const normalizedBrandIds = normalizeStringArray(input.brandIds);
   const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
@@ -671,11 +685,11 @@ const buildProductFilterWhere = (
   }
 
   if (!searchWhere) {
-    return applyRequiredTokenFilter(where, requiredTokens);
+    return applyRequiredTokenFilter(where, requiredTokens, requiredNameAliasTokenGroups);
   }
 
   return {
-    AND: [applyRequiredTokenFilter(where, requiredTokens), searchWhere],
+    AND: [applyRequiredTokenFilter(where, requiredTokens, requiredNameAliasTokenGroups), searchWhere],
   };
 };
 
@@ -704,17 +718,28 @@ const buildRequiredTokenCondition = (token: string): PrismaTypes.ProductWhereInp
   ],
 });
 
+const buildRequiredNameAliasTokenCondition = (token: string): PrismaTypes.ProductWhereInput => ({
+  OR: [
+    { name: { contains: token, mode: "insensitive" } },
+    { aliases: { some: { alias: { contains: token, mode: "insensitive" } } } },
+  ],
+});
+
 const applyRequiredTokenFilter = (
   where: PrismaTypes.ProductWhereInput,
   requiredTokens: string[],
+  requiredNameAliasTokenGroups: string[][],
 ): PrismaTypes.ProductWhereInput => {
-  if (requiredTokens.length === 0) return where;
+  if (requiredTokens.length === 0 && requiredNameAliasTokenGroups.length === 0) return where;
   const existingAnd = Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : [];
   return {
     ...where,
     AND: [
       ...existingAnd,
       ...requiredTokens.map((token) => buildRequiredTokenCondition(token)),
+      ...requiredNameAliasTokenGroups.map((group) => ({
+        OR: group.map((token) => buildRequiredNameAliasTokenCondition(token)),
+      })),
     ],
   };
 };
@@ -899,6 +924,7 @@ async function searchProductIdsV2(
   const normalizedQuery = normalizeSearchQuery(input.query);
   const normalizedCarModelNames = normalizeCarModelNames(input);
   const requiredTokens = normalizeRequiredTokens(input.requiredTokens);
+  const requiredNameAliasTokenGroups = normalizeRequiredTokenGroups(input.requiredNameAliasTokenGroups);
 
   if (!normalizedQuery) {
     return searchProductIdsFallback(input);
@@ -1260,24 +1286,38 @@ async function searchProductIdsV2(
         `
       : Prisma.empty;
 
-  const requiredTokensClause = requiredTokens.length > 0
+  const buildRequiredTokenSqlCondition = (token: string) => {
+    const containsToken = `%${token}%`;
+    return Prisma.sql`(
+      f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.product_description)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsToken}))
+    )`;
+  };
+  const buildRequiredNameAliasTokenSqlCondition = (token: string) => {
+    const containsToken = `%${token}%`;
+    return Prisma.sql`(
+      f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${containsToken}))
+      OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsToken}))
+    )`;
+  };
+  const requiredTokenPredicates = [
+    ...requiredTokens.map((token) => buildRequiredTokenSqlCondition(token)),
+    ...requiredNameAliasTokenGroups.map((group) =>
+      Prisma.sql`(${Prisma.join(
+        group.map((token) => buildRequiredNameAliasTokenSqlCondition(token)),
+        " OR ",
+      )})`,
+    ),
+  ];
+  const requiredTokensClause = requiredTokenPredicates.length > 0
     ? Prisma.sql`
-        AND ${Prisma.join(
-          requiredTokens.map((token) => {
-            const containsToken = `%${token}%`;
-            return Prisma.sql`(
-              f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.product_description)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsToken}))
-              OR f_unaccent(lower(psd.search_text)) LIKE f_unaccent(lower(${containsToken}))
-            )`;
-          }),
-          " AND ",
-        )}
+        AND ${Prisma.join(requiredTokenPredicates, " AND ")}
       `
     : Prisma.empty;
 
@@ -1762,6 +1802,7 @@ export async function searchProductIds(
     carBrandName: input.carBrandName ?? "",
     carModelNames: normalizeCarModelNames(input),
     requiredTokens: normalizeRequiredTokens(input.requiredTokens),
+    requiredNameAliasTokenGroups: normalizeRequiredTokenGroups(input.requiredNameAliasTokenGroups),
     fitmentYear: input.fitmentYear ?? null,
     categoryNames: normalizeStringArray(input.categoryNames),
     brandIds: normalizeStringArray(input.brandIds),

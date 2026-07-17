@@ -1760,6 +1760,40 @@ test("direct no-match with part + car replies once and hands off to admin", asyn
   assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
 });
 
+test("พัดลมเป่า 14 นิ้ว searches Cooling Fan Blade then uses the safe shared handoff copy", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "พัดลมเป่า 14 นิ้ว",
+    intentPartType: "พัดลม",
+    // Regression guard: even when the classifier calls a bare fan a fitment part,
+    // the explicit inch/push context makes it a searchable universal fan.
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "ใบพัดลม (Cooling Fan Blade)" },
+    searchTotal: 0,
+    searchIds: [],
+    searchReason: "SEARCHED_PRODUCT_SPEC_NO_MATCH",
+    failedSearchCount: 0,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("พัดลมเป่า 14นิ้วมีไหมคับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "the universal fan query is searched before handoff");
+  assert.equal(calls.searchFitmentHints[0]?.categoryName, "ใบพัดลม (Cooling Fan Blade)");
+  assert.match(calls.replies[0]?.text ?? "", /สำหรับพัดลม แบบเป่า 14 นิ้ว/);
+  assert.match(calls.replies[0]?.text ?? "", /ให้แอดมินช่วยเช็กสต็อกและตัวที่เข้ากัน/);
+  assert.doesNotMatch(
+    calls.replies[0]?.text ?? "",
+    /ไม่มีสินค้า|ไม่มีของ|หาไม่เจอ|ไม่พบสินค้า|ยังไม่พบ/,
+  );
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.ok(calls.auditActions.includes("AI_DIRECT_NO_MATCH_HANDOFF"));
+});
+
 test("customer names a car we can't resolve → confirms vehicle + hands off, no unscoped cards (Strada case)", async () => {
   // "สายแอร์…สตาด้า2500": the model is grounded (customer really typed it) but does
   // NOT resolve to a hard fitment filter (no carModelName/carBrandName), while the

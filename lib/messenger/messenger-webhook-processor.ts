@@ -18,6 +18,11 @@ import {
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
 import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
+import {
+  buildChatProductSpecSubject,
+  COOLING_FAN_BLADE_CATEGORY_HINT,
+  resolveChatProductSpecs,
+} from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
@@ -678,7 +683,10 @@ function shouldDirectNoMatchHandoff(input: {
   // The customer named a SPECIFIC part that anchored to zero matches (fitment-part
   // precision anchor). This is a concrete request the shop lacks — hand off even
   // when the part word isn't in the hardcoded EXPLICIT_PRODUCT_NOUN_RE list.
-  if (input.productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH") {
+  if (
+    input.productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH" ||
+    input.productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH"
+  ) {
     return true;
   }
 
@@ -779,6 +787,7 @@ async function resolveMessengerFitmentHints(
     ]);
     const guarded = guardChatSearchIntent({ intent: rawIntent, latestText: processText, history, brandLookup, modelLookup });
     const gi = guarded.intent;
+    const productSpecs = resolveChatProductSpecs(processText);
 
     const gateDecision = gi
       ? decideChatSearchGate({
@@ -786,7 +795,10 @@ async function resolveMessengerFitmentHints(
           carBrand: gi.carBrand,
           carModel: gi.carModel,
           year: gi.year,
-          partKind: gi.partKind,
+          partKind:
+            productSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
+              ? "universal"
+              : gi.partKind,
           tooBroad: gi.tooBroad,
         })
       : null;
@@ -899,7 +911,13 @@ async function replyWithProductSearch(params: {
     // sees we understood the exact request before the hand-off. Part label prefers
     // the customer's own word; car/year come from the resolved fitment hints.
     const handoffMessage = buildJuneTextNoMatchHandoffReply({
-      partType: params.bridgeInput.fitmentPartHeadNoun ?? params.bridgeInput.fitmentHints?.categoryName ?? null,
+      partType:
+        productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH"
+          ? buildChatProductSpecSubject(
+              params.bridgeInput.text ?? params.originalText,
+              params.bridgeInput.fitmentPartHeadNoun ?? params.bridgeInput.fitmentHints?.categoryName ?? null,
+            )
+          : params.bridgeInput.fitmentPartHeadNoun ?? params.bridgeInput.fitmentHints?.categoryName ?? null,
       carBrand: params.bridgeInput.fitmentHints?.carBrandName ?? null,
       carModel: params.bridgeInput.fitmentHints?.carModelName ?? null,
       year: params.bridgeInput.fitmentHints?.fitmentYear ?? null,

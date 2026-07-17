@@ -2,6 +2,11 @@ import { LineIntent } from "@/lib/generated/prisma";
 import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import {
+  buildChatProductSpecRequiredTokenGroups,
+  COOLING_FAN_BLADE_CATEGORY_HINT,
+  resolveChatProductSpecs,
+} from "@/lib/chat-core/product-spec-resolve";
 
 type ProductSearchInput = {
   query?: string | null;
@@ -12,6 +17,7 @@ type ProductSearchInput = {
   carModelName?: string | null;
   fitmentYear?: number | null;
   requiredTokens?: string[] | null;
+  requiredNameAliasTokenGroups?: string[][] | null;
   skip?: number;
   take?: number;
   cacheProfile?: "admin" | "storefront";
@@ -366,6 +372,12 @@ export async function searchChatProductInquiry(
     carModelName: input.fitmentHints?.carModelName ?? null,
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
   };
+  const productSpecs = resolveChatProductSpecs(input.text);
+  const requiredTokenGroups =
+    baseFilters.categoryName?.includes(COOLING_FAN_BLADE_CATEGORY_HINT) &&
+    productSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
+      ? buildChatProductSpecRequiredTokenGroups(productSpecs)
+      : [];
 
   // Accessory precision anchor: for a universal/accessory inquiry with NO category
   // filter, require the head noun (e.g. "ฟองน้ำ") so results must actually be that
@@ -397,6 +409,7 @@ export async function searchChatProductInquiry(
     isStorefrontVisible: true,
     ...baseFilters,
     ...(primaryRequiredTokens.length > 0 ? { requiredTokens: primaryRequiredTokens } : {}),
+    ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
     skip: 0,
     take: input.take ?? 5,
     cacheProfile: "storefront",
@@ -416,6 +429,7 @@ export async function searchChatProductInquiry(
       isStorefrontVisible: true,
       ...baseFilters,
       ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
+      ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
       skip: 0,
       take: input.take ?? 5,
       cacheProfile: "storefront",
@@ -449,6 +463,7 @@ export async function searchChatProductInquiry(
         // Keep the fitment-part anchor through the spelling retry so a "did you
         // mean" can't drift the recovery into unrelated same-car parts.
         ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
+        ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
         skip: 0,
         take: input.take ?? 5,
         cacheProfile: "storefront",
@@ -477,7 +492,9 @@ export async function searchChatProductInquiry(
 
   return {
     searched: true,
-    reason: fitmentPartHeadNoun && result.total === 0
+    reason: requiredTokenGroups.length > 0 && result.total === 0
+      ? "SEARCHED_PRODUCT_SPEC_NO_MATCH"
+      : fitmentPartHeadNoun && result.total === 0
       ? "SEARCHED_FITMENT_PART_NO_MATCH"
       : fitmentPartHeadNoun
         ? "SEARCHED_FITMENT_PART_ANCHORED"

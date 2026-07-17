@@ -3,6 +3,7 @@ import { getCachedCategoryAliasRows } from "@/lib/category-alias-cache";
 import { matchCategoryAliasRows } from "@/lib/category-alias-resolver";
 import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import type { CarModelVariantLookup } from "@/lib/car-model-alias-cache";
+import { resolveChatProductSpecs } from "@/lib/chat-core/product-spec-resolve";
 
 /**
  * Resolves the AI-extracted fitment hints (free-text brand/model/part type) to the
@@ -463,7 +464,13 @@ export async function resolveChatFitmentFilters(
   // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
   // fall back to a direct equals/contains on the spoken part-type.
   const categoryFromAlias = aliasMatch?.kind === "MATCH" ? aliasMatch.categoryName : null;
-  const categoryHint = skipCategory || categoryFromAlias ? null : matchPartTypeToCategoryHint(partType);
+  const contextualCategoryHint = resolveChatProductSpecs(
+    [rawText, queryText, partType].filter(Boolean).join(" "),
+  ).categoryHint;
+  const categoryHint =
+    skipCategory || categoryFromAlias
+      ? null
+      : contextualCategoryHint ?? matchPartTypeToCategoryHint(partType);
   const allowPartTypeCategoryLookup = !skipCategory && !categoryFromAlias && Boolean(partType);
 
   try {
@@ -487,12 +494,13 @@ export async function resolveChatFitmentFilters(
           })
         : Promise.resolve(null),
       categoryHint
-        ? db.category.findFirst({
+        ? db.category.findMany({
             where: { isActive: true, name: { contains: categoryHint, mode: "insensitive" } },
             select: { name: true },
+            take: 2,
           })
         : allowPartTypeCategoryLookup && partType
-        ? db.category.findFirst({
+        ? db.category.findMany({
             where: {
               isActive: true,
               OR: [
@@ -501,15 +509,18 @@ export async function resolveChatFitmentFilters(
               ],
             },
             select: { name: true },
+            take: 2,
           })
-        : Promise.resolve(null),
+        : Promise.resolve([]),
     ]);
 
     // Precedence: exact category name (partType == a real category) wins over the
     // colloquial alias, which wins over the fuzzy hint / contains lookup.
     if (exactCategoryRow) filters.categoryName = exactCategoryRow.name;
     else if (categoryFromAlias) filters.categoryName = categoryFromAlias;
-    else if (categoryRow) filters.categoryName = categoryRow.name;
+    // A bare part word such as "พัดลม" can match several live categories. Only a
+    // unique fuzzy candidate is safe enough to become a hard category filter.
+    else if (categoryRow.length === 1) filters.categoryName = categoryRow[0].name;
     if (!filters.carBrandName && brandRow) filters.carBrandName = brandRow.name;
 
     // Car model resolution. Model names like "2" / "City" are ambiguous across

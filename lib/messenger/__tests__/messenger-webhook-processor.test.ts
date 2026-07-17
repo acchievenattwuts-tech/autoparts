@@ -4,7 +4,6 @@ import test, { mock } from "node:test";
 import {
   LineAiConfidence,
   LineConversationAiStatus,
-  LineIntent,
   LineMessageDirection,
   LineMessageType,
 } from "@/lib/generated/prisma";
@@ -20,7 +19,7 @@ const moduleMocksUnavailable =
   "requires --experimental-test-module-mocks — run via `npm run test:messenger-webhook`";
 
 test(
-  "Messenger normalizes glued model-year queries and hands off product no-matches",
+  "Messenger maps a 14-inch push fan and uses the safe shared no-match handoff",
   { skip: moduleMocksUnavailable },
   async () => {
   const calls = {
@@ -71,7 +70,7 @@ test(
       getUnansweredMessengerMessages: async () => [
         {
           id: "inbound-1",
-          text: "คอยเย็น Jazz08-12",
+          text: "พัดลมเป่า 14นิ้วมีไหมคับ",
           messageType: LineMessageType.TEXT,
           imageUrl: null,
           intent: null,
@@ -91,11 +90,15 @@ test(
     namedExports: {
       applyChatPriceTier: <T>(products: T[]) => products,
       getChatProductSummaries: async () => [],
-      searchChatProductInquiry: async (input: { text?: string | null }) => {
+      searchChatProductInquiry: async (input: {
+        text?: string | null;
+        fitmentHints?: { categoryName?: string | null } | null;
+      }) => {
         calls.searches.push({ text: input.text });
+        assert.equal(input.fitmentHints?.categoryName, "ใบพัดลม (Cooling Fan Blade)");
         return {
           searched: true,
-          reason: "SEARCHED_PRODUCT_INQUIRY",
+          reason: "SEARCHED_PRODUCT_SPEC_NO_MATCH",
           query: input.text ?? "",
           result: { ids: [], total: 0, mode: "v2" },
           needsMoreInfo: true,
@@ -123,8 +126,27 @@ test(
         };
       },
       generateScopedConversationalReply: async () => "scoped reply",
+      extractChatSearchIntent: async () => ({
+        group: "product",
+        query: "พัดลมเป่า 14 นิ้ว",
+        isProductQuery: true,
+        partType: "พัดลม",
+        carBrand: null,
+        carModel: null,
+        year: null,
+        partKind: "fitment",
+        tooBroad: false,
+      }),
       buildJuneTextNoMatchHandoffReply: (known?: { partType?: string | null } | null) =>
-        `สำหรับ${known?.partType ?? "รายการที่แจ้ง"} ยังไม่มีในระบบ ขอส่งต่อให้แอดมินนะคะ`,
+        `สำหรับ${known?.partType ?? "รายการที่แจ้ง"} จูนขอให้แอดมินช่วยเช็กสต็อกและตัวที่เข้ากันให้ชัวร์ก่อนนะคะ`,
+    },
+  });
+
+  await mock.module("@/lib/chat-core/fitment-resolve", {
+    namedExports: {
+      resolveChatFitmentFilters: async () => ({
+        categoryName: "ใบพัดลม (Cooling Fan Blade)",
+      }),
     },
   });
 
@@ -165,7 +187,7 @@ test(
         psid: "psid-1",
         mid: "mid-1",
         fbEventId: "event-1",
-        text: "คอยเย็น Jazz08-12",
+        text: "พัดลมเป่า 14นิ้วมีไหมคับ",
         hasAttachment: false,
         attachmentUrls: [],
       },
@@ -174,11 +196,16 @@ test(
   );
 
   assert.equal(calls.searches.length, 1);
-  assert.equal(calls.searches[0]?.text, "คอยเย็น Jazz 08-12");
+  assert.equal(calls.searches[0]?.text, "พัดลมเป่า 14 นิ้วมีไหมคับ");
   assert.deepEqual(calls.escalations, ["conversation-1"]);
   assert.equal(calls.notifications.length, 1);
   assert.equal(calls.aiSuggestions.length, 0);
   assert.equal(calls.outboundMessages.length, 1);
   assert.ok(calls.textReplies[0]?.includes("แอดมิน"));
+  assert.ok(calls.textReplies[0]?.includes("พัดลม แบบเป่า 14 นิ้ว"));
+  assert.doesNotMatch(
+    calls.textReplies[0] ?? "",
+    /ไม่มีสินค้า|ไม่มีของ|หาไม่เจอ|ไม่พบสินค้า|ยังไม่พบ/,
+  );
   assert.deepEqual(calls.processedSeqs, [1]);
 });

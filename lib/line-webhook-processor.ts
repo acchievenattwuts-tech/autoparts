@@ -33,6 +33,11 @@ import {
   resolveChatFitmentFilters,
   type ChatFitmentFilters,
 } from "@/lib/chat-core/fitment-resolve";
+import {
+  buildChatProductSpecSubject,
+  COOLING_FAN_BLADE_CATEGORY_HINT,
+  resolveChatProductSpecs,
+} from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
@@ -1757,6 +1762,9 @@ export async function processLineAiReply(
       : frameTopicShift
         ? frameQuery ?? input.text?.trim() ?? null
         : classifierQuery ?? frameQuery;
+    const currentProductSpecs = resolveChatProductSpecs(
+      [consolidatedQuery, processText].filter(Boolean).join(" "),
+    );
 
     // Pre-search completeness gate: only when the classifier gave structured
     // fields (text turns). Decides whether we have enough to search, and if so
@@ -1786,7 +1794,10 @@ export async function processLineAiReply(
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
             year: frameYear,
-            partKind: guardedSearchIntent?.partKind ?? null,
+            partKind:
+              currentProductSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
+                ? "universal"
+                : guardedSearchIntent?.partKind ?? null,
             tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
@@ -2158,7 +2169,8 @@ export async function processLineAiReply(
         // The customer named a SPECIFIC part that anchored to zero matches (the
         // fitment-part precision anchor). Hand off even when no car was given —
         // the part word alone is a concrete, actionable request the shop lacks.
-        productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH");
+        productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH" ||
+        productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH");
 
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
@@ -2557,12 +2569,29 @@ export async function processLineAiReply(
             message: buildJuneTextNoMatchHandoffReply(
               inquiryFrame
                 ? {
-                    partType: inquiryFrame.partType ?? unresolvedFitmentPartHeadNoun,
+                    partType:
+                      productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH"
+                        ? buildChatProductSpecSubject(
+                            consolidatedQuery ?? input.text,
+                            inquiryFrame.partType ?? unresolvedFitmentPartHeadNoun,
+                          )
+                        : inquiryFrame.partType ?? unresolvedFitmentPartHeadNoun,
                     carBrand: inquiryFrame.carBrand,
                     carModel: inquiryFrame.carModel,
                     year: frameYear,
                   }
-                : { partType: unresolvedFitmentPartHeadNoun, carBrand: null, carModel: null, year: null },
+                : {
+                    partType:
+                      productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH"
+                        ? buildChatProductSpecSubject(
+                            consolidatedQuery ?? input.text,
+                            unresolvedFitmentPartHeadNoun,
+                          )
+                        : unresolvedFitmentPartHeadNoun,
+                    carBrand: null,
+                    carModel: null,
+                    year: null,
+                  },
             ),
             reason: "DIRECT_NO_MATCH_HANDOFF",
             handoff: true,
