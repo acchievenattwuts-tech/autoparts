@@ -172,6 +172,15 @@ export function applyChatPriceTier<T extends { salePrice: number; retailPrice: n
 
 const MAX_QUERY_LENGTH = 120;
 
+// C1 (2026-07-17): cap the did-you-mean recovery at the top-N suggestions.
+// Suggestions arrive ranked by trigram similarity (best first), so the tail
+// entries rarely rescue a query — but each one costs a FULL extra search on a
+// turn that is already the slowest in the pipeline (every retry runs only when
+// everything before it found nothing). Applies to the chat retry loop only
+// (LINE + Messenger via this bridge); storefront/admin "did you mean" chips
+// call suggestDidYouMean directly and still show up to 3.
+const DID_YOU_MEAN_MAX_RETRIES = 2;
+
 function normalizeSearchSeed(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -388,7 +397,7 @@ export async function searchChatProductInquiry(
       });
 
     const suggestions = await resolvedSuggestFn(query).catch(() => []);
-    for (const suggestion of suggestions) {
+    for (const suggestion of suggestions.slice(0, DID_YOU_MEAN_MAX_RETRIES)) {
       const normalizedSuggestion = normalizeSearchSeed(suggestion);
       if (!normalizedSuggestion || normalizedSuggestion.toLowerCase() === query.toLowerCase()) continue;
 

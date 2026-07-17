@@ -77,6 +77,7 @@ import {
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
+  type ChatPriceTier,
 } from "@/lib/chat-core/product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
@@ -773,6 +774,11 @@ function textMessage(text: string): LinePushMessage {
   };
 }
 
+// Match reasons strong enough to show a category-less result (relevance gate) —
+// the row matched on the product's OWN text: code/oem/name/keyword/fitment.
+// Shared by the single-subject relevance gate and the multi-subject (B2c) guards.
+const STRONG_MATCH_REASONS = new Set(["code", "oem", "name", "keyword", "fitment"]);
+
 // ── B2c multi-subject ────────────────────────────────────────────────────────
 // Max distinct part categories answered inline in one turn. Each costs its own
 // search, so we cap the fan-out and invite the customer to ask the rest.
@@ -929,6 +935,15 @@ async function respondMultiSubject(
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
   subjects: import("@/lib/chat-core/ai-service").ChatSubject[],
+  extras: {
+    /** Shared lazy price-tier resolver (one DB round-trip per turn, shared with
+     *  the single path when this returns null and the caller falls through). */
+    getPriceTier: () => Promise<ChatPriceTier>;
+    /** ข้อความเทิร์นนี้เป็นคำถามราคา/ส่วนลด — นโยบายร้าน: ราคาให้แอดมินแจ้ง/ยืนยันทุกกรณี
+     *  (mirror ของ hiddenPriceWithProducts ใน single path: โชว์ของก่อน แล้วต่อ note
+     *  ส่งเรื่องราคา + freeze รอแอดมิน) */
+    priceAsk: boolean;
+  },
 ): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED } | null> {
   if (!config.channelAccessToken) return null;
 
@@ -942,9 +957,7 @@ async function respondMultiSubject(
   const productRoute = groupToRoute("product") ?? input.route;
   // ราคาแสดงตามระดับราคาของประเภทลูกค้า: WHOLESALE (อู่) → salePrice,
   // RETAIL (ทั่วไป/unlinked) → retailPrice; ราคา 0 → "สอบถามราคา"
-  const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
-    input.lineUserId,
-  ).catch(() => "UNKNOWN" as const);
+  const priceTier = await extras.getPriceTier();
   if (priceTier === "UNKNOWN") {
     fireAndForgetAudit(dependencies, {
       conversationId: input.conversation.id,
@@ -987,6 +1000,8 @@ async function respondMultiSubject(
   const placeholderImageUrl = await resolveFlexPlaceholderImageUrl().catch(() => null);
   const blocks: LinePushMessage[][] = [];
   let anyNotFound = false;
+  let suppressedVehicleUnresolved = 0;
+  let suppressedWeakMatch = 0;
 
   for (const { subject, fitment } of kept) {
     const label =
@@ -1012,8 +1027,44 @@ async function respondMultiSubject(
       priceTier,
     );
 
-    if (products.length === 0) {
+    // Mirror the single-path relevance guards so a subject can never present
+    // other vehicles' / off-topic parts as matches ("ไม่มั่นใจอย่าตอบมั่ว"):
+    //  - vehicle-unresolved (Option A): the subject names a car model that never
+    //    became a hard fitment filter → the rows are NOT vehicle-scoped.
+    //  - weak category match: no category filter kept results on-topic AND no
+    //    shown row matched strongly on the product's own text (code/oem/name/
+    //    keyword/fitment) or via a close trigram near-match with part+car given.
+    // A guarded subject degrades to its no-match line (admin notified below,
+    // no freeze — other subjects still got real answers, per decision จ).
+    const vehicleUnresolvedSubject =
+      products.length > 0 &&
+      Boolean(subject.carModel) &&
+      !fitment.carModelName &&
+      !fitment.carBrandName;
+    const subjectMatchReasons = productSearch?.searched
+      ? products.map((p) => productSearch.result.matchReasons?.[p.id] ?? [])
+      : [];
+    const subjectHasStrongMatch = subjectMatchReasons.some((reasons) =>
+      reasons.some((r) => STRONG_MATCH_REASONS.has(r)),
+    );
+    const subjectHighTrigramIds = new Set(
+      productSearch?.searched ? productSearch.result.highTrigramProductIds ?? [] : [],
+    );
+    const subjectPartAndCarProvided = Boolean(
+      subject.partType && (subject.carBrand || subject.carModel),
+    );
+    const subjectHasCloseTrigram = products.some((p) => subjectHighTrigramIds.has(p.id));
+    const weakCategoryMatchSubject =
+      products.length > 0 &&
+      !fitment.categoryName &&
+      !vehicleUnresolvedSubject &&
+      !subjectHasStrongMatch &&
+      !(subjectPartAndCarProvided && subjectHasCloseTrigram);
+
+    if (products.length === 0 || vehicleUnresolvedSubject || weakCategoryMatchSubject) {
       anyNotFound = true;
+      if (vehicleUnresolvedSubject) suppressedVehicleUnresolved += 1;
+      if (weakCategoryMatchSubject) suppressedWeakMatch += 1;
       const car = [subject.carBrand, subject.carModel].filter(Boolean).join(" ") || null;
       blocks.push([textMessage(buildSubjectNoMatchLine(subject.partType, car))]);
       continue;
@@ -1048,6 +1099,10 @@ async function respondMultiSubject(
   }
 
   if (overflow) blocks.push([textMessage(MULTI_SUBJECT_OVERFLOW_NOTE)]);
+
+  // ถามราคาหลายรายการพร้อมกัน → นโยบายเดียวกับ single path (hiddenPriceWithProducts):
+  // โชว์ของครบทุกรายการก่อน แล้วต่อท้าย note ส่งเรื่องราคาให้แอดมิน (freeze + notify ท้ายฟังก์ชัน)
+  if (extras.priceAsk) blocks.push([textMessage(PRICE_HIDDEN_HANDOFF_NOTE)]);
 
   // Abort-on-newer (coalescing): a newer message arrived → re-run with the merged
   // turn instead of sending a now-stale multi answer.
@@ -1102,8 +1157,11 @@ async function respondMultiSubject(
     if (hasReplyToken) await sendBatch(reply, LineDeliveryMode.REPLY);
     else if (config.allowPushFallback) await sendBatch(reply, LineDeliveryMode.PUSH);
   }
+  // Overflow batches can only travel via PUSH, so they require the push fallback
+  // to be enabled. (The previous `|| !hasReplyToken` sent a paid PUSH even when
+  // the caller had explicitly disabled push fallback.)
   for (const batch of pushes) {
-    if (config.allowPushFallback || !hasReplyToken) await sendBatch(batch, LineDeliveryMode.PUSH);
+    if (config.allowPushFallback) await sendBatch(batch, LineDeliveryMode.PUSH);
   }
 
   fireAndForgetAudit(dependencies, {
@@ -1116,12 +1174,29 @@ async function respondMultiSubject(
       anyNotFound,
       replaceCue,
       replied,
+      priceAsk: extras.priceAsk,
+      suppressedVehicleUnresolved,
+      suppressedWeakMatch,
     },
   });
 
-  // A missing category → tell an admin (no freeze: other categories were answered
-  // and the AI stays active per decision จ).
-  if (anyNotFound) {
+  // ถามราคา → freeze ห้องรอแอดมินแจ้งราคา (mirror handoffAfterSend ของ single path —
+  // ลูกค้าเห็นของแล้ว เรื่องราคาเป็นของแอดมินทุกกรณี)
+  if (extras.priceAsk) {
+    await dependencies.updateLineConversationState(
+      input.conversation.id,
+      buildLineConversationStatePatch({
+        type: "waiting_admin",
+        at: new Date(),
+        reason: "MULTI_SUBJECT_PRICE_HANDOFF",
+      }),
+    );
+  }
+
+  // A missing/suppressed category → tell an admin (no freeze: other categories
+  // were answered and the AI stays active per decision จ). A price ask notifies
+  // too — the customer is now waiting for the admin's price confirmation.
+  if (anyNotFound || extras.priceAsk) {
     const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
     const countPending =
       dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
@@ -1193,6 +1268,24 @@ export async function processLineAiReply(
   try {
     const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
     const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+
+    // Admin has taken over (paused / waiting-admin / closed) → the bot never
+    // auto-sends this turn; the pipeline only produces a DRAFT suggestion for the
+    // admin console. Known up-front, so the expensive Gemini calls whose output
+    // the draft doesn't need (generate / purchase fallback / FAQ) are skipped.
+    const conversationBlocked = isConversationAdminOwned(input.conversation.aiStatus);
+
+    // ราคาแสดงตามระดับราคาของประเภทลูกค้า — resolve แบบ lazy สูงสุด 1 ครั้งต่อเทิร์น
+    // และแชร์ระหว่างเส้นทาง multi-subject / single (เดิมทั้งสอง path ต่างคน resolve
+    // เอง = query ซ้ำ และ non-product turn ก็เสีย query ทิ้งเปล่า). UNKNOWN เมื่อ
+    // resolve ไม่สำเร็จ → ซ่อนราคาเป็น "สอบถามราคา" (ปลอดภัยกว่าเดาผิด tier)
+    let priceTierPromise: Promise<ChatPriceTier> | null = null;
+    const getPriceTier = (): Promise<ChatPriceTier> => {
+      priceTierPromise ??= (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
+        input.lineUserId,
+      ).catch(() => "UNKNOWN" as const);
+      return priceTierPromise;
+    };
 
     // Recent turns power both the reply's short-term memory and the search context.
     // (Level 1) Bound them to the CURRENT session — a long idle gap starts a new
@@ -1387,15 +1480,24 @@ export async function processLineAiReply(
     // instead of mashing them into one mushy query. respondMultiSubject returns
     // null if, after resolving, only one distinct category remains (e.g. same part
     // for two cars) — then we fall through to the normal single-subject path.
+    // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
+    // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — hoisted ขึ้นมาก่อน multi-subject
+    // เพื่อให้เส้นทางหลายรายการใช้นโยบายราคาเดียวกับเส้นทางรายการเดียว
+    const priceAskThisTurn =
+      route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
+
     const multiSubjects = group === "product" ? effectiveSearchIntent?.subjects ?? null : null;
     if (
       autoReplyEnabled &&
       !dryRun &&
       multiSubjects &&
       multiSubjects.length >= 2 &&
-      !isConversationAdminOwned(input.conversation.aiStatus)
+      !conversationBlocked
     ) {
-      const multi = await respondMultiSubject(input, config, dependencies, multiSubjects);
+      const multi = await respondMultiSubject(input, config, dependencies, multiSubjects, {
+        getPriceTier,
+        priceAsk: priceAskThisTurn,
+      });
       if (multi) return multi;
     }
 
@@ -1885,6 +1987,11 @@ export async function processLineAiReply(
         ? guardedSearchIntent.partType
         : null;
 
+    // (Option B) start the price-tier lookup now so it resolves in parallel with
+    // the product search instead of serially after it. Lazy getter: non-product
+    // turns never pay the query at all.
+    if (!isNonProductTurn) void getPriceTier();
+
     // A resolved product code drives a direct exact-code lookup and bypasses the
     // gate / low-confidence guard (the code itself is the confirmation). It never
     // overrides a genuinely non-product turn (greeting/payment) — those are already
@@ -1977,36 +2084,58 @@ export async function processLineAiReply(
       });
     }
 
-    fireAndForgetAudit(dependencies, {
-      conversationId: input.conversation.id,
-      action: "PRODUCT_SEARCH_SUMMARY",
-      payload: productSearch.searched
-        ? {
-            lineEventId: input.lineEventId,
-            searched: true,
-            query: productSearch.query,
-            total: productSearch.result.total,
-            returnedCount: productSearch.result.ids.length,
-            needsMoreInfo: productSearch.needsMoreInfo,
-            droppedImageCodes: productSearch.droppedImageCodes,
-          }
-        : {
-            lineEventId: input.lineEventId,
-            searched: false,
-            reason: productSearch.reason,
-          },
-    });
+    // Captured (not fire-and-forget) because the consecutive-empty-search
+    // escalation below reads this SAME audit trail: counting must
+    // deterministically include THIS turn's row, so on an empty search we await
+    // this write first. Non-empty turns never await it (still non-blocking).
+    const productSearchSummaryAudit = dependencies
+      .storeLineAiAudit({
+        conversationId: input.conversation.id,
+        action: "PRODUCT_SEARCH_SUMMARY",
+        payload: productSearch.searched
+          ? {
+              lineEventId: input.lineEventId,
+              searched: true,
+              query: productSearch.query,
+              total: productSearch.result.total,
+              returnedCount: productSearch.result.ids.length,
+              needsMoreInfo: productSearch.needsMoreInfo,
+              droppedImageCodes: productSearch.droppedImageCodes,
+              // C0: measure how often the did-you-mean recovery actually rescues
+              // a query (null = normal search) — feeds the decision on tuning
+              // DID_YOU_MEAN_MAX_RETRIES further.
+              didYouMean: productSearch.didYouMean?.suggestion ?? null,
+            }
+          : {
+              lineEventId: input.lineEventId,
+              searched: false,
+              reason: productSearch.reason,
+            },
+      })
+      .catch((error) => {
+        console.warn(
+          "[line-webhook-processor] audit write failed",
+          "PRODUCT_SEARCH_SUMMARY",
+          error instanceof Error ? error.message : "unknown",
+        );
+      });
 
     // Live mode = AI is allowed to auto-send. Forced hand-offs below only act in
     // live mode (dry-run / AI-off never auto-send).
     const liveMode = autoReplyEnabled && !dryRun;
 
     // Escalation: search came back empty (product=0) for N consecutive turns.
+    // Await this turn's PRODUCT_SEARCH_SUMMARY write first so the counter always
+    // includes the current turn — previously a fire-and-forget race made the
+    // threshold trip at the 2nd OR 3rd consecutive empty search nondeterministically.
     const failedSearchCount =
       productSearch.searched && productSearch.result.total === 0
-        ? await (dependencies.countConsecutiveFailedLineSearches ?? countConsecutiveFailedLineSearches)(
-            input.conversation.id,
-          ).catch(() => 0)
+        ? await (async () => {
+            await productSearchSummaryAudit;
+            return (dependencies.countConsecutiveFailedLineSearches ?? countConsecutiveFailedLineSearches)(
+              input.conversation.id,
+            );
+          })().catch(() => 0)
         : 0;
     const shouldEscalateNoResults = failedSearchCount >= MAX_FAILED_SEARCHES_BEFORE_HANDOFF;
     const directNoMatchHandoff =
@@ -2025,9 +2154,13 @@ export async function processLineAiReply(
     // Pull real catalog names for matched ids so the reply can show the customer
     // what was actually found (with a "verify before ordering" caveat) instead of
     // gatekeeping on chassis/OEM numbers they usually can't provide.
-    const priceTier = await (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
-      input.lineUserId,
-    ).catch(() => "UNKNOWN" as const);
+    // Price tier is awaited only when there are ids to price — turns with nothing
+    // to show never pay (or wait on) the lookup; the tier value is irrelevant for
+    // an empty list, so "RETAIL" is a pure placeholder there.
+    const priceTier: ChatPriceTier =
+      productSearch.searched && productSearch.result.ids.length > 0
+        ? await getPriceTier()
+        : "RETAIL";
     if (priceTier === "UNKNOWN") {
       fireAndForgetAudit(dependencies, {
         conversationId: input.conversation.id,
@@ -2119,8 +2252,8 @@ export async function processLineAiReply(
     //    → โชว์การ์ดก่อน แล้วต่อ note ส่งเรื่องราคา + freeze (ลูกค้าอยากเห็นว่ามีของ เช่น "คอยเย็นวีโก้ เท่าไร")
     //  - hiddenPriceDirect: ถามราคาล้วน ไม่ได้ระบุสินค้าในข้อความ (เช่น "ราคาเท่าไร" ต่อจากที่โชว์ไปแล้ว)
     //    → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ
-    const priceAskThisTurn =
-      route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
+    // (priceAskThisTurn is hoisted above the multi-subject dispatch — same policy
+    // for both paths.)
     const hiddenPriceInquiry = liveMode && priceAskThisTurn;
     // guardedSearchIntent = evidence-gated intent ของ "ข้อความเทิร์นนี้" (เฉพาะสิ่งที่ลูกค้าพิมพ์จริง
     // ไม่รวม history) → ใช้แยกว่าลูกค้าเปิดสินค้าใหม่ในข้อความนี้ หรือถามราคาล้วน
@@ -2135,7 +2268,7 @@ export async function processLineAiReply(
       liveMode &&
       productSearch.searched &&
       products.length > 0 &&
-      !isConversationAdminOwned(input.conversation.aiStatus) &&
+      !conversationBlocked &&
       shouldUsePostSearchDeliveryFallback(config);
 
     // (#2) Kick the reply generation off NOW, in parallel with the purchase-intent
@@ -2144,18 +2277,20 @@ export async function processLineAiReply(
     // turns. If a forced response (purchase / escalate / FAQ / shop info) ends up
     // winning, this result is simply discarded.
     const generateSuggestion = dependencies.generateChatSuggestion ?? generateChatSuggestion;
+    // (Option E) admin-owned conversations never auto-send, so the Gemini reply
+    // generation is skipped — the DRAFT falls back to the deterministic
+    // จูน-voiced template that still carries the SAME matched products.
     const wantEarlyGenerate =
       liveMode &&
+      !conversationBlocked &&
       !directNoMatchHandoff &&
       !postSearchDeliveryFallback &&
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY ||
         route.intent === LineIntent.GREETING);
 
-    // Admin has taken over (paused / waiting-admin / closed) → the bot stays
-    // silent, so skip auto-send below. (Typing dots are fired at ingest time, in
-    // ingestLineEvent, which runs for every webhook-driven turn.)
-    const conversationBlocked = isConversationAdminOwned(input.conversation.aiStatus);
+    // (conversationBlocked is hoisted to the top of the turn — admin-owned rooms
+    // stay silent; typing dots are fired at ingest time, in ingestLineEvent.)
 
     const earlyGeneratePromise = wantEarlyGenerate
       ? generateSuggestion({
@@ -2175,6 +2310,9 @@ export async function processLineAiReply(
     if (
       !isPurchaseIntent &&
       liveMode &&
+      // (Option E) admin-owned room → no auto-send, so the Gemini purchase
+      // fallback is pure cost; the keyword route above still detects purchases.
+      !conversationBlocked &&
       !postSearchDeliveryFallback &&
       products.length > 0 &&
       // A price *inquiry* re-routed to product (e.g. "หม้อน้ำ d-max ราคาเท่าไหร่")
@@ -2221,6 +2359,9 @@ export async function processLineAiReply(
     const anchoredProductNoMatch = Boolean(!isNonProductTurn && inquiryFrame?.partType);
     const faqAnswer =
       liveMode &&
+      // (Option E) admin-owned room → a FAQ auto-answer would never be sent
+      // (store_only wins in the send policy), so skip the Gemini call entirely.
+      !conversationBlocked &&
       // A purchase-commitment turn ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") is classified as
       // a non-product turn, which would otherwise match the FAQ gate below and let an
       // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase
@@ -2498,15 +2639,18 @@ export async function processLineAiReply(
       // If it doesn't return in time (a hung key, etc.), fall back to a จูน-voiced
       // deterministic reply that still presents the SAME matched products/cards —
       // only the prose is templated — so we never miss the token (→ no paid push).
-      const genPromise =
-        earlyGeneratePromise ??
-        generateSuggestion({
-          intent: route.intent,
-          originalText: input.text,
-          productSearch,
-          history,
-          products,
-        }).catch(() => null);
+      // (Option E) admin-owned room → skip the Gemini generation outright; the
+      // deterministic template below (same matched products) becomes the DRAFT.
+      const genPromise = conversationBlocked
+        ? Promise.resolve(null)
+        : earlyGeneratePromise ??
+          generateSuggestion({
+            intent: route.intent,
+            originalText: input.text,
+            productSearch,
+            history,
+            products,
+          }).catch(() => null);
 
       const tokenBudgetMs = config.replyTokenMaxAgeMs ?? 45_000;
       const elapsedMs = config.receivedAt
@@ -2547,19 +2691,27 @@ export async function processLineAiReply(
               : null,
           }),
           confidence: products.length > 0 ? LineAiConfidence.POSSIBLE_MATCH : LineAiConfidence.NEED_MORE_INFO,
-          reasoningSummary: raced === DEADLINE ? "DEADLINE_FALLBACK" : "GENERATE_FAILED_FALLBACK",
+          reasoningSummary: conversationBlocked
+            ? "ADMIN_OWNED_TEMPLATE_DRAFT"
+            : raced === DEADLINE
+              ? "DEADLINE_FALLBACK"
+              : "GENERATE_FAILED_FALLBACK",
           matchedProducts: productSearch.searched ? productSearch.result : null,
         };
-        fireAndForgetAudit(dependencies, {
-          conversationId: input.conversation.id,
-          action: "AI_DEADLINE_FALLBACK",
-          payload: {
-            lineEventId: input.lineEventId,
-            reason: raced === DEADLINE ? "DEADLINE" : "GENERATE_FAILED",
-            remainingMs,
-            productCount: products.length,
-          },
-        });
+        // An admin-owned room reaches here by design (generation skipped), not
+        // because the deadline was missed — don't pollute the fallback audit.
+        if (!conversationBlocked) {
+          fireAndForgetAudit(dependencies, {
+            conversationId: input.conversation.id,
+            action: "AI_DEADLINE_FALLBACK",
+            payload: {
+              lineEventId: input.lineEventId,
+              reason: raced === DEADLINE ? "DEADLINE" : "GENERATE_FAILED",
+              remainingMs,
+              productCount: products.length,
+            },
+          });
+        }
       }
     }
 

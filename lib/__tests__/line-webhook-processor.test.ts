@@ -2670,3 +2670,132 @@ test("inquiry frame: generic part image drops stale vehicle but still asks for c
   });
   assert.match(calls.replies[0]?.text ?? "", /รถ|รุ่น|ยี่ห้อ|car/i);
 });
+
+test("multi-subject price ask shows product blocks, appends the price note, freezes, and notifies admin", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    priceTier: "RETAIL",
+    // Both subjects lock to a resolved car so the vehicle-unresolved guard stays out.
+    fitmentFilters: { carModelName: "D-Max" },
+  });
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
+  // NOTE: subjects avoid คอยล์เย็น/ตู้/น้ำยา wording so the deterministic
+  // price-subject extractor (extractPriceProductSubjectsFromText) stays out and
+  // the classifier's multi-subject list drives the turn.
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "product",
+    query: "คอมแอร์ แผงแอร์ D-Max",
+    isProductQuery: true,
+    partType: "คอมแอร์",
+    carBrand: null,
+    carModel: "D-Max",
+    year: null,
+    partKind: "fitment" as const,
+    tooBroad: false,
+    subjects: [
+      { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment" as const, query: "คอมแอร์ D-Max" },
+      { partType: "แผงแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment" as const, query: "แผงแอร์ D-Max" },
+    ],
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอมแอร์กับแผงแอร์ D-Max ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.auditActions.includes("AI_MULTI_SUBJECT"));
+  assert.equal(calls.searches.length, 2, "each subject still searches");
+  const sentTexts = calls.replies.flatMap((reply) => reply.texts ?? []);
+  assert.ok(
+    sentTexts.some((text) => text.includes("ส่วนเรื่องราคา")),
+    "price note appended after the product blocks (same policy as the single path)",
+  );
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin price confirmation");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified exactly once");
+});
+
+test("multi-subject: a subject whose car never resolves is suppressed instead of showing other vehicles' parts", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // No fitmentFilters configured → the resolver returns no carModelName, so the
+  // Strada subject's rows are NOT vehicle-scoped (the exact mismatch class the
+  // single path guards with vehicleUnresolvedGuard).
+  const { calls, dependencies } = createProcessorTestDeps();
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "product",
+    query: "สายแอร์ สตาด้า กับ ฟองน้ำ",
+    isProductQuery: true,
+    partType: "สายแอร์",
+    carBrand: null,
+    carModel: "สตาด้า2500",
+    year: null,
+    partKind: "fitment" as const,
+    tooBroad: false,
+    subjects: [
+      { partType: "สายแอร์", carBrand: null, carModel: "สตาด้า2500", year: null, partKind: "fitment" as const, query: "สายแอร์ สตาด้า2500" },
+      { partType: "ฟองน้ำ", carBrand: null, carModel: null, year: null, partKind: "universal" as const, query: "ฟองน้ำแอร์" },
+    ],
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("สายแอร์สตาด้า2500 กับฟองน้ำแอร์ มีไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  const sentTexts = calls.replies.flatMap((reply) => reply.texts ?? []);
+  assert.ok(
+    sentTexts.some((text) => text.includes("สายแอร์") && text.includes("แอดมินช่วยเช็ก")),
+    "unresolved-car subject degrades to its no-match hand-off line",
+  );
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified for the suppressed subject");
+  assert.ok(
+    !calls.statePatchTypes.includes("waiting_admin"),
+    "no freeze — the other subject still got a real answer (decision จ)",
+  );
+});
+
+test("admin-owned conversation: draft is stored without spending Gemini generate / purchase / FAQ calls", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    conversationStatus: LineConversationAiStatus.PAUSED_BY_ADMIN,
+    consolidatedQuery: "คอยล์เย็น vios",
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: "Vios",
+    intentPartKind: "fitment",
+    fitmentFilters: { carModelName: "Vios" },
+  });
+  let generateCalls = 0;
+  let purchaseCalls = 0;
+  let faqCalls = 0;
+  dependencies.generateChatSuggestion = async () => {
+    generateCalls += 1;
+    return stubChatSuggestion();
+  };
+  dependencies.classifyPurchaseIntent = async () => {
+    purchaseCalls += 1;
+    return false;
+  };
+  dependencies.answerFromChatFaq = async () => {
+    faqCalls += 1;
+    return { answered: false, reply: "" };
+  };
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยล์เย็น vios"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 0, "admin-owned room never auto-replies");
+  assert.deepEqual(calls.replies, []);
+  assert.equal(generateCalls, 0, "Gemini reply generation skipped (template draft instead)");
+  assert.equal(purchaseCalls, 0, "purchase-intent Gemini fallback skipped");
+  assert.equal(faqCalls, 0, "FAQ Gemini call skipped");
+  assert.equal(calls.searches.length, 1, "search still runs so the draft carries real matches");
+  assert.equal(calls.suggestions.length, 1, "draft suggestion still stored for the admin console");
+  assert.equal(calls.suggestions[0]?.deliveryMode, LineDeliveryMode.NONE);
+});

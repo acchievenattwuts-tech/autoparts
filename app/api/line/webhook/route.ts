@@ -12,6 +12,7 @@ import {
   verifyLineWebhookSignature,
 } from "@/lib/line-messaging";
 import { getLineAiSettings } from "@/lib/line-ai-settings";
+import { getLineConversationProfileSnapshot } from "@/lib/line-conversation-repository";
 import { upsertLineRecipientFromWebhook } from "@/lib/line-recipient";
 import { processLineWebhookPayload } from "@/lib/line-webhook-processor";
 
@@ -23,6 +24,11 @@ type LineWebhookEvent = {
     roomId?: string;
   };
 };
+
+// How long a stored LINE profile stays "fresh": while the customer is active
+// within this window the stored displayName/pictureUrl are reused instead of
+// re-fetching from the LINE profile API on every inbound event.
+const PROFILE_REFRESH_IDLE_MS = 24 * 60 * 60 * 1000;
 
 type CapturedLineRecipient = {
   savedCount: number;
@@ -45,19 +51,35 @@ async function captureLineRecipientFromEvent(event: LineWebhookEvent, config: Re
   let displayName: string | null = null;
   let pictureUrl: string | null = null;
   if (source.userId && config.channelAccessToken) {
-    try {
-      const profile = await fetchLineUserProfile({
-        channelAccessToken: config.channelAccessToken,
-        userId: source.userId,
-      });
-      displayName = profile?.displayName ?? null;
-      pictureUrl = profile?.pictureUrl ?? null;
-    } catch (error) {
-      console.warn(
-        `[line-webhook] profile lookup failed for ${source.userId}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
+    // Skip the LINE profile API round-trip when we already hold a fresh profile:
+    // the conversation has a displayName and the customer was active within the
+    // last 24h. A returning customer after an idle day (or a conversation with
+    // no stored name yet) still refreshes from LINE as before, so display names
+    // never go stale for long — they just stop costing an HTTP call per message.
+    const snapshot = await getLineConversationProfileSnapshot(source.userId).catch(() => null);
+    const profileFresh = Boolean(
+      snapshot?.displayName &&
+        snapshot.lastCustomerMessageAt &&
+        Date.now() - snapshot.lastCustomerMessageAt.getTime() < PROFILE_REFRESH_IDLE_MS,
+    );
+    if (profileFresh && snapshot) {
+      displayName = snapshot.displayName;
+      pictureUrl = snapshot.pictureUrl;
+    } else {
+      try {
+        const profile = await fetchLineUserProfile({
+          channelAccessToken: config.channelAccessToken,
+          userId: source.userId,
+        });
+        displayName = profile?.displayName ?? null;
+        pictureUrl = profile?.pictureUrl ?? null;
+      } catch (error) {
+        console.warn(
+          `[line-webhook] profile lookup failed for ${source.userId}: ${
+            error instanceof Error ? error.message : "Unknown error"
+          }`
+        );
+      }
     }
   }
 

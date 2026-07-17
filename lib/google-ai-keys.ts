@@ -73,6 +73,28 @@ async function ensureKeyRows(keyRefs: string[]): Promise<void> {
   );
 }
 
+// State rows only ever need to be created once — they are never deleted. Doing
+// the upsert sweep on every Gemini call cost one DB round-trip per configured
+// key (15+ upserts) on the chat hot path, so remember which key set has been
+// ensured by this process and skip the sweep afterwards.
+let ensuredKeyRowsSignature: string | null = null;
+
+/**
+ * Short-lived cache of the usable key list. Key health changes rarely (a 429 /
+ * disable), while the chat pipeline reads this several times per customer turn —
+ * without the cache each Gemini call paid a `findMany` round-trip. The cache is
+ * invalidated synchronously whenever a key is marked rate-limited / transient /
+ * disabled, so a just-cooled key is never re-picked from a stale list; the only
+ * staleness left is a key whose cooldown EXPIRES inside the TTL (it rejoins up to
+ * {@link KEY_STATE_CACHE_TTL_MS} late — harmless).
+ */
+const KEY_STATE_CACHE_TTL_MS = 15_000;
+let keyStateCache: { at: number; signature: string; handles: GeminiKeyHandle[] } | null = null;
+
+export function invalidateGeminiKeyStateCache(): void {
+  keyStateCache = null;
+}
+
 /**
  * Length of one sticky window. Within a single window every request (across all
  * serverless instances) picks the same key, so Gemini implicit prompt caching
@@ -106,11 +128,29 @@ export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
 
   const secretByRef = new Map(configured.map((handle) => [handle.keyRef, handle.secret]));
   const keyRefs = configured.map((handle) => handle.keyRef);
+  const signature = keyRefs.join(",");
 
-  await ensureKeyRows(keyRefs);
+  if (ensuredKeyRowsSignature !== signature) {
+    await ensureKeyRows(keyRefs);
+    ensuredKeyRowsSignature = signature;
+  }
 
   const sticky = isStickyKeyStrategy();
   const now = new Date();
+
+  // Sticky strategy: serve from the short-lived cache when fresh (the rotation
+  // bucket below is applied per call, so ordering behaviour is unchanged).
+  // Spread strategy intentionally bypasses the cache — its ordering is
+  // least-recently-used and must reflect the latest lastUsedAt each call.
+  if (
+    sticky &&
+    keyStateCache &&
+    keyStateCache.signature === signature &&
+    now.getTime() - keyStateCache.at < KEY_STATE_CACHE_TTL_MS
+  ) {
+    return applyStickyRotation(keyStateCache.handles, now);
+  }
+
   const rows = await db.aiApiKeyState.findMany({
     where: {
       provider: PROVIDER,
@@ -133,12 +173,19 @@ export async function getAvailableGeminiKeys(): Promise<GeminiKeyHandle[]> {
     })
     .filter((handle): handle is GeminiKeyHandle => handle !== null);
 
-  if (!sticky || handles.length <= 1) {
-    return handles;
+  if (sticky) {
+    keyStateCache = { at: now.getTime(), signature, handles };
+    return applyStickyRotation(handles, now);
   }
 
-  // Time-bucketed sticky rotation: advance the start offset once per window so the
-  // lead key changes every STICKY_WINDOW_MS while staying constant within a window.
+  // Spread strategy (never cached): LRU order straight from the query.
+  return handles;
+}
+
+/** Time-bucketed sticky rotation: advance the start offset once per window so the
+ *  lead key changes every STICKY_WINDOW_MS while staying constant within a window. */
+function applyStickyRotation(handles: GeminiKeyHandle[], now: Date): GeminiKeyHandle[] {
+  if (handles.length <= 1) return handles;
   const bucket = Math.floor(now.getTime() / STICKY_WINDOW_MS);
   const start = bucket % handles.length;
   return [...handles.slice(start), ...handles.slice(0, start)];
@@ -162,6 +209,9 @@ export async function markGeminiKeyRateLimited(
   keyRef: string,
   options: { daily?: boolean; message?: string },
 ): Promise<void> {
+  // Invalidate synchronously (before the write lands) so a concurrent caller
+  // can never re-pick this key from a stale cached list.
+  invalidateGeminiKeyStateCache();
   const cooldownMs = options.daily ? dailyCooldownMs() : RATE_LIMIT_COOLDOWN_MS;
   await db.aiApiKeyState.update({
     where: { keyRef },
@@ -177,6 +227,7 @@ export async function markGeminiKeyRateLimited(
 }
 
 export async function markGeminiKeyTransientError(keyRef: string, message: string): Promise<void> {
+  invalidateGeminiKeyStateCache();
   await db.aiApiKeyState.update({
     where: { keyRef },
     data: {
@@ -191,6 +242,7 @@ export async function markGeminiKeyTransientError(keyRef: string, message: strin
 }
 
 export async function markGeminiKeyDisabled(keyRef: string, message: string): Promise<void> {
+  invalidateGeminiKeyStateCache();
   await db.aiApiKeyState.update({
     where: { keyRef },
     data: {
@@ -254,6 +306,8 @@ export async function listAiApiKeyStates(): Promise<AiApiKeyStateView[]> {
  * disabled status, and the last error so it re-enters rotation immediately.
  */
 export async function resetAiApiKey(keyRef: string): Promise<void> {
+  // A manually re-enabled key must rejoin the rotation immediately.
+  invalidateGeminiKeyStateCache();
   await db.aiApiKeyState.update({
     where: { keyRef },
     data: {

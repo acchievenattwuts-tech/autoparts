@@ -197,7 +197,10 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
   for (const key of attemptKeys) {
     try {
       const text = await callGeminiOnce(key.secret, input);
-      await markGeminiKeySuccess(key.keyRef);
+      // Fire-and-forget: the success stamp is telemetry (counters/lastUsedAt),
+      // not selection-critical state, so the interactive turn shouldn't pay its
+      // DB round-trip. Error marks below stay awaited — they gate key selection.
+      void markGeminiKeySuccess(key.keyRef).catch(() => undefined);
       return { text, keyRef: key.keyRef };
     } catch (error) {
       lastError = error;
@@ -307,7 +310,7 @@ export async function generateGeminiEmbedding(texts: string[]): Promise<number[]
         }
         vectors.push(vector);
       }
-      await markGeminiKeySuccess(key.keyRef);
+      void markGeminiKeySuccess(key.keyRef).catch(() => undefined);
       return vectors;
     } catch (error) {
       lastError = error;

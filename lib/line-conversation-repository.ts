@@ -72,6 +72,23 @@ export async function resolveLinePriceTier(
   return customer.customerType.priceTier;
 }
 
+/**
+ * Lightweight profile snapshot for the webhook's "can we skip the LINE profile
+ * API call this turn?" check (Option B): when the conversation already holds a
+ * displayName and the customer was recently active, the stored values are reused
+ * instead of paying a LINE API round-trip on every inbound event.
+ */
+export async function getLineConversationProfileSnapshot(lineUserId: string): Promise<{
+  displayName: string | null;
+  pictureUrl: string | null;
+  lastCustomerMessageAt: Date | null;
+} | null> {
+  return db.lineConversation.findUnique({
+    where: { lineUserId },
+    select: { displayName: true, pictureUrl: true, lastCustomerMessageAt: true },
+  });
+}
+
 export async function getOrCreateLineConversation(input: {
   lineUserId: string;
   displayName?: string | null;

@@ -563,3 +563,44 @@ test("numeric model or part tokens are sent as required tokens for LINE search",
     },
   ]);
 });
+
+test("did-you-mean retry is capped at the top 2 suggestions (C1)", async () => {
+  const queries: string[] = [];
+  const result = await searchChatProductInquiry(
+    { route: searchableRoute, text: "คอมแarr" },
+    async (input) => {
+      queries.push(input.query ?? "");
+      // Only the 3rd (lowest-similarity) suggestion would hit — the capped loop
+      // must never reach it, so the turn ends as a normal no-match.
+      return input.query === "ตัวเลือกที่สาม"
+        ? { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} }
+        : { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["ตัวเลือกแรก", "ตัวเลือกที่สอง", "ตัวเลือกที่สาม"],
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(result.needsMoreInfo, true);
+  // Primary search + exactly 2 retries — the 3rd suggestion is never searched.
+  assert.deepEqual(queries, ["คอมแarr", "ตัวเลือกแรก", "ตัวเลือกที่สอง"]);
+  if (result.searched) assert.equal(result.didYouMean, null);
+});
+
+test("did-you-mean retry still recovers from the 2nd suggestion under the cap (C1)", async () => {
+  const queries: string[] = [];
+  const result = await searchChatProductInquiry(
+    { route: searchableRoute, text: "คอมแarr" },
+    async (input) => {
+      queries.push(input.query ?? "");
+      return input.query === "ตัวเลือกที่สอง"
+        ? { ids: ["p1"], total: 1, mode: "v2", matchReasons: {} }
+        : { ids: [], total: 0, mode: "v2", matchReasons: {} };
+    },
+    async () => ["ตัวเลือกแรก", "ตัวเลือกที่สอง", "ตัวเลือกที่สาม"],
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(result.needsMoreInfo, false);
+  assert.equal(result.query, "ตัวเลือกที่สอง");
+  assert.deepEqual(queries, ["คอมแarr", "ตัวเลือกแรก", "ตัวเลือกที่สอง"]);
+});
