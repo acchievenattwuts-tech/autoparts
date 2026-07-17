@@ -1977,6 +1977,118 @@ test("bare price question (no product named) → direct handoff, no cards re-sho
   assert.ok(calls.auditActions.includes("AI_PRICE_HIDDEN_HANDOFF"));
 });
 
+test("bare stock-availability ask (regex backstop, part carried from history) → admin handoff, never asks for the car", async () => {
+  // Mirrors the real incident: after earlier evaporator photos, the customer asks
+  // "ที่ร้านมีของใช้ไหมคัฟ". The classifier consolidates the HISTORY subject
+  // (คอยล์เย็น) but this message names nothing searchable — the availability ask
+  // must go to an admin, not the gate's "รบกวนแจ้งยี่ห้อ/รุ่นรถ" question.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "คอยล์เย็น" },
+    consolidatedQuery: "คอยล์เย็น",
+    intentPartType: "คอยล์เย็น",
+    intentPartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ที่ร้านมีของใช้ไหมคัฟ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "bare availability ask must not search");
+  assert.ok(calls.replies[0]?.text.includes("เช็กของให้ชัวร์"), "defers stock to admin");
+  assert.ok(!calls.replies[0]?.text.includes("รบกวนแจ้งยี่ห้อ/รุ่นรถ"), "never asks for the car");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin");
+  assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
+  assert.ok(calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"));
+});
+
+test("LLM stock_availability group (no searchable detail) → admin handoff", async () => {
+  // Text the regex backstop does NOT catch — the LLM group alone must divert it.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({});
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "stock_availability",
+    query: "",
+    isProductQuery: false,
+    partType: null,
+    carBrand: null,
+    carModel: null,
+    year: null,
+    partKind: null,
+    tooBroad: false,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ของยังมีอยู่ใช่ป่าวครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0);
+  assert.ok(calls.replies[0]?.text.includes("เช็กของให้ชัวร์"), "defers stock to admin");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.ok(calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"));
+});
+
+test("availability ask that names part + car in the message → normal search, no stock handoff", async () => {
+  // "มีของ หม้อน้ำ D-Max ไหม" matches the availability regex BUT names the part
+  // and car in the customer's own words — the search-logic carve-out must win.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ D-Max",
+    intentPartType: "หม้อน้ำ",
+    intentCarModel: "D-Max",
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "หม้อน้ำ (Radiator)", carModelName: "D-Max" },
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีของ หม้อน้ำ D-Max ไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "named part+car must flow into the normal search");
+  assert.ok(!calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"), "no stock handoff when detail is named");
+});
+
+test("LLM misfiles a named availability ask as stock_availability → still searches (normalized to product)", async () => {
+  // Hardest guard: the LLM disobeys the prompt and answers stock_availability WITH
+  // fields for "มีหม้อน้ำ D-Max ไหม" (regex does not match this phrasing). The
+  // processor must normalize it to a product turn and search — never hand off.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    fitmentFilters: { categoryName: "หม้อน้ำ (Radiator)", carModelName: "D-Max" },
+  });
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "stock_availability",
+    query: "หม้อน้ำ D-Max",
+    isProductQuery: false,
+    partType: "หม้อน้ำ",
+    carBrand: null,
+    carModel: "D-Max",
+    year: null,
+    partKind: "fitment",
+    tooBroad: false,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีหม้อน้ำ D-Max ไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "named part+car searches even when the LLM group says stock_availability");
+  assert.ok(!calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"));
+});
+
 test("coalesced multi-product price ask searches each product subject before handing price to admin", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({

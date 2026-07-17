@@ -181,6 +181,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "",
   "กลุ่ม (เลือก 1):",
   "- product = ถามหา/ค้นหาอะไหล่ หรือให้รายละเอียดเพิ่ม (ปี/รุ่น) ต่อจากที่ถามหาสินค้า รวมถึง 'ถามราคาของอะไหล่ที่ระบุชนิด/รุ่นรถได้' เช่น 'หม้อน้ำ d-max ราคาเท่าไหร่' = product (ลูกค้ายังหาของอยู่ ไม่ใช่ตกลงซื้อ)",
+  "- stock_availability = ถามว่ามีของ/มีสินค้า/ของพร้อมส่งไหม โดย 'ข้อความล่าสุด' ไม่ได้ระบุชนิดอะไหล่ ยี่ห้อ/รุ่นรถ หรือปีรถเลย เช่น 'มีของไหม' 'ที่ร้านมีของใช้ไหม' 'ของพร้อมส่งไหม' — ถ้าข้อความระบุชนิดอะไหล่หรือรุ่นรถมาด้วย เช่น 'มีหม้อน้ำ D-Max ไหม' ให้เป็น product",
   "- shop_info = ที่ตั้งร้าน/เวลาเปิด-ปิด/เบอร์โทร/แผนที่/มีหน้าร้านไหม/ไปร้านยังไง",
   "- general_faq = วิธีสั่งซื้อ/วิธีค้นหา/ส่งต่างจังหวัดไหม/นโยบายร้าน (คำถามทั่วไปที่ไม่ใช่ตัวสินค้า)",
   "- payment = แจ้งโอน/ส่งสลิป/ถามวิธีชำระเงิน",
@@ -197,10 +198,11 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "",
   "กฎ:",
   "- ถ้าไม่มั่นใจว่าเข้ากลุ่มไหน ให้ตอบ group=other (อย่าเดาเป็น product)",
-  "- query ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่นใส่ null) — และรวมข้อมูลที่ทยอยพิมพ์หลายข้อความเข้าด้วยกัน",
+  "- query ใส่เฉพาะเมื่อ group=product หรือ stock_availability เท่านั้น (กลุ่มอื่นใส่ null) — และรวมข้อมูลที่ทยอยพิมพ์หลายข้อความเข้าด้วยกัน",
+  "- ถ้า group=stock_availability แต่บทสนทนาก่อนหน้าเคยเอ่ยถึงอะไหล่/รถ ให้กรอก partType/carBrand/carModel/year เท่าที่ลูกค้าเคยระบุ (เหมือน product) — ห้ามแต่งเอง",
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
   "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
-  "- partKind/tooBroad ใส่เฉพาะเมื่อ group=product เท่านั้น (กลุ่มอื่น partKind=null, tooBroad=false)",
+  "- partKind/tooBroad ใส่เฉพาะเมื่อ group=product หรือ stock_availability เท่านั้น (กลุ่มอื่น partKind=null, tooBroad=false)",
   "- subjects: แยกเป็นหลายรายการเฉพาะเมื่อ 'ชนิดอะไหล่ต่างกัน' ตั้งแต่ 2 ชนิด; รุ่นรถต่างกันแต่ชนิดเดียว = subjects ว่าง ([])",
 ].join("\n");
 
@@ -300,10 +302,14 @@ export const parseChatSearchIntent = (raw: string): ChatSearchIntent | null => {
 
   const query = cleanIntentString(obj.query);
   const isProductQuery = group === "product";
+  // stock_availability keeps its product-detail fields (partType/car/partKind) —
+  // the processor uses them to decide search-vs-handoff, and normalizes the
+  // intent to a product turn when the customer named searchable detail.
+  const isProductLike = isProductQuery || group === "stock_availability";
 
   const partKindRaw = typeof obj.partKind === "string" ? obj.partKind.trim().toLowerCase() : "";
   const partKind: ChatPartKind | null =
-    isProductQuery && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
+    isProductLike && (partKindRaw === "fitment" || partKindRaw === "universal") ? partKindRaw : null;
 
   // B2c: parse the optional multi-subject list. Only product turns can carry it,
   // and only entries with a real partType count as a distinct subject (an empty /
@@ -338,7 +344,7 @@ export const parseChatSearchIntent = (raw: string): ChatSearchIntent | null => {
     carModel: cleanIntentString(obj.carModel),
     year: cleanIntentYear(obj.year),
     partKind,
-    tooBroad: isProductQuery && obj.tooBroad === true,
+    tooBroad: isProductLike && obj.tooBroad === true,
     ...(subjects ? { subjects } : {}),
   };
 };

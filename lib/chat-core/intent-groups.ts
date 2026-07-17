@@ -8,6 +8,7 @@ import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
  */
 export type ChatMessageGroup =
   | "product"
+  | "stock_availability"
   | "shop_info"
   | "general_faq"
   | "payment"
@@ -24,6 +25,7 @@ export type ChatMessageGroup =
 
 export const LINE_MESSAGE_GROUPS: readonly ChatMessageGroup[] = [
   "product",
+  "stock_availability",
   "shop_info",
   "general_faq",
   "payment",
@@ -95,6 +97,10 @@ const buildRoute = (
 export function groupToRoute(group: ChatMessageGroup): ChatIntentRouteResult | null {
   switch (group) {
     case "product":
+    // stock_availability runs the normal product pipeline (the LINE processor
+    // normalizes the classified intent to `product` before routing); mapping it
+    // like product here keeps any other consumer on the searchable path too.
+    case "stock_availability":
       return buildRoute(LineIntent.PRODUCT_INQUIRY_TEXT, { allowsSearch: true });
     case "shop_info":
       return buildRoute(LineIntent.SHOP_INFO, {});

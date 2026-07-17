@@ -304,6 +304,16 @@ const PRICE_HIDDEN_HANDOFF_NOTE =
 // ที่เหลือจับคำถามราคา-ส่วนลดที่ไม่มีคำว่า "ราคา" ในประโยค
 const PRICE_QUESTION_RE =
   /(ราคา|กี่บาท|กี่ตัง|เท่าไหร่|เท่าไร|เท่าไหร|ส่วนลด|ลดราคา|ลดได้|ลดหน่อย|ลดให้|ลดไหม|ลดมั้ย|มีลด|มีโปร|โปรโมชั่น|โปรโมชัน)/;
+// ถามว่า "มีของ/มีสินค้า/ของพร้อมส่งไหม" — คำถามสต็อกที่ต้องให้แอดมินยืนยัน เมื่อ
+// ข้อความไม่ได้ระบุอะไหล่/รถ/ปีเอง (deterministic backstop ของกลุ่ม stock_availability
+// เผื่อ LLM จัดเป็น product) ต้องมีทั้งวลี "มีของ..." และคำถามท้ายประโยค เพื่อไม่จับ
+// ประโยคบอกเล่า และไม่ชนกับ "มีบริการส่งไหม" (จับโดย SHIPPING_SERVICE ก่อนแล้ว)
+const STOCK_AVAILABILITY_ASK_RE =
+  /(มีของ|มีสินค้า|มีอะไหล่|ของพร้อมส่ง|มีพร้อมส่ง|มีขาย|ของมี)[^\n]{0,25}?(ไหม|มั้ย|มั๊ย|ใหม|หรือเปล่า|รึเปล่า|หรือป่าว|รึป่าว|ป่าว|เปล่า|หรือยัง|รึยัง|ไม๊)/;
+// คำตอบเมื่อถาม "มีของไหม" ล้วน — โทนกลางตามธงร้าน: ห้ามสื่อว่ามี/ไม่มีของ ให้แอดมิน
+// เป็นคนยืนยันสต็อกเสมอ
+const STOCK_AVAILABILITY_HANDOFF_MESSAGE =
+  "จูนขอส่งเรื่องให้แอดมินช่วยเช็กของให้ชัวร์ก่อนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับโดยเร็วที่สุดค่ะ 😊";
 const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
 
 ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
@@ -1257,7 +1267,7 @@ export async function processLineAiReply(
       regexPriceIntent || priceQuestionIntent ? extractPriceProductSubjectsFromText(processText) : [];
     const priceSubjectIntent = buildPriceProductSearchIntent(extractedPriceSubjects);
 
-    const rawSearchIntent = ruleSearchIntent
+    const classifiedSearchIntent = ruleSearchIntent
       ? ruleSearchIntent
       : shouldClassify
         ? await (dependencies.extractChatSearchIntent ?? extractChatSearchIntent)({
@@ -1266,6 +1276,15 @@ export async function processLineAiReply(
             history,
           }).catch(() => null)
         : null;
+    // Stock-availability ask ("มีของไหม") — the LLM group (Option C) OR the
+    // deterministic regex backstop (Option A, catches LLM misfiles to `product`).
+    // The intent is normalized to a PRODUCT turn so the pipeline (frame/guards/
+    // gate/search) runs untouched; the ask only diverts to an admin hand-off at
+    // the forced-response stage when THIS message named nothing searchable.
+    const stockAvailabilityClassified = classifiedSearchIntent?.group === "stock_availability";
+    const rawSearchIntent: ChatSearchIntent | null = stockAvailabilityClassified
+      ? { ...classifiedSearchIntent!, group: "product", isProductQuery: true }
+      : classifiedSearchIntent;
     const usedRuleIntent = ruleSearchIntent !== null;
     const searchIntent = priceSubjectIntent ?? rawSearchIntent;
     const classifierProductHasCurrentEvidence =
@@ -1285,6 +1304,34 @@ export async function processLineAiReply(
     const keepPriceTurnAsAdminIntent =
       priceQuestionIntent && !priceTurnHasCurrentProductEvidence;
     const effectiveSearchIntent = keepPriceTurnAsAdminIntent ? null : searchIntent;
+
+    // ── Stock-availability ask ("มีของไหม") — search vs admin hand-off ──────────
+    // Trigger: the LLM classified stock_availability, OR the deterministic regex
+    // catches an availability ask the LLM filed as `product`.
+    const stockAvailabilityAskThisTurn =
+      isTextTurn &&
+      (stockAvailabilityClassified || STOCK_AVAILABILITY_ASK_RE.test(processText ?? ""));
+    // Evidence must come from THIS message only (history [] — same rule as the
+    // hidden-price mechanism): classifier fields grounded in the customer's own
+    // words, or rule-dictionary searchable tokens. Named part/car brand/model/
+    // year → the turn MUST flow into the normal search pipeline, never hand off.
+    const classifierStockHasCurrentEvidence =
+      stockAvailabilityAskThisTurn &&
+      Boolean(
+        searchIntent &&
+          [
+            searchIntent.partType,
+            searchIntent.carBrand,
+            searchIntent.carModel,
+            searchIntent.year === null || searchIntent.year === undefined ? null : String(searchIntent.year),
+          ].some((value) => value && lineValueHasCustomerEvidence(value, processText, [])),
+      );
+    const stockTurnHasCurrentProductEvidence =
+      stockAvailabilityAskThisTurn &&
+      (extractChatRequiredSearchTokens(processText).length > 0 || classifierStockHasCurrentEvidence);
+    // Bare availability ask, nothing searchable named → admin confirms stock.
+    const stockAvailabilityDirect =
+      stockAvailabilityAskThisTurn && !stockTurnHasCurrentProductEvidence;
     const classifyFailed = shouldClassify && !usedRuleIntent && rawSearchIntent === null && priceSubjectIntent === null;
     const group: ChatMessageGroup = shouldClassify
       ? keepPriceTurnAsAdminIntent
@@ -1843,13 +1890,18 @@ export async function processLineAiReply(
     // overrides a genuinely non-product turn (greeting/payment) — those are already
     // excluded from codeCandidates via hardGuard / payment-slip above.
     const productSearch =
-      isNonProductTurn || (!directProductCode && (classifierUncertain || gateBlocksSearch || imageOnlyLowConfidence))
+      isNonProductTurn ||
+      (!directProductCode &&
+        (classifierUncertain || gateBlocksSearch || imageOnlyLowConfidence || stockAvailabilityDirect))
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
             ? "IMAGE_LOW_CONFIDENCE"
             : classifierUncertain
               ? "CLASSIFIER_UNCERTAIN"
+            // "มีของไหม" ล้วน — จะจบที่ handoff แอดมินเสมอ ไม่ต้องเสีย search
+            : stockAvailabilityDirect
+              ? "STOCK_AVAILABILITY_DIRECT"
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
               : "NON_PRODUCT_TURN",
@@ -2225,6 +2277,21 @@ export async function processLineAiReply(
             handoff: true,
             audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: gateDecision.reason },
+          }
+      // "มีของไหม" ล้วนโดยไม่ระบุอะไหล่/รถ/ปีในข้อความนี้ → สต็อกให้แอดมินยืนยันเสมอ
+      // ห้ามถามรุ่นรถกลับ (เคส "ที่ร้านมีของใช้ไหมคัฟ") ต้องมาก่อน gate-ask ด้านล่าง
+      // เพราะ frame ที่ carry อะไหล่เก่ามาจะทำให้ gate ถาม need_car แทน — ถ้าข้อความ
+      // ระบุอะไหล่/รถ/ปีเอง stockAvailabilityDirect เป็น false และไหลเข้า search ปกติ
+      : liveMode && stockAvailabilityDirect
+        ? {
+            message: STOCK_AVAILABILITY_HANDOFF_MESSAGE,
+            reason: "STOCK_AVAILABILITY_HANDOFF",
+            handoff: true,
+            audit: "AI_STOCK_AVAILABILITY_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              source: stockAvailabilityClassified ? "llm_group" : "regex",
+            },
           }
       : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
