@@ -1,3 +1,5 @@
+import { getOgLogoDataUri } from "@/lib/og-logo";
+
 interface OgImageTemplateProps {
   eyebrow?: string;
   title: string;
@@ -5,188 +7,151 @@ interface OgImageTemplateProps {
   meta?: string;
 }
 
+// Satori renders at exactly 1200x630, so the layout is expressed in absolute
+// pixels rather than percentages — it never has to respond to another size.
+const CARD_WIDTH = 1200;
+const IMAGE_PANEL_WIDTH = 624;
+const LOGO_SIZE = 260;
+const TEXT_PANEL_PADDING_X = 54;
+// Satori does not constrain a text node to its flex parent's content box, so an
+// unbreakable Thai run keeps painting past the card edge unless the node itself
+// carries an explicit max width.
+const TEXT_MAX_WIDTH =
+  CARD_WIDTH - IMAGE_PANEL_WIDTH - TEXT_PANEL_PADDING_X * 2;
+
+// Real product names and category names run far longer than the text panel can
+// show (e.g. "Resistor DMAX 2003-19' /mu-7/Almera(แอร์ธรรมดา) /March
+// (แอร์ธรรมดา) STAL STR-1008"). Satori does not clamp overflowing text — it
+// just paints past the panel — so the strings are trimmed before layout.
+const EYEBROW_MAX_CHARS = 38;
+const TITLE_MAX_CHARS = 62;
+const DESCRIPTION_MAX_CHARS = 110;
+
+const clamp = (value: string, maxChars: number): string => {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > maxChars
+    ? `${normalized.slice(0, maxChars - 1).trimEnd()}…`
+    : normalized;
+};
+
 const OgImageTemplate = ({
   eyebrow = "ศรีวรรณ อะไหล่แอร์",
   title,
   description,
   meta,
 }: OgImageTemplateProps) => {
+  const logoSrc = getOgLogoDataUri();
+
   return (
     <div
       style={{
         width: "100%",
         height: "100%",
         display: "flex",
-        position: "relative",
-        overflow: "hidden",
-        background:
-          "linear-gradient(135deg, #0f2140 0%, #17335e 54%, #f97316 140%)",
-        color: "white",
+        flexDirection: "column",
+        background: "#ffffff",
         fontFamily: "Sarabun, sans-serif",
       }}
     >
+      {/* Laid out in flow rather than absolutely: satori resolves `position:
+          absolute` against the nearest flex line, not the card, so an absolute
+          bar rendered across the right panel only. */}
       <div
         style={{
-          position: "absolute",
-          inset: 0,
-          background:
-            "radial-gradient(circle at top left, rgba(249,115,22,0.30), transparent 28%), radial-gradient(circle at bottom right, rgba(255,255,255,0.10), transparent 24%)",
+          display: "flex",
+          width: CARD_WIDTH,
+          height: 11,
+          background: "#17335e",
         }}
       />
 
+      <div style={{ display: "flex", width: CARD_WIDTH, flex: 1 }}>
       <div
         style={{
-          position: "absolute",
-          top: -120,
-          right: -100,
-          width: 340,
-          height: 340,
-          borderRadius: 9999,
-          background: "rgba(255,255,255,0.08)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: IMAGE_PANEL_WIDTH,
+          height: "100%",
+          background: "#f4f6f9",
         }}
-      />
+      >
+        {logoSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={logoSrc} width={LOGO_SIZE} height={LOGO_SIZE} alt="" />
+        ) : null}
+      </div>
 
       <div
         style={{
-          position: "absolute",
-          bottom: -160,
-          left: -100,
-          width: 360,
-          height: 360,
-          borderRadius: 9999,
-          background: "rgba(255,255,255,0.06)",
-        }}
-      />
-
-      <div
-        style={{
-          position: "relative",
           display: "flex",
           flexDirection: "column",
-          justifyContent: "space-between",
-          width: "100%",
-          padding: "72px 76px",
+          justifyContent: "center",
+          gap: 20,
+          width: CARD_WIDTH - IMAGE_PANEL_WIDTH,
+          height: "100%",
+          padding: `60px ${TEXT_PANEL_PADDING_X}px`,
         }}
       >
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            gap: 18,
-            maxWidth: 960,
+            alignSelf: "flex-start",
+            padding: "8px 24px",
+            borderRadius: 9999,
+            background: "#f1f5fa",
+            border: "1px solid #e2e8f0",
+            fontSize: 24,
+            fontWeight: 600,
+            color: "#1e3a5f",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              alignSelf: "flex-start",
-              gap: 12,
-              padding: "12px 22px",
-              borderRadius: 9999,
-              background: "rgba(255,255,255,0.12)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              fontSize: 28,
-              fontWeight: 600,
-            }}
-          >
-            <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: 9999,
-              background: "#f97316",
-            }}
-          />
-            <span>{eyebrow}</span>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 18,
-            }}
-          >
-            <h1
-              style={{
-                margin: 0,
-                fontFamily: "Kanit, sans-serif",
-                fontSize: 72,
-                lineHeight: 1.04,
-                fontWeight: 700,
-                letterSpacing: "-0.04em",
-              }}
-            >
-              {title}
-            </h1>
-            {description ? (
-              <p
-                style={{
-                  margin: 0,
-                  maxWidth: 920,
-                  fontSize: 32,
-                  lineHeight: 1.45,
-                  color: "rgba(255,255,255,0.82)",
-                }}
-              >
-                {description}
-              </p>
-            ) : null}
-          </div>
+          {clamp(eyebrow, EYEBROW_MAX_CHARS)}
         </div>
+
+        <h1
+          style={{
+            margin: 0,
+            fontFamily: "Kanit, sans-serif",
+            fontSize: 36,
+            lineHeight: 1.24,
+            maxWidth: TEXT_MAX_WIDTH,
+            // Thai has no inter-word spaces, so a long run has no break
+            // opportunity and satori paints it straight off the panel edge.
+            wordBreak: "break-word",
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            color: "#0f2140",
+          }}
+        >
+          {clamp(title, TITLE_MAX_CHARS)}
+        </h1>
+
+        {description ? (
+          <p
+            style={{
+              margin: 0,
+              fontSize: 24,
+              lineHeight: 1.45,
+              maxWidth: TEXT_MAX_WIDTH,
+              wordBreak: "break-word",
+              color: "#5b6b80",
+            }}
+          >
+            {clamp(description, DESCRIPTION_MAX_CHARS)}
+          </p>
+        ) : null}
 
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 24,
+            fontSize: 23,
+            color: "#9aa5b3",
           }}
         >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              fontSize: 26,
-              color: "rgba(255,255,255,0.72)",
-            }}
-          >
-            <span>www.sriwanparts.com</span>
-            {meta ? (
-              <>
-                <span style={{ color: "rgba(255,255,255,0.28)" }}>•</span>
-                <span>{meta}</span>
-              </>
-            ) : null}
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "14px 22px",
-              borderRadius: 9999,
-              background: "rgba(255,255,255,0.10)",
-              border: "1px solid rgba(255,255,255,0.14)",
-              fontSize: 24,
-              fontWeight: 600,
-            }}
-          >
-            <span
-              style={{
-                display: "flex",
-                width: 18,
-                height: 18,
-                borderRadius: 9999,
-                background: "#06C755",
-              }}
-            />
-            <span>ค้นหาเร็ว • คุยต่อผ่าน LINE OA</span>
-          </div>
+          {meta ? `www.sriwanparts.com · ${meta}` : "www.sriwanparts.com"}
         </div>
+      </div>
       </div>
     </div>
   );
