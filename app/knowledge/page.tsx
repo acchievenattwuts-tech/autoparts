@@ -7,7 +7,7 @@ import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { knowledgeArticles } from "@/lib/knowledge-content";
@@ -29,7 +29,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: absoluteUrl("/knowledge"),
       title,
       description,
-      images: [{ url: absoluteUrl("/knowledge/opengraph-image") }],
+      images: [buildOgCardImage("/knowledge/opengraph-image", title)],
     },
     twitter: {
       title,

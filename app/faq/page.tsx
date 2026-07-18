@@ -8,7 +8,7 @@ import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import FaqJsonLd from "@/components/seo/FaqJsonLd";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { storefrontFaqItems } from "@/lib/storefront-content";
@@ -30,7 +30,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: absoluteUrl("/faq"),
       title,
       description,
-      images: [{ url: absoluteUrl("/faq/opengraph-image") }],
+      images: [buildOgCardImage("/faq/opengraph-image", title)],
     },
     twitter: {
       title,

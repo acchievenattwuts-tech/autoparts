@@ -13,7 +13,7 @@ import CollectionPageJsonLd from "@/components/seo/CollectionPageJsonLd";
 import AuroraBackdrop from "@/components/shared/AuroraBackdrop";
 import CharRise from "@/components/shared/CharRise";
 import CategoryProductGrid from "./CategoryProductGrid";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
@@ -86,7 +86,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: absoluteUrl(canonicalPath),
       title,
       description,
-      images: [{ url: absoluteUrl(`${canonicalPath}/opengraph-image`), alt: category.name }],
+      images: [
+        buildOgCardImage(`${canonicalPath}/opengraph-image`, category.name),
+      ],
     },
     twitter: {
       title,

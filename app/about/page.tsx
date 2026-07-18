@@ -19,7 +19,7 @@ import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAsse
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getPublicStorefrontAboutStats } from "@/lib/storefront-about";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
@@ -41,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: absoluteUrl("/about"),
       title,
       description,
-      images: [{ url: absoluteUrl("/about/opengraph-image") }],
+      images: [buildOgCardImage("/about/opengraph-image", title)],
     },
     twitter: {
       title,

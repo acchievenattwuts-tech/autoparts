@@ -8,7 +8,7 @@ import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ArticleJsonLd from "@/components/seo/ArticleJsonLd";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
-import { LOCAL_SEO_KEYWORDS, absoluteUrl } from "@/lib/seo";
+import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { knowledgeArticleMap, knowledgeArticles } from "@/lib/knowledge-content";
@@ -42,7 +42,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: absoluteUrl(`/knowledge/${article.slug}`),
       title: article.title,
       description: article.description,
-      images: [{ url: absoluteUrl(`/knowledge/${article.slug}/opengraph-image`) }],
+      images: [
+        buildOgCardImage(`/knowledge/${article.slug}/opengraph-image`, article.title),
+      ],
     },
     twitter: {
       title: article.title,

@@ -17,7 +17,13 @@ import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
-import { LOCAL_SEO_KEYWORDS, ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
+import {
+  DEFAULT_TITLE,
+  LOCAL_SEO_KEYWORDS,
+  ROOT_CANONICAL_URL,
+  absoluteUrl,
+  buildOgCardImage,
+} from "@/lib/seo";
 
 const getStorefrontHomeData = cache(async () => {
   const [config, categories, featuredProducts, productFilters] = await Promise.all([
@@ -59,7 +65,7 @@ export async function generateMetadata(): Promise<Metadata> {
       url: ROOT_CANONICAL_URL,
       title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,
       description,
-      images: [{ url: absoluteUrl("/opengraph-image") }],
+      images: [buildOgCardImage("/opengraph-image", DEFAULT_TITLE)],
     },
     twitter: {
       title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,

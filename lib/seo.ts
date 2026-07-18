@@ -32,6 +32,34 @@ export function absoluteUrl(path = "/"): string {
   return new URL(path, SITE_URL).toString();
 }
 
+// Every satori-generated share card is rendered at exactly this size (the
+// `size` export in each opengraph-image route).
+export const OG_CARD_WIDTH = 1200;
+export const OG_CARD_HEIGHT = 630;
+
+/**
+ * Build an `openGraph.images` entry for a satori card route.
+ *
+ * Declaring width/height matters: pages that set `openGraph.images` themselves
+ * override the file-convention metadata Next would otherwise derive from the
+ * route's `size` export, so without these the tags ship with no dimensions and
+ * a crawler cannot lay the preview out until it has fetched the image.
+ *
+ * Only use this for the 1200x630 card routes — never for a stored product
+ * photo, whose dimensions are whatever was uploaded.
+ */
+export function buildOgCardImage(
+  path: string,
+  alt?: string,
+): { url: string; width: number; height: number; alt?: string } {
+  return {
+    url: absoluteUrl(path),
+    width: OG_CARD_WIDTH,
+    height: OG_CARD_HEIGHT,
+    ...(alt ? { alt } : {}),
+  };
+}
+
 export function buildDefaultMetadataBase(): Metadata {
   return {
     metadataBase: new URL(SITE_URL),
