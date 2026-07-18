@@ -10,22 +10,19 @@ interface OgImageTemplateProps {
 // Satori renders at exactly 1200x630, so the layout is expressed in absolute
 // pixels rather than percentages — it never has to respond to another size.
 const CARD_WIDTH = 1200;
-const IMAGE_PANEL_WIDTH = 624;
-const LOGO_SIZE = 260;
-const TEXT_PANEL_PADDING_X = 54;
+const CARD_PADDING_X = 90;
+const LOGO_SIZE = 330;
 // Satori does not constrain a text node to its flex parent's content box, so an
 // unbreakable Thai run keeps painting past the card edge unless the node itself
 // carries an explicit max width.
-const TEXT_MAX_WIDTH =
-  CARD_WIDTH - IMAGE_PANEL_WIDTH - TEXT_PANEL_PADDING_X * 2;
+const TEXT_MAX_WIDTH = CARD_WIDTH - CARD_PADDING_X * 2;
 
-// Real product names and category names run far longer than the text panel can
-// show (e.g. "Resistor DMAX 2003-19' /mu-7/Almera(แอร์ธรรมดา) /March
-// (แอร์ธรรมดา) STAL STR-1008"). Satori does not clamp overflowing text — it
-// just paints past the panel — so the strings are trimmed before layout.
-const EYEBROW_MAX_CHARS = 38;
-const TITLE_MAX_CHARS = 62;
-const DESCRIPTION_MAX_CHARS = 110;
+// Real product and category names run far longer than the card can show (e.g.
+// "Resistor DMAX 2003-19' /mu-7/Almera(แอร์ธรรมดา) /March (แอร์ธรรมดา) STAL
+// STR-1008"). Satori does not clamp overflowing text — it just paints past the
+// edge — so the strings are trimmed before layout.
+const TITLE_MAX_CHARS = 64;
+const META_MAX_CHARS = 46;
 
 const clamp = (value: string, maxChars: number): string => {
   const normalized = value.replace(/\s+/g, " ").trim();
@@ -34,12 +31,17 @@ const clamp = (value: string, maxChars: number): string => {
     : normalized;
 };
 
-const OgImageTemplate = ({
-  eyebrow = "ศรีวรรณ อะไหล่แอร์",
-  title,
-  description,
-  meta,
-}: OgImageTemplateProps) => {
+/**
+ * The shared share-preview card: logo centred, page title beneath it.
+ *
+ * Facebook renders link previews in comments as a small square thumbnail, which
+ * shrinks the whole 1200x630 card until side-by-side text is unreadable. A
+ * logo-forward card survives that downscale, so `eyebrow` and `description` are
+ * accepted (call sites still pass them, and they remain the page's og:title /
+ * og:description text) but are deliberately not drawn. `meta` rides along on
+ * the domain line, where it costs no visual weight.
+ */
+const OgImageTemplate = ({ title, meta }: OgImageTemplateProps) => {
   const logoSrc = getOgLogoDataUri();
 
   return (
@@ -49,109 +51,49 @@ const OgImageTemplate = ({
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 26,
+        padding: `0 ${CARD_PADDING_X}px`,
         background: "#ffffff",
         fontFamily: "Sarabun, sans-serif",
       }}
     >
-      {/* Laid out in flow rather than absolutely: satori resolves `position:
-          absolute` against the nearest flex line, not the card, so an absolute
-          bar rendered across the right panel only. */}
-      <div
-        style={{
-          display: "flex",
-          width: CARD_WIDTH,
-          height: 11,
-          background: "#17335e",
-        }}
-      />
+      {logoSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={logoSrc} width={LOGO_SIZE} height={LOGO_SIZE} alt="" />
+      ) : null}
 
-      <div style={{ display: "flex", width: CARD_WIDTH, flex: 1 }}>
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: IMAGE_PANEL_WIDTH,
-          height: "100%",
-          background: "#f4f6f9",
+          fontFamily: "Kanit, sans-serif",
+          fontSize: 52,
+          lineHeight: 1.2,
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          textAlign: "center",
+          maxWidth: TEXT_MAX_WIDTH,
+          // Thai has no inter-word spaces, so a long run has no break
+          // opportunity and satori paints it straight off the card edge.
+          wordBreak: "break-word",
+          color: "#0f2140",
         }}
       >
-        {logoSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={logoSrc} width={LOGO_SIZE} height={LOGO_SIZE} alt="" />
-        ) : null}
+        {clamp(title, TITLE_MAX_CHARS)}
       </div>
 
       <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          gap: 20,
-          width: CARD_WIDTH - IMAGE_PANEL_WIDTH,
-          height: "100%",
-          padding: `60px ${TEXT_PANEL_PADDING_X}px`,
+          fontSize: 30,
+          maxWidth: TEXT_MAX_WIDTH,
+          color: "#7b8798",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignSelf: "flex-start",
-            padding: "8px 24px",
-            borderRadius: 9999,
-            background: "#f1f5fa",
-            border: "1px solid #e2e8f0",
-            fontSize: 24,
-            fontWeight: 600,
-            color: "#1e3a5f",
-          }}
-        >
-          {clamp(eyebrow, EYEBROW_MAX_CHARS)}
-        </div>
-
-        <h1
-          style={{
-            margin: 0,
-            fontFamily: "Kanit, sans-serif",
-            fontSize: 36,
-            lineHeight: 1.24,
-            maxWidth: TEXT_MAX_WIDTH,
-            // Thai has no inter-word spaces, so a long run has no break
-            // opportunity and satori paints it straight off the panel edge.
-            wordBreak: "break-word",
-            fontWeight: 700,
-            letterSpacing: "-0.02em",
-            color: "#0f2140",
-          }}
-        >
-          {clamp(title, TITLE_MAX_CHARS)}
-        </h1>
-
-        {description ? (
-          <p
-            style={{
-              margin: 0,
-              fontSize: 24,
-              lineHeight: 1.45,
-              maxWidth: TEXT_MAX_WIDTH,
-              wordBreak: "break-word",
-              color: "#5b6b80",
-            }}
-          >
-            {clamp(description, DESCRIPTION_MAX_CHARS)}
-          </p>
-        ) : null}
-
-        <div
-          style={{
-            display: "flex",
-            fontSize: 23,
-            color: "#9aa5b3",
-          }}
-        >
-          {meta ? `www.sriwanparts.com · ${meta}` : "www.sriwanparts.com"}
-        </div>
-      </div>
+        {meta
+          ? `www.sriwanparts.com · ${clamp(meta, META_MAX_CHARS)}`
+          : "www.sriwanparts.com"}
       </div>
     </div>
   );
