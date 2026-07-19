@@ -121,6 +121,8 @@ export type ChatMatchedProductSummary = {
   salePrice: number;
   /** ราคาขายปลีก (Product.retailPrice) — ใช้เลือกราคาตามระดับราคาของลูกค้า */
   retailPrice: number;
+  /** ราคาสมาชิก (Product.memberPrice) — ใช้เลือกราคาตามระดับราคาของลูกค้า */
+  memberPrice: number;
   /** Catalog fitment evidence used by the chat compatibility guard. */
   fitments?: Array<{
     carBrandName: string | null;
@@ -153,6 +155,7 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       imageUrl: true,
       salePrice: true,
       retailPrice: true,
+      memberPrice: true,
       carModels: {
         select: {
           submodel: true,
@@ -179,6 +182,7 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       imageUrl: row.imageUrl,
       salePrice: Number(row.salePrice),
       retailPrice: Number(row.retailPrice),
+      memberPrice: Number(row.memberPrice),
       fitments: row.carModels.map((fitment) => ({
         carBrandName: fitment.carModel.carBrand.name,
         carModelName: fitment.carModel.name,
@@ -191,23 +195,25 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
 
 /** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier)
  *  - UNKNOWN = resolve ระดับราคาไม่ได้ (เช่น DB สะดุด) → ซ่อนราคา ปลอดภัยกว่าเดาผิด tier */
-export type ChatPriceTier = "RETAIL" | "WHOLESALE" | "UNKNOWN";
+export type ChatPriceTier = "RETAIL" | "MEMBER" | "WHOLESALE" | "UNKNOWN";
 
 /**
  * เลือกราคาแสดงในแชทตามระดับราคาของลูกค้า โดยเขียนทับ salePrice (ฟิลด์ราคาแสดงเดิม):
  * - RETAIL (ลูกค้าทั่วไป / ยังไม่ผูกบัญชี / ประเภทถูกปิด) → Product.retailPrice
+ * - MEMBER (ลูกค้าที่ผูกบัญชีแล้วและอยู่กลุ่ม "สมาชิก") → Product.memberPrice
  * - WHOLESALE (เช่น อู่ซ่อมรถ) → Product.salePrice (ราคาขายส่ง)
  * - UNKNOWN (resolve ระดับราคาไม่สำเร็จ) → 0 → แสดง "สอบถามราคา" เสมอ (ห้ามแสดงราคาผิด tier)
  * ราคา = 0 เป็น sentinel เดิมของระบบ → Flex การ์ดและข้อความ AI แสดง "สอบถามราคา" อัตโนมัติ
+ * (สินค้าที่ยังไม่ตั้งราคาสมาชิกจึงแสดง "สอบถามราคา" ให้เอง ไม่ fallback ไป tier อื่น)
  */
-export function applyChatPriceTier<T extends { salePrice: number; retailPrice: number }>(
-  products: T[],
-  tier: ChatPriceTier,
-): T[] {
+export function applyChatPriceTier<
+  T extends { salePrice: number; retailPrice: number; memberPrice: number },
+>(products: T[], tier: ChatPriceTier): T[] {
   if (tier === "WHOLESALE") return products;
   // Price tier could not be resolved (transient DB failure at the call site): hide
   // every price behind "สอบถามราคา" rather than risk showing a wrong-tier price.
   if (tier === "UNKNOWN") return products.map((product) => ({ ...product, salePrice: 0 }));
+  if (tier === "MEMBER") return products.map((product) => ({ ...product, salePrice: product.memberPrice }));
   return products.map((product) => ({ ...product, salePrice: product.retailPrice }));
 }
 

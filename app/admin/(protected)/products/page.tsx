@@ -186,6 +186,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         shelfLocation: true,
         salePrice: true,
         retailPrice: true,
+        memberPrice: true,
         stock: true,
         minStock: true,
         reportUnitName: true,
@@ -491,6 +492,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                             <span className="text-[10px] font-semibold uppercase text-emerald-500 dark:text-emerald-400">ส่ง</span>
                             <span className="text-base font-bold tabular-nums text-emerald-600 dark:text-emerald-300">
                               {Number(product.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-baseline gap-1.5">
+                            <span className="text-[10px] font-semibold uppercase text-sky-500 dark:text-sky-400">สมาชิก</span>
+                            <span className="text-sm font-semibold tabular-nums text-sky-600 dark:text-sky-300">
+                              {Number(product.memberPrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                             </span>
                           </span>
                           <span className="inline-flex items-baseline gap-1.5">

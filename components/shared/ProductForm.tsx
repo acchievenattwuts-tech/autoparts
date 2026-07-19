@@ -8,6 +8,7 @@ import { createProduct, researchProductWithAi, updateProduct, uploadProductImage
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
+import { derivePricesFromWholesale } from "@/lib/product-pricing";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -92,6 +93,7 @@ export interface ProductFormData {
   isStorefrontVisible: boolean;
   salePrice:       number;
   retailPrice:     number;
+  memberPrice:     number;
   minStock:        number;
   warrantyDays:    number;
   shelfLocation:   string | null;
@@ -258,6 +260,19 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
   const [requireExpiryDate, setRequireExpiryDate] = useState(product?.requireExpiryDate ?? false);
   const [allowExpiredIssue, setAllowExpiredIssue] = useState(product?.allowExpiredIssue ?? false);
   const [lotIssueMethod, setLotIssueMethod]       = useState(product?.lotIssueMethod ?? "FIFO");
+
+  // ราคาขายเป็น controlled input เพื่อให้ระบบเติมราคาปลีก/สมาชิกอัตโนมัติจากราคาขายส่งได้
+  // (ผู้ใช้ยังพิมพ์แก้ทับได้ — ค่าที่บันทึกคือค่าที่อยู่ในช่องกรอกจริง)
+  const [salePriceInput, setSalePriceInput]     = useState(product ? String(Number(product.salePrice)) : "0");
+  const [retailPriceInput, setRetailPriceInput] = useState(product ? String(Number(product.retailPrice)) : "0");
+  const [memberPriceInput, setMemberPriceInput] = useState(product ? String(Number(product.memberPrice)) : "0");
+
+  const handleSalePriceChange = (value: string) => {
+    setSalePriceInput(value);
+    const derived = derivePricesFromWholesale(Number(value));
+    setRetailPriceInput(String(derived.retailPrice));
+    setMemberPriceInput(String(derived.memberPrice));
+  };
 
   const [saleUnitName, setSaleUnitName]         = useState(product?.saleUnitName ?? baseUnit.name);
   const [purchaseUnitName, setPurchaseUnitName] = useState(product?.purchaseUnitName ?? baseUnit.name);
@@ -1541,16 +1556,29 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
           <div>
             <label className={labelCls}>ราคาขายส่ง (บาท)</label>
             <input type="number" name="salePrice"
-              defaultValue={product ? Number(product.salePrice) : 0}
+              value={salePriceInput}
+              onChange={(e) => handleSalePriceChange(e.target.value)}
               min={0} step={0.01} className={inputCls} />
-            <p className={helpCls}>ราคาสำหรับกลุ่มลูกค้าประเภท “ราคาขายส่ง” เช่น อู่ซ่อมรถ</p>
+            <p className={helpCls}>
+              ราคาสำหรับกลุ่มลูกค้าประเภท “ราคาขายส่ง” เช่น อู่ซ่อมรถ — เมื่อกรอกช่องนี้
+              ระบบจะคำนวณราคาสมาชิก (+40%) และราคาขายปลีก (+70%) ให้อัตโนมัติ ปัดขึ้นลงท้ายด้วย 0 และแก้ไขเองได้
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>ราคาสมาชิก (บาท)</label>
+            <input type="number" name="memberPrice"
+              value={memberPriceInput}
+              onChange={(e) => setMemberPriceInput(e.target.value)}
+              min={0} step={0.01} className={inputCls} />
+            <p className={helpCls}>ราคาสำหรับกลุ่มลูกค้าประเภท “สมาชิก” — เว้น 0 ระบบจะแสดง “สอบถามราคา”</p>
           </div>
           <div>
             <label className={labelCls}>ราคาขายปลีก (บาท)</label>
             <input type="number" name="retailPrice"
-              defaultValue={product ? Number(product.retailPrice) || 0 : 0}
+              value={retailPriceInput}
+              onChange={(e) => setRetailPriceInput(e.target.value)}
               min={0} step={0.01} className={inputCls} />
-            <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะใช้ราคาขายส่งแทน</p>
+            <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะแสดง “สอบถามราคา”</p>
           </div>
           <div>
             <label className={labelCls}>Stock ขั้นต่ำ</label>

@@ -4,21 +4,27 @@ dotenv.config({ path: ".env.local" });
 dotenv.config({ path: ".env" });
 
 /**
- * Idempotent seed for the 2 default customer types.
+ * Idempotent seed for the 3 default customer types.
  * - "ลูกค้าทั่วไป": priceTier=RETAIL (system, ห้ามลบ) — เห็นราคาขายปลีก (Product.retailPrice)
+ * - "สมาชิก":      priceTier=MEMBER — เห็นราคาสมาชิก (Product.memberPrice)
  * - "อู่ซ่อมรถ":   priceTier=WHOLESALE — เห็นราคาขายส่ง (Product.salePrice)
+ *
+ * showPrice = แสดงราคาจริงในแชท LINE/Messenger (false → "สอบถามราคา")
+ * เป็น seed แบบ create-only — ไม่แก้ประเภทลูกค้าที่มีอยู่แล้วในระบบ
  *
  * Run once after `prisma db push`:
  *   npx tsx --env-file=.env.local scripts/seed-customer-types.ts
  */
 const seeds: Array<{
   name: string;
-  priceTier: "RETAIL" | "WHOLESALE";
+  priceTier: "RETAIL" | "MEMBER" | "WHOLESALE";
+  showPrice: boolean;
   sortOrder: number;
   isSystem: boolean;
 }> = [
-  { name: "ลูกค้าทั่วไป", priceTier: "RETAIL", sortOrder: 0, isSystem: true },
-  { name: "อู่ซ่อมรถ", priceTier: "WHOLESALE", sortOrder: 1, isSystem: false },
+  { name: "ลูกค้าทั่วไป", priceTier: "RETAIL", showPrice: false, sortOrder: 0, isSystem: true },
+  { name: "สมาชิก", priceTier: "MEMBER", showPrice: true, sortOrder: 1, isSystem: false },
+  { name: "อู่ซ่อมรถ", priceTier: "WHOLESALE", showPrice: true, sortOrder: 2, isSystem: false },
 ];
 
 async function main() {

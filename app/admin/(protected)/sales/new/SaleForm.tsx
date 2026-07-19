@@ -28,6 +28,7 @@ interface ProductOption {
   description?: string | null;
   salePrice: number;
   retailPrice: number;
+  memberPrice: number;
   saleUnitName: string;
   warrantyDays: number;
   categoryName: string;
@@ -69,7 +70,7 @@ interface CustomerOption {
   defaultLatitude:  number | null;
   defaultLongitude: number | null;
   isActive?: boolean;
-  priceTier:        "WHOLESALE" | "RETAIL";
+  priceTier:        SalePriceTier;
 }
 
 interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
@@ -96,18 +97,30 @@ const withLineDiscount = (item: LineItem): LineItem => ({
   lineDiscount: round2(Math.max(0, item.unitListPrice - item.salePrice) * item.qty),
 });
 
+/** ระดับราคาของลูกค้าบนหน้าขาย (ตรงกับ CustomerType.priceTier) */
+type SalePriceTier = "WHOLESALE" | "MEMBER" | "RETAIL";
+
+const SALE_PRICE_TIER_LABEL: Record<SalePriceTier, string> = {
+  WHOLESALE: "ราคาขายส่ง",
+  MEMBER: "ราคาสมาชิก",
+  RETAIL: "ราคาขายปลีก",
+};
+
 /**
  * Pick the unit price for a product based on the customer's price tier.
  * WHOLESALE → ราคาขายส่ง (salePrice). RETAIL → ราคาขายปลีก (retailPrice),
  * falling back to salePrice when retailPrice is unset (0) so no product ever
  * defaults to a zero price.
+ * MEMBER → ราคาสมาชิก (memberPrice) — ไม่ fallback: สินค้าที่ยังไม่ตั้งราคาสมาชิกจะได้ 0
+ * เพื่อให้พนักงานกรอกราคาเอง (แถวจะถูกไฮไลต์ และมีข้อความยืนยันก่อนบันทึก)
  */
 const priceForTier = (
-  product: Pick<ProductOption, "salePrice" | "retailPrice">,
-  tier: "WHOLESALE" | "RETAIL",
+  product: Pick<ProductOption, "salePrice" | "retailPrice" | "memberPrice">,
+  tier: SalePriceTier,
 ): number => {
   const wholesale = product.salePrice ?? 0;
   if (tier === "WHOLESALE") return wholesale;
+  if (tier === "MEMBER") return product.memberPrice ?? 0;
   const retail = product.retailPrice ?? 0;
   return retail > 0 ? retail : wholesale;
 };
@@ -215,7 +228,7 @@ const SaleForm = ({
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
-  const deriveTier = (customerId: string): "WHOLESALE" | "RETAIL" =>
+  const deriveTier = (customerId: string): SalePriceTier =>
     customerMap.get(customerId)?.priceTier ?? "RETAIL";
   const activeTier = deriveTier(selectedCustomerId);
   const draftKey = getSaleDraftKey(
@@ -558,7 +571,7 @@ const SaleForm = ({
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
   /** Re-apply the tier price to every line that already has a product selected. */
-  const repriceItemsToTier = (tier: "WHOLESALE" | "RETAIL") => {
+  const repriceItemsToTier = (tier: SalePriceTier) => {
     setItems((prev) =>
       prev.map((item) => {
         if (!item.productId) return item;
@@ -580,7 +593,7 @@ const SaleForm = ({
       nextTier !== prevTier &&
       items.some((item) => item.productId) &&
       window.confirm(
-        `เปลี่ยนประเภทลูกค้าเป็น “${nextTier === "WHOLESALE" ? "ราคาขายส่ง" : "ราคาขายปลีก"}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
+        `เปลี่ยนประเภทลูกค้าเป็น “${SALE_PRICE_TIER_LABEL[nextTier]}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
       )
     ) {
       repriceItemsToTier(nextTier);
@@ -620,6 +633,22 @@ const SaleForm = ({
       if (prod?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) { setError(lotErr); return; }
+      }
+    }
+
+    const zeroPricedRows = items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.salePrice <= 0);
+    if (zeroPricedRows.length > 0) {
+      const rowNames = zeroPricedRows
+        .map(({ item, index }) => `แถวที่ ${index + 1} — ${productMap.get(item.productId)?.name ?? "-"}`)
+        .join("\n");
+      if (
+        !window.confirm(
+          `รายการต่อไปนี้ยังมีราคาขายเป็น 0 บาท:\n${rowNames}\n\nต้องการบันทึกการขายด้วยราคานี้หรือไม่?`,
+        )
+      ) {
+        return;
       }
     }
 
@@ -1098,9 +1127,16 @@ const SaleForm = ({
                 const isLot = prod?.isLotControl ?? false;
                 const totalLotQty = item.lotItems.reduce((s, l) => s + l.qty, 0);
                 const lotQtyMatch = !isLot || Math.abs(totalLotQty - item.qty) < 0.0001;
+                // ราคา 0 = สินค้ายังไม่ตั้งราคาในระดับราคาของลูกค้ารายนี้ (เช่น ยังไม่ตั้งราคาสมาชิก)
+                // ไฮไลต์แถวให้พนักงานกรอกราคาเอง และมีข้อความยืนยันอีกครั้งตอนกดบันทึก
+                const isZeroPriced = Boolean(item.productId) && item.salePrice <= 0;
                 return (
                   <Fragment key={i}>
-                  <tr className="border-b border-gray-50 dark:border-white/5">
+                  <tr
+                    className={`border-b border-gray-50 dark:border-white/5 ${
+                      isZeroPriced ? "bg-rose-50 dark:bg-rose-500/10" : ""
+                    }`}
+                  >
                     <td className="py-2 px-2 text-center text-sm text-gray-500 dark:text-slate-400">{i + 1}</td>
                     <td className="py-2 px-2">
                       <ProductSearchSelect
@@ -1196,7 +1232,9 @@ const SaleForm = ({
                         min={0}
                         step={0.01}
                         onValueChange={(value) => updateNetPrice(i, value)}
-                        className={`${inputCls} font-medium`}
+                        className={`${inputCls} font-medium ${
+                          isZeroPriced ? "border-rose-400 bg-rose-50 dark:border-rose-500/60 dark:bg-rose-500/10" : ""
+                        }`}
                         placeholder="0.00"
                       />
                     </td>

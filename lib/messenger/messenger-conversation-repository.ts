@@ -172,11 +172,12 @@ export async function getRecentMessengerMessagesForAi(conversationId: string, ta
 /**
  * ระดับราคาของลูกค้า Messenger รายนี้ (mirror ของ resolveLinePriceTier) — resolve ผ่าน
  * customerId ที่ผูกกับบทสนทนา (Messenger ไม่มีคอลัมน์ Customer.psid — ผูกโดยแอดมิน)
- * WHOLESALE → ประเภทลูกค้า (active) ระดับขายส่ง / RETAIL → ยังไม่ผูก/ประเภทปิด → retailPrice
+ * WHOLESALE → ประเภทลูกค้า (active) ระดับขายส่ง / MEMBER → ระดับสมาชิก → memberPrice
+ * RETAIL → ยังไม่ผูก/ประเภทปิด → retailPrice
  */
 export async function resolveMessengerPriceTier(
   conversationId: string,
-): Promise<"RETAIL" | "WHOLESALE"> {
+): Promise<"RETAIL" | "MEMBER" | "WHOLESALE"> {
   const conversation = await db.messengerConversation.findUnique({
     where: { id: conversationId },
     select: {

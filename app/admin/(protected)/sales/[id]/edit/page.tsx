@@ -68,7 +68,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
           orderBy: { code: "asc" },
           select: {
             id: true, code: true, name: true, description: true, isActive: true,
-            salePrice: true, retailPrice: true, saleUnitName: true, warrantyDays: true,
+            salePrice: true, retailPrice: true, memberPrice: true, saleUnitName: true, warrantyDays: true,
             preferredSupplierId: true, inventoryTracking: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
             category:          { select: { name: true } },
             brand:             { select: { name: true } },
@@ -116,7 +116,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const products = rawProducts.map((p) => ({
     id: p.id, code: p.code, name: p.name, description: p.description,
-    salePrice: Number(p.salePrice), retailPrice: Number(p.retailPrice), saleUnitName: p.saleUnitName ?? "",
+    salePrice: Number(p.salePrice), retailPrice: Number(p.retailPrice),
+    memberPrice: Number(p.memberPrice), saleUnitName: p.saleUnitName ?? "",
     warrantyDays: p.warrantyDays ?? 0,
     categoryName: p.category.name, brandName: p.brand?.name ?? null,
     aliases: p.aliases.map((a) => a.alias),

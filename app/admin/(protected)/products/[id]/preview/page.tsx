@@ -51,6 +51,7 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
       isActive: true,
       salePrice: true,
       retailPrice: true,
+      memberPrice: true,
       costPrice: true,
       purchaseLastPrice: true,
       purchaseLastDate: true,
@@ -211,6 +212,12 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
           <span className="text-[10px] font-semibold uppercase text-emerald-500 dark:text-emerald-400">ส่ง</span>
           <span className="text-lg font-bold text-emerald-600 dark:text-emerald-300">
             ฿{Number(product.salePrice).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-slate-500">/{product.saleUnitName}</span>
+          <span className="basis-full" />
+          <span className="text-[10px] font-semibold uppercase text-sky-500 dark:text-sky-400">สมาชิก</span>
+          <span className="text-base font-semibold text-sky-600 dark:text-sky-300">
+            ฿{Number(product.memberPrice).toLocaleString("th-TH-u-ca-gregory", { minimumFractionDigits: 2 })}
           </span>
           <span className="text-xs text-gray-400 dark:text-slate-500">/{product.saleUnitName}</span>
           <span className="basis-full" />

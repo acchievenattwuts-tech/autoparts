@@ -420,7 +420,7 @@ function createProcessorTestDeps(input?: {
         code: `P${String(index + 1).padStart(4, "0")}`,
         imageUrl: null,
         salePrice: 1000,
-        retailPrice: 1000,
+        retailPrice: 1000, memberPrice: 1000,
       })),
     countConsecutiveFailedLineSearches: async () => input?.failedSearchCount ?? 0,
     countPendingPaymentSlipsForConversation: async () => 0,
@@ -1598,7 +1598,7 @@ test("G1: broad NEW ask after a specific turn hands off — a carried specific p
   });
   // If the guard ever reached search, it would return these — the test proves it does NOT.
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0837", imageUrl: null, salePrice: 350, retailPrice: 350 },
+    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0837", imageUrl: null, salePrice: 350, retailPrice: 350, memberPrice: 350 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1653,7 +1653,7 @@ test("G2: a continuation ('แล้ว…ล่ะ') keeps the carried part eve
     fitmentFilters: { categoryName: "สายน้ำยา (A/C Hose)" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "สายน้ำยาแอร์ Hino", code: "P1", imageUrl: null, salePrice: 500, retailPrice: 500 },
+    { id: "product-1", name: "สายน้ำยาแอร์ Hino", code: "P1", imageUrl: null, salePrice: 500, retailPrice: 500, memberPrice: 500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1703,7 +1703,7 @@ test("gate: fitment part + car (no year) searches and appends the year follow-up
   // Search returns ids; provide matching summaries so flex cards (and thus the
   // follow-up bubble) are produced.
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1814,7 +1814,7 @@ test("customer names a car we can't resolve → confirms vehicle + hands off, no
   dependencies.loadCarModelVariantLookup = async () =>
     new Map<string, string[]>([["strada", ["strada", "สตาด้า", "mitsubishi strada"]]]);
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0836", imageUrl: null, salePrice: 430, retailPrice: 430 },
+    { id: "product-1", name: "สายน้ำยาแอร์ Isuzu D-Max", code: "P0836", imageUrl: null, salePrice: 430, retailPrice: 430, memberPrice: 430 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1860,7 +1860,7 @@ test("CR-V G3 resolves to CRV, searches, and suppresses only the opposite-side p
       code: "P0903",
       imageUrl: null,
       salePrice: 1000,
-      retailPrice: 1000,
+      retailPrice: 1000, memberPrice: 1000,
       fitments: [{
         carBrandName: "Honda",
         carModelName: "CRV",
@@ -1875,7 +1875,7 @@ test("CR-V G3 resolves to CRV, searches, and suppresses only the opposite-side p
       code: "P0270",
       imageUrl: null,
       salePrice: 900,
-      retailPrice: 900,
+      retailPrice: 900, memberPrice: 900,
       fitments: [{
         carBrandName: "Honda",
         carModelName: "CRV",
@@ -1890,7 +1890,7 @@ test("CR-V G3 resolves to CRV, searches, and suppresses only the opposite-side p
       code: "P0594",
       imageUrl: null,
       salePrice: 950,
-      retailPrice: 950,
+      retailPrice: 950, memberPrice: 950,
       fitments: [{
         carBrandName: "Honda",
         carModelName: "CRV",
@@ -1940,7 +1940,7 @@ test("relevance gate: category-less + weak match (no strong reason, no close tri
     searchHighTrigramIds: [],
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "สวิตช์ความร้อนหม้อน้ำ", code: "T9001", imageUrl: null, salePrice: 250, retailPrice: 250 },
+    { id: "product-1", name: "สวิตช์ความร้อนหม้อน้ำ", code: "T9001", imageUrl: null, salePrice: 250, retailPrice: 250, memberPrice: 250 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -1970,7 +1970,7 @@ test("relevance gate: category-less but a strong name match still shows cards", 
     searchMatchReasons: { "product-1": ["name"] },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "เทอร์โมสตัท Toyota Vios", code: "T9002", imageUrl: null, salePrice: 320, retailPrice: 320 },
+    { id: "product-1", name: "เทอร์โมสตัท Toyota Vios", code: "T9002", imageUrl: null, salePrice: 320, retailPrice: 320, memberPrice: 320 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2026,7 +2026,7 @@ test("price inquiry with a searchable part → searches, shows products, then ha
     fitmentFilters: { carModelName: "D-Max" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2055,7 +2055,7 @@ test("retail-tier customer naming a product + price → shows cards then hands o
     fitmentFilters: { carModelName: "Hilux Vigo" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2083,7 +2083,7 @@ test("bare price question (no product named) → direct handoff, no cards re-sho
     intentPartKind: "universal",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "แผงแอร์ Honda Jazz", code: "P0073", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2278,7 +2278,7 @@ test("wholesale-tier customer (garage) asking price → shows products then hand
     fitmentFilters: { carModelName: "D-Max" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max", code: "P0496", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2394,7 +2394,7 @@ test("inquiry frame: a sparse follow-up ('ปี 03') continues the stored subje
     intentPartKind: "fitment",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "หม้อน้ำ D-Max 2003", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2425,7 +2425,7 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
     intentPartKind: "fitment",
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900, retailPrice: 900 },
+    { id: "product-1", name: "คอยล์เย็น D-Max", code: "P2", imageUrl: null, salePrice: 900, retailPrice: 900, memberPrice: 900 },
   ];
 
   await processLineWebhookPayload(
@@ -2489,7 +2489,7 @@ test("Fix 1: a fresh (stale-session) turn keeps the classifier's spell-corrected
     fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Nissan", carModelName: "March" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   const result = await processLineWebhookPayload(
@@ -2520,7 +2520,7 @@ test("Fix 2: a MISSPELLED new part in a live session is kept via typo evidence (
     fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Nissan", carModelName: "March" },
   });
   dependencies.getChatProductSummaries = async () => [
-    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500 },
+    { id: "product-1", name: "คอยล์เย็น Nissan March", code: "P1", imageUrl: null, salePrice: 1500, retailPrice: 1500, memberPrice: 1500 },
   ];
 
   await processLineWebhookPayload(

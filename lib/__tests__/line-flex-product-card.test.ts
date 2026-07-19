@@ -17,7 +17,7 @@ const product = (over: Partial<ChatMatchedProductSummary> = {}): ChatMatchedProd
   code: "CL-001",
   imageUrl: "https://img.example.com/a.jpg",
   salePrice: 1200,
-  retailPrice: 1500,
+  retailPrice: 1500, memberPrice: 1500,
   ...over,
 });
 
@@ -68,7 +68,7 @@ test("price shows 'สอบถามราคา' when salePrice is zero", () =
 });
 
 test("applyChatPriceTier keeps wholesale prices for WHOLESALE tier (e.g. garage)", () => {
-  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const products = [product({ salePrice: 1200 }), product({ id: "p2", salePrice: 350, retailPrice: 500, memberPrice: 500 })];
   const visible = applyChatPriceTier(products, "WHOLESALE");
   assert.deepEqual(
     visible.map((p) => p.salePrice),
@@ -77,7 +77,7 @@ test("applyChatPriceTier keeps wholesale prices for WHOLESALE tier (e.g. garage)
 });
 
 test("applyChatPriceTier swaps in retailPrice for RETAIL tier (general/unlinked customer)", () => {
-  const products = [product({ salePrice: 1200, retailPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const products = [product({ salePrice: 1200, retailPrice: 1500, memberPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500, memberPrice: 500 })];
   const retail = applyChatPriceTier(products, "RETAIL");
   assert.deepEqual(
     retail.map((p) => p.salePrice),
@@ -90,8 +90,35 @@ test("applyChatPriceTier swaps in retailPrice for RETAIL tier (general/unlinked 
   assert.doesNotMatch(json, /฿1,200|฿350/);
 });
 
+test("applyChatPriceTier swaps in memberPrice for MEMBER tier (linked member customer)", () => {
+  const products = [
+    product({ salePrice: 1200, retailPrice: 1500, memberPrice: 1400 }),
+    product({ id: "p2", salePrice: 350, retailPrice: 500, memberPrice: 420 }),
+  ];
+  const member = applyChatPriceTier(products, "MEMBER");
+  assert.deepEqual(
+    member.map((p) => p.salePrice),
+    [1400, 420],
+  );
+  const json = JSON.stringify(buildProductFlexMessage({ products: member, searchQuery: null, total: 2 }));
+  assert.match(json, /฿1,400/);
+  assert.doesNotMatch(json, /฿1,500|฿1,200|฿350|฿500/);
+});
+
+test("applyChatPriceTier shows 'สอบถามราคา' for MEMBER tier when memberPrice is unset (0)", () => {
+  const products = [product({ salePrice: 1200, retailPrice: 1500, memberPrice: 0 })];
+  const member = applyChatPriceTier(products, "MEMBER");
+  assert.deepEqual(
+    member.map((p) => p.salePrice),
+    [0],
+  );
+  const json = JSON.stringify(buildProductFlexMessage({ products: member, searchQuery: null, total: 1 }));
+  assert.match(json, /สอบถามราคา/);
+  assert.doesNotMatch(json, /฿1,500|฿1,200/);
+});
+
 test("applyChatPriceTier hides every price for UNKNOWN tier (resolve failed → สอบถามราคา)", () => {
-  const products = [product({ salePrice: 1200, retailPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500 })];
+  const products = [product({ salePrice: 1200, retailPrice: 1500, memberPrice: 1500 }), product({ id: "p2", salePrice: 350, retailPrice: 500, memberPrice: 500 })];
   const hidden = applyChatPriceTier(products, "UNKNOWN");
   assert.deepEqual(
     hidden.map((p) => p.salePrice),
@@ -105,7 +132,7 @@ test("applyChatPriceTier hides every price for UNKNOWN tier (resolve failed → 
 });
 
 test("applyChatPriceTier falls back to 'สอบถามราคา' when retailPrice is unset (0)", () => {
-  const products = [product({ salePrice: 1200, retailPrice: 0 })];
+  const products = [product({ salePrice: 1200, retailPrice: 0, memberPrice: 0 })];
   const retail = applyChatPriceTier(products, "RETAIL");
   assert.deepEqual(
     retail.map((p) => p.salePrice),

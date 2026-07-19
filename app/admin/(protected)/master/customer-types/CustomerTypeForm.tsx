@@ -26,12 +26,11 @@ interface CustomerTypeFormProps {
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
-const PriceTierBadge = ({ priceTier }: { priceTier: CustomerType["priceTier"] }) =>
-  priceTier === "WHOLESALE" ? (
-    <AdminStatusBadge tone="info">ราคาขายส่ง</AdminStatusBadge>
-  ) : (
-    <AdminStatusBadge tone="muted">ราคาขายปลีก</AdminStatusBadge>
-  );
+const PriceTierBadge = ({ priceTier }: { priceTier: CustomerType["priceTier"] }) => {
+  if (priceTier === "WHOLESALE") return <AdminStatusBadge tone="info">ราคาขายส่ง</AdminStatusBadge>;
+  if (priceTier === "MEMBER") return <AdminStatusBadge tone="success">ราคาสมาชิก</AdminStatusBadge>;
+  return <AdminStatusBadge tone="muted">ราคาขายปลีก</AdminStatusBadge>;
+};
 
 const CustomerTypeRowEditor = ({
   item,
@@ -98,6 +97,7 @@ const CustomerTypeRowEditor = ({
                 aria-label="ระดับราคา"
               >
                 <option value="RETAIL">ราคาขายปลีก</option>
+                <option value="MEMBER">ราคาสมาชิก</option>
                 <option value="WHOLESALE">ราคาขายส่ง</option>
               </select>
             </div>
@@ -236,6 +236,7 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
               <div className="sm:w-40">
                 <select name="priceTier" defaultValue="RETAIL" className={inputClassName} aria-label="ระดับราคา">
                   <option value="RETAIL">ราคาขายปลีก</option>
+                  <option value="MEMBER">ราคาสมาชิก</option>
                   <option value="WHOLESALE">ราคาขายส่ง</option>
                 </select>
               </div>

@@ -179,6 +179,7 @@ type ProductOptionRow = {
   description: string | null;
   salePrice: number;
   retailPrice: number;
+  memberPrice: number;
   costPrice: number;
   saleUnitName: string;
   purchaseUnitName: string;
@@ -235,7 +236,7 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
         orderBy: { code: "asc" },
         select: {
           id: true, code: true, name: true, description: true,
-          salePrice: true, retailPrice: true, costPrice: true,
+          salePrice: true, retailPrice: true, memberPrice: true, costPrice: true,
           saleUnitName: true, purchaseUnitName: true, warrantyDays: true,
           inventoryTracking: true, isLotControl: true, lotIssueMethod: true,
           allowExpiredIssue: true, requireExpiryDate: true,
@@ -253,6 +254,7 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
     id: product.id, code: product.code, name: product.name,
     description: truncateOptionDescription(product.description),
     salePrice: Number(product.salePrice), retailPrice: Number(product.retailPrice),
+    memberPrice: Number(product.memberPrice),
     costPrice: Number(product.costPrice),
     saleUnitName: product.saleUnitName, purchaseUnitName: product.purchaseUnitName,
     warrantyDays: product.warrantyDays,
@@ -271,9 +273,9 @@ const loadTransactionProductOptionRows = async (): Promise<ProductOptionRow[]> =
 
 const getCompressedTransactionProductOptionRows = unstable_cache(
   async () => compressJsonForCache(await loadTransactionProductOptionRows()),
-  // v3: description truncated to PRODUCT_OPTION_DESCRIPTION_MAX_CHARS and
-  // aliasSearchText aggregated in SQL — bumped so stale v2 payloads are not served.
-  ["admin-transaction-product-options-gzip-v3"],
+  // v4: added memberPrice (ราคาสมาชิก) — bumped so cached v3 payloads, which
+  // lack the field, are not served to the sale form.
+  ["admin-transaction-product-options-gzip-v4"],
   {
     tags: [TRANSACTION_PRODUCT_OPTIONS_TAG],
     revalidate: TRANSACTION_OPTIONS_REVALIDATE_SECONDS,
@@ -292,7 +294,8 @@ export const getSaleProductOptions = async () => {
   const rows = await getTransactionProductOptionRows();
   return rows.map((product) => ({
     id: product.id, code: product.code, name: product.name, description: product.description,
-    salePrice: product.salePrice, retailPrice: product.retailPrice, saleUnitName: product.saleUnitName,
+    salePrice: product.salePrice, retailPrice: product.retailPrice,
+    memberPrice: product.memberPrice, saleUnitName: product.saleUnitName,
     warrantyDays: product.warrantyDays, categoryName: product.categoryName,
     brandName: product.brandName, aliasSearchText: product.aliasSearchText,
     units: product.units,

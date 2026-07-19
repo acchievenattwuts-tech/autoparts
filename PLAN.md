@@ -258,6 +258,24 @@
 - เป้าหมาย: AI ตอบ DM Facebook ใช้สมอง + logic ค้นหาชุดเดียวกับ LINE OA (แก้ที่เดียว) — ตารางแยกใหม่ `MessengerConversation`, parity เต็มเท่า LINE, webhook `www.sriwanparts.com/api/messenger/webhook`
 - หลักการ: extract `lib/chat-core/` (channel-agnostic) แบบ clean repo-wide ไม่ใช้ shim → LINE ต้องทำงานเหมือนเดิม 100% (build เขียว + test เดิมผ่านทุกตัว)
 
+### 10. ราคาสมาชิก — Price Tier ที่ 3 (2026-07-19)
+- สถานะ: **โค้ดเสร็จครบ รอ `prisma db push` + seed บน production**
+- เป้าหมาย: เพิ่มระดับราคา `MEMBER` (ราคาสมาชิก) แทรกระหว่างขายส่งกับขายปลีก — ลำดับราคา **ขายส่ง < สมาชิก < ขายปลีก**
+- [x] Schema: `Product.memberPrice Decimal @default(0) @db.Decimal(10,2)` + `enum PriceTier` เพิ่มค่า `MEMBER`
+- [x] Seed: `scripts/seed-customer-types.ts` เพิ่มประเภทลูกค้า "สมาชิก" (create-only ไม่แก้ข้อมูลเดิม)
+- [x] สูตรคำนวณอัตโนมัติกลาง `lib/product-pricing.ts` — ขายปลีก = ขายส่ง × 1.7, สมาชิก = ขายส่ง × 1.4, ปัดขึ้นลงท้าย 0 ไม่มีทศนิยม
+- [x] ฟอร์มสินค้า: ช่อง "ราคาสมาชิก" + auto-fill จากราคาขายส่ง (ทับค่าเดิมเสมอ ผู้ใช้แก้ทับได้) + แก้ help text ที่เดิมเขียนผิดว่า "เว้น 0 ระบบจะใช้ราคาขายส่งแทน"
+- [x] หน้า list + preview: แสดง 3 ระดับราคา ไล่ความเด่น ส่ง > สมาชิก > ปลีก (light + dark)
+- [x] หน้าขาย: `SalePriceTier` รองรับ MEMBER — `memberPrice` **ไม่ fallback** (0 = ให้พนักงานกรอกเอง) + ไฮไลต์แถวราคา 0 + confirm ก่อนบันทึก
+- [x] แชท LINE/Messenger: `ChatPriceTier` เพิ่ม `MEMBER` → ลูกค้าที่ผูกบัญชีแล้วเห็นราคาตามกลุ่มตัวเอง, `memberPrice = 0` → "สอบถามราคา"
+- [x] Cache key `admin-transaction-product-options-gzip-v3` → `v4` (payload เดิมไม่มี memberPrice)
+- [x] Test: `applyChatPriceTier` MEMBER (มีราคา / ราคา 0) + fixture เดิมทั้งหมด
+- [ ] Backfill: `scripts/recalc-prices-from-wholesale.ts` (dry-run เป็นค่าเริ่มต้น, `--apply` ถึงเขียน) — เติมเฉพาะช่องที่ยังเป็น 0 จากราคาขายส่ง, **ราคาที่ตั้งไว้แล้ว (> 0) ไม่ถูกแตะ**, `salePrice <= 0` ข้ามทั้งแถว, transaction เดียว + AuditLog 1 แถว
+- [x] แก้เคสลำดับราคาผิด: `scripts/fix-retail-below-member-price.ts` — สินค้า 3 ตัว (P0435 / P0437 / P0441) เคยตั้งราคาปลีกมือไว้ต่ำกว่าสูตร ×1.70 ทำให้ราคาสมาชิกแซงราคาปลีก → คำนวณราคาปลีกใหม่ตามสูตร (ยืนยันโดยเจ้าของร้าน 2026-07-19)
+- รันบน production แล้ว (2026-07-19): db push + seed "สมาชิก" + เติมราคาสมาชิก 914 รายการ + เติมราคาปลีก 3 รายการ + แก้ลำดับราคา 3 รายการ — ตรวจสอบหลังรัน: ลำดับราคาผิด **0 รายการ**, สินค้าไม่มีราคาขายส่ง 10 รายการ (แสดง "สอบถามราคา")
+- ไม่แตะ: storefront ยังใช้ `retailPrice` เหมือนเดิม, business logic สต็อก/MAVG/เอกสาร
+- Audit Log: ครอบคลุมอยู่แล้วผ่าน `getProductAuditSnapshot()` (ใช้ `include` → เก็บ memberPrice อัตโนมัติ) และ audit เดิมของ customer-types
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`

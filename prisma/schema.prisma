@@ -777,6 +777,7 @@ model Product {
   purchaseLastDate    DateTime?              @db.Timestamptz(3)
   salePrice           Decimal                @default(0) @db.Decimal(10, 2)
   retailPrice         Decimal                @default(0) @db.Decimal(10, 2)
+  memberPrice         Decimal                @default(0) @db.Decimal(10, 2)
   stock               Int                    @default(0)
   minStock            Int                    @default(1)
   imageUrl            String?
@@ -2370,6 +2371,7 @@ enum SaleType {
 /// RETAIL    = ใช้ราคาขายปลีก (Product.retailPrice) — ลูกค้าทั่วไป (ค่าเริ่มต้น)
 enum PriceTier {
   WHOLESALE
+  MEMBER
   RETAIL
 }
 

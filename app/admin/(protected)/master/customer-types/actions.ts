@@ -21,10 +21,17 @@ const customerTypeSchema = z.object({
   sortOrder: z.number().int().min(0).max(9999),
 });
 
+/** รับเฉพาะค่าที่อยู่ใน enum จริง — ค่าอื่น/ค่าว่าง ตกไปที่ RETAIL (ระดับราคาที่ปลอดภัยที่สุด) */
+const parsePriceTier = (value: FormDataEntryValue | null): PriceTier => {
+  if (value === "WHOLESALE") return PriceTier.WHOLESALE;
+  if (value === "MEMBER") return PriceTier.MEMBER;
+  return PriceTier.RETAIL;
+};
+
 const parseFormData = (formData: FormData) =>
   customerTypeSchema.safeParse({
     name: (formData.get("name") ?? "").toString().trim(),
-    priceTier: formData.get("priceTier") === "WHOLESALE" ? PriceTier.WHOLESALE : PriceTier.RETAIL,
+    priceTier: parsePriceTier(formData.get("priceTier")),
     sortOrder: Number.parseInt((formData.get("sortOrder") ?? "0").toString(), 10) || 0,
   });
 

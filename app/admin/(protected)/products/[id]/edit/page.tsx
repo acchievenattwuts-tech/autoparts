@@ -85,6 +85,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
     isStorefrontVisible: product.isStorefrontVisible,
     salePrice:        Number(product.salePrice),
     retailPrice:      Number(product.retailPrice),
+    memberPrice:      Number(product.memberPrice),
     minStock:         product.minStock,
     warrantyDays:     product.warrantyDays,
     shelfLocation:    product.shelfLocation,

@@ -55,11 +55,12 @@ export async function findActiveCustomerIdByLineUserId(lineUserId: string) {
 /**
  * ตัดสินว่าลูกค้า LINE รายนี้ใช้ระดับราคาไหนบนแชท/Flex
  * WHOLESALE → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี priceTier=WHOLESALE (เช่น อู่ซ่อมรถ)
+ * MEMBER    → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี priceTier=MEMBER (สมาชิก) → ใช้ Product.memberPrice
  * RETAIL    → ยังไม่ผูก / ไม่ระบุประเภท / ประเภทถูกปิดใช้งาน (ลูกค้าทั่วไป) → ใช้ Product.retailPrice
  */
 export async function resolveLinePriceTier(
   lineUserId: string,
-): Promise<"RETAIL" | "WHOLESALE"> {
+): Promise<"RETAIL" | "MEMBER" | "WHOLESALE"> {
   const customer = await db.customer.findUnique({
     where: { lineUserId },
     select: {
