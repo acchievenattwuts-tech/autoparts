@@ -1133,13 +1133,13 @@ model Customer {
   @@index([customerTypeId])
 }
 
-/// ประเภทลูกค้า (master) — คุมการแสดงราคาบน LINE ต่อกลุ่มลูกค้า
-/// showPrice = true → กลุ่มนี้เห็นราคาจริง (เช่น อู่ซ่อมรถ)
-/// showPrice = false / ไม่ระบุประเภท → ซ่อนราคา แสดง "สอบถามราคา" (ลูกค้าทั่วไป)
+/// ประเภทลูกค้า (master) — คุมระดับราคาที่ลูกค้ากลุ่มนี้เห็นบนแชท LINE/Messenger
+/// priceTier = WHOLESALE → Product.salePrice / MEMBER → Product.memberPrice
+///             RETAIL → Product.retailPrice (ลูกค้าที่ผูกบัญชีแล้วแต่เป็นลูกค้าทั่วไป)
+/// ลูกค้าที่ยังไม่ผูกบัญชีจะเห็นราคาขายปลีกพร้อมข้อความว่าราคายังไม่ได้ลด
 model CustomerType {
   id        String     @id @default(cuid())
   name      String     @unique
-  showPrice Boolean    @default(false)
   priceTier PriceTier  @default(RETAIL)
   isActive  Boolean    @default(true)
   sortOrder Int        @default(0)

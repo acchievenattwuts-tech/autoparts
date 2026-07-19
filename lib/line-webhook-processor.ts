@@ -83,6 +83,7 @@ import { routeChatIntent } from "@/lib/chat-core/intent-router";
 import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@/lib/line-messaging";
 import {
   applyChatPriceTier,
+  buildUnlinkedPriceNote,
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
@@ -1011,6 +1012,9 @@ async function respondMultiSubject(
   let anyNotFound = false;
   let suppressedVehicleUnresolved = 0;
   let suppressedWeakMatch = 0;
+  // ทุกสินค้าที่โชว์จริงข้ามทุก subject — ใช้ตัดสินข้อความแจ้งราคาพิเศษท้ายสุดครั้งเดียว
+  // (ไม่ใช่ต่อ subject) เพื่อไม่ให้ลูกค้าเห็นข้อความเดิมซ้ำหลายรอบในเทิร์นเดียว
+  const shownProducts: Array<{ salePrice: number }> = [];
 
   for (const { subject, fitment } of kept) {
     const label =
@@ -1104,6 +1108,7 @@ async function respondMultiSubject(
             },
           })
         : null;
+    if (flex) shownProducts.push(...products);
     blocks.push(flex ? [textMessage(text), flex] : [textMessage(text)]);
   }
 
@@ -1112,6 +1117,10 @@ async function respondMultiSubject(
   // ถามราคาหลายรายการพร้อมกัน → นโยบายเดียวกับ single path (hiddenPriceWithProducts):
   // โชว์ของครบทุกรายการก่อน แล้วต่อท้าย note ส่งเรื่องราคาให้แอดมิน (freeze + notify ท้ายฟังก์ชัน)
   if (extras.priceAsk) blocks.push([textMessage(PRICE_HIDDEN_HANDOFF_NOTE)]);
+
+  // ลูกค้ายังไม่ผูกบัญชี → บอกว่าราคาที่เห็นยังไม่ได้ลด (bubble สุดท้ายของเทิร์น)
+  const unlinkedPriceNote = buildUnlinkedPriceNote(priceTier, shownProducts);
+  if (unlinkedPriceNote) blocks.push([textMessage(unlinkedPriceNote)]);
 
   // Abort-on-newer (coalescing): a newer message arrived → re-run with the merged
   // turn instead of sending a now-stale multi answer.
@@ -2935,10 +2944,15 @@ export async function processLineAiReply(
                   ? textMessage(buildChatSearchFollowUp(searchFollowUp))
                   : null
         : null;
+    // ลูกค้าที่ยังไม่ผูกบัญชีเห็นราคาขายปลีก (ยังไม่ลด) — แนบข้อความบอกให้ชัดเป็น bubble
+    // สุดท้ายเสมอ ไม่ไปเบียด followUpBubble (didYouMean / near-match) ซึ่งเป็นคำเตือน
+    // เรื่องความแม่นของผลค้นหา สำคัญกว่าเรื่องราคา จึงต้องได้ส่งด้วยทั้งคู่
+    const unlinkedPriceNote = !forcedResponse ? buildUnlinkedPriceNote(priceTier, products) : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
       ...(productFlex ? [productFlex] : []),
       ...(followUpBubble ? [followUpBubble] : []),
+      ...(unlinkedPriceNote ? [textMessage(unlinkedPriceNote)] : []),
     ];
 
     // Abort-on-newer (coalescing): a customer message arrived while we were

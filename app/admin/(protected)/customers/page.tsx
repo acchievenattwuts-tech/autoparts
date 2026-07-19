@@ -13,7 +13,14 @@ import ToggleCustomerButton from "./DeleteCustomerButton";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
-import type { Prisma } from "@/lib/generated/prisma";
+import type { Prisma, PriceTier } from "@/lib/generated/prisma";
+
+/** สีป้ายประเภทลูกค้าตามระดับราคาที่กลุ่มนั้นเห็นในแชท (ขายส่งถูกสุด → เขียว) */
+const CUSTOMER_TYPE_BADGE_CLASS: Record<PriceTier, string> = {
+  WHOLESALE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300",
+  MEMBER: "bg-sky-100 text-sky-700 dark:bg-sky-400/20 dark:text-sky-300",
+  RETAIL: "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300",
+};
 import { normalizeCustomerPhone } from "@/lib/customer-phone";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminFilterToolbar from "@/components/shared/AdminFilterToolbar";
@@ -72,7 +79,7 @@ const CustomersPage = async ({
       where: whereClause,
       include: {
         _count: { select: { sales: true } },
-        customerType: { select: { name: true, showPrice: true } },
+        customerType: { select: { name: true, priceTier: true } },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -202,9 +209,7 @@ const CustomersPage = async ({
                       {customer.customerType ? (
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                            customer.customerType.showPrice
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300"
-                              : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300"
+                            CUSTOMER_TYPE_BADGE_CLASS[customer.customerType.priceTier]
                           }`}
                         >
                           {customer.customerType.name}

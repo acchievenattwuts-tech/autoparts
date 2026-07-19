@@ -11,6 +11,20 @@ import { paymentSlipStatusLabel } from "@/lib/line-payment-slip-display";
 import { requirePermission } from "@/lib/require-auth";
 import { isLineCustomerProfileIncomplete } from "@/lib/line-customer-profile";
 import { formatDateThai } from "@/lib/th-date";
+import type { PriceTier } from "@/lib/generated/prisma";
+
+/** ระดับราคาที่ลูกค้ารายนี้เห็นในแชท LINE/Messenger (ตามประเภทลูกค้าที่ผูกไว้) */
+const PRICE_TIER_LABEL: Record<PriceTier, string> = {
+  WHOLESALE: "ราคาขายส่ง",
+  MEMBER: "ราคาสมาชิก",
+  RETAIL: "ราคาขายปลีก",
+};
+
+const PRICE_TIER_TONE: Record<PriceTier, "success" | "info" | "muted"> = {
+  WHOLESALE: "success",
+  MEMBER: "info",
+  RETAIL: "muted",
+};
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatCard from "@/components/shared/AdminStatCard";
@@ -74,7 +88,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     db.customer.findUnique({
       where: { id },
       include: {
-        customerType: { select: { name: true, showPrice: true } },
+        customerType: { select: { name: true, priceTier: true } },
         sales: {
           orderBy: { saleDate: "desc" },
           take: 50,
@@ -200,14 +214,14 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
               {customer.customerType ? (
                 <span className="inline-flex items-center gap-1.5">
                   {customer.customerType.name}
-                  <AdminStatusBadge tone={customer.customerType.showPrice ? "success" : "muted"}>
-                    {customer.customerType.showPrice ? "เห็นราคา (LINE)" : "ซ่อนราคา (LINE)"}
+                  <AdminStatusBadge tone={PRICE_TIER_TONE[customer.customerType.priceTier]}>
+                    {PRICE_TIER_LABEL[customer.customerType.priceTier]}
                   </AdminStatusBadge>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">
                   ลูกค้าทั่วไป
-                  <AdminStatusBadge tone="muted">ซ่อนราคา (LINE)</AdminStatusBadge>
+                  <AdminStatusBadge tone="muted">ยังไม่ผูกกลุ่มราคา</AdminStatusBadge>
                 </span>
               )}
             </p>

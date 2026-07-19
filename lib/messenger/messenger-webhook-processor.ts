@@ -29,6 +29,7 @@ import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import {
   applyChatPriceTier,
+  buildUnlinkedPriceNote,
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
@@ -1076,6 +1077,19 @@ async function replyWithProductSearch(params: {
     const note = BROAD_FALLBACK_NEAR_MATCH_NOTE;
     await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: note });
     await persistOutbound(params.conversationId, params.psid, note, { intent: params.route.intent });
+  }
+  // ลูกค้ายังไม่ผูกบัญชี → ราคาที่เห็นคือราคาปลีกที่ยังไม่ได้ลด ส่งเป็นข้อความสุดท้ายเสมอ
+  // (parity กับ LINE) — ส่งหลัง note ความแม่นของผลค้นหา ไม่ไปแทนที่กัน
+  const unlinkedPriceNote = buildUnlinkedPriceNote(priceTier, products);
+  if (unlinkedPriceNote) {
+    await sendMessengerText({
+      pageAccessToken: params.pageAccessToken,
+      psid: params.psid,
+      text: unlinkedPriceNote,
+    });
+    await persistOutbound(params.conversationId, params.psid, unlinkedPriceNote, {
+      intent: params.route.intent,
+    });
   }
   await persistOutbound(params.conversationId, params.psid, suggestion.suggestedReply, {
     intent: params.route.intent,

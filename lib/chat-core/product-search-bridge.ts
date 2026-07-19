@@ -195,11 +195,40 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
 
 /** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier)
  *  - UNKNOWN = resolve ระดับราคาไม่ได้ (เช่น DB สะดุด) → ซ่อนราคา ปลอดภัยกว่าเดาผิด tier */
-export type ChatPriceTier = "RETAIL" | "MEMBER" | "WHOLESALE" | "UNKNOWN";
+export type ChatPriceTier = "UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE" | "UNKNOWN";
+
+/**
+ * ข้อความต่อท้ายสำหรับลูกค้าที่ยังไม่ผูกบัญชีกับระบบร้าน — ราคาที่เห็นคือราคาขายปลีก
+ * ซึ่งยังไม่ได้ลด ต้องบอกให้ชัดว่ายังมีราคาพิเศษรออยู่ ไม่ให้เข้าใจว่านี่คือราคาสุดท้าย
+ * ส่งเป็น bubble สุดท้ายเสมอ (ยืนยันโดยเจ้าของร้าน 2026-07-19)
+ */
+export const UNLINKED_SPECIAL_PRICE_NOTE =
+  "ราคานี้เป็นราคาปกติค่ะ 🙏 เดี๋ยวแอดมินมาแจ้งราคาพิเศษให้อีกทีนะคะ รอสักครู่ค่ะ";
+
+/**
+ * ใช้เมื่อการ์ดทุกใบยังไม่ได้ตั้งราคา (แสดง "สอบถามราคา") — พูดว่า "ราคานี้เป็นราคาปกติ"
+ * ไม่ได้เพราะไม่มีตัวเลขให้อ้างถึง จะทำให้ลูกค้าสับสนว่าหมายถึงราคาไหน
+ */
+export const UNLINKED_NO_PRICE_NOTE = "เดี๋ยวแอดมินมาแจ้งราคาให้นะคะ รอสักครู่ค่ะ 🙏";
+
+/**
+ * เลือกข้อความแจ้งราคาพิเศษให้ตรงกับสิ่งที่ลูกค้าเห็นบนการ์ด
+ * คืน null เมื่อไม่ต้องแนบข้อความ (ผูกบัญชีแล้ว / ไม่มีการ์ดสินค้า / resolve tier ไม่ได้)
+ */
+export function buildUnlinkedPriceNote(
+  tier: ChatPriceTier,
+  products: Array<{ salePrice: number }>,
+): string | null {
+  if (tier !== "UNLINKED" || products.length === 0) return null;
+  const everyPriceHidden = products.every((product) => product.salePrice <= 0);
+  return everyPriceHidden ? UNLINKED_NO_PRICE_NOTE : UNLINKED_SPECIAL_PRICE_NOTE;
+}
 
 /**
  * เลือกราคาแสดงในแชทตามระดับราคาของลูกค้า โดยเขียนทับ salePrice (ฟิลด์ราคาแสดงเดิม):
- * - RETAIL (ลูกค้าทั่วไป / ยังไม่ผูกบัญชี / ประเภทถูกปิด) → Product.retailPrice
+ * - RETAIL (ลูกค้าทั่วไปที่ผูกบัญชีแล้ว) → Product.retailPrice
+ * - UNLINKED (ยังไม่ผูกบัญชี / บัญชีหรือประเภทถูกปิด) → Product.retailPrice เหมือน RETAIL
+ *   ต่างกันแค่ระดับข้อความที่แนบท้าย (ดู buildUnlinkedPriceNote) ไม่ใช่ตัวเลขราคา
  * - MEMBER (ลูกค้าที่ผูกบัญชีแล้วและอยู่กลุ่ม "สมาชิก") → Product.memberPrice
  * - WHOLESALE (เช่น อู่ซ่อมรถ) → Product.salePrice (ราคาขายส่ง)
  * - UNKNOWN (resolve ระดับราคาไม่สำเร็จ) → 0 → แสดง "สอบถามราคา" เสมอ (ห้ามแสดงราคาผิด tier)

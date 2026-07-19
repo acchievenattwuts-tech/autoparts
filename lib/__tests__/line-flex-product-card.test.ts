@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import { buildProductFlexMessage } from "@/lib/line-flex-product-card";
 import {
   applyChatPriceTier,
+  buildUnlinkedPriceNote,
+  UNLINKED_NO_PRICE_NOTE,
+  UNLINKED_SPECIAL_PRICE_NOTE,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
 
@@ -115,6 +118,36 @@ test("applyChatPriceTier shows 'สอบถามราคา' for MEMBER tier 
   const json = JSON.stringify(buildProductFlexMessage({ products: member, searchQuery: null, total: 1 }));
   assert.match(json, /สอบถามราคา/);
   assert.doesNotMatch(json, /฿1,500|฿1,200/);
+});
+
+test("applyChatPriceTier shows retailPrice for UNLINKED tier (customer not linked yet)", () => {
+  const products = [product({ salePrice: 1200, retailPrice: 1500, memberPrice: 1400 })];
+  const unlinked = applyChatPriceTier(products, "UNLINKED");
+  assert.deepEqual(
+    unlinked.map((p) => p.salePrice),
+    [1500],
+  );
+});
+
+test("buildUnlinkedPriceNote returns the special-price note only for UNLINKED customers", () => {
+  const products = [product({ salePrice: 1500, retailPrice: 1500, memberPrice: 1400 })];
+  assert.equal(buildUnlinkedPriceNote("UNLINKED", products), UNLINKED_SPECIAL_PRICE_NOTE);
+  for (const tier of ["RETAIL", "MEMBER", "WHOLESALE", "UNKNOWN"] as const) {
+    assert.equal(buildUnlinkedPriceNote(tier, products), null);
+  }
+});
+
+test("buildUnlinkedPriceNote returns null when there is no product card to explain", () => {
+  assert.equal(buildUnlinkedPriceNote("UNLINKED", []), null);
+});
+
+test("buildUnlinkedPriceNote switches wording when every card shows 'สอบถามราคา'", () => {
+  const noPrice = [product({ salePrice: 0 }), product({ id: "p2", salePrice: 0 })];
+  assert.equal(buildUnlinkedPriceNote("UNLINKED", noPrice), UNLINKED_NO_PRICE_NOTE);
+
+  // ยังมีอย่างน้อย 1 ใบที่มีราคา → ใช้ข้อความ "ราคานี้เป็นราคาปกติ" ตามเดิม
+  const mixed = [product({ salePrice: 0 }), product({ id: "p2", salePrice: 1500 })];
+  assert.equal(buildUnlinkedPriceNote("UNLINKED", mixed), UNLINKED_SPECIAL_PRICE_NOTE);
 });
 
 test("applyChatPriceTier hides every price for UNKNOWN tier (resolve failed → สอบถามราคา)", () => {

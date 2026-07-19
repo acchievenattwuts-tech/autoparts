@@ -138,7 +138,7 @@ function createProcessorTestDeps(input?: {
   duplicateEventIds?: string[];
   conversationStatus?: LineConversationAiStatus;
   linkedCustomerId?: string | null;
-  priceTier?: "RETAIL" | "WHOLESALE";
+  priceTier?: "UNLINKED" | "RETAIL" | "WHOLESALE";
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
   imageConfidence?: "LOW" | "MEDIUM" | "HIGH";
   imageHints?: string[];
@@ -2071,6 +2071,66 @@ test("retail-tier customer naming a product + price → shows cards then hands o
   assert.ok(calls.replies[0]?.texts.at(-1)?.includes("ส่งเรื่องให้แอดมิน"), "handoff note after the matches");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"), "room frozen for admin to quote price");
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified once");
+});
+
+test("unlinked customer sees retail price + a note that it is not the discounted price", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    priceTier: "UNLINKED", // ยังไม่ผูกบัญชีกับระบบร้าน
+    consolidatedQuery: "คอยเย็นวีโก้",
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: "Vigo",
+    intentPartKind: "universal",
+    fitmentFilters: { carModelName: "Hilux Vigo" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 900, retailPrice: 1500, memberPrice: 1200 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยเย็นวีโก้มีไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  // ข้อความแจ้งราคาพิเศษต้องเป็น bubble สุดท้ายเสมอ
+  assert.ok(
+    calls.replies[0]?.texts.at(-1)?.includes("ราคาพิเศษ"),
+    "special-price note is the last bubble",
+  );
+  // ลูกค้าแค่ถามหาของ ไม่ได้ถามราคา → AI ต้องทำงานต่อ ห้าม freeze ห้องรอแอดมิน
+  assert.ok(
+    !calls.statePatchTypes.includes("waiting_admin"),
+    "AI keeps working — an informational note must not freeze the room",
+  );
+  assert.equal(calls.notifyHandoffs.length, 0, "no admin ping for a plain product lookup");
+});
+
+test("linked customer gets no special-price note (price already matches their tier)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    priceTier: "WHOLESALE",
+    consolidatedQuery: "คอยเย็นวีโก้",
+    intentPartType: "คอยล์เย็น",
+    intentCarModel: "Vigo",
+    intentPartKind: "universal",
+    fitmentFilters: { carModelName: "Hilux Vigo" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "คอยล์เย็น Toyota Vigo", code: "P0038", imageUrl: null, salePrice: 900, retailPrice: 1500, memberPrice: 1200 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("คอยเย็นวีโก้มีไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.ok(
+    !calls.replies[0]?.texts.some((text) => text.includes("ราคาพิเศษ")),
+    "linked customer must not be told to wait for a special price",
+  );
 });
 
 test("bare price question (no product named) → direct handoff, no cards re-shown", async () => {

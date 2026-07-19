@@ -281,6 +281,18 @@
 - ไม่แตะ: storefront ยังใช้ `retailPrice` เหมือนเดิม, business logic สต็อก/MAVG/เอกสาร
 - Audit Log: ครอบคลุมอยู่แล้วผ่าน `getProductAuditSnapshot()` (ใช้ `include` → เก็บ memberPrice อัตโนมัติ) และ audit เดิมของ customer-types
 
+### 11. แจ้งราคาพิเศษให้ลูกค้าใหม่บนแชท LINE + Messenger (2026-07-19)
+- สถานะ: **เสร็จครบ + db push แล้ว**
+- เป้าหมาย: ลูกค้าที่ยังไม่ผูกบัญชีกับระบบร้านต้องรู้ว่าราคาที่เห็น (ราคาขายปลีก) **ยังไม่ได้ลด** ส่วนลูกค้าที่ผูกแล้วเห็นราคาตามกลุ่มของตัวเองโดยไม่มีข้อความรบกวน
+- [x] เพิ่ม `ChatPriceTier = "UNLINKED"` — ใช้ `retailPrice` เท่ากับ RETAIL ต่างกันแค่ข้อความที่แนบท้าย
+- [x] `resolveLinePriceTier` / `resolveMessengerPriceTier` คืน `UNLINKED` เมื่อ: ยังไม่ผูก / บัญชีลูกค้าปิด / ไม่ระบุประเภท / ประเภทถูกปิด (ยืนยันโดยเจ้าของร้าน)
+- [x] `buildUnlinkedPriceNote()` — เลือกข้อความให้ตรงกับการ์ด: มีราคา → "ราคานี้เป็นราคาปกติค่ะ 🙏 เดี๋ยวแอดมินมาแจ้งราคาพิเศษให้อีกทีนะคะ รอสักครู่ค่ะ" / การ์ดทุกใบเป็น "สอบถามราคา" → "เดี๋ยวแอดมินมาแจ้งราคาให้นะคะ รอสักครู่ค่ะ 🙏"
+- [x] ส่งเป็น **bubble สุดท้ายเสมอ** — ไม่เบียด `followUpBubble` เดิม (didYouMean / near-match) ซึ่งเป็นคำเตือนความแม่นของผลค้นหา ต้องได้ส่งทั้งคู่ (LINE ส่งได้ 5 ข้อความ/ครั้ง ปัจจุบันใช้ 4)
+- [x] ครบทั้ง LINE single path + multi-subject path + Messenger (multi-subject รวมสินค้าทุก subject แล้วส่งข้อความครั้งเดียว ไม่ซ้ำต่อ subject)
+- [x] **ไม่ freeze AI / ไม่แจ้งแอดมิน** — เป็นข้อความแจ้งให้ทราบ ลูกค้ายังไม่ได้ขออะไร ถ้า freeze ทุกครั้งลูกค้าใหม่จะคุยกับ AI ไม่ได้เลย (Messenger แทบทุกคนเป็น UNLINKED) · การ freeze เดิมตอนลูกค้า**ถามราคาเอง** (`hiddenPriceWithProducts`) ยังทำงานเหมือนเดิม
+- [x] **ลบ `CustomerType.showPrice`** — เป็น dead field: schema ระบุว่าคุมการแสดงราคาบน LINE แต่ `applyChatPriceTier()` ไม่เคยอ่านค่านี้เลย เปลี่ยนป้ายในหน้าลูกค้าไปใช้ `priceTier` จริงแทน (`db push --accept-data-loss`)
+- [x] Test: `buildUnlinkedPriceNote` 4 เคส + e2e "unlinked ได้ข้อความ + ไม่ freeze" / "linked ไม่ได้ข้อความ"
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`
