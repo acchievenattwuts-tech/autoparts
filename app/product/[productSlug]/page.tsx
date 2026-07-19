@@ -450,13 +450,13 @@ const ProductDetailPage = async ({ params }: Props) => {
                               / {product.saleUnitName || "หน่วย"}
                             </p>
                           </div>
-                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
-                            <Tag className="h-4 w-4 shrink-0 text-emerald-700" />
+                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-600 bg-orange-600 px-2.5 py-1.5">
+                            <Tag className="h-4 w-4 shrink-0 text-white" />
                             <div className="min-w-0">
-                              <p className="text-xs font-bold leading-4 text-emerald-900">
+                              <p className="text-xs font-bold leading-4 text-white">
                                 {STOREFRONT_SPECIAL_PRICE_TITLE}
                               </p>
-                              <p className="text-[11px] leading-4 text-emerald-700">
+                              <p className="text-[11px] leading-4 text-white">
                                 {STOREFRONT_SPECIAL_PRICE_HINT}
                               </p>
                             </div>
