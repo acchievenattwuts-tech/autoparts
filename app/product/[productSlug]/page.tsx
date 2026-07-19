@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   MessageCircle,
   Phone,
+  Tag,
 } from "lucide-react";
 import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
 import Footer from "@/components/shared/Footer";
@@ -41,6 +42,9 @@ import {
 import {
   getStorefrontRetailPricing,
   STOREFRONT_PRICE_INQUIRY_LABEL,
+  STOREFRONT_SPECIAL_PRICE_CTA,
+  STOREFRONT_SPECIAL_PRICE_HINT,
+  STOREFRONT_SPECIAL_PRICE_TITLE,
 } from "@/lib/storefront-pricing";
 import {
   partitionProductFitments,
@@ -446,9 +450,17 @@ const ProductDetailPage = async ({ params }: Props) => {
                               / {product.saleUnitName || "หน่วย"}
                             </p>
                           </div>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            ยืนยันราคาล่าสุดกับร้านก่อนสั่งซื้อ
-                          </p>
+                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+                            <Tag className="h-4 w-4 shrink-0 text-emerald-700" />
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold leading-4 text-emerald-900">
+                                {STOREFRONT_SPECIAL_PRICE_TITLE}
+                              </p>
+                              <p className="text-[11px] leading-4 text-emerald-700">
+                                {STOREFRONT_SPECIAL_PRICE_HINT}
+                              </p>
+                            </div>
+                          </div>
                         </>
                       ) : (
                         <>
@@ -534,7 +546,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                         className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} flex-1 font-bold`}
                       >
                         <MessageCircle className="h-4 w-4" />
-                        สอบถามผ่าน LINE OA
+                        {STOREFRONT_SPECIAL_PRICE_CTA}
                       </a>
                       {config.shopPhone && (
                         <a

@@ -9,6 +9,7 @@ import { getProductPath } from "@/lib/product-slug";
 import {
   getStorefrontRetailPricing,
   STOREFRONT_PRICE_INQUIRY_LABEL,
+  STOREFRONT_SPECIAL_PRICE_CTA_COMPACT,
 } from "@/lib/storefront-pricing";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
@@ -168,10 +169,10 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
                 href={lineUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} w-full justify-center gap-1.5 px-3 py-2.5 text-[11px] sm:w-auto sm:px-4 sm:text-xs`}
+                className={`${STOREFRONT_LINE_COMPACT_BUTTON_CLASS} w-full justify-center gap-1.5 whitespace-nowrap px-3 py-2.5 text-[11px] sm:w-auto sm:px-4 sm:text-xs`}
               >
                 <MessageCircle size={11} />
-                สอบถาม
+                {STOREFRONT_SPECIAL_PRICE_CTA_COMPACT}
               </a>
             </div>
           </div>
