@@ -455,7 +455,7 @@ type FilterBodyProps = {
 };
 
 export const ProductFilterBody = ({ draft, setDraft, filterData }: FilterBodyProps) => {
-  const { categories, partsBrands, carBrands } = filterData;
+  const { categories, carBrands } = filterData;
 
   return (
     <div className="space-y-5">
@@ -468,19 +468,8 @@ export const ProductFilterBody = ({ draft, setDraft, filterData }: FilterBodyPro
         }
       />
 
-      <div className="border-t border-slate-200 pt-4">
-        <CheckboxList
-          title="แบรนด์อะไหล่"
-          items={partsBrands.map((b) => ({ value: b.id, label: b.name }))}
-          selected={draft.partsBrands}
-          onToggle={(id) =>
-            setDraft((prev) => ({
-              ...prev,
-              partsBrands: toggleValue(prev.partsBrands, id),
-            }))
-          }
-        />
-      </div>
+      {/* แบรนด์อะไหล่ (parts brand) filter hidden per request 2026-07-20.
+          UI only — data plumbing (partsBrands fetch/query/types) intentionally kept. */}
 
       <div className="border-t border-slate-200 pt-4">
         <CarBrandModelAccordion

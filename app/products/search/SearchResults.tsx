@@ -469,18 +469,7 @@ const SearchResults = ({
                 {filters.categories.length > 0 && (
                   <>หมวด: {filters.categories.join(", ")} · </>
                 )}
-                {filters.partsBrands.length > 0 && (
-                  <>
-                    แบรนด์อะไหล่:{" "}
-                    {filters.partsBrands
-                      .map(
-                        (id) =>
-                          filterData.partsBrands.find((b) => b.id === id)?.name ?? id,
-                      )
-                      .join(", ")}{" "}
-                    ·{" "}
-                  </>
-                )}
+                {/* แบรนด์อะไหล่ active-filter summary hidden per request 2026-07-20 (UI only). */}
                 {filters.carBrands.length > 0 && (
                   <>ยี่ห้อรถ: {filters.carBrands.join(", ")} · </>
                 )}
