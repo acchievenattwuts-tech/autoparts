@@ -42,6 +42,10 @@ import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import {
+  detectChatMultiSubjects,
+  type ChatMultiSubjectDetection,
+} from "@/lib/chat-core/multi-subject-detector";
+import {
   appendChatCompatibilityNote,
   filterChatProductsByVehicleCompatibility,
 } from "@/lib/chat-core/product-compatibility";
@@ -204,6 +208,8 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; extracts the running search subject + structured fitment
    *  hints from conversation history (search-side memory for drip-fed details). */
   extractChatSearchIntent?: typeof extractChatSearchIntent;
+  /** Optional override for the shared LLM + canonical-category multi detector. */
+  detectChatMultiSubjects?: typeof detectChatMultiSubjects;
   /** Optional override; resolves AI fitment hints to canonical master-data names
    *  for use as precise hard filters in product search. */
   resolveChatFitmentFilters?: typeof resolveChatFitmentFilters;
@@ -269,6 +275,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   classifyPurchaseIntent,
   answerFromChatFaq,
   extractChatSearchIntent,
+  detectChatMultiSubjects,
   resolveChatFitmentFilters,
   loadCarBrandVariantLookup,
   loadCarModelVariantLookup,
@@ -800,6 +807,8 @@ const MULTI_SUBJECT_OVERFLOW_NOTE =
 // C1: an explicit "replace" cue means the latest part supersedes the earlier one
 // (answer only the latest), instead of adding it as a second subject.
 const MULTI_SUBJECT_REPLACE_CUE_RE = /แทน|เปลี่ยนเป็น|เปลี่ยนเป็_|ไม่เอา.*แล้ว|ไม่เอาแล้ว|เอาเป็น/;
+const GENERAL_INQUIRY_HANDOFF_MESSAGE =
+  "เรื่องนี้จูนขอส่งให้แอดมินช่วยตรวจสอบและตอบให้ชัดเจนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับค่ะ";
 
 function buildSubjectNoMatchLine(partType: string | null, car: string | null): string {
   const subject = partType ? (car ? `${partType} ${car}` : partType) : "อะไหล่ที่แจ้ง";
@@ -1198,22 +1207,21 @@ async function respondMultiSubject(
     },
   });
 
-  // ถามราคา → freeze ห้องรอแอดมินแจ้งราคา (mirror handoffAfterSend ของ single path —
-  // ลูกค้าเห็นของแล้ว เรื่องราคาเป็นของแอดมินทุกกรณี)
-  if (extras.priceAsk) {
+  // Any missing/suppressed subject is now an admin handoff by policy. Freeze after
+  // sending the useful subjects so the AI cannot continue while a human checks the
+  // unresolved one. Price asks follow the same waiting-admin state.
+  if (anyNotFound || extras.priceAsk) {
     await dependencies.updateLineConversationState(
       input.conversation.id,
       buildLineConversationStatePatch({
         type: "waiting_admin",
         at: new Date(),
-        reason: "MULTI_SUBJECT_PRICE_HANDOFF",
+        reason: anyNotFound ? "MULTI_SUBJECT_NO_MATCH_HANDOFF" : "MULTI_SUBJECT_PRICE_HANDOFF",
       }),
     );
   }
 
-  // A missing/suppressed category → tell an admin (no freeze: other categories
-  // were answered and the AI stays active per decision จ). A price ask notifies
-  // too — the customer is now waiting for the admin's price confirmation.
+  // A missing/suppressed category or price ask always alerts the admin.
   if (anyNotFound || extras.priceAsk) {
     const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
     const countPending =
@@ -1504,7 +1512,33 @@ export async function processLineAiReply(
     const priceAskThisTurn =
       route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
 
-    const multiSubjects = group === "product" ? effectiveSearchIntent?.subjects ?? null : null;
+    const multiDetection: ChatMultiSubjectDetection =
+      group === "product"
+        ? await (dependencies.detectChatMultiSubjects ?? detectChatMultiSubjects)({
+            text: processText,
+            intent: effectiveSearchIntent,
+          }).catch(() => ({
+            subjects: effectiveSearchIntent?.subjects ?? null,
+            source: effectiveSearchIntent?.subjects?.length ? "llm" as const : "none" as const,
+            handoffReason: null,
+            categories: [],
+          }))
+        : { subjects: null, source: "none", handoffReason: null, categories: [] };
+    const multiSubjects = multiDetection.subjects;
+    const multiAmbiguousHandoff = multiDetection.handoffReason === "AMBIGUOUS_VEHICLE_BINDING";
+    if (multiDetection.source !== "none" || multiAmbiguousHandoff) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "MULTI_SUBJECT_DETECTED",
+        payload: {
+          lineEventId: input.lineEventId,
+          source: multiDetection.source,
+          subjects: multiSubjects?.length ?? 0,
+          categories: multiDetection.categories,
+          handoffReason: multiDetection.handoffReason,
+        },
+      });
+    }
     if (
       autoReplyEnabled &&
       !dryRun &&
@@ -2025,7 +2059,11 @@ export async function processLineAiReply(
     const productSearch =
       isNonProductTurn ||
       (!directProductCode &&
-        (classifierUncertain || gateBlocksSearch || imageOnlyLowConfidence || stockAvailabilityDirect))
+        (classifierUncertain ||
+          gateBlocksSearch ||
+          imageOnlyLowConfidence ||
+          stockAvailabilityDirect ||
+          multiAmbiguousHandoff))
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
@@ -2035,6 +2073,8 @@ export async function processLineAiReply(
             // "มีของไหม" ล้วน — จะจบที่ handoff แอดมินเสมอ ไม่ต้องเสีย search
             : stockAvailabilityDirect
               ? "STOCK_AVAILABILITY_DIRECT"
+            : multiAmbiguousHandoff
+              ? "MULTI_SUBJECT_AMBIGUOUS_VEHICLE"
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
               : "NON_PRODUCT_TURN",
@@ -2416,24 +2456,21 @@ export async function processLineAiReply(
     // shipping/how-to-order question. Routing it through the FAQ would let the LLM
     // answer a policy-style reply and silently close the turn (no admin notified),
     // so it must skip FAQ and fall through to the escalation / ask path instead.
-    const anchoredProductNoMatch = Boolean(!isNonProductTurn && inquiryFrame?.partType);
+    const anySearchedNoMatch =
+      liveMode && productSearch.searched && productSearch.result.total === 0;
+    const generalInquiryHandoff = liveMode && (group === "general_faq" || group === "other");
     const faqAnswer =
       liveMode &&
       // (Option E) admin-owned room → a FAQ auto-answer would never be sent
       // (store_only wins in the send policy), so skip the Gemini call entirely.
       !conversationBlocked &&
+      !generalInquiryHandoff &&
       // A purchase-commitment turn ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") is classified as
       // a non-product turn, which would otherwise match the FAQ gate below and let an
       // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase
       // hand-off. Skip FAQ entirely for purchase turns (also avoids a wasted call).
       !isPurchaseIntent &&
-      (tryFaqThenAsk ||
-        (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO) ||
-        (productSearch.searched &&
-          productSearch.result.total === 0 &&
-          !partImageNoMatch &&
-          !directNoMatchHandoff &&
-          !anchoredProductNoMatch))
+      (tryFaqThenAsk || (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO))
         ? await (dependencies.answerFromChatFaq ?? answerFromChatFaq)({ text: input.text }).catch(() => ({
             answered: false,
             reply: "",
@@ -2470,6 +2507,22 @@ export async function processLineAiReply(
             handoff: true,
             audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: "CLASSIFIER_UNCERTAIN" },
+          }
+      : liveMode && multiAmbiguousHandoff
+        ? {
+            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+            reason: "MULTI_SUBJECT_AMBIGUOUS_VEHICLE_HANDOFF",
+            handoff: true,
+            audit: "AI_MULTI_SUBJECT_AMBIGUOUS_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, reason: multiDetection.handoffReason },
+          }
+      : generalInquiryHandoff
+        ? {
+            message: GENERAL_INQUIRY_HANDOFF_MESSAGE,
+            reason: "GENERAL_INQUIRY_HANDOFF",
+            handoff: true,
+            audit: "AI_GENERAL_INQUIRY_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, group },
           }
       : liveMode && gateBlocksSearch && gateDecision?.reason === "BROAD_PART_TYPE"
         ? {
@@ -2611,6 +2664,17 @@ export async function processLineAiReply(
               carBrand: inquiryFrame?.carBrand ?? null,
               carModel: inquiryFrame?.carModel ?? null,
               failedSearchCount,
+            },
+          }
+        : anySearchedNoMatch
+        ? {
+            message: NO_RESULTS_ESCALATION_MESSAGE,
+            reason: "SEARCH_NO_MATCH_HANDOFF",
+            handoff: true,
+            audit: "AI_SEARCH_NO_MATCH_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              searchReason: productSearch.searched ? productSearch.reason : null,
             },
           }
         // ลูกค้าซ่อนราคาถามราคาสินค้าเดิม/ล้วน → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ (freeze + notify)

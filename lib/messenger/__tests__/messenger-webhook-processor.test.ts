@@ -19,7 +19,7 @@ const moduleMocksUnavailable =
   "requires --experimental-test-module-mocks — run via `npm run test:messenger-webhook`";
 
 test(
-  "Messenger maps a 14-inch push fan and uses the safe shared no-match handoff",
+  "Messenger preserves no-match handoff and searches every mapped multi-subject category",
   { skip: moduleMocksUnavailable },
   async () => {
   const calls = {
@@ -34,6 +34,16 @@ test(
 
   let inboundSeq = 0;
   const inboundCreatedAt = new Date();
+  let currentText = "พัดลมเป่า 14นิ้วมีไหมคับ";
+  let searchHasResults = false;
+  let detectedSubjects: Array<{
+    partType: string;
+    carBrand: string | null;
+    carModel: string | null;
+    year: number | null;
+    partKind: "fitment";
+    query: string;
+  }> | null = null;
 
   await mock.module("@/lib/messenger/messenger-conversation-repository", {
     namedExports: {
@@ -70,7 +80,7 @@ test(
       getUnansweredMessengerMessages: async () => [
         {
           id: "inbound-1",
-          text: "พัดลมเป่า 14นิ้วมีไหมคับ",
+          text: currentText,
           messageType: LineMessageType.TEXT,
           imageUrl: null,
           intent: null,
@@ -89,19 +99,41 @@ test(
   await mock.module("@/lib/chat-core/product-search-bridge", {
     namedExports: {
       applyChatPriceTier: <T>(products: T[]) => products,
-      getChatProductSummaries: async () => [],
+      buildUnlinkedPriceNote: () => null,
+      getChatProductSummaries: async (ids: string[]) =>
+        searchHasResults
+          ? ids.map((id) => ({
+              id,
+              name: `สินค้า ${id}`,
+              code: id,
+              imageUrl: null,
+              salePrice: 1000,
+              retailPrice: 1000,
+              memberPrice: 1000,
+            }))
+          : [],
       searchChatProductInquiry: async (input: {
         text?: string | null;
         fitmentHints?: { categoryName?: string | null } | null;
       }) => {
         calls.searches.push({ text: input.text });
-        assert.equal(input.fitmentHints?.categoryName, "ใบพัดลม (Cooling Fan Blade)");
+        const expectedCategory = input.text?.includes("วาล์ว")
+          ? "วาล์ว (Expansion Valve)"
+          : input.text?.includes("ไดรเออร์")
+            ? "ดรายเออร์ (Drier / Receiver Drier)"
+            : "ใบพัดลม (Cooling Fan Blade)";
+        assert.equal(input.fitmentHints?.categoryName, expectedCategory);
         return {
           searched: true,
-          reason: "SEARCHED_PRODUCT_SPEC_NO_MATCH",
+          reason: searchHasResults ? "SEARCHED_PRODUCT_INQUIRY" : "SEARCHED_PRODUCT_SPEC_NO_MATCH",
           query: input.text ?? "",
-          result: { ids: [], total: 0, mode: "v2" },
-          needsMoreInfo: true,
+          result: {
+            ids: searchHasResults ? [`P-${calls.searches.length}`] : [],
+            total: searchHasResults ? 1 : 0,
+            mode: "v2",
+            matchReasons: searchHasResults ? { [`P-${calls.searches.length}`]: ["name"] } : {},
+          },
+          needsMoreInfo: !searchHasResults,
           appliedFilters: {
             categoryName: null,
             carBrandName: null,
@@ -144,8 +176,31 @@ test(
 
   await mock.module("@/lib/chat-core/fitment-resolve", {
     namedExports: {
-      resolveChatFitmentFilters: async () => ({
-        categoryName: "ใบพัดลม (Cooling Fan Blade)",
+      resolveChatFitmentFilters: async (input: { partType?: string | null; queryText?: string | null }) => ({
+        categoryName: input.partType?.includes("วาล์ว") || input.queryText?.includes("วาล์ว")
+          ? "วาล์ว (Expansion Valve)"
+          : input.partType?.includes("ไดรเออร์") || input.queryText?.includes("ไดรเออร์")
+            ? "ดรายเออร์ (Drier / Receiver Drier)"
+            : "ใบพัดลม (Cooling Fan Blade)",
+        carModelName: input.queryText?.toLowerCase().includes("triton") ? "Triton" : undefined,
+      }),
+    },
+  });
+
+  await mock.module("@/lib/car-brand-alias-loader", {
+    namedExports: { loadCarBrandVariantLookup: async () => new Map<string, string[]>() },
+  });
+  await mock.module("@/lib/car-model-alias-loader", {
+    namedExports: { loadCarModelVariantLookup: async () => new Map<string, string[]>() },
+  });
+
+  await mock.module("@/lib/chat-core/multi-subject-detector", {
+    namedExports: {
+      detectChatMultiSubjects: async () => ({
+        subjects: detectedSubjects,
+        source: detectedSubjects ? "category_mapping" : "none",
+        handoffReason: null,
+        categories: detectedSubjects ? ["วาล์ว (Expansion Valve)", "ดรายเออร์ (Drier / Receiver Drier)"] : [],
       }),
     },
   });
@@ -208,4 +263,35 @@ test(
     /ไม่มีสินค้า|ไม่มีของ|หาไม่เจอ|ไม่พบสินค้า|ยังไม่พบ/,
   );
   assert.deepEqual(calls.processedSeqs, [1]);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentText = "วาล์ว/ไดรเออร์ Triton ปี 2013";
+  searchHasResults = true;
+  detectedSubjects = [
+    { partType: "วาล์ว", carBrand: null, carModel: "Triton", year: 2013, partKind: "fitment", query: "วาล์ว Triton 2013" },
+    { partType: "ไดรเออร์", carBrand: null, carModel: "Triton", year: 2013, partKind: "fitment", query: "ไดรเออร์ Triton 2013" },
+  ];
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-2",
+        fbEventId: "event-2",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches.map((search) => search.text), ["วาล์ว Triton 2013", "ไดรเออร์ Triton 2013"]);
+  assert.deepEqual(calls.escalations, []);
+  assert.deepEqual(calls.notifications, []);
 });

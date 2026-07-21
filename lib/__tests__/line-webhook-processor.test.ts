@@ -457,6 +457,15 @@ function createProcessorTestDeps(input?: {
             tooBroad: input?.intentTooBroad ?? false,
           }
         : null,
+    // Hermetic default: production DB category mapping is covered by the focused
+    // resolver/property tests. Explicit LLM subjects still exercise this suite's
+    // existing multi-subject paths; mapping-specific cases override this stub.
+    detectChatMultiSubjects: async ({ intent }) => ({
+      subjects: intent?.subjects && intent.subjects.length >= 2 ? intent.subjects : null,
+      source: intent?.subjects && intent.subjects.length >= 2 ? "llm" : "none",
+      handoffReason: null,
+      categories: [],
+    }),
     getLineInquiryFrame: async () =>
       input?.storedFrame
         ? {
@@ -924,10 +933,10 @@ test("non-product turn skips search and product cards entirely", async () => {
   assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
-test("non-product turn is answered from FAQ (not handed off) when the FAQ covers it", async () => {
+test("general non-product turn is handed off without searching or using FAQ", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  // A general question the keyword router didn't catch as SHOP_INFO; AI flags it
-  // non-product and the FAQ can answer → reply with the FAQ answer, no handoff.
+  // A general question the keyword router didn't catch as SHOP_INFO is not a
+  // catalog search and must wait for a human even when FAQ could answer it.
   const { calls, dependencies } = createProcessorTestDeps({
     nonProductTurn: true,
     faqReply: "ร้านศรีวรรณอยู่ปทุมธานีค่ะ 🙏",
@@ -940,10 +949,11 @@ test("non-product turn is answered from FAQ (not handed off) when the FAQ covers
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /ปทุมธานี/);
+  assert.match(calls.replies[0]?.text ?? "", /แอดมิน/);
+  assert.ok(!(calls.replies[0]?.text ?? "").includes("ปทุมธานี"));
   assert.deepEqual(calls.searches, []);
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
-  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("social group gets a brief ack and never searches", async () => {
@@ -1208,13 +1218,12 @@ test("search falls back to latest text when AI consolidation declines", async ()
   assert.equal(consolidatedQueryLogged ?? "คอยเย็น vios", "คอยเย็น vios");
 });
 
-test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", async () => {
+test("an executed product search with no match always hands off and suppresses FAQ", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ faqReply: "ร้านส่งต่างจังหวัดได้ค่ะ 🙏" });
-  // Resolved product turn (not a null/uncertain classification) whose search comes
-  // back empty → the FAQ branch gets a chance before asking-more/escalating.
+  // Resolved product turn whose search comes back empty must never be converted
+  // into a FAQ answer; the confirmed policy is human handoff for every no-match.
   dependencies.extractChatSearchIntent = async () => productSearchIntent("asdf qwer");
-  // Empty product search → FAQ gets a chance before asking-more/escalating.
   dependencies.searchChatProductInquiry = async () => ({
     searched: true,
     reason: "SEARCHED_PRODUCT_INQUIRY",
@@ -1233,9 +1242,10 @@ test("FAQ-answerable UNKNOWN question is answered from FAQ, not handed off", asy
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /ส่งต่างจังหวัด/);
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
-  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.match(calls.replies[0]?.text ?? "", /แอดมิน/);
+  assert.ok(!(calls.replies[0]?.text ?? "").includes("ส่งต่างจังหวัด"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 });
 
 test("text product no-match with a product subject does not use generic FAQ fallback", async () => {
@@ -2901,7 +2911,63 @@ test("multi-subject price ask shows product blocks, appends the price note, free
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified exactly once");
 });
 
-test("multi-subject: a subject whose car never resolves is suppressed instead of showing other vehicles' parts", async () => {
+test("mapped categories recover two LINE subjects when the LLM returns only one top-level subject", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    fitmentFilters: { carModelName: "Triton" },
+  });
+  dependencies.generateChatSuggestion = async () => stubChatSuggestion();
+  dependencies.extractChatSearchIntent = async () => ({
+    ...productSearchIntent("วาล์ว/ไดรเออร์ Triton ปี 2013"),
+    partType: "วาล์ว",
+    carModel: "Triton",
+    year: 2013,
+    partKind: "fitment" as const,
+  });
+  dependencies.detectChatMultiSubjects = async () => ({
+    source: "category_mapping" as const,
+    handoffReason: null,
+    categories: ["Expansion Valve", "Drier"],
+    subjects: [
+      { partType: "วาล์ว", carBrand: null, carModel: "Triton", year: 2013, partKind: "fitment" as const, query: "วาล์ว Triton 2013" },
+      { partType: "ไดรเออร์", carBrand: null, carModel: "Triton", year: 2013, partKind: "fitment" as const, query: "ไดรเออร์ Triton 2013" },
+    ],
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("วาล์ว/ไดรเออร์มิตซูไททันปี13"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 2);
+  assert.ok(calls.auditActions.includes("MULTI_SUBJECT_DETECTED"));
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("ambiguous per-subject vehicle mapping performs no LINE search and hands off", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+  dependencies.detectChatMultiSubjects = async () => ({
+    subjects: null,
+    source: "none" as const,
+    handoffReason: "AMBIGUOUS_VEHICLE_BINDING" as const,
+    categories: ["Expansion Valve", "Drier"],
+  });
+
+  await processLineWebhookPayload(
+    textPayload("วาล์ว Triton กับ ไดรเออร์ D-Max"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
+test("multi-subject: any unresolved subject hands off and freezes after suppressing unsafe products", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   // No fitmentFilters configured → the resolver returns no carModelName, so the
   // Strada subject's rows are NOT vehicle-scoped (the exact mismatch class the
@@ -2937,10 +3003,7 @@ test("multi-subject: a subject whose car never resolves is suppressed instead of
     "unresolved-car subject degrades to its no-match hand-off line",
   );
   assert.equal(calls.notifyHandoffs.length, 1, "admin notified for the suppressed subject");
-  assert.ok(
-    !calls.statePatchTypes.includes("waiting_admin"),
-    "no freeze — the other subject still got a real answer (decision จ)",
-  );
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses after any subject fails");
 });
 
 test("admin-owned conversation: draft is stored without spending Gemini generate / purchase / FAQ calls", async () => {

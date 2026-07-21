@@ -4,6 +4,8 @@ import {
   extractChatSearchIntent,
   generateChatSuggestion,
   generateScopedConversationalReply,
+  type ChatSearchIntent,
+  type ChatSubject,
 } from "@/lib/chat-core/ai-service";
 import { intentToGroup } from "@/lib/chat-core/intent-groups";
 import {
@@ -39,6 +41,7 @@ import {
 import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-product-subjects";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import { detectChatMultiSubjects } from "@/lib/chat-core/multi-subject-detector";
 import {
   appendChatCompatibilityNote,
   filterChatProductsByVehicleCompatibility,
@@ -105,10 +108,6 @@ const STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1_000;
 // Stop debouncing after this much wall-clock and do one final reply, so a chatty
 // customer can't push the owner past the 60s serverless ceiling.
 const OWNER_FINAL_PASS_AFTER_MS = 28_000;
-const EXPLICIT_PRODUCT_NOUN_RE =
-  /(คอย(?:ล์)?\s*เย็น|คอม\s*แอร์|แผง\s*แอร์|กรอง\s*แอร์|หม้อ\s*น้ำ|พัด\s*ลม|วาล์ว|ไดเออร์|ไดรเออร์|ดรายเออร์|ตู้\s*แอร์|น้ำยา|โอริง|สาย\s*น้ำยา)/i;
-const LATIN_MODEL_YEAR_ANCHOR_RE = /\b[A-Za-z]{2,}\s+\d{2}(?:-\d{2})?\b/;
-
 export type MessengerInboundEvent = {
   pageId: string;
   psid: string;
@@ -125,6 +124,10 @@ export type MessengerProcessorConfig = {
 };
 
 type ChatHistoryItem = { role: "customer" | "shop"; text: string };
+type MessengerProductReplyOutcome = "replied" | "handoff" | "not_searched";
+
+const GENERAL_INQUIRY_HANDOFF_MESSAGE =
+  "ขอส่งเรื่องนี้ให้แอดมินช่วยตรวจสอบและตอบกลับนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -506,7 +509,7 @@ async function replyToMessengerTurn(params: {
                   }
                 : undefined,
             };
-        const replied = await replyWithProductSearch({
+        const outcome = await replyWithProductSearch({
           pageAccessToken,
           conversationId,
           psid,
@@ -515,7 +518,7 @@ async function replyToMessengerTurn(params: {
           originalText: mergedText || "(ลูกค้าส่งรูปอะไหล่)",
           history,
         });
-        if (replied) return;
+        if (outcome !== "not_searched") return;
       }
     }
 
@@ -539,7 +542,7 @@ async function replyToMessengerTurn(params: {
       let repliedWithAnySearch = false;
       for (const subject of priceSubjects.slice(0, 3)) {
         const query = subject.query || subject.partType || processText;
-        const replied = await replyWithProductSearch({
+        const outcome = await replyWithProductSearch({
           pageAccessToken,
           conversationId,
           psid,
@@ -557,7 +560,8 @@ async function replyToMessengerTurn(params: {
           originalText: mergedText,
           history,
         });
-        repliedWithAnySearch = repliedWithAnySearch || replied;
+        repliedWithAnySearch = repliedWithAnySearch || outcome !== "not_searched";
+        if (outcome === "handoff") return;
       }
       if (repliedWithAnySearch) {
         await escalateMessengerConversationToAdmin(conversationId);
@@ -583,11 +587,61 @@ async function replyToMessengerTurn(params: {
     return;
   }
 
+  // Classify UNKNOWN turns as well as search-capable turns. This keeps general
+  // questions out of catalog search and routes them to a human, while preserving
+  // deterministic greeting/shop-info/smalltalk routes.
+  const classifiedIntent =
+    route.allowsSearch || route.intent === LineIntent.UNKNOWN
+      ? await extractChatSearchIntent({
+          intent: route.intent,
+          latestText: processText,
+          history,
+        }).catch(() => null)
+      : null;
+
+  if (classifiedIntent?.group === "general_faq" || classifiedIntent?.group === "other") {
+    await handoffUncertainMessengerProduct({
+      pageAccessToken,
+      conversationId,
+      psid,
+      originalText: mergedText,
+      intent: route.intent,
+      text: GENERAL_INQUIRY_HANDOFF_MESSAGE,
+    });
+    return;
+  }
+
+  const multiDetection =
+    route.allowsSearch || classifiedIntent?.group === "product"
+      ? await detectChatMultiSubjects({ text: processText, intent: classifiedIntent })
+      : null;
+  if (multiDetection?.handoffReason) {
+    await handoffUncertainMessengerProduct({
+      pageAccessToken,
+      conversationId,
+      psid,
+      originalText: mergedText,
+      intent: route.intent,
+    });
+    return;
+  }
+  if (multiDetection?.subjects && multiDetection.subjects.length >= 2) {
+    await replyWithMessengerMultiSubject({
+      pageAccessToken,
+      conversationId,
+      psid,
+      subjects: multiDetection.subjects,
+      originalText: mergedText,
+      history,
+    });
+    return;
+  }
+
   if (route.allowsSearch) {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
     const { fitmentPartHeadNoun, shouldHandoffUncertain, vehicleNamedButUnresolved, ...fitmentHints } =
-      await resolveMessengerFitmentHints(processText, history);
+      await resolveMessengerFitmentHints(processText, history, classifiedIntent);
     if (shouldHandoffUncertain) {
       await handoffUncertainMessengerProduct({
         pageAccessToken,
@@ -621,7 +675,7 @@ async function replyToMessengerTurn(params: {
     );
     const directTextCode = hasExplicitFitmentFilter ? null : await resolveDirectProductCode([processText]);
     if (directTextCode) {
-      const replied = await replyWithProductSearch({
+      const outcome = await replyWithProductSearch({
         pageAccessToken,
         conversationId,
         psid,
@@ -630,9 +684,9 @@ async function replyToMessengerTurn(params: {
         originalText: mergedText,
         history,
       });
-      if (replied) return;
+      if (outcome !== "not_searched") return;
     }
-    const replied = await replyWithProductSearch({
+    const outcome = await replyWithProductSearch({
       pageAccessToken,
       conversationId,
       psid,
@@ -641,7 +695,7 @@ async function replyToMessengerTurn(params: {
       originalText: mergedText,
       history,
     });
-    if (replied) return;
+    if (outcome !== "not_searched") return;
   }
 
   // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
@@ -669,33 +723,11 @@ async function loadHistory(conversationId: string): Promise<ChatHistoryItem[]> {
 }
 
 function shouldDirectNoMatchHandoff(input: {
-  route: ChatIntentRouteResult;
   productSearch: Awaited<ReturnType<typeof searchChatProductInquiry>>;
-  text: string;
 }): boolean {
-  if (
-    input.route.intent !== LineIntent.PRODUCT_INQUIRY_TEXT ||
-    !input.productSearch.searched ||
-    input.productSearch.result.total > 0
-  ) {
-    return false;
-  }
-
-  // The customer named a SPECIFIC part that anchored to zero matches (fitment-part
-  // precision anchor). This is a concrete request the shop lacks — hand off even
-  // when the part word isn't in the hardcoded EXPLICIT_PRODUCT_NOUN_RE list.
-  if (
-    input.productSearch.reason === "SEARCHED_FITMENT_PART_NO_MATCH" ||
-    input.productSearch.reason === "SEARCHED_PRODUCT_SPEC_NO_MATCH"
-  ) {
-    return true;
-  }
-
-  const requiredTokens = extractChatRequiredSearchTokens(input.text);
-  return (
-    EXPLICIT_PRODUCT_NOUN_RE.test(input.text) &&
-    (requiredTokens.length > 0 || LATIN_MODEL_YEAR_ANCHOR_RE.test(input.text))
-  );
+  // Confirmed policy: every executed catalog search that returns no products is
+  // handed to an admin and automation stops, regardless of route or noun shape.
+  return input.productSearch.searched && input.productSearch.result.total === 0;
 }
 
 // Product route used by the product-code fast-path (a resolved code identifies the
@@ -750,6 +782,7 @@ async function resolveDirectProductCode(sources: Array<string | null | undefined
 async function resolveMessengerFitmentHints(
   processText: string,
   history: ChatHistoryItem[],
+  classifiedIntent: ChatSearchIntent | null,
 ): Promise<{
   categoryName: string | null;
   carBrandName: string | null;
@@ -774,11 +807,7 @@ async function resolveMessengerFitmentHints(
     vehicleNamedButUnresolved: false,
   };
   try {
-    const rawIntent = await extractChatSearchIntent({
-      intent: LineIntent.PRODUCT_INQUIRY_TEXT,
-      latestText: processText,
-      history,
-    }).catch(() => null);
+    const rawIntent = classifiedIntent;
     if (!rawIntent) {
       return { ...empty, shouldHandoffUncertain: true };
     }
@@ -875,11 +904,86 @@ async function resolveMessengerFitmentHints(
   }
 }
 
+async function replyWithMessengerMultiSubject(input: {
+  pageAccessToken: string;
+  conversationId: string;
+  psid: string;
+  subjects: ChatSubject[];
+  originalText: string;
+  history: ChatHistoryItem[];
+}): Promise<void> {
+  for (const subject of input.subjects.slice(0, 3)) {
+    const query = (subject.query || subject.partType || input.originalText).trim();
+    const subjectIntent: ChatSearchIntent = {
+      group: "product",
+      query,
+      isProductQuery: true,
+      partType: subject.partType,
+      carBrand: subject.carBrand,
+      carModel: subject.carModel,
+      year: subject.year,
+      partKind: subject.partKind,
+      tooBroad: false,
+    };
+
+    try {
+      const {
+        fitmentPartHeadNoun,
+        shouldHandoffUncertain,
+        vehicleNamedButUnresolved,
+        ...fitmentHints
+      } = await resolveMessengerFitmentHints(query, input.history, subjectIntent);
+
+      if (shouldHandoffUncertain || vehicleNamedButUnresolved) {
+        await handoffUncertainMessengerProduct({
+          ...input,
+          intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+          text: vehicleNamedButUnresolved ? CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY : undefined,
+        });
+        return;
+      }
+
+      const outcome = await replyWithProductSearch({
+        pageAccessToken: input.pageAccessToken,
+        conversationId: input.conversationId,
+        psid: input.psid,
+        route: MESSENGER_PRODUCT_ROUTE,
+        bridgeInput: {
+          route: MESSENGER_PRODUCT_ROUTE,
+          text: query,
+          fitmentHints,
+          fitmentPartHeadNoun,
+        },
+        originalText: input.originalText,
+        history: input.history,
+      });
+
+      if (outcome === "handoff") return;
+      if (outcome === "not_searched") {
+        await handoffUncertainMessengerProduct({
+          ...input,
+          intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+        });
+        return;
+      }
+    } catch (error) {
+      console.error(
+        `[messenger] multi-subject search failed: ${error instanceof Error ? error.message : "unknown"}`,
+      );
+      await handoffUncertainMessengerProduct({
+        ...input,
+        intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+      });
+      return;
+    }
+  }
+}
+
 /**
  * Shared product-inquiry reply used by both the text and part-image paths: runs
  * the shared catalog search, applies price visibility, asks the shared AI to draft
- * the reply, then sends text + product carousel and persists. Returns false when
- * the search decided not to run (caller falls back to a conservative reply).
+ * the reply, then sends text + product carousel and persists. The explicit
+ * outcome lets multi-subject callers stop immediately after any handoff.
  */
 async function replyWithProductSearch(params: {
   pageAccessToken: string;
@@ -889,15 +993,13 @@ async function replyWithProductSearch(params: {
   bridgeInput: ChatProductSearchBridgeInput;
   originalText: string;
   history: ChatHistoryItem[];
-}): Promise<boolean> {
+}): Promise<MessengerProductReplyOutcome> {
   const productSearch = await searchChatProductInquiry(params.bridgeInput);
-  if (!productSearch.searched) return false;
+  if (!productSearch.searched) return "not_searched";
 
   if (
     shouldDirectNoMatchHandoff({
-      route: params.route,
       productSearch,
-      text: params.bridgeInput.text ?? params.originalText,
     })
   ) {
     await escalateMessengerConversationToAdmin(params.conversationId);
@@ -931,7 +1033,7 @@ async function replyWithProductSearch(params: {
     await persistOutbound(params.conversationId, params.psid, handoffMessage, {
       intent: params.route.intent,
     });
-    return true;
+    return "handoff";
   }
 
   const ids = productSearch.result.ids.slice(0, MAX_CAROUSEL_PRODUCTS);
@@ -976,7 +1078,7 @@ async function replyWithProductSearch(params: {
       "จูนเจอรายการที่ใกล้เคียงแต่ยังตรวจสอบรายละเอียดเพิ่มอีกนิดนะคะ 🙏 ขอส่งต่อให้แอดมินช่วยเช็กและติดต่อกลับค่ะ";
     await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: reply });
     await persistOutbound(params.conversationId, params.psid, reply, { intent: params.route.intent });
-    return true;
+    return "handoff";
   }
 
   // Relevance gate (parity with LINE) — the search resolved NO category
@@ -1020,7 +1122,7 @@ async function replyWithProductSearch(params: {
       await persistOutbound(params.conversationId, params.psid, CHAT_WEAK_MATCH_HANDOFF_REPLY, {
         intent: params.route.intent,
       });
-      return true;
+      return "handoff";
     }
   }
 
@@ -1097,7 +1199,7 @@ async function replyWithProductSearch(params: {
     matchedProducts: products,
     reasoningSummary: suggestion.reasoningSummary,
   });
-  return true;
+  return "replied";
 }
 
 async function persistOutbound(

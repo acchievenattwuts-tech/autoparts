@@ -26,6 +26,21 @@ export type CategoryAliasMatchResult =
       alias: string;
     };
 
+export type CategoryAliasEvidence = {
+  alias: string;
+  categoryId: string;
+  categoryName: string;
+  matchMode: CategoryAliasMatchModeValue;
+  priority: number;
+  start: number;
+  end: number;
+};
+
+export type CategoryAliasEvidenceResult = {
+  matches: CategoryAliasEvidence[];
+  skippedBy: string | null;
+};
+
 const normalizeAliasText = (value: string | null | undefined): string =>
   value?.trim().replace(/\s+/g, " ").toLowerCase() ?? "";
 
@@ -49,6 +64,111 @@ function sortAliasRows(rows: CategoryAliasResolverRow[]): CategoryAliasResolverR
     if (b.priority !== a.priority) return b.priority - a.priority;
     return normalizeAliasText(b.alias).length - normalizeAliasText(a.alias).length;
   });
+}
+
+const TOKEN_SEPARATOR_RE = /[\s,./()[\]{}:;'"|\\!?+&=-]+/g;
+
+function aliasMatchRanges(
+  text: string,
+  alias: string,
+  matchMode: CategoryAliasMatchModeValue,
+): Array<{ start: number; end: number }> {
+  if (!text || !alias) return [];
+  if (matchMode === "EXACT") {
+    return text === alias ? [{ start: 0, end: text.length }] : [];
+  }
+  if (matchMode === "TOKEN") {
+    const ranges: Array<{ start: number; end: number }> = [];
+    let cursor = 0;
+    for (const separator of text.matchAll(TOKEN_SEPARATOR_RE)) {
+      const separatorStart = separator.index ?? cursor;
+      if (separatorStart > cursor && text.slice(cursor, separatorStart) === alias) {
+        ranges.push({ start: cursor, end: separatorStart });
+      }
+      cursor = separatorStart + separator[0].length;
+    }
+    if (cursor < text.length && text.slice(cursor) === alias) {
+      ranges.push({ start: cursor, end: text.length });
+    }
+    return ranges;
+  }
+
+  const ranges: Array<{ start: number; end: number }> = [];
+  let from = 0;
+  while (from <= text.length - alias.length) {
+    const start = text.indexOf(alias, from);
+    if (start < 0) break;
+    ranges.push({ start, end: start + alias.length });
+    from = start + Math.max(alias.length, 1);
+  }
+  return ranges;
+}
+
+/**
+ * Returns every distinct canonical category explicitly evidenced in one text.
+ * Unlike `matchCategoryAliasRows`, this is intended only for multi-subject
+ * detection. It applies a conservative longest-span guard so compound aliases
+ * ("หน้าคลัชคอมแอร์") suppress nested generic aliases ("คอมแอร์").
+ */
+export function matchAllCategoryAliasRows(
+  text: string | null | undefined,
+  rows: CategoryAliasResolverRow[],
+): CategoryAliasEvidenceResult {
+  const normalizedText = normalizeAliasText(text?.normalize("NFKC"));
+  if (!normalizedText) return { matches: [], skippedBy: null };
+
+  const activeRows = rows.filter((row) => row.isActive && normalizeAliasText(row.alias));
+  for (const row of sortAliasRows(activeRows.filter((candidate) => candidate.kind === "SKIP_CATEGORY"))) {
+    const alias = normalizeAliasText(row.alias.normalize("NFKC"));
+    if (aliasMatchRanges(normalizedText, alias, row.matchMode).length > 0) {
+      return { matches: [], skippedBy: row.alias };
+    }
+  }
+
+  const candidates: CategoryAliasEvidence[] = [];
+  for (const row of activeRows) {
+    if (row.kind !== "MATCH" || !row.category?.isActive) continue;
+    const alias = normalizeAliasText(row.alias.normalize("NFKC"));
+    for (const range of aliasMatchRanges(normalizedText, alias, row.matchMode)) {
+      candidates.push({
+        alias: row.alias,
+        categoryId: row.category.id,
+        categoryName: row.category.name,
+        matchMode: row.matchMode,
+        priority: row.priority,
+        ...range,
+      });
+    }
+  }
+
+  // Specific/long evidence wins before priority. This is intentionally stricter
+  // than the single-category resolver: false multi is more harmful than falling
+  // back to the existing single/handoff path.
+  candidates.sort((a, b) => {
+    const lengthDiff = b.end - b.start - (a.end - a.start);
+    if (lengthDiff !== 0) return lengthDiff;
+    if (b.priority !== a.priority) return b.priority - a.priority;
+    return a.start - b.start;
+  });
+
+  const accepted: CategoryAliasEvidence[] = [];
+  for (const candidate of candidates) {
+    const overlaps = accepted.some(
+      (existing) => candidate.start < existing.end && candidate.end > existing.start,
+    );
+    if (!overlaps) accepted.push(candidate);
+  }
+
+  accepted.sort((a, b) => a.start - b.start || b.priority - a.priority);
+  const seenCategories = new Set<string>();
+  return {
+    matches: accepted.filter((match) => {
+      if (seenCategories.has(match.categoryId)) return false;
+      seenCategories.add(match.categoryId);
+      return true;
+    }),
+    skippedBy: null,
+  };
 }
 
 export function matchCategoryAliasRows(
