@@ -133,12 +133,17 @@ function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Fire a notification without ever breaking the business flow (Iron Rule: bell +
- *  Telegram together — createNotification handles both). */
-function safeNotify(promise: Promise<unknown>): void {
-  void promise.catch((error) => {
-    console.warn(`[messenger] notification failed: ${error instanceof Error ? error.message : "unknown"}`);
-  });
+/** Await notification delivery so serverless execution cannot end before the
+ * bell + Telegram attempt finishes. Delivery failure stays non-fatal but is
+ * emitted as a searchable production error after Telegram's internal retries. */
+async function safeNotify(promise: Promise<unknown>): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    console.error("[messenger] ADMIN_NOTIFICATION_DELIVERY_FAILED", {
+      error: error instanceof Error ? error.message : "unknown",
+    });
+  }
 }
 
 async function handoffUncertainMessengerProduct(input: {
@@ -152,7 +157,7 @@ async function handoffUncertainMessengerProduct(input: {
 }): Promise<void> {
   const text = input.text ?? CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY;
   await escalateMessengerConversationToAdmin(input.conversationId);
-  safeNotify(
+  await safeNotify(
     notifyMessengerNeedsAdmin({
       conversationId: input.conversationId,
       text: input.originalText,
@@ -341,7 +346,7 @@ async function ingestMessengerInbound(
 
   // A brand-new customer just started chatting → alert admins (bell + Telegram).
   if (created) {
-    safeNotify(
+    await safeNotify(
       notifyMessengerNewConversation({
         conversationId: conversation.id,
         displayName: conversation.displayName ?? displayName,
@@ -448,7 +453,7 @@ async function replyToMessengerTurn(params: {
       } catch (error) {
         console.error(`[messenger] slip ingest failed: ${error instanceof Error ? error.message : "unknown"}`);
       }
-      safeNotify(notifyMessengerPaymentSlip({ conversationId }));
+      await safeNotify(notifyMessengerPaymentSlip({ conversationId }));
       const reply = "ได้รับสลิปแล้วนะคะ 🙏 เดี๋ยวจูนตรวจสอบยอดโอนให้ค่ะ";
       await sendMessengerText({ pageAccessToken, psid, text: reply });
       await persistOutbound(conversationId, psid, reply, { intent: LineIntent.PAYMENT_SLIP_IMAGE });
@@ -565,7 +570,7 @@ async function replyToMessengerTurn(params: {
       }
       if (repliedWithAnySearch) {
         await escalateMessengerConversationToAdmin(conversationId);
-        safeNotify(
+        await safeNotify(
           notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
         );
         const reply = "จูนส่งเรื่องราคาให้แอดมินช่วยเช็กให้นะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
@@ -578,7 +583,7 @@ async function replyToMessengerTurn(params: {
 
   if (route.requiresAdmin) {
     await escalateMessengerConversationToAdmin(conversationId);
-    safeNotify(
+    await safeNotify(
       notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
     );
     const reply = "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
@@ -1003,7 +1008,7 @@ async function replyWithProductSearch(params: {
     })
   ) {
     await escalateMessengerConversationToAdmin(params.conversationId);
-    safeNotify(
+    await safeNotify(
       notifyMessengerNeedsAdmin({
         conversationId: params.conversationId,
         text: params.originalText,
@@ -1067,7 +1072,7 @@ async function replyWithProductSearch(params: {
   // hand off to a human instead.
   if (productSearch.result.total > 0 && products.length === 0) {
     await escalateMessengerConversationToAdmin(params.conversationId);
-    safeNotify(
+    await safeNotify(
       notifyMessengerNeedsAdmin({
         conversationId: params.conversationId,
         text: params.originalText,
@@ -1107,7 +1112,7 @@ async function replyWithProductSearch(params: {
       !isAccessoryAnchored && (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
     if (weakCategoryMatchGuard) {
       await escalateMessengerConversationToAdmin(params.conversationId);
-      safeNotify(
+      await safeNotify(
         notifyMessengerNeedsAdmin({
           conversationId: params.conversationId,
           text: params.originalText,

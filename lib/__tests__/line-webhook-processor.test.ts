@@ -2967,6 +2967,31 @@ test("ambiguous per-subject vehicle mapping performs no LINE search and hands of
   assert.equal(calls.notifyHandoffs.length, 1);
 });
 
+test("LINE fails closed when LLM claims multi-subject but canonical mapping is unavailable", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+  dependencies.extractChatSearchIntent = async () => ({
+    ...productSearchIntent("วาล์ว/ไดรเออร์ Triton"),
+    subjects: [
+      { partType: "วาล์ว", carBrand: null, carModel: "Triton", year: null, partKind: "fitment" as const, query: "วาล์ว Triton" },
+      { partType: "ไดรเออร์", carBrand: null, carModel: "Triton", year: null, partKind: "fitment" as const, query: "ไดรเออร์ Triton" },
+    ],
+  });
+  dependencies.detectChatMultiSubjects = async () => {
+    throw new Error("category alias database unavailable");
+  };
+
+  await processLineWebhookPayload(
+    textPayload("วาล์ว/ไดรเออร์ Triton"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.searches, []);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
 test("multi-subject: any unresolved subject hands off and freezes after suppressing unsafe products", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   // No fitmentFilters configured → the resolver returns no carModelName, so the

@@ -1518,15 +1518,18 @@ export async function processLineAiReply(
             text: processText,
             intent: effectiveSearchIntent,
           }).catch(() => ({
-            subjects: effectiveSearchIntent?.subjects ?? null,
-            source: effectiveSearchIntent?.subjects?.length ? "llm" as const : "none" as const,
-            handoffReason: null,
+            subjects: null,
+            source: "none" as const,
+            handoffReason:
+              (effectiveSearchIntent?.subjects?.length ?? 0) >= 2
+                ? "CANONICAL_MAPPING_UNAVAILABLE" as const
+                : null,
             categories: [],
           }))
         : { subjects: null, source: "none", handoffReason: null, categories: [] };
     const multiSubjects = multiDetection.subjects;
-    const multiAmbiguousHandoff = multiDetection.handoffReason === "AMBIGUOUS_VEHICLE_BINDING";
-    if (multiDetection.source !== "none" || multiAmbiguousHandoff) {
+    const multiUnsafeHandoff = multiDetection.handoffReason !== null;
+    if (multiDetection.source !== "none" || multiUnsafeHandoff) {
       fireAndForgetAudit(dependencies, {
         conversationId: input.conversation.id,
         action: "MULTI_SUBJECT_DETECTED",
@@ -2063,7 +2066,7 @@ export async function processLineAiReply(
           gateBlocksSearch ||
           imageOnlyLowConfidence ||
           stockAvailabilityDirect ||
-          multiAmbiguousHandoff))
+          multiUnsafeHandoff))
       ? ({
           searched: false,
           reason: imageOnlyLowConfidence
@@ -2073,8 +2076,8 @@ export async function processLineAiReply(
             // "มีของไหม" ล้วน — จะจบที่ handoff แอดมินเสมอ ไม่ต้องเสีย search
             : stockAvailabilityDirect
               ? "STOCK_AVAILABILITY_DIRECT"
-            : multiAmbiguousHandoff
-              ? "MULTI_SUBJECT_AMBIGUOUS_VEHICLE"
+            : multiUnsafeHandoff
+              ? `MULTI_SUBJECT_UNSAFE:${multiDetection.handoffReason ?? "UNKNOWN"}`
             : gateBlocksSearch
               ? `GATE_ASK:${gateDecision?.reason ?? ""}`
               : "NON_PRODUCT_TURN",
@@ -2508,12 +2511,12 @@ export async function processLineAiReply(
             audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: "CLASSIFIER_UNCERTAIN" },
           }
-      : liveMode && multiAmbiguousHandoff
+      : liveMode && multiUnsafeHandoff
         ? {
             message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
-            reason: "MULTI_SUBJECT_AMBIGUOUS_VEHICLE_HANDOFF",
+            reason: "MULTI_SUBJECT_UNSAFE_HANDOFF",
             handoff: true,
-            audit: "AI_MULTI_SUBJECT_AMBIGUOUS_HANDOFF",
+            audit: "AI_MULTI_SUBJECT_UNSAFE_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: multiDetection.handoffReason },
           }
       : generalInquiryHandoff

@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { LineMessageType, NotificationSeverity, NotificationType } from "@/lib/generated/prisma";
-import { buildLineMirrorText, buildTelegramNotificationText } from "@/lib/telegram";
+import {
+  buildLineMirrorText,
+  buildTelegramNotificationText,
+  sendTelegramMessage,
+} from "@/lib/telegram";
 
 // A fixed instant so the formatted date/time assertion is deterministic.
 // 2025-06-27T07:32:00Z === 14:32 in Asia/Bangkok (UTC+7).
@@ -92,5 +96,42 @@ describe("buildTelegramNotificationText", () => {
     assert.match(text, /^🆕 ลูกค้าใหม่จาก LINE/);
     assert.ok(!text.includes("🟡"));
     assert.ok(!text.includes("🔴"));
+  });
+});
+
+describe("sendTelegramMessage retry policy", () => {
+  it("retries transient Telegram failures and succeeds on the next attempt", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("temporary", { status: 500 })
+        : new Response("ok", { status: 200 });
+    };
+    try {
+      await sendTelegramMessage({ botToken: "token", chatId: "chat", text: "hello" });
+      assert.equal(calls, 2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not retry permanent Telegram 4xx failures", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response("unauthorized", { status: 401 });
+    };
+    try {
+      await assert.rejects(
+        sendTelegramMessage({ botToken: "token", chatId: "chat", text: "hello" }),
+        /Telegram sendMessage failed \(401\)/,
+      );
+      assert.equal(calls, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

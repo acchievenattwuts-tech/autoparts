@@ -105,6 +105,22 @@ test("explicit LLM subjects preserve separate vehicle binding", () => {
   assert.equal(result.handoffReason, null);
 });
 
+test("LLM cannot split one compound alias into false multi-subjects", () => {
+  const result = detectChatMultiSubjectsFromRows({
+    text: "หน้าคลัชคอมแอร์ Triton",
+    intent: intent({
+      subjects: [
+        { partType: "หน้าคลัชคอมแอร์", carBrand: null, carModel: "Triton", year: null, partKind: "fitment", query: "หน้าคลัชคอมแอร์ Triton" },
+        { partType: "คอมแอร์", carBrand: null, carModel: "Triton", year: null, partKind: "fitment", query: "คอมแอร์ Triton" },
+      ],
+    }),
+    rows: baseRows,
+  });
+
+  assert.equal(result.subjects, null);
+  assert.deepEqual(result.categories, ["Compressor Clutch"]);
+});
+
 for (const [compound, expectedCategory] of [
   ["น้ำมันคอมแอร์", "Compressor Oil"],
   ["หน้าคลัชคอมแอร์", "Compressor Clutch"],
@@ -131,7 +147,16 @@ test("multiple aliases of the same canonical category are not multi-subject", ()
 
 test("replacement and negation cues never synthesize old and new aliases as multi-subject", () => {
   for (const text of ["ไม่เอาวาล์วแล้ว เอาไดรเออร์", "เปลี่ยนจากวาล์วเป็นไดรเออร์"]) {
-    const result = detectChatMultiSubjectsFromRows({ text, intent: intent(), rows: baseRows });
+    const result = detectChatMultiSubjectsFromRows({
+      text,
+      intent: intent({
+        subjects: [
+          { partType: "วาล์ว", carBrand: null, carModel: null, year: null, partKind: "fitment", query: "วาล์ว" },
+          { partType: "ไดรเออร์", carBrand: null, carModel: null, year: null, partKind: "fitment", query: "ไดรเออร์" },
+        ],
+      }),
+      rows: baseRows,
+    });
     assert.equal(result.subjects, null, text);
   }
 });
@@ -150,7 +175,12 @@ test("an active skip alias blocks mapping-based multi-subject synthesis", () => 
   ];
   const result = detectChatMultiSubjectsFromRows({
     text: "สอบถามทั่วไป วาล์ว/ไดรเออร์",
-    intent: intent(),
+    intent: intent({
+      subjects: [
+        { partType: "วาล์ว", carBrand: null, carModel: null, year: null, partKind: "fitment", query: "วาล์ว" },
+        { partType: "ไดรเออร์", carBrand: null, carModel: null, year: null, partKind: "fitment", query: "ไดรเออร์" },
+      ],
+    }),
     rows,
   });
   assert.equal(result.subjects, null);

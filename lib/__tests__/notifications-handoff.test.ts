@@ -14,10 +14,12 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
     const telegramCalls: Array<{ type: NotificationType; body?: string | null }> = [];
+    let adminIds = [{ id: "admin-1" }];
+    let telegramFailure: Error | null = null;
     await mock.module("@/lib/db", {
       namedExports: {
         db: {
-          user: { findMany: async () => [{ id: "admin-1" }] },
+          user: { findMany: async () => adminIds },
           notification: {
             findFirst: async () => ({ id: "existing-unread" }),
             findMany: async () => {
@@ -34,6 +36,7 @@ test(
       namedExports: {
         shouldSendTelegramForNotification: () => true,
         sendTelegramNotification: async (input: { type: NotificationType; body?: string | null }) => {
+          if (telegramFailure) throw telegramFailure;
           telegramCalls.push(input);
           return { sentCount: 1 };
         },
@@ -78,5 +81,34 @@ test(
       [NotificationType.LINE_OA_HANDOFF, NotificationType.MESSENGER_HANDOFF],
     );
     assert.match(telegramCalls[0]?.body ?? "", /ไดรเออร์/);
+
+    adminIds = [];
+    assert.equal(
+      await createNotification({
+        type: NotificationType.LINE_OA_HANDOFF,
+        severity: NotificationSeverity.WARNING,
+        title: "no active bell admin",
+      }),
+      0,
+    );
+    assert.equal(telegramCalls.length, 3, "Telegram still alerts when no active ADMIN bell recipient exists");
+
+    adminIds = [{ id: "admin-1" }];
+    telegramFailure = new Error("Telegram unavailable after retries");
+    await assert.rejects(
+      notifyLineOaNeedsAdmin({ conversationId: "line-failure", text: "ทดสอบส่งไม่สำเร็จ" }),
+      /Telegram unavailable after retries/,
+    );
+
+    adminIds = [];
+    assert.equal(
+      await createNotification({
+        type: NotificationType.SHOPEE_ORDER_FAILED,
+        severity: NotificationSeverity.ERROR,
+        title: "business flow remains non-fatal",
+      }),
+      0,
+      "non-handoff notification callers remain isolated from Telegram failures",
+    );
   },
 );

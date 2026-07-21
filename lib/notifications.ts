@@ -29,6 +29,9 @@ export type CreateNotificationInput = {
   dedupeKey?: string | null;
   /** Keep the bell row deduped but still send this new handoff to Telegram. */
   sendTelegramWhenDeduped?: boolean;
+  /** Handoff callers already isolate notification errors; let them observe a
+   * final Telegram failure after retries. General business flows stay non-fatal. */
+  propagateTelegramFailure?: boolean;
   /** Explicit target user ids. Omit to fan out to all active ADMIN users. */
   userIds?: string[];
 };
@@ -46,15 +49,42 @@ async function resolveTargetUserIds(explicit?: string[]): Promise<string[]> {
 
 async function deliverTelegramNotification(input: CreateNotificationInput): Promise<void> {
   if (!shouldSendTelegramForNotification(input.type)) return;
-  await sendTelegramNotification({
-    type: input.type,
-    severity: input.severity ?? NotificationSeverity.INFO,
-    title: input.title,
-    body: input.body ?? null,
-    link: input.link ?? null,
-  }).catch((error) => {
-    console.warn("[notifications] Telegram delivery skipped/failed:", error instanceof Error ? error.message : "unknown");
-  });
+  try {
+    const result = await sendTelegramNotification({
+      type: input.type,
+      severity: input.severity ?? NotificationSeverity.INFO,
+      title: input.title,
+      body: input.body ?? null,
+      link: input.link ?? null,
+    });
+    if (result.sentCount < 1) {
+      throw new Error(`Telegram delivery skipped: ${result.skippedReason ?? "NO_RECIPIENT"}`);
+    }
+    console.info("[notifications] TELEGRAM_DELIVERY_SUCCEEDED", {
+      type: input.type,
+      entityType: input.entityType ?? null,
+      entityId: input.entityId ?? null,
+      dedupeKey: input.dedupeKey ?? null,
+      sentCount: result.sentCount,
+    });
+  } catch (error) {
+    console.error("[notifications] TELEGRAM_DELIVERY_FAILED", {
+      type: input.type,
+      entityType: input.entityType ?? null,
+      entityId: input.entityId ?? null,
+      dedupeKey: input.dedupeKey ?? null,
+      error: error instanceof Error ? error.message : "unknown",
+    });
+    throw error;
+  }
+}
+
+async function attemptTelegramNotification(input: CreateNotificationInput): Promise<void> {
+  try {
+    await deliverTelegramNotification(input);
+  } catch (error) {
+    if (input.propagateTelegramFailure) throw error;
+  }
 }
 
 /**
@@ -64,7 +94,12 @@ async function deliverTelegramNotification(input: CreateNotificationInput): Prom
  */
 export async function createNotification(input: CreateNotificationInput): Promise<number> {
   const targetIds = await resolveTargetUserIds(input.userIds);
-  if (targetIds.length === 0) return 0;
+  if (targetIds.length === 0) {
+    // Telegram remains the emergency admin channel even if no active ADMIN bell
+    // recipient is configured. A delivery failure is observable to the caller.
+    await attemptTelegramNotification(input);
+    return 0;
+  }
 
   if (input.dedupeKey) {
     const existingUnread = await db.notification.findFirst({
@@ -72,7 +107,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
       select: { id: true },
     });
     if (existingUnread) {
-      if (input.sendTelegramWhenDeduped) await deliverTelegramNotification(input);
+      if (input.sendTelegramWhenDeduped) await attemptTelegramNotification(input);
       return 0;
     }
   }
@@ -102,7 +137,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
     })),
   });
 
-  if (result.count > 0) await deliverTelegramNotification(input);
+  if (result.count > 0) await attemptTelegramNotification(input);
 
   return result.count;
 }
@@ -152,6 +187,7 @@ export async function notifyLineOaNeedsAdmin(input: {
     entityId: input.conversationId,
     dedupeKey: `line-oa-handoff:${input.conversationId}`,
     sendTelegramWhenDeduped: true,
+    propagateTelegramFailure: true,
   });
 }
 
@@ -222,6 +258,7 @@ export async function notifyMessengerNeedsAdmin(input: {
     entityId: input.conversationId,
     dedupeKey: `messenger-handoff:${input.conversationId}`,
     sendTelegramWhenDeduped: true,
+    propagateTelegramFailure: true,
   });
 }
 

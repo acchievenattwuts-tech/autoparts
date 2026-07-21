@@ -3,6 +3,8 @@ import { formatDateTimeThai } from "@/lib/th-date";
 
 const TELEGRAM_SEND_MESSAGE_URL = "https://api.telegram.org/bot";
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
+const TELEGRAM_SEND_MAX_ATTEMPTS = 3;
+const TELEGRAM_RETRY_DELAYS_MS = [250, 750] as const;
 
 /**
  * Thai-language labels for every NotificationType — used in the Telegram
@@ -140,7 +142,26 @@ export function buildTelegramNotificationText(payload: TelegramNotificationPaylo
   return lines.filter((line) => line !== null).join("\n").slice(0, TELEGRAM_MAX_MESSAGE_LENGTH);
 }
 
-export async function sendTelegramMessage(params: {
+class TelegramHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs: number | null,
+  ) {
+    super(message);
+    this.name = "TelegramHttpError";
+  }
+}
+
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+function isRetryableTelegramError(error: unknown): boolean {
+  if (error instanceof TelegramHttpError) return error.status === 429 || error.status >= 500;
+  // fetch network/DNS/connection errors are not HTTP errors and are generally transient.
+  return true;
+}
+
+async function sendTelegramMessageOnce(params: {
   botToken: string;
   chatId: string;
   text: string;
@@ -157,8 +178,37 @@ export async function sendTelegramMessage(params: {
 
   if (!response.ok) {
     const body = (await response.text()).slice(0, 300);
-    throw new Error(`Telegram sendMessage failed (${response.status}): ${body}`);
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const retryAfterMs =
+      Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? Math.min(retryAfterSeconds * 1_000, 2_000)
+        : null;
+    throw new TelegramHttpError(
+      `Telegram sendMessage failed (${response.status}): ${body}`,
+      response.status,
+      retryAfterMs,
+    );
   }
+}
+
+export async function sendTelegramMessage(params: {
+  botToken: string;
+  chatId: string;
+  text: string;
+}): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= TELEGRAM_SEND_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      await sendTelegramMessageOnce(params);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= TELEGRAM_SEND_MAX_ATTEMPTS || !isRetryableTelegramError(error)) throw error;
+      const retryAfterMs = error instanceof TelegramHttpError ? error.retryAfterMs : null;
+      await wait(retryAfterMs ?? TELEGRAM_RETRY_DELAYS_MS[attempt - 1] ?? 750);
+    }
+  }
+  throw lastError;
 }
 
 /** One-line label for an inbound LINE message in the Telegram mirror. Image /

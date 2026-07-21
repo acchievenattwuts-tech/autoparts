@@ -9,7 +9,7 @@ import type { ChatSearchIntent, ChatSubject } from "@/lib/chat-core/ai-service";
 export type ChatMultiSubjectDetection = {
   subjects: ChatSubject[] | null;
   source: "llm" | "category_mapping" | "none";
-  handoffReason: "AMBIGUOUS_VEHICLE_BINDING" | null;
+  handoffReason: "AMBIGUOUS_VEHICLE_BINDING" | "CANONICAL_MAPPING_UNAVAILABLE" | null;
   categories: string[];
 };
 
@@ -62,6 +62,25 @@ function subjectQuery(
     .join(" ");
 }
 
+function areLlmSubjectsCanonicallyVerified(input: {
+  subjects: ChatSubject[];
+  rows: CategoryAliasResolverRow[];
+  rawEvidence: CategoryAliasEvidence[];
+}): boolean {
+  const rawCategoryIds = new Set(input.rawEvidence.map((match) => match.categoryId));
+  const subjectCategoryIds = new Set<string>();
+
+  for (const subject of input.subjects) {
+    const evidence = matchAllCategoryAliasRows(subject.partType, input.rows);
+    if (evidence.skippedBy || evidence.matches.length !== 1) return false;
+    const categoryId = evidence.matches[0].categoryId;
+    if (!rawCategoryIds.has(categoryId) || subjectCategoryIds.has(categoryId)) return false;
+    subjectCategoryIds.add(categoryId);
+  }
+
+  return subjectCategoryIds.size >= 2;
+}
+
 export function detectChatMultiSubjectsFromRows(input: {
   text?: string | null;
   intent?: ChatSearchIntent | null;
@@ -74,8 +93,8 @@ export function detectChatMultiSubjectsFromRows(input: {
   // not synthesize additional old subjects from words the customer rejected.
   if (REPLACE_CUE_RE.test(text) || NEGATED_MULTI_RE.test(text)) {
     return {
-      subjects: llmSubjects.length >= 2 ? llmSubjects : null,
-      source: llmSubjects.length >= 2 ? "llm" : "none",
+      subjects: null,
+      source: "none",
       handoffReason: null,
       categories: [],
     };
@@ -84,15 +103,22 @@ export function detectChatMultiSubjectsFromRows(input: {
   const evidence = matchAllCategoryAliasRows(text, input.rows);
   if (evidence.skippedBy || evidence.matches.length < 2) {
     return {
-      subjects: llmSubjects.length >= 2 ? llmSubjects : null,
-      source: llmSubjects.length >= 2 ? "llm" : "none",
+      subjects: null,
+      source: "none",
       handoffReason: null,
       categories: evidence.matches.map((match) => match.categoryName),
     };
   }
 
   const categories = evidence.matches.map((match) => match.categoryName);
-  if (llmSubjects.length >= 2) {
+  if (
+    llmSubjects.length >= 2 &&
+    areLlmSubjectsCanonicallyVerified({
+      subjects: llmSubjects,
+      rows: input.rows,
+      rawEvidence: evidence.matches,
+    })
+  ) {
     return { subjects: llmSubjects, source: "llm", handoffReason: null, categories };
   }
 
@@ -144,14 +170,17 @@ export async function detectChatMultiSubjects(input: {
   text?: string | null;
   intent?: ChatSearchIntent | null;
 }): Promise<ChatMultiSubjectDetection> {
-  const llmSubjects = input.intent?.subjects?.filter((subject) => subject.partType) ?? [];
   try {
     return detectChatMultiSubjectsFromRows({ ...input, rows: await loadActiveCategoryAliasRows() });
   } catch {
+    const llmClaimsMultipleSubjects =
+      (input.intent?.subjects?.filter((subject) => subject.partType).length ?? 0) >= 2;
     return {
-      subjects: llmSubjects.length >= 2 ? llmSubjects : null,
-      source: llmSubjects.length >= 2 ? "llm" : "none",
-      handoffReason: null,
+      // Fail closed: without canonical rows, LLM multi-subjects cannot be proven
+      // distinct/non-overlapping. The normal single-subject/handoff path remains.
+      subjects: null,
+      source: "none",
+      handoffReason: llmClaimsMultipleSubjects ? "CANONICAL_MAPPING_UNAVAILABLE" : null,
       categories: [],
     };
   }
