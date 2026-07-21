@@ -27,6 +27,8 @@ export type CreateNotificationInput = {
   entityId?: string | null;
   /** When set, skip users who already have an UNREAD row with this key. */
   dedupeKey?: string | null;
+  /** Keep the bell row deduped but still send this new handoff to Telegram. */
+  sendTelegramWhenDeduped?: boolean;
   /** Explicit target user ids. Omit to fan out to all active ADMIN users. */
   userIds?: string[];
 };
@@ -40,6 +42,19 @@ async function resolveTargetUserIds(explicit?: string[]): Promise<string[]> {
     select: { id: true },
   });
   return admins.map((admin) => admin.id);
+}
+
+async function deliverTelegramNotification(input: CreateNotificationInput): Promise<void> {
+  if (!shouldSendTelegramForNotification(input.type)) return;
+  await sendTelegramNotification({
+    type: input.type,
+    severity: input.severity ?? NotificationSeverity.INFO,
+    title: input.title,
+    body: input.body ?? null,
+    link: input.link ?? null,
+  }).catch((error) => {
+    console.warn("[notifications] Telegram delivery skipped/failed:", error instanceof Error ? error.message : "unknown");
+  });
 }
 
 /**
@@ -56,7 +71,10 @@ export async function createNotification(input: CreateNotificationInput): Promis
       where: { dedupeKey: input.dedupeKey, readAt: null },
       select: { id: true },
     });
-    if (existingUnread) return 0;
+    if (existingUnread) {
+      if (input.sendTelegramWhenDeduped) await deliverTelegramNotification(input);
+      return 0;
+    }
   }
 
   let eligibleIds = targetIds;
@@ -84,17 +102,7 @@ export async function createNotification(input: CreateNotificationInput): Promis
     })),
   });
 
-  if (result.count > 0 && shouldSendTelegramForNotification(input.type)) {
-    await sendTelegramNotification({
-      type: input.type,
-      severity: input.severity ?? NotificationSeverity.INFO,
-      title: input.title,
-      body: input.body ?? null,
-      link: input.link ?? null,
-    }).catch((error) => {
-      console.warn("[notifications] Telegram delivery skipped/failed:", error instanceof Error ? error.message : "unknown");
-    });
-  }
+  if (result.count > 0) await deliverTelegramNotification(input);
 
   return result.count;
 }
@@ -108,7 +116,8 @@ const LINE_OA_PREVIEW_MAX_LENGTH = 80;
  *
  * Deduped per conversation: only one UNREAD notification exists at a time, so a
  * burst of customer messages never spams the bell. A fresh row is created again
- * once every admin has read the previous one. In-app only (no Telegram).
+ * once every admin has read the previous one. Each newly processed handoff still
+ * reaches Telegram while that bell row remains unread.
  */
 export async function notifyLineOaNeedsAdmin(input: {
   conversationId: string;
@@ -142,6 +151,7 @@ export async function notifyLineOaNeedsAdmin(input: {
     entityType: "LineConversation",
     entityId: input.conversationId,
     dedupeKey: `line-oa-handoff:${input.conversationId}`,
+    sendTelegramWhenDeduped: true,
   });
 }
 
@@ -211,6 +221,7 @@ export async function notifyMessengerNeedsAdmin(input: {
     entityType: "MessengerConversation",
     entityId: input.conversationId,
     dedupeKey: `messenger-handoff:${input.conversationId}`,
+    sendTelegramWhenDeduped: true,
   });
 }
 

@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { buildDidYouMeanNote, decideChatSearchGate, type ChatSearchGateFields } from "@/lib/chat-core/search-gate";
+import {
+  buildDidYouMeanNote,
+  CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+  decideChatSearchGate,
+  type ChatSearchGateFields,
+} from "@/lib/chat-core/search-gate";
 
 function fields(overrides: Partial<ChatSearchGateFields>): ChatSearchGateFields {
   return {
@@ -78,6 +83,10 @@ test("broad aircon parts inquiry with truck brands asks for the part category fi
   );
 
   assert.deepEqual(d, { action: "ask", ask: "need_part", reason: "BROAD_PART_TYPE" });
+});
+
+test("generic uncertain fallback never assumes the customer has a truck", () => {
+  assert.doesNotMatch(CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY, /รถบรรทุก/);
 });
 
 test("did-you-mean note names the corrected term", () => {

@@ -70,6 +70,7 @@ test("maps colloquial part-types to the right category hint", async () => {
   assert.equal(matchPartTypeToCategoryHint("แผงแอร์"), "(Condenser)");
   assert.equal(matchPartTypeToCategoryHint("คอมแอร์"), "(Compressor)");
   assert.equal(matchPartTypeToCategoryHint("กรองแอร์"), "Cabin air filter");
+  assert.equal(matchPartTypeToCategoryHint("ไดรเออร์"), "Drier");
 });
 
 test("explicit A/C valve terms map to Expansion Valve; bare valve stays ambiguous", async () => {

@@ -317,7 +317,7 @@ const PART_TYPE_CATEGORY_ALIASES: PartTypeAlias[] = [
   { keywords: ["คอยล์ร้อน", "แผงแอร์", "แผงร้อน", "รังผึ้งแอร์", "condenser"], categoryMatch: "(Condenser)" },
   { keywords: ["กรองแอร์", "ฟิลเตอร์แอร์", "cabin"], categoryMatch: "Cabin air filter" },
   { keywords: ["กรองอากาศ", "ไส้กรองอากาศ", "air filter"], categoryMatch: "(Air Filter)" },
-  { keywords: ["ดรายเออร์", "ไดเออร์", "drier", "receiver"], categoryMatch: "Drier" },
+  { keywords: ["ดรายเออร์", "ไดเออร์", "ไดรเออร์", "drier", "receiver"], categoryMatch: "Drier" },
   { keywords: ["รีซิสเตอร์", "resistor"], categoryMatch: "Blower Motor Resistor" },
   { keywords: ["โบเวอร์", "พัดลมแอร์", "มอเตอร์ตู้แอร์", "พัดลมตู้แอร์", "blower"], categoryMatch: "Blower Motor)" },
   { keywords: ["ฝาหม้อน้ำ", "ฝาปิดหม้อน้ำ", "radiator cap"], categoryMatch: "Radiator Cap" },

@@ -135,6 +135,7 @@ const categoryAliasSeeds: CategoryAliasSeed[] = [
       { alias: "ดรายเออร์", priority: 220 },
       { alias: "ดรายเออร์แอร์", priority: 225 },
       { alias: "ไดเออร์", priority: 220 },
+      { alias: "ไดรเออร์", priority: 220 },
       { alias: "ไดเออร์แอร์", priority: 225 },
       { alias: "กรองไดเออร์", priority: 225 },
       { alias: "กระป๋องไดเออร์", priority: 225 },

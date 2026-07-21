@@ -61,6 +61,7 @@ test("category alias seed covers common garage vocabulary", () => {
     "วาวแอร์",
     "exp valve",
     "กรองไดเออร์",
+    "ไดรเออร์",
     "มอเตอร์ตู้",
     "พัดลมคอยล์ร้อน",
     "วาล์วหางคอม",

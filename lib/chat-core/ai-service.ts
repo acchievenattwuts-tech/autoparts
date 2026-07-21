@@ -41,6 +41,11 @@ export type ChatProductSummary = {
 // 429/rotate case it's actually there for.
 export const CHAT_CALL_TIMEOUT_MS = 8_000;
 export const CHAT_MAX_KEY_ATTEMPTS = 2;
+// Multi-subject product intents include a subjects[] array. 160 tokens truncated
+// valid Gemini JSON mid-object, which made the caller treat a successful
+// classification as unavailable and skip search entirely. This only expands the
+// extraction response envelope; it does not change catalog query/ranking logic.
+export const CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS = 512;
 
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
@@ -382,8 +387,9 @@ export async function extractChatSearchIntent(input: {
     const { text } = await generateGeminiContent({
       prompt: lines.join("\n"),
       systemInstruction: SEARCH_INTENT_SYSTEM_INSTRUCTION,
-      maxOutputTokens: 160,
+      maxOutputTokens: CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS,
       temperature: 0,
+      json: true,
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,

@@ -106,7 +106,7 @@ const STANDARD_MESSAGING_WINDOW_MS = 24 * 60 * 60 * 1_000;
 // customer can't push the owner past the 60s serverless ceiling.
 const OWNER_FINAL_PASS_AFTER_MS = 28_000;
 const EXPLICIT_PRODUCT_NOUN_RE =
-  /(คอย(?:ล์)?\s*เย็น|คอม\s*แอร์|แผง\s*แอร์|กรอง\s*แอร์|หม้อ\s*น้ำ|พัด\s*ลม|วาล์ว|ไดเออร์|ดรายเออร์|ตู้\s*แอร์|น้ำยา|โอริง|สาย\s*น้ำยา)/i;
+  /(คอย(?:ล์)?\s*เย็น|คอม\s*แอร์|แผง\s*แอร์|กรอง\s*แอร์|หม้อ\s*น้ำ|พัด\s*ลม|วาล์ว|ไดเออร์|ไดรเออร์|ดรายเออร์|ตู้\s*แอร์|น้ำยา|โอริง|สาย\s*น้ำยา)/i;
 const LATIN_MODEL_YEAR_ANCHOR_RE = /\b[A-Za-z]{2,}\s+\d{2}(?:-\d{2})?\b/;
 
 export type MessengerInboundEvent = {
