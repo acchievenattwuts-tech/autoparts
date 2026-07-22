@@ -44,6 +44,13 @@ const SHIPPING_SERVICE_INQUIRY_RE =
 const SHIPPING_ADDRESS_RE = /(ที่อยู่|จัดส่ง|ส่งของ|ปลายทาง|ตำบล|อำเภอ|จังหวัด|รหัสไปรษณีย์|postcode|address)/i;
 const ORDER_STATUS_RE = /(สถานะ|เลขพัสดุ|ติดตาม|tracking|ของถึง|ส่งหรือยัง|ออเดอร์|order)/i;
 const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|ต่อราคา|แพง|ราคาสุด|ขอราคา|ส่วนลด|discount)/i;
+// A quotation is an operational sales request, not a request to discover another
+// product. Keep this deterministic because the customer expects a human-produced
+// document/commitment even when the LLM classifier is unavailable or uncertain.
+// English "quote" is deliberately gated by a request/document cue so a product
+// name containing that common word does not become an admin hand-off by itself.
+const QUOTATION_REQUEST_RE =
+  /(?:ใบ\s*เสนอ\s*ราคา|ใบ\s*(?:quotation|quote)\b|(?:ขอ|ทำ|ออก|จัดทำ|รบกวน\s*(?:ทำ|ออก|จัดทำ))\s*(?:ใบ\s*)?(?:quotation|quote)\b)/i;
 const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|เสีย|พัง|ชำรุด|เปลี่ยนสินค้า|รับประกัน|claim|return)/i;
 const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
@@ -116,6 +123,17 @@ function routeText(text: string): ChatIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "CLAIM_KEYWORD",
+    };
+  }
+
+  if (QUOTATION_REQUEST_RE.test(normalized)) {
+    return {
+      intent: LineIntent.PURCHASE_INTENT,
+      allowsSearch: false,
+      requiresAdmin: true,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "QUOTATION_REQUEST_KEYWORD",
     };
   }
 

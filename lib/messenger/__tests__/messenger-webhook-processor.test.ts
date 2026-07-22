@@ -36,6 +36,7 @@ test(
   const inboundCreatedAt = new Date();
   let currentText = "พัดลมเป่า 14นิ้วมีไหมคับ";
   let searchHasResults = false;
+  let classifiedGroup: "product" | "purchase" = "product";
   let detectedSubjects: Array<{
     partType: string;
     carBrand: string | null;
@@ -158,17 +159,30 @@ test(
         };
       },
       generateScopedConversationalReply: async () => "scoped reply",
-      extractChatSearchIntent: async () => ({
-        group: "product",
-        query: "พัดลมเป่า 14 นิ้ว",
-        isProductQuery: true,
-        partType: "พัดลม",
-        carBrand: null,
-        carModel: null,
-        year: null,
-        partKind: "fitment",
-        tooBroad: false,
-      }),
+      extractChatSearchIntent: async () =>
+        classifiedGroup === "purchase"
+          ? {
+              group: "purchase",
+              query: "",
+              isProductQuery: false,
+              partType: null,
+              carBrand: null,
+              carModel: null,
+              year: null,
+              partKind: null,
+              tooBroad: false,
+            }
+          : {
+              group: "product",
+              query: "พัดลมเป่า 14 นิ้ว",
+              isProductQuery: true,
+              partType: "พัดลม",
+              carBrand: null,
+              carModel: null,
+              year: null,
+              partKind: "fitment",
+              tooBroad: false,
+            },
       buildJuneTextNoMatchHandoffReply: (known?: { partType?: string | null } | null) =>
         `สำหรับ${known?.partType ?? "รายการที่แจ้ง"} จูนขอให้แอดมินช่วยเช็กสต็อกและตัวที่เข้ากันให้ชัวร์ก่อนนะคะ`,
     },
@@ -294,4 +308,60 @@ test(
   assert.deepEqual(calls.searches.map((search) => search.text), ["วาล์ว Triton 2013", "ไดรเออร์ Triton 2013"]);
   assert.deepEqual(calls.escalations, []);
   assert.deepEqual(calls.notifications, []);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentText = "ทำใบเสนอราคามาให้หน่อยได้ไหมคะ ต้องการ 15 อัน";
+  detectedSubjects = null;
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-3",
+        fbEventId: "event-3",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, [], "explicit quotation request never searches products");
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.match(calls.textReplies[0] ?? "", /ส่งคำขอใบเสนอราคาให้แอดมิน/);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentText = "ช่วยดำเนินการรายการนี้ต่อให้ด้วยค่ะ";
+  classifiedGroup = "purchase";
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-4",
+        fbEventId: "event-4",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, [], "LLM purchase purpose is routed without product search");
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.match(calls.textReplies[0] ?? "", /แอดมิน/);
 });

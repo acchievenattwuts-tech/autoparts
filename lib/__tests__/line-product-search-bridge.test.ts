@@ -612,6 +612,54 @@ test("fan blade size/direction stay hard-required and empty result becomes direc
   }
 });
 
+test("physical identity constraints keep semantic recall inside matching name/alias evidence", async () => {
+  const calls: Array<string[][] | null> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "วาล์วแอร์ 1 หาง No 80 ธรรมดา หัว Taper",
+      fitmentHints: { categoryName: "วาล์ว (Expansion Valve)" },
+    },
+    async (input) => {
+      calls.push(input.requiredNameAliasTokenGroups ?? null);
+      return {
+        ids: ["p0444"],
+        total: 1,
+        mode: "v2",
+        matchReasons: { p0444: ["keyword"] },
+      };
+    },
+  );
+
+  assert.deepEqual(calls, [[
+    ["1 หาง", "1หาง", "1 tail", "1tail", "หางเดียว", "single tail", "one tail"],
+    ["taper", "หัว taper", "หัวtaper", "เตเปอร์", "หัวเตเปอร์", "เทเปอร์", "หัวเทเปอร์"],
+  ]]);
+  assert.equal(result.searched, true);
+  if (result.searched) {
+    assert.deepEqual(result.result.ids, ["p0444"]);
+    assert.deepEqual(result.result.appliedConstraintKeys, ["count:tail:1", "connector:taper"]);
+  }
+});
+
+test("physical identity no-match stays narrow and requests a human instead of broad products", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "วาล์วแอร์ 2 หาง หัว Taper",
+      fitmentHints: { categoryName: "วาล์ว (Expansion Valve)" },
+    },
+    async () => ({ ids: [], total: 0, mode: "v2", matchReasons: {} }),
+    async () => [],
+  );
+
+  assert.equal(result.searched, true);
+  if (result.searched) {
+    assert.equal(result.reason, "SEARCHED_PRODUCT_SPEC_NO_MATCH");
+    assert.equal(result.needsMoreInfo, true);
+  }
+});
+
 test("fan blade spec groups survive did-you-mean retry", async () => {
   const calls: Array<string[][] | null> = [];
   const result = await searchChatProductInquiry(

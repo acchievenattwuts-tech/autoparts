@@ -11,6 +11,114 @@ export type ChatProductSpecs = {
   voltage: number | null;
 };
 
+export type ChatProductIdentityConstraint = {
+  /** Stable diagnostic key; never derived from an LLM. */
+  key: string;
+  /** Exact customer evidence that caused this constraint to be applied. */
+  evidence: string;
+  /** AND between constraints, OR between these catalog spelling variants. */
+  variants: string[];
+};
+
+const NUMBERED_PHYSICAL_FEATURE_RE =
+  /(?:^|[\s(])([1-9]\d?)\s*(หาง|รู|ขา|สาย|พิน|pins?)(?=$|[\s),./-])/giu;
+
+const PHYSICAL_FEATURE_VARIANTS: Readonly<Record<string, { th: string; en: string }>> = {
+  หาง: { th: "หาง", en: "tail" },
+  รู: { th: "รู", en: "hole" },
+  ขา: { th: "ขา", en: "pin" },
+  สาย: { th: "สาย", en: "wire" },
+  พิน: { th: "พิน", en: "pin" },
+  pin: { th: "พิน", en: "pin" },
+  pins: { th: "พิน", en: "pin" },
+};
+
+const CONNECTOR_SHAPE_CONSTRAINTS: ReadonlyArray<{
+  key: string;
+  pattern: RegExp;
+  variants: string[];
+}> = [
+  {
+    key: "connector:taper",
+    pattern: /(?:หัว\s*)?(?:taper|เตเปอร์|เทเปอร์)/iu,
+    variants: ["taper", "หัว taper", "หัวtaper", "เตเปอร์", "หัวเตเปอร์", "เทเปอร์", "หัวเทเปอร์"],
+  },
+  {
+    key: "connector:flare",
+    pattern: /(?:หัว\s*)?(?:flare|แฟร์|แฟลร์)/iu,
+    variants: ["flare", "หัว flare", "หัวflare", "แฟร์", "หัวแฟร์", "แฟลร์", "หัวแฟลร์"],
+  },
+];
+
+const buildNumberedFeatureVariants = (count: number, feature: { th: string; en: string }): string[] => {
+  const variants = [
+    `${count} ${feature.th}`,
+    `${count}${feature.th}`,
+    `${count} ${feature.en}`,
+    `${count}${feature.en}`,
+  ];
+  if (count === 1) {
+    variants.push(
+      `${feature.th}เดียว`,
+      `single ${feature.en}`,
+      `one ${feature.en}`,
+    );
+  }
+  return variants;
+};
+
+/**
+ * Extracts only high-confidence physical identity phrases that are useful across
+ * product categories. Bare numbers and vague adjectives are deliberately ignored:
+ * "No80" / "ธรรมดา" may be shop/customer shorthand and must not become a hard
+ * product fact without catalog evidence. Every returned value is grounded in an
+ * exact regex match from the customer's text; no AI-generated constraints enter
+ * this path.
+ */
+export function extractChatProductIdentityConstraints(
+  value: string | null | undefined,
+): ChatProductIdentityConstraint[] {
+  const text = value?.trim() ?? "";
+  if (!text) return [];
+
+  const constraints: ChatProductIdentityConstraint[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const match of text.matchAll(NUMBERED_PHYSICAL_FEATURE_RE)) {
+    const count = Number(match[1]);
+    const rawFeature = match[2]?.toLowerCase();
+    const feature = rawFeature ? PHYSICAL_FEATURE_VARIANTS[rawFeature] : null;
+    if (!feature || !Number.isInteger(count) || count <= 0) continue;
+    const key = `count:${feature.en}:${count}`;
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+    constraints.push({
+      key,
+      evidence: match[0].trim(),
+      variants: buildNumberedFeatureVariants(count, feature),
+    });
+  }
+
+  for (const shape of CONNECTOR_SHAPE_CONSTRAINTS) {
+    const match = text.match(shape.pattern);
+    if (!match || seenKeys.has(shape.key)) continue;
+    seenKeys.add(shape.key);
+    constraints.push({
+      key: shape.key,
+      evidence: match[0].trim(),
+      variants: shape.variants,
+    });
+  }
+
+  return constraints;
+}
+
+export function buildChatProductIdentityRequiredTokenGroups(
+  value: string | null | undefined,
+): string[][] {
+  return extractChatProductIdentityConstraints(value).map((constraint) => constraint.variants);
+}
+
 const BLOWER_CONTEXT_RE =
   /(?:โบล?เวอร์|blower|พัดลม\s*แอร์|พัดลม\s*(?:เป่า\s*)?ตู้แอร์|มอเตอร์\s*ตู้แอร์|พัดลม\s*เป่า\s*คอยล์เย็น)/iu;
 const FAN_MOTOR_CONTEXT_RE =

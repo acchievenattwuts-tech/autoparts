@@ -5,6 +5,7 @@ import { extractProductSearchRequiredTokens } from "@/lib/product-search-require
 import {
   buildChatProductSpecRequiredTokenGroups,
   COOLING_FAN_BLADE_CATEGORY_HINT,
+  extractChatProductIdentityConstraints,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 
@@ -35,6 +36,8 @@ type ProductSearchOutput = {
    *  threshold — the relevance gate uses this to allow a category-less near-match
    *  through when the customer's text is genuinely close. */
   highTrigramProductIds?: string[];
+  /** Deterministic customer-grounded physical constraints applied by chat only. */
+  appliedConstraintKeys?: string[];
 };
 type ProductSearchFn = (input: ProductSearchInput) => Promise<ProductSearchOutput>;
 
@@ -408,11 +411,16 @@ export async function searchChatProductInquiry(
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
   };
   const productSpecs = resolveChatProductSpecs(input.text);
-  const requiredTokenGroups =
+  const fanSpecRequiredTokenGroups =
     baseFilters.categoryName?.includes(COOLING_FAN_BLADE_CATEGORY_HINT) &&
     productSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
       ? buildChatProductSpecRequiredTokenGroups(productSpecs)
       : [];
+  const identityConstraints = extractChatProductIdentityConstraints(input.text);
+  const requiredTokenGroups = [
+    ...fanSpecRequiredTokenGroups,
+    ...identityConstraints.map((constraint) => constraint.variants),
+  ];
 
   // Accessory precision anchor: for a universal/accessory inquiry with NO category
   // filter, require the head noun (e.g. "ฟองน้ำ") so results must actually be that
@@ -539,7 +547,12 @@ export async function searchChatProductInquiry(
             ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
             : "SEARCHED_PRODUCT_INQUIRY",
     query,
-    result,
+    result: identityConstraints.length > 0
+      ? {
+          ...result,
+          appliedConstraintKeys: identityConstraints.map((constraint) => constraint.key),
+        }
+      : result,
     needsMoreInfo: result.total === 0 || result.ids.length === 0,
     appliedFilters: baseFilters,
     droppedImageCodes,

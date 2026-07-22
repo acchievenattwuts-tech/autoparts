@@ -7,7 +7,7 @@ import {
   type ChatSearchIntent,
   type ChatSubject,
 } from "@/lib/chat-core/ai-service";
-import { intentToGroup } from "@/lib/chat-core/intent-groups";
+import { groupToRoute, intentToGroup } from "@/lib/chat-core/intent-groups";
 import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildDidYouMeanNote,
@@ -128,6 +128,8 @@ type MessengerProductReplyOutcome = "replied" | "handoff" | "not_searched";
 
 const GENERAL_INQUIRY_HANDOFF_MESSAGE =
   "ขอส่งเรื่องนี้ให้แอดมินช่วยตรวจสอบและตอบกลับนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+const QUOTATION_HANDOFF_MESSAGE =
+  "รับทราบค่ะ 😊 จูนส่งคำขอใบเสนอราคาให้แอดมินจัดทำให้นะคะ เดี๋ยวแอดมินติดต่อกลับค่ะ 🙏";
 
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -586,7 +588,10 @@ async function replyToMessengerTurn(params: {
     await safeNotify(
       notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
     );
-    const reply = "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+    const reply =
+      route.reason === "QUOTATION_REQUEST_KEYWORD"
+        ? QUOTATION_HANDOFF_MESSAGE
+        : "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
     await sendMessengerText({ pageAccessToken, psid, text: reply });
     await persistOutbound(conversationId, psid, reply, { intent: route.intent });
     return;
@@ -604,6 +609,12 @@ async function replyToMessengerTurn(params: {
         }).catch(() => null)
       : null;
 
+  // Apply the LLM's interpreted purpose through the same shared group routing
+  // used by LINE. This is especially important for contextual follow-ups such as
+  // a quotation request: the latest turn is a purchase/admin operation even when
+  // the preceding history contains a product subject.
+  const effectiveRoute = classifiedIntent ? groupToRoute(classifiedIntent.group) ?? route : route;
+
   if (classifiedIntent?.group === "general_faq" || classifiedIntent?.group === "other") {
     await handoffUncertainMessengerProduct({
       pageAccessToken,
@@ -616,8 +627,19 @@ async function replyToMessengerTurn(params: {
     return;
   }
 
+  if (effectiveRoute.requiresAdmin) {
+    await escalateMessengerConversationToAdmin(conversationId);
+    await safeNotify(
+      notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
+    );
+    const reply = "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+    await sendMessengerText({ pageAccessToken, psid, text: reply });
+    await persistOutbound(conversationId, psid, reply, { intent: effectiveRoute.intent });
+    return;
+  }
+
   const multiDetection =
-    route.allowsSearch || classifiedIntent?.group === "product"
+    effectiveRoute.allowsSearch || classifiedIntent?.group === "product"
       ? await detectChatMultiSubjects({ text: processText, intent: classifiedIntent })
       : null;
   if (multiDetection?.handoffReason) {
@@ -642,7 +664,7 @@ async function replyToMessengerTurn(params: {
     return;
   }
 
-  if (route.allowsSearch) {
+  if (effectiveRoute.allowsSearch) {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
     const { fitmentPartHeadNoun, shouldHandoffUncertain, vehicleNamedButUnresolved, ...fitmentHints } =
@@ -695,8 +717,8 @@ async function replyToMessengerTurn(params: {
       pageAccessToken,
       conversationId,
       psid,
-      route,
-      bridgeInput: { route, text: processText, fitmentHints, fitmentPartHeadNoun },
+      route: effectiveRoute,
+      bridgeInput: { route: effectiveRoute, text: processText, fitmentHints, fitmentPartHeadNoun },
       originalText: mergedText,
       history,
     });
@@ -704,17 +726,17 @@ async function replyToMessengerTurn(params: {
   }
 
   // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
-  const group = intentToGroup(route.intent);
+  const group = classifiedIntent?.group ?? intentToGroup(effectiveRoute.intent);
   let reply: string;
   if (group === "smalltalk" || group === "out_of_scope") {
     reply = await generateScopedConversationalReply({ group, latestText: mergedText, history });
   } else {
-    const suggestion = await generateChatSuggestion({ intent: route.intent, originalText: mergedText, history });
+    const suggestion = await generateChatSuggestion({ intent: effectiveRoute.intent, originalText: mergedText, history });
     reply = suggestion.suggestedReply;
   }
 
   await sendMessengerText({ pageAccessToken, psid, text: reply });
-  await persistOutbound(conversationId, psid, reply, { intent: route.intent });
+  await persistOutbound(conversationId, psid, reply, { intent: effectiveRoute.intent });
 }
 
 async function loadHistory(conversationId: string): Promise<ChatHistoryItem[]> {

@@ -76,6 +76,30 @@ test("routes shipping-service questions to the AI shop-info reply (no admin)", (
   }
 });
 
+test("routes quotation requests to admin without product search", () => {
+  for (const text of [
+    "ทำใบเสนอราคามาให้หน่อยได้ไหมคะ ต้องการ 15 อัน",
+    "ขอใบเสนอราคา P0444 จำนวน 15 ตัว",
+    "ออก quotation ให้หน่อยครับ",
+    "ขอ quote 10 ชิ้น",
+    "รบกวนจัดทำใบ quotation ค่ะ",
+  ]) {
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+
+    assert.equal(result.intent, LineIntent.PURCHASE_INTENT, `expected quotation handoff for "${text}"`);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, true);
+    assert.equal(result.reason, "QUOTATION_REQUEST_KEYWORD");
+  }
+});
+
+test("does not confuse other document requests with a quotation", () => {
+  for (const text of ["ขอใบเสร็จรับเงินค่ะ", "ขอใบกำกับภาษีเต็มรูปแบบ"]) {
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+    assert.notEqual(result.reason, "QUOTATION_REQUEST_KEYWORD", `unexpected quotation match for "${text}"`);
+  }
+});
+
 test("routes car aircon service questions to admin without product search", () => {
   for (const text of [
     "\u0e23\u0e31\u0e1a\u0e2d\u0e31\u0e14\u0e2a\u0e32\u0e22\u0e41\u0e2d\u0e23\u0e4c\u0e44\u0e2b\u0e21\u0e04\u0e23\u0e31\u0e1a",

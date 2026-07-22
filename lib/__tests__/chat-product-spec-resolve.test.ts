@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 
 import {
   BLOWER_MOTOR_CATEGORY_HINT,
+  buildChatProductIdentityRequiredTokenGroups,
   buildChatProductSpecRequiredTokenGroups,
   buildChatProductSpecSubject,
   CONDENSER_FAN_MOTOR_CATEGORY_HINT,
   COOLING_FAN_BLADE_CATEGORY_HINT,
+  extractChatProductIdentityConstraints,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 
@@ -64,4 +66,40 @@ test("bare or unrelated numbers never become an inch hard-filter", () => {
   });
   assert.equal(resolveChatProductSpecs("พัดลมรถปี 2014").diameterInches, null);
   assert.equal(resolveChatProductSpecs("พัดลม 14 ใบ").diameterInches, null);
+});
+
+test("customer-grounded physical constraints normalize numbered features and connector shapes", () => {
+  const text = "มีวาล์วแอร์ 1 หาง No 80 ธรรมดา (หัว Taper) ไหมคะ";
+
+  assert.deepEqual(extractChatProductIdentityConstraints(text), [
+    {
+      key: "count:tail:1",
+      evidence: "1 หาง",
+      variants: ["1 หาง", "1หาง", "1 tail", "1tail", "หางเดียว", "single tail", "one tail"],
+    },
+    {
+      key: "connector:taper",
+      evidence: "หัว Taper",
+      variants: ["taper", "หัว taper", "หัวtaper", "เตเปอร์", "หัวเตเปอร์", "เทเปอร์", "หัวเทเปอร์"],
+    },
+  ]);
+  assert.deepEqual(buildChatProductIdentityRequiredTokenGroups(text), [
+    ["1 หาง", "1หาง", "1 tail", "1tail", "หางเดียว", "single tail", "one tail"],
+    ["taper", "หัว taper", "หัวtaper", "เตเปอร์", "หัวเตเปอร์", "เทเปอร์", "หัวเทเปอร์"],
+  ]);
+});
+
+test("bare No numbers and vague adjectives never become hard product constraints", () => {
+  assert.deepEqual(extractChatProductIdentityConstraints("วาล์วแอร์ No80 ธรรมดา"), []);
+  assert.deepEqual(extractChatProductIdentityConstraints("วาล์วแอร์ No 80 แบบธรรมดา"), []);
+});
+
+test("numbered physical features work across product categories without category hardcoding", () => {
+  assert.deepEqual(buildChatProductIdentityRequiredTokenGroups("สวิตช์แรงดัน 4 ขา ปลั๊กเดิม"), [
+    ["4 ขา", "4ขา", "4 pin", "4pin"],
+  ]);
+  assert.deepEqual(buildChatProductIdentityRequiredTokenGroups("มอเตอร์ 3 สาย หัว Flare"), [
+    ["3 สาย", "3สาย", "3 wire", "3wire"],
+    ["flare", "หัว flare", "หัวflare", "แฟร์", "หัวแฟร์", "แฟลร์", "หัวแฟลร์"],
+  ]);
 });

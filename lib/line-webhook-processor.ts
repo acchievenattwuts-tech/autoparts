@@ -304,6 +304,8 @@ const NO_RESULTS_ESCALATION_MESSAGE =
   "จูนขอส่งเรื่องให้แอดมินช่วยเช็กตัวที่ตรงให้ชัวร์ก่อนนะคะ 🙏 เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ ระหว่างนี้ถ้ามีปีรถ รุ่นย่อย หรือรูปอะไหล่เดิม ส่งเพิ่มมาได้เลยค่ะ 😊";
 const PURCHASE_HANDOFF_MESSAGE =
   "รับทราบค่ะ 😊 เดี๋ยวแอดมินมาช่วยสรุปราคาและการจัดส่งให้นะคะ รอสักครู่นะคะ 🙏";
+const QUOTATION_HANDOFF_MESSAGE =
+  "รับทราบค่ะ 😊 จูนส่งคำขอใบเสนอราคาให้แอดมินจัดทำให้นะคะ เดี๋ยวแอดมินติดต่อกลับค่ะ 🙏";
 // Sent as a bubble AFTER the matched products on a price inquiry — the customer
 // sees the options, and the exact price/promo is confirmed by a human.
 const SERVICE_HANDOFF_MESSAGE =
@@ -1335,6 +1337,7 @@ export async function processLineAiReply(
     // applies to text messages.
     const isTextTurn = input.messageType === LineMessageType.TEXT;
     const layer1Group = intentToGroup(input.route.intent);
+    const quotationRequest = input.route.reason === "QUOTATION_REQUEST_KEYWORD";
     // Price/purchase keyword hits are NO LONGER a hard skip — a message like
     // "หม้อน้ำ d-max ราคาเท่าไหร่" must be classified so it can route to product
     // (search + show), not a blind admin hand-off. Only payment/claim stay
@@ -1342,6 +1345,7 @@ export async function processLineAiReply(
     const hardGuard =
       layer1Group === "payment" ||
       layer1Group === "claim_or_return" ||
+      quotationRequest ||
       input.route.reason === "SERVICE_INQUIRY_KEYWORD";
     // True when the regex flagged a price/buy intent — used to (a) skip the
     // purchase hand-off when it's really a price *inquiry* we can answer with
@@ -2172,6 +2176,7 @@ export async function processLineAiReply(
               total: productSearch.result.total,
               returnedCount: productSearch.result.ids.length,
               needsMoreInfo: productSearch.needsMoreInfo,
+              appliedConstraintKeys: productSearch.result.appliedConstraintKeys ?? [],
               droppedImageCodes: productSearch.droppedImageCodes,
               // C0: measure how often the did-you-mean recovery actually rescues
               // a query (null = normal search) — feeds the decision on tuning
@@ -2518,6 +2523,14 @@ export async function processLineAiReply(
             handoff: true,
             audit: "AI_MULTI_SUBJECT_UNSAFE_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: multiDetection.handoffReason },
+          }
+      : liveMode && quotationRequest
+        ? {
+            message: QUOTATION_HANDOFF_MESSAGE,
+            reason: "QUOTATION_REQUEST_HANDOFF",
+            handoff: true,
+            audit: "AI_QUOTATION_REQUEST_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId },
           }
       : generalInquiryHandoff
         ? {

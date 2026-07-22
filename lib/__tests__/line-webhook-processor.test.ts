@@ -1350,6 +1350,25 @@ test("purchase keyword hands off to admin with a bridging message", async () => 
   assert.deepEqual(calls.searches, []);
 });
 
+test("quotation request hands off to admin without asking for vehicle details", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps();
+
+  const result = await processLineWebhookPayload(
+    textPayload("ทำใบเสนอราคามาให้หน่อยได้ไหมคะ ต้องการ 15 อัน"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.match(calls.replies[0]?.text ?? "", /ส่งคำขอใบเสนอราคาให้แอดมิน/);
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /ยี่ห้อ|รุ่นรถ/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.ok(calls.auditActions.includes("AI_QUOTATION_REQUEST_HANDOFF"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.deepEqual(calls.searches, []);
+});
+
 test("processor handles a new event and skips an already-seen event in the same batch", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ duplicateEventIds: ["event-1"] });
