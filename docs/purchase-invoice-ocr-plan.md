@@ -23,7 +23,7 @@
 
 | หัวข้อ | การตัดสินใจ |
 |---|---|
-| โมเดล OCR | Gemini (`GOOGLE_AI_MODEL` = gemini-3.1-flash-lite) เหมือน OCR สลิป, `thinkingLevel:"NONE"`, json, temperature 0 |
+| โมเดล OCR | Gemini (`GOOGLE_AI_MODEL` = gemini-3.5-flash-lite) เหมือน OCR สลิป, `thinkingLevel:"NONE"`, json, temperature 0 |
 | Env flag | ไม่มี — เปิดตลอด (gate ด้วย `hasGeminiKeysConfigured()` เท่านั้น) |
 | จำนวนรูป | รองรับหลายไฟล์ต่อครั้ง — รูปภาพ และ PDF (Gemini อ่าน PDF inline ได้โดยตรง) |
 | การจับคู่สินค้า | **semantic search embeddings**: หา part no. จริงมา map ก่อน ถ้าไม่ได้จริง ๆ ค่อย semantic จากข้อความ (rawText) |

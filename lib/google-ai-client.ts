@@ -8,7 +8,7 @@ import {
 } from "@/lib/google-ai-keys";
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
 /** Embedding size requested via outputDimensionality. Kept in sync with the
  *  `embedding vector(768)` column in product_search_documents. */

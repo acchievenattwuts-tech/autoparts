@@ -27,7 +27,7 @@ This feature must read all credentials server-side only. Do not expose these var
 ## Optional
 
 - `GOOGLE_AI_MODEL`
-  - Gemini model id. Defaults to `gemini-3.1-flash-lite`. Use a multimodal model for image/OCR steps.
+  - Gemini model id. Defaults to `gemini-3.5-flash-lite`. Use a multimodal model for image/OCR steps.
 - `GOOGLE_AI_THINKING_LEVEL`
   - Gemini 3 reasoning depth: `HIGH` (default), `LOW`, or `NONE` (disables thinking). Case-insensitive; sent upper-case to the API.
 - `GOOGLE_AI_DAILY_COOLDOWN_MINUTES`

@@ -162,7 +162,7 @@ Rule reminder: this checklist is for scoped additive work only. Prefer extending
 - [x] Key reference module: [lib/google-ai-keys.ts](/D:/autoparts/lib/google-ai-keys.ts)
 - [x] Fallback execution client: [lib/google-ai-client.ts](/D:/autoparts/lib/google-ai-client.ts)
 - [x] Additive SQL migration: [prisma/sql/2026-06-08-ai-api-key-state.sql](/D:/autoparts/prisma/sql/2026-06-08-ai-api-key-state.sql)
-- [x] Default model `gemini-3.1-flash-lite` (override via `GOOGLE_AI_MODEL`).
+- [x] Default model `gemini-3.5-flash-lite` (override via `GOOGLE_AI_MODEL`).
 - [x] Reasoning depth `thinkingConfig.thinkingLevel = HIGH` (override via `GOOGLE_AI_THINKING_LEVEL`: `HIGH`/`LOW`/`NONE`).
 - [x] Admin monitoring page `/admin/line-ai-keys` shows per-key status/cooldown/counters + manual reset.
 - [x] `googleSearch` web-grounding tool intentionally NOT enabled (AI answers from the shop catalog only).
