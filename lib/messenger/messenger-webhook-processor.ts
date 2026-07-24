@@ -10,6 +10,7 @@ import {
 import { groupToRoute, intentToGroup } from "@/lib/chat-core/intent-groups";
 import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
+  buildChatSearchAskReply,
   buildDidYouMeanNote,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
@@ -477,13 +478,38 @@ async function replyToMessengerTurn(params: {
       const imageHasExplicitFitmentFilter = Boolean(
         classification.partType || classification.carBrand || classification.carModel || classification.year,
       );
-      const directImageCode = imageHasExplicitFitmentFilter
-        ? null
-        : await resolveDirectProductCode([
-            classification.partNumber,
-            (classification.searchHints ?? []).join(" "),
-            mergedText || null,
-          ]);
+      // A code read off the image that resolves to a REAL catalog SKU — the only
+      // identifier specific enough to skip the "which car?" ask below.
+      const imageValidatedCode = await resolveDirectProductCode([
+        classification.partNumber,
+        (classification.searchHints ?? []).join(" "),
+        mergedText || null,
+      ]);
+      const directImageCode = imageHasExplicitFitmentFilter ? null : imageValidatedCode;
+      const conf = classification.confidence;
+      // Completeness gate (parity with LINE + the text path): a fitment part image
+      // that only identifies the part type but no vehicle (no brand/model/year) must
+      // ASK for the car — a bare compressor photo must never be answered with
+      // mismatched compressors. Bypassed only when the photo carries a validated
+      // catalog SKU. Applied to image-ONLY turns (an image sent WITH text is driven
+      // by that text) and only when the read was confident enough to trust its
+      // partType ("ห้ามเดา" — a LOW read falls through to the generic ack below).
+      const imageGate = classification.partKind
+        ? decideChatSearchGate({
+            partType: classification.partType ?? null,
+            carBrand: classification.carBrand ?? null,
+            carModel: classification.carModel ?? null,
+            year: classification.year ?? null,
+            partKind: classification.partKind,
+            tooBroad: false,
+          })
+        : null;
+      if (!mergedText && conf !== "LOW" && imageGate?.action === "ask" && !imageValidatedCode) {
+        const ask = buildChatSearchAskReply(imageGate.ask);
+        await sendMessengerText({ pageAccessToken, psid, text: ask });
+        await persistOutbound(conversationId, psid, ask, { intent: LineIntent.PART_IMAGE_INQUIRY });
+        return;
+      }
       // Confidence gating (parity with LINE, "ห้ามเดา"):
       //  - HIGH  → the classifier's part/car/year become hard fitment filters.
       //  - MEDIUM → usable only as SOFT search hints (no hard filter that could
@@ -491,7 +517,6 @@ async function replyToMessengerTurn(params: {
       //  - LOW   → guesses dropped entirely; if there's nothing else to search on
       //    (no resolved code, no accompanying text) we ask for details below
       //    rather than search blindly.
-      const conf = classification.confidence;
       const canSearchImage = Boolean(directImageCode) || conf !== "LOW" || Boolean(mergedText);
       if (canSearchImage) {
         const useHardFilters = conf === "HIGH";
@@ -914,8 +939,13 @@ async function resolveMessengerFitmentHints(
     const fitmentPartHeadNoun =
       !filters.categoryName && gi?.partType && !gi.partType.includes("อะไหล่") ? gi.partType : null;
 
+    // Option A (parity with LINE): the customer named a car MODEL that never became a
+    // resolved hard model filter → rows are not model-scoped. A resolved brand does NOT
+    // rescue it (brand-only scope still surfaces the wrong model's parts, e.g.
+    // "Honda Odyssey → City/Jazz/Accord กรองอากาศ"). A bare brand with no model named
+    // keeps brand-only scope (gi.carModel is null there).
     const vehicleNamedButUnresolved =
-      Boolean(gi?.carModel) && !filters.carModelName && !filters.carBrandName;
+      Boolean(gi?.carModel) && !filters.carModelName;
 
     return {
       categoryName: filters.categoryName ?? null,

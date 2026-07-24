@@ -1861,6 +1861,72 @@ test("customer names a car we can't resolve → confirms vehicle + hands off, no
   assert.equal(calls.notifyHandoffs.length, 1, "admin is notified once");
 });
 
+test("Option A: a named-but-unknown MODEL on a KNOWN brand hands off (does not show other models' parts — Honda Odyssey case)", async () => {
+  // Production regression (LINE conv cmq6o1g1u, 2026-07-24): the customer named
+  // "Odyssey" (grounded — really typed "ฮอนด้าออดิซี่") which is NOT in master data, so
+  // it never resolved to a carModelName. The BRAND Honda DID resolve, so the old guard
+  // (which also required !carBrandName) let a brand-only air-filter search through,
+  // presenting Honda City/Jazz/Accord filters as if they fit an Odyssey. Option A must
+  // now fire even though the brand resolved, suppress the cards, and confirm the vehicle.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "กรองอากาศ Honda Odyssey",
+    intentPartType: "กรองอากาศ",
+    intentCarBrand: "Honda",
+    intentCarModel: "Odyssey",
+    intentPartKind: "fitment",
+    // Category + brand resolve, but the model does NOT → carModelName omitted.
+    fitmentFilters: { categoryName: "กรองอากาศ (Air Filter)", carBrandName: "Honda" },
+  });
+  // Ground the Thai "ออดิซี่" onto the English "Odyssey" so the model survives to the
+  // guard as grounded evidence (mirrors the SearchSynonym grounding in production).
+  dependencies.loadCarModelVariantLookup = async () =>
+    new Map<string, string[]>([["odyssey", ["odyssey", "ออดิซี่", "honda odyssey"]]]);
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "กรองอากาศ Honda City/Jazz", code: "P0794", imageUrl: null, salePrice: 250, retailPrice: 250, memberPrice: 250 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("ฮอนด้าออดิซี่"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(calls.auditActions.includes("AI_VEHICLE_UNRESOLVED_HANDOFF"), "guard fires even though the brand resolved");
+  assert.ok(calls.replies[0]?.text.includes("ยืนยัน"), "asks the customer to confirm the vehicle");
+  assert.ok(!calls.replies[0]?.text.includes("P0794"), "does not present another Honda model's filter");
+  assert.ok(!calls.replies[0]?.text.includes("City"), "does not present another Honda model's filter");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"), "AI pauses and waits for admin");
+});
+
+test("Option A: a bare BRAND with NO model named still searches brand scope (not blocked)", async () => {
+  // Guardrail for the Option A change: when the customer names only a brand (no model),
+  // guardedSearchIntent.carModel is null, so brand-only scope stays allowed — the guard
+  // must NOT fire and the search still runs.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "กรองอากาศ Honda",
+    intentPartType: "กรองอากาศ",
+    intentCarBrand: "Honda",
+    intentCarModel: null,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "กรองอากาศ (Air Filter)", carBrandName: "Honda" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "กรองอากาศ Honda City/Jazz", code: "P0794", imageUrl: null, salePrice: 250, retailPrice: 250, memberPrice: 250 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("กรองอากาศ Honda"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "brand-only scope still searches");
+  assert.ok(!calls.auditActions.includes("AI_VEHICLE_UNRESOLVED_HANDOFF"), "no model named → guard must not fire");
+});
+
 test("CR-V G3 resolves to CRV, searches, and suppresses only the opposite-side product", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const customerText = "มอเตอร์พัดลมหน้าเครื่องฝั่งคนขับ crv g3 2.0 มีของเลยไหมครับ";
@@ -2683,6 +2749,69 @@ test("product-code fast-path: an unknown OCR code falls back to the normal (ask/
   assert.equal(calls.searches.length, 0, "no code → gate still asks for the car");
 });
 
+test("part-image gate (Option A+B): a compressor photo with only a category + non-catalog stamped number asks for the car (does NOT search)", async () => {
+  // Production regression (LINE conv cmryljcnx, 2026-07-24): a bare compressor photo
+  // read as partType=คอมแอร์ (fitment), no brand/model/year, whose OCR only yielded
+  // the category words plus a number stamped on the body ("072060" — NOT a catalog
+  // SKU). The old override treated that stamped number as a "specific identifier" and
+  // searched, presenting random compressors. It must instead ask for the vehicle,
+  // exactly like the equivalent text turn ("คอมแอร์รุ่นนี้มีไหม") already does.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageHints: ["คอมแอร์", "คอมเพรสเซอร์แอร์", "072060"],
+    imagePartType: "คอมแอร์",
+    imagePartKind: "fitment",
+    catalogCodes: [], // 072060 is not a real SKU (and is pure-numeric anyway)
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-compressor-nocar"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 0, "no validated code + no car → must not search");
+  assert.ok(
+    calls.auditActions.includes("AI_SEARCH_GATE_ASK"),
+    "asks the customer for the car instead of presenting mismatched compressors",
+  );
+});
+
+test("part-image gate (Option A+B): a photo carrying a validated catalog SKU searches without re-asking the car", async () => {
+  // The counterpart to the case above: when the photo's OCR yields a code that DOES
+  // resolve to a real catalog product, the turn is specific enough to search directly
+  // (Option A preserved) — we don't force a "which car?" round-trip.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageHints: ["คอมแอร์", "STA-7018"],
+    imagePartType: "คอมแอร์",
+    imagePartKind: "fitment",
+    catalogCodes: ["sta-7018"],
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-compressor-code"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "a validated SKU on the photo searches without asking the car");
+});
+
 test("product-code fast-path: a customer-typed code searches by that exact code", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
@@ -2774,12 +2903,16 @@ test("inquiry frame: spec-only latest text drops stale vehicle hard filters", as
 
 test("inquiry frame: part-image OCR hints drop stale vehicle hard filters", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  // The photo carries a REAL Valeo SKU (z0016525a) that resolves in the catalog, so
+  // the turn is specific enough to search without re-asking the car (Option A+B) —
+  // and the stale Honda Civic hard filters are dropped to a compressor-only search.
   const { calls, dependencies } = createProcessorTestDeps({
     storedFrame: { partType: "compressor", carBrand: "Honda", carModel: "Civic" },
     imageKind: "part_image",
     imageHints: ["Valeo Z0016525A", "compressor 24v"],
     imagePartType: "compressor",
     imagePartKind: "fitment",
+    catalogCodes: ["z0016525a"],
     fitmentFilters: { categoryName: "Compressor", carBrandName: "Honda", carModelName: "Civic" },
   });
 

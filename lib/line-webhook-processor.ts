@@ -1054,7 +1054,8 @@ async function respondMultiSubject(
     // Mirror the single-path relevance guards so a subject can never present
     // other vehicles' / off-topic parts as matches ("ไม่มั่นใจอย่าตอบมั่ว"):
     //  - vehicle-unresolved (Option A): the subject names a car model that never
-    //    became a hard fitment filter → the rows are NOT vehicle-scoped.
+    //    became a hard MODEL filter → the rows are NOT model-scoped. A resolved brand
+    //    does not rescue it (brand-only scope still surfaces the wrong model's parts).
     //  - weak category match: no category filter kept results on-topic AND no
     //    shown row matched strongly on the product's own text (code/oem/name/
     //    keyword/fitment) or via a close trigram near-match with part+car given.
@@ -1063,8 +1064,7 @@ async function respondMultiSubject(
     const vehicleUnresolvedSubject =
       products.length > 0 &&
       Boolean(subject.carModel) &&
-      !fitment.carModelName &&
-      !fitment.carBrandName;
+      !fitment.carModelName;
     const subjectMatchReasons = productSearch?.searched
       ? products.map((p) => productSearch.result.matchReasons?.[p.id] ?? [])
       : [];
@@ -1851,6 +1851,60 @@ export async function processLineAiReply(
             tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
+    // ── Product-code resolution (moved above the gate so the override can use it) ─
+    // Resolve code-like tokens (customer text, image part number, code-like image
+    // hints) against the real catalog BEFORE the completeness gate runs, so the gate
+    // can tell a genuine SKU from a bare number stamped on the part body.
+    const isPaymentSlipImage = input.imageClassification?.kind === "payment_slip";
+    const codeCandidates =
+      !hardGuard && !isPaymentSlipImage
+        ? Array.from(
+            new Set(
+              [
+                ...extractChatRequiredSearchTokens(processText),
+                ...(input.imageClassification?.partNumber
+                  ? extractChatRequiredSearchTokens(input.imageClassification.partNumber)
+                  : []),
+                ...extractChatRequiredSearchTokens(
+                  (input.imageClassification?.searchHints ?? []).join(" "),
+                ),
+              ].filter((token) => Boolean(token) && isDirectProductCodeToken(token)),
+            ),
+          )
+        : [];
+    const resolvedCatalogCodes =
+      codeCandidates.length > 0
+        ? new Set(
+            await (dependencies.resolveCatalogCodes ?? resolveCatalogCodes)(codeCandidates).catch(
+              () => [] as string[],
+            ),
+          )
+        : new Set<string>();
+    // First candidate (customer text > image part number > image hints) that exists.
+    const directProductCodeCandidate = codeCandidates.find((code) => resolvedCatalogCodes.has(code)) ?? null;
+    // Code-like tokens that came specifically from the IMAGE (printed part number or
+    // code-like hint) — NOT the customer's typed text. Used to decide whether an
+    // image turn is "specific enough" to skip the "which car?" ask.
+    const imageCodeTokens = new Set(
+      !hardGuard && !isPaymentSlipImage
+        ? [
+            ...(input.imageClassification?.partNumber
+              ? extractChatRequiredSearchTokens(input.imageClassification.partNumber)
+              : []),
+            ...extractChatRequiredSearchTokens(
+              (input.imageClassification?.searchHints ?? []).join(" "),
+            ),
+          ].filter((token) => Boolean(token) && isDirectProductCodeToken(token))
+        : [],
+    );
+    // Option A+B — an image turn skips the vehicle ask ONLY when the photo yields a
+    // code that resolves to a real catalog SKU. A generic compressor photo whose OCR
+    // only produced a category word ("คอมแอร์") or a non-catalog number stamped on the
+    // body (e.g. 072060, later dropped) is NOT specific — it must still ask for the
+    // car, exactly like the equivalent text turn does.
+    const imageHasValidatedCatalogCode = Array.from(resolvedCatalogCodes).some((code) =>
+      imageCodeTokens.has(code),
+    );
     // G1 — broad-inquiry detection on THIS turn's actual message. The gate above
     // judges completeness from the carried FRAME partType, so a stale specific part
     // ("สายแอร์" carried from a prior turn) can hide a broad NEW ask ("อะไหล่แอร์
@@ -1867,10 +1921,11 @@ export async function processLineAiReply(
       ? { action: "ask" as const, ask: "need_part" as const, reason: "BROAD_PART_TYPE" }
       : rawGateDecision?.action === "ask" &&
           rawGateDecision.ask === "need_car" &&
-          Boolean(
-            guardedSearch.requiredTokens.length ||
-              extractChatRequiredSearchTokens(trustedImageSearchHints.join(" ")).length,
-          )
+          // A specific identifier lets us skip the "which car?" ask: either the
+          // customer TYPED a code-like required token, or the IMAGE yielded a code
+          // that resolves to a real catalog SKU. Image OCR hints alone (category
+          // words / non-catalog stamped numbers) no longer qualify — Option A+B.
+          (guardedSearch.requiredTokens.length > 0 || imageHasValidatedCatalogCode)
         ? { action: "search" as const, followUp: null, reason: "specific_latest_turn_without_car" }
         : rawGateDecision;
     const gateBlocksSearch = gateDecision?.action === "ask";
@@ -1899,34 +1954,6 @@ export async function processLineAiReply(
     // the image's OCR'd part number, and any code-like image hints — validated
     // against the catalog so a misread/unknown code falls back to the normal flow.
     // Skipped for admin-only guarded turns (payment/claim) and payment-slip images.
-    const isPaymentSlipImage = input.imageClassification?.kind === "payment_slip";
-    const codeCandidates =
-      !hardGuard && !isPaymentSlipImage
-        ? Array.from(
-            new Set(
-              [
-                ...extractChatRequiredSearchTokens(processText),
-                ...(input.imageClassification?.partNumber
-                  ? extractChatRequiredSearchTokens(input.imageClassification.partNumber)
-                  : []),
-                ...extractChatRequiredSearchTokens(
-                  (input.imageClassification?.searchHints ?? []).join(" "),
-                ),
-              ].filter((token) => Boolean(token) && isDirectProductCodeToken(token)),
-            ),
-          )
-        : [];
-    const resolvedCatalogCodes =
-      codeCandidates.length > 0
-        ? new Set(
-            await (dependencies.resolveCatalogCodes ?? resolveCatalogCodes)(codeCandidates).catch(
-              () => [] as string[],
-            ),
-          )
-        : new Set<string>();
-    // First candidate (customer text > image part number > image hints) that exists.
-    const directProductCodeCandidate = codeCandidates.find((code) => resolvedCatalogCodes.has(code)) ?? null;
-
     // Resolve the AI's brand/model/part-type hints to canonical master-data names
     // for use as precise hard filters (drops anything that doesn't resolve, so a
     // typo can never zero-out the search — the free-text query still runs).
@@ -2296,23 +2323,25 @@ export async function processLineAiReply(
       productSearch.result.total > 0 &&
       products.length === 0;
 
-    // Option A — vehicle-unresolved guard. The customer named a car model THIS turn
+    // Option A — vehicle-unresolved guard. The customer named a car MODEL THIS turn
     // (evidence-grounded, so it's real — not a hallucination) but it never became a
-    // resolved hard fitment filter (carModelName/carBrandName both null). Any rows
-    // returned are therefore NOT vehicle-scoped, so showing them would present other
-    // vehicles' parts as if they fit the customer's car — the exact
-    // "สายแอร์…สตาด้า2500 → D-Max/Revo/Colorado" mismatch. When there ARE rows to
-    // suppress (products.length > 0), hand off + ask the customer to confirm the
+    // resolved hard model filter (carModelName null). Any rows returned are therefore
+    // NOT scoped to that model, so showing them would present other vehicles' parts as
+    // if they fit the customer's car — the "สายแอร์…สตาด้า2500 → D-Max/Revo/Colorado"
+    // and "Honda Odyssey → City/Jazz/Accord กรองอากาศ" mismatches. When there ARE rows
+    // to suppress (products.length > 0), hand off + ask the customer to confirm the
     // vehicle instead of sending confident-but-wrong matches ("ไม่มั่นใจส่งแอดมิน").
-    // NOT triggered on a resolved brand-only scope (that is an acceptable filter),
-    // nor when total === 0 (the no-match handoffs below already cover that).
+    // A resolved BRAND does NOT rescue this: a named-but-unknown model on a known brand
+    // still falls back to brand-only scope, which surfaces the wrong model's parts — so
+    // the guard fires even when carBrandName resolved. (A bare brand with NO model named
+    // is a different case: guardedSearchIntent.carModel is null there, so brand-only
+    // scope stays allowed.) Not triggered when total === 0 (no-match handoffs cover that).
     const vehicleUnresolvedGuard =
       liveMode &&
       productSearch.searched &&
       products.length > 0 &&
       Boolean(guardedSearchIntent?.carModel) &&
-      !fitmentFilters.carModelName &&
-      !fitmentFilters.carBrandName;
+      !fitmentFilters.carModelName;
 
     // Relevance gate — the search resolved NO category (categoryName=null), so no
     // hard filter kept results on-topic. Decide whether the rows are trustworthy
