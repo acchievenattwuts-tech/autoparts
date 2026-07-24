@@ -17,6 +17,7 @@
     "test:admin-theme-regression": "tsx scripts/test-admin-theme-regression.ts",
     "test:security-hardening": "node scripts/test-security-hardening.mjs",
     "test:primary-transfer-roadmap": "tsx scripts/test-primary-transfer-roadmap.ts",
+    "test:stock-card-sequence": "tsx scripts/test-stock-card-sequence.ts",
     "test:roadmap-2026-04-27": "tsx scripts/test-roadmap-2026-04-27.ts",
     "test:messenger-webhook": "node --experimental-test-module-mocks --import tsx --test lib/messenger/__tests__/messenger-webhook-processor.test.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",

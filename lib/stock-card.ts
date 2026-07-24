@@ -85,8 +85,85 @@ const NEUTRAL_IN_SOURCES: string[] = [
   "CLAIM_RECV_IN",
 ];
 
-type StockReplayRow = {
+/**
+ * ลำดับธุรกิจของเอกสารที่ลงวันที่เดียวกัน (ยืนยันโดยเจ้าของระบบ 2026-07-24):
+ *
+ *   0 = ยอดยกมา (BF)  →  1 = ของเข้าทุกชนิด  →  2 = ของออกทุกชนิด
+ *
+ * เดิมลำดับ (sorder) ถูกแจกตามเวลาที่คีย์เท่านั้น ทำให้ใบขายที่บันทึกก่อน
+ * ใบซื้อของวันเดียวกันถูกคำนวณก่อน → ยอดคงเหลือติดลบและต้นทุนขายกลายเป็น 0
+ * (เคสจริง: SAC26050001 / RR26050036 วันที่ 27/05/2026)
+ *
+ * Record<StockCardSource, number> ตั้งใจไม่ให้มี default — ถ้ามีการเพิ่ม
+ * source ใหม่ใน enum แล้วลืมกำหนดกลุ่ม TypeScript จะ error ทันที
+ */
+const STOCK_SOURCE_SEQUENCE_GROUP: Record<StockCardSource, number> = {
+  BF: 0,
+  PURCHASE: 1,
+  RETURN_IN: 1,
+  ADJUST_IN: 1,
+  CLAIM_RETURN_IN: 1,
+  CLAIM_RECV_IN: 1,
+  SALE: 2,
+  RETURN_OUT: 2,
+  ADJUST_OUT: 2,
+  CLAIM_SEND_OUT: 2,
+  CLAIM_REPLACE_OUT: 2,
+};
+
+const OUTGOING_SEQUENCE_GROUP = 2;
+
+/** กลุ่มลำดับของ source (ค่าที่อ่านจาก DB เป็น string จึงต้อง narrow ก่อน) */
+function getStockSourceGroup(source: string): number {
+  return STOCK_SOURCE_SEQUENCE_GROUP[source as StockCardSource] ?? OUTGOING_SEQUENCE_GROUP;
+}
+
+/** source ทั้งหมดที่ต้องอยู่ "หลัง" กลุ่มของ source ที่ส่งมา (วันเดียวกัน) */
+export function getLaterGroupSources(source: StockCardSource): StockCardSource[] {
+  const group = getStockSourceGroup(source);
+  return (Object.keys(STOCK_SOURCE_SEQUENCE_GROUP) as StockCardSource[]).filter(
+    (candidate) => STOCK_SOURCE_SEQUENCE_GROUP[candidate] > group,
+  );
+}
+
+export type StockSequenceRow = {
   id: string;
+  docDate: Date;
+  sorder: number;
+  source: string;
+};
+
+export type SorderUpdate = { id: string; sorder: number };
+
+/**
+ * เรียงแถวตามลำดับธุรกิจ: docDate → กลุ่ม source → sorder เดิม
+ * (sorder เดิมเป็น tiebreak จึงคงลำดับการคีย์ภายในกลุ่มเดียวกันไว้ครบ)
+ */
+export function sortRowsForReplay<T extends StockSequenceRow>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const dateDiff = a.docDate.getTime() - b.docDate.getTime();
+    if (dateDiff !== 0) return dateDiff;
+    const groupDiff = getStockSourceGroup(a.source) - getStockSourceGroup(b.source);
+    if (groupDiff !== 0) return groupDiff;
+    return a.sorder - b.sorder;
+  });
+}
+
+/**
+ * แปลงลำดับที่เรียงแล้วให้เป็นเลข sorder 1..n และคืนเฉพาะแถวที่ค่าต้องเปลี่ยน
+ * (diff-write) — ทำให้ sorder ที่เก็บใน DB สะท้อนลำดับธุรกิจจริง ทุก query
+ * ที่เรียงด้วย [docDate, sorder] อยู่แล้วจึงถูกต้องโดยไม่ต้องแก้
+ */
+export function buildSorderUpdates(orderedRows: StockSequenceRow[]): SorderUpdate[] {
+  const updates: SorderUpdate[] = [];
+  orderedRows.forEach((row, index) => {
+    const nextSorder = index + 1;
+    if (row.sorder !== nextSorder) updates.push({ id: row.id, sorder: nextSorder });
+  });
+  return updates;
+}
+
+export type StockReplayRow = StockSequenceRow & {
   source: string;
   qtyIn: Prisma.Decimal;
   qtyOut: Prisma.Decimal;
@@ -111,7 +188,7 @@ type StockBalanceUpdate = {
  * balance actually changes) plus the product's final stock/avgCost. Shared by
  * both the single- and multi-product recalculators so the math stays identical.
  */
-function replayStockCardMavg(rows: StockReplayRow[]): {
+export function replayStockCardMavg(rows: StockReplayRow[]): {
   updates: StockBalanceUpdate[];
   finalQty: number;
   finalPrice: number;
@@ -226,9 +303,40 @@ async function flushStockBalanceUpdates(
 }
 
 /**
+ * Flush diff-write sorder updates (จัดลำดับใหม่ตามลำดับธุรกิจ) แบบ chunked.
+ * ไม่มี unique constraint บน (productId, sorder) จึงอัปเดตทีเดียวได้โดยไม่ชนกัน
+ */
+async function flushSorderUpdates(
+  tx: Pick<TxClient, "$executeRaw">,
+  updates: SorderUpdate[],
+): Promise<void> {
+  const updateChunkSize = 500;
+  for (let i = 0; i < updates.length; i += updateChunkSize) {
+    const chunk = updates.slice(i, i + updateChunkSize);
+    if (chunk.length === 0) continue;
+
+    const values = Prisma.join(
+      chunk.map((update) => Prisma.sql`(${update.id}, ${update.sorder}::int)`),
+    );
+
+    await tx.$executeRaw`
+      UPDATE "StockCard" AS sc
+      SET "sorder" = data."sorder"
+      FROM (
+        VALUES ${values}
+      ) AS data("id", "sorder")
+      WHERE sc."id" = data."id"
+    `;
+  }
+}
+
+/**
  * Re-calculate all StockCard rows for a product from scratch using MAVG formula.
  * Call this after deleting StockCard rows (i.e., document cancellation).
  * Must be called inside a dbTx().
+ *
+ * แถวจะถูกจัดลำดับใหม่ตามลำดับธุรกิจ (BF → ของเข้า → ของออก) ก่อนรีเพลย์เสมอ
+ * จึงซ่อมข้อมูลเก่าที่ลำดับสลับให้เองโดยอัตโนมัติ
  */
 export async function recalculateStockCard(
   tx: TxClient,
@@ -241,7 +349,10 @@ export async function recalculateStockCard(
     orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
   });
 
-  const { updates, finalQty, finalPrice } = replayStockCardMavg(rows);
+  const orderedRows = sortRowsForReplay(rows);
+  await flushSorderUpdates(tx, buildSorderUpdates(orderedRows));
+
+  const { updates, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
   await flushStockBalanceUpdates(tx, updates);
 
   // Update Product with final balance
@@ -291,13 +402,17 @@ export async function recalculateStockCardMany(
   }
 
   const allUpdates: StockBalanceUpdate[] = [];
+  const allSorderUpdates: SorderUpdate[] = [];
   const productFinals: { id: string; stock: number; avgCost: number }[] = [];
   for (const productId of productIds) {
-    const { updates, finalQty, finalPrice } = replayStockCardMavg(byProduct.get(productId) ?? []);
+    const orderedRows = sortRowsForReplay(byProduct.get(productId) ?? []);
+    allSorderUpdates.push(...buildSorderUpdates(orderedRows));
+    const { updates, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
     allUpdates.push(...updates);
     productFinals.push({ id: productId, stock: finalQty, avgCost: finalPrice });
   }
 
+  await flushSorderUpdates(tx, allSorderUpdates);
   await flushStockBalanceUpdates(tx, allUpdates);
 
   // Update every Product's final balance in chunked bulk statements.
@@ -326,8 +441,9 @@ export async function recalculateStockCardMany(
  * Must be called inside a dbTx().
  *
  * Supports backdating: after inserting the row, re-calculates ALL rows
- * for this product in (docDate, sorder) order to ensure MAVG is always correct
- * regardless of insertion order.
+ * for this product in (docDate, กลุ่ม source, sorder) order to ensure MAVG is
+ * always correct regardless of insertion order. เอกสารวันเดียวกันจะถูกเรียงเป็น
+ * BF → ของเข้า → ของออก เสมอ (ดู STOCK_SOURCE_SEQUENCE_GROUP)
  */
 export async function writeStockCard(
   tx: TxClient,
@@ -350,7 +466,7 @@ export async function writeStockCard(
   const lc  = input.landedCost ?? 0;
   const usesRef = input.usesReferenceCost === true;
 
-  // Get max sorder and latest docDate (may be different rows).
+  // Get max sorder and check whether any existing row must sort AFTER this one.
   // Sequential awaits on the single transaction connection — Promise.all here
   // triggers the pg-adapter "client.query() while already executing" warning.
   const maxSorderRow = await tx.stockCard.findFirst({
@@ -358,15 +474,27 @@ export async function writeStockCard(
     orderBy: { sorder: "desc" },
     select: { sorder: true },
   });
-  const latestDateRow = await tx.stockCard.findFirst({
-    where: { productId: input.productId },
-    orderBy: { docDate: "desc" },
-    select: { docDate: true },
-  });
   const maxSorder = maxSorderRow ? maxSorderRow.sorder + 1 : 1;
 
-  // Detect backdating: new docDate is before the latest existing row
-  const isBackdated = latestDateRow != null && input.docDate < latestDateRow.docDate;
+  // แถวที่ต้องอยู่หลังแถวใหม่ = ลงวันที่หลังกว่า (ย้อนหลังแบบเดิม) หรือ
+  // วันเดียวกันแต่เป็นกลุ่มที่ต้องมาทีหลัง (เช่น แถวใหม่เป็นใบซื้อ และมีใบขาย
+  // ของวันเดียวกันอยู่แล้ว) — ทั้งสองกรณีต้องเรียงใหม่ + คำนวณใหม่ทั้งใบ
+  // ใช้ index [productId, docDate, sorder] ครอบทั้งสองเงื่อนไข จึงเป็น
+  // index seek ไม่ใช่ full scan แม้ StockCard จะโตขึ้นมาก
+  const laterGroupSources = getLaterGroupSources(input.source);
+  const rowThatMustSortLater = await tx.stockCard.findFirst({
+    where: {
+      productId: input.productId,
+      OR: [
+        { docDate: { gt: input.docDate } },
+        ...(laterGroupSources.length > 0
+          ? [{ docDate: input.docDate, source: { in: laterGroupSources } }]
+          : []),
+      ],
+    },
+    select: { id: true },
+  });
+  const needsFullRecalc = rowThatMustSortLater != null;
 
   // Insert row with raw data
   const createdRow = await tx.stockCard.create({
@@ -390,8 +518,9 @@ export async function writeStockCard(
     select: { id: true },
   });
 
-  if (isBackdated) {
-    // Backdating detected: must recalculate ALL rows in chronological order
+  if (needsFullRecalc) {
+    // แถวใหม่ไม่ได้อยู่ท้ายสุด (ลงย้อนหลัง หรือวันเดียวกันแต่ต้องมาก่อนแถวเดิม)
+    // → จัดลำดับใหม่ทั้งใบแล้วรีเพลย์ MAVG ตั้งแต่ต้น
     await recalculateStockCard(tx, input.productId);
   } else {
     // Append mode: compute MAVG inline from current Product state (fast path)

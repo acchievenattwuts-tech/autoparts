@@ -9,7 +9,10 @@ import { db, dbTx } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
-import { recalculateStockCard } from "@/lib/stock-card";
+import { recalculateStockCardMany } from "@/lib/stock-card";
+
+/** จำนวนสินค้าต่อ 1 transaction ตอนคำนวณสต็อกการ์ดใหม่ทั้งระบบ */
+const RECALCULATE_BATCH_SIZE = 100;
 
 export async function recalculateAllStockCards(): Promise<{
   success?: boolean;
@@ -30,10 +33,16 @@ export async function recalculateAllStockCards(): Promise<{
   if (products.length === 0) return { success: true, count: 0 };
 
   try {
-    // Recalculate each product sequentially inside its own transaction
-    for (const product of products) {
+    // Recalculate in batches: recalculateStockCardMany() is the batched
+    // equivalent of looping recalculateStockCard() (same MAVG engine, identical
+    // result) but uses a constant number of round-trips per batch instead of
+    // ~4 per product — 900+ products drop from ~900 transactions to ~9.
+    // Batches stay bounded so a single transaction never holds the Supabase
+    // pooler connection longer than necessary.
+    for (let i = 0; i < products.length; i += RECALCULATE_BATCH_SIZE) {
+      const batch = products.slice(i, i + RECALCULATE_BATCH_SIZE);
       await dbTx(async (tx) => {
-        await recalculateStockCard(tx, product.id);
+        await recalculateStockCardMany(tx, batch.map((product) => product.id));
       });
     }
 

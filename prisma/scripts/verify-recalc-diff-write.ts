@@ -26,7 +26,7 @@
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../../lib/generated/prisma";
-import { recalculateStockCard } from "../../lib/stock-card";
+import { recalculateStockCard, sortRowsForReplay } from "../../lib/stock-card";
 
 const QTY_SCALE = 4; // StockCard.qtyBalance Decimal(12,4)
 const PRICE_SCALE = 4; // StockCard.priceBalance / priceOut Decimal(10,4)
@@ -159,12 +159,17 @@ async function main() {
         });
         const beforeMap = new Map(before.map((r) => [r.id, r]));
 
-        // raw inputs for the independent reference replay
-        const inputs = await tx.stockCard.findMany({
+        // raw inputs for the independent reference replay.
+        // ลำดับต้องใช้กฎเดียวกับเครื่องจริง: docDate → กลุ่ม source → sorder
+        // (BF → ของเข้า → ของออก) มิฉะนั้น reference จะต่างจากผลจริงเฉพาะ
+        // สินค้าที่มีเอกสารวันเดียวกันเรียงสลับ
+        const rawInputs = await tx.stockCard.findMany({
           where: { productId },
           orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
           select: {
             id: true,
+            docDate: true,
+            sorder: true,
             source: true,
             qtyIn: true,
             qtyOut: true,
@@ -173,7 +178,7 @@ async function main() {
             usesReferenceCost: true,
           },
         });
-        const reference = computeReference(inputs);
+        const reference = computeReference(sortRowsForReplay(rawInputs));
 
         // 2. run the real diff-write recalc
         await recalculateStockCard(tx, productId);

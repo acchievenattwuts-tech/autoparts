@@ -293,6 +293,17 @@
 - [x] **ลบ `CustomerType.showPrice`** — เป็น dead field: schema ระบุว่าคุมการแสดงราคาบน LINE แต่ `applyChatPriceTier()` ไม่เคยอ่านค่านี้เลย เปลี่ยนป้ายในหน้าลูกค้าไปใช้ `priceTier` จริงแทน (`db push --accept-data-loss`)
 - [x] Test: `buildUnlinkedPriceNote` 4 เคส + e2e "unlinked ได้ข้อความ + ไม่ freeze" / "linked ไม่ได้ข้อความ"
 
+## ลำดับสต็อกการ์ดวันเดียวกัน (2026-07-24)
+- บริบท: พบยอดคงเหลือติดลบ 2 รายการ (P0488/P0489 เอกสาร SAC26050001 vs RR26050036 ลงวันที่ 27/05/2026) — ใบขายถูกคีย์ก่อน แล้วใบซื้อวันเดียวกันถูกแก้ทีหลังจึงได้ `sorder` ต่อท้าย ทำให้ต้นทุนขายเป็น 0 และมูลค่าซื้อ 1,769.64 บาทหายจาก MAVG (`isBackdated` เดิมใช้ `<` ล้วน จึงไม่ถือว่าวันเดียวกันคือการลงย้อนหลัง)
+- [x] `lib/stock-card.ts` — เพิ่ม `STOCK_SOURCE_SEQUENCE_GROUP` (BF → ของเข้าทุกชนิด → ของออกทุกชนิด) + `sortRowsForReplay()` / `buildSorderUpdates()`; `recalculateStockCard()` และ `recalculateStockCardMany()` จัดลำดับ `sorder` ใหม่แบบ diff-write ก่อนรีเพลย์ MAVG เสมอ → ข้อมูลเก่าที่ลำดับสลับถูกซ่อมเองทุกครั้งที่คำนวณใหม่
+- [x] `writeStockCard()` — เปลี่ยนเงื่อนไข `isBackdated` เป็น `needsFullRecalc` = มีแถวที่ต้องเรียงทีหลัง (วันหลังกว่า **หรือ** วันเดียวกันแต่กลุ่ม source ต้องมาทีหลัง) · เอกสารขาออกไม่มีกลุ่มที่ต้องมาทีหลังจึงเข้า fast path เสมอ ไม่มี overhead
+- [x] Performance: query ตรวจลำดับใช้ index `[productId, docDate, sorder]` (index seek) และแทนที่ query `latestDateRow` เดิม → จำนวน round-trip ของการบันทึกเอกสารปกติเท่าเดิม
+- [x] ปุ่ม "คำนวณใหม่" หน้า `/admin/stock/card` — เปลี่ยนจากวน 1 transaction/สินค้า เป็น `recalculateStockCardMany()` ทีละ 100 สินค้า/transaction (914 สินค้า: ~914 tx → ~10 tx) ผลลัพธ์เท่าเดิมทุกไบต์
+- [x] Test: `npm run test:stock-card-sequence` (10 เคส pure) + `prisma/scripts/verify-recalc-diff-write.ts` (รันจริงบน DB แล้ว rollback — 914 สินค้า/1,174 แถว ผล IDENTICAL)
+- [x] แก้ข้อมูลจริงเฉพาะ P0488/P0489 ด้วย `prisma/scripts/recalculate-stock-card-products.ts --codes=...` (สำรอง DB ก่อน + เขียน AuditLog RECALCULATE) → ยอดติดลบเหลือ 0 ทั้งระบบ, stock/avgCost ไม่เปลี่ยน
+- [x] ยืนยันว่าไม่กระทบ lot: `StockMovementLot` ผูกกับ `stockCardId` และยอดคงเหลือมาจาก `LotBalance` — การเรียง `sorder` ใหม่ไม่แตะแถว lot และเครื่อง MAVG ไม่เคยอ่าน lot
+- [ ] ค้างไว้ (รอตัดสินใจ): `Product.avgCost` เป็น `Decimal(10,2)` แต่ `StockCard.priceBalance` เป็น `Decimal(10,4)` — append fast path อ่านต้นทุนตั้งต้นจาก `Product.avgCost` จึงคลาดจาก path ที่ recalculate สูงสุด ~0.008 บาท/ชิ้น (80 แถว / 203 สินค้า) ตรวจซ้ำได้ด้วย `prisma/scripts/audit-stock-card.ts`
+
 ## Source Of Truth Map
 ### Product and Inventory
 - Stock movement + MAVG: `lib/stock-card.ts`
