@@ -45,6 +45,7 @@ import {
   toCashBankEntries,
   type DocumentPaymentRow,
 } from "@/lib/document-payments";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
@@ -720,6 +721,7 @@ export async function createSale(
       console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
     );
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath("/admin/products");
@@ -843,6 +845,7 @@ export async function cancelSale(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     return { success: true };
@@ -1382,6 +1385,7 @@ export async function updateSale(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
     revalidatePath(`/admin/sales/${id}`);

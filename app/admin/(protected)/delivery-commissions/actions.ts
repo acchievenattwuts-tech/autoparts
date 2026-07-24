@@ -21,6 +21,7 @@ import {
   ShippingStatus,
   VatType,
 } from "@/lib/generated/prisma";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import { requirePermission } from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
@@ -349,6 +350,7 @@ export async function createDeliveryCommissionRun(formData: FormData): Promise<C
     });
   }
 
+  revalidateProfitDashboardCache();
   revalidatePath("/admin");
   revalidatePath("/admin/delivery");
   revalidatePath("/admin/delivery/update");
@@ -423,6 +425,7 @@ export async function cancelDeliveryCommissionRun(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/delivery-commissions");
     revalidatePath("/admin/expenses");

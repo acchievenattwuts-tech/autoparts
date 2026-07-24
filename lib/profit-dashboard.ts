@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { ProfitSourceType } from "@/lib/generated/prisma";
+import { PROFIT_DASHBOARD_CACHE_TAG } from "@/lib/profit-cache";
 import {
   addThailandDays,
   getThailandDateKey,
@@ -9,8 +10,8 @@ import {
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 
-export const PROFIT_DASHBOARD_CACHE_TAG = "profit-dashboard";
-const PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS = 60;
+export { PROFIT_DASHBOARD_CACHE_TAG };
+const PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS = 30;
 
 export type ProfitRevenueBasis = "ex_vat" | "inc_vat";
 

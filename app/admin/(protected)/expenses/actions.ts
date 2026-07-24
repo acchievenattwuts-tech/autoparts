@@ -22,6 +22,7 @@ import {
   replaceDocumentPayments,
   toCashBankEntries,
 } from "@/lib/document-payments";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -223,6 +224,7 @@ export async function createExpense(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     return { success: true, expenseNo };
@@ -282,6 +284,7 @@ export async function cancelExpense(
         meta: { cancelNote: cancelNote ?? null },
       });
     }
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     revalidatePath(`/admin/expenses/${expenseId}`);
@@ -413,6 +416,7 @@ export async function updateExpense(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
     revalidatePath(`/admin/expenses/${id}`);

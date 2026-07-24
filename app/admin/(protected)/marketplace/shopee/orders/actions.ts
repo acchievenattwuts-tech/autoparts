@@ -11,6 +11,7 @@ import { AuditAction, ShopeeSyncJobType } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { createShopeeFeeExpense, type CreateShopeeFeeExpenseResult } from "@/lib/shopee/services/escrow";
 import { createSaleFromShopeeOrder, type LotSelectionMap } from "@/lib/shopee/services/create-sale";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { syncShopeeLogisticsFromImports, type ShopeeLogisticsSyncResult } from "@/lib/shopee/services/logistics";
 import { pullShopeeOrdersGuarded, type PullOrdersResult } from "@/lib/shopee/services/orders";
 import { scanShopeeReturnReviewsFromImports, type ShopeeReturnReviewScanResult } from "@/lib/shopee/services/returns";
@@ -92,6 +93,7 @@ export async function createSaleFromOrderAction(
 
   if (!result.ok) return result;
 
+  revalidateProfitDashboardCache();
   revalidatePath(ORDERS_PATH);
   revalidatePath("/admin/sales");
   revalidatePath("/admin");
@@ -126,6 +128,7 @@ export async function createFeeExpenseFromOrderAction(orderImportId: string): Pr
     meta: { event: "SHOPEE_FEE_EXPENSE_CREATE", orderImportId, reused: result.reused },
   });
 
+  revalidateProfitDashboardCache();
   revalidatePath(ORDERS_PATH);
   revalidatePath(`/admin/marketplace/shopee/orders/${orderImportId}`);
   revalidatePath("/admin/expenses");

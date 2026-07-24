@@ -36,6 +36,7 @@ import {
   toCashBankEntries,
   type DocumentPaymentRow,
 } from "@/lib/document-payments";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
@@ -615,6 +616,7 @@ export async function createCreditNote(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
@@ -716,6 +718,7 @@ export async function cancelCreditNote(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     return { success: true };
@@ -1156,6 +1159,7 @@ export async function updateCreditNote(
       });
     }
 
+    revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath(`/admin/credit-notes/${id}`);
