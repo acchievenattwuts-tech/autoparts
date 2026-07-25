@@ -12,6 +12,7 @@ import {
   parseAdminProductFilterParams,
   type AdminProductFilterParams,
 } from "@/lib/admin-product-filter-params";
+import type { Prisma } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
@@ -46,6 +47,9 @@ const numberOrNull = (value?: string): number | null => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const formatPriceLevel = (value: Prisma.Decimal): string =>
+  Number(value).toLocaleString("th-TH", { minimumFractionDigits: 2 });
 
 const stockStatusLabel: Record<string, string> = {
   in_stock: "มีของ",
@@ -161,6 +165,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         name: true,
         shelfLocation: true,
         salePrice: true,
+        memberPrice: true,
+        retailPrice: true,
         stock: true,
         minStock: true,
         reportUnitName: true,
@@ -330,10 +336,27 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                       <div className="grid grid-cols-2 gap-2 rounded-2xl bg-gray-50 p-2 dark:bg-white/5">
                         <div>
                           <p className="text-[11px] text-gray-400 dark:text-slate-500">ราคาขาย</p>
-                          <p className="text-base font-bold text-[#f97316]">
-                            ฿{Number(product.salePrice).toLocaleString("th-TH-u-ca-gregory")}
-                          </p>
-                          <p className="text-[10px] text-gray-400">/{displayUnit}</p>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="inline-flex items-baseline gap-1.5">
+                              <span className="text-[10px] font-semibold uppercase text-emerald-500 dark:text-emerald-400">ส่ง</span>
+                              <span className="text-base font-bold tabular-nums text-emerald-600 dark:text-emerald-300">
+                                {formatPriceLevel(product.salePrice)}
+                              </span>
+                            </span>
+                            <span className="inline-flex items-baseline gap-1.5">
+                              <span className="text-[10px] font-semibold uppercase text-sky-500 dark:text-sky-400">สมาชิก</span>
+                              <span className="text-sm font-semibold tabular-nums text-sky-600 dark:text-sky-300">
+                                {formatPriceLevel(product.memberPrice)}
+                              </span>
+                            </span>
+                            <span className="inline-flex items-baseline gap-1.5">
+                              <span className="text-[10px] font-medium uppercase text-gray-400 dark:text-slate-500">ปลีก</span>
+                              <span className="text-xs font-medium tabular-nums text-gray-500 dark:text-slate-400">
+                                {formatPriceLevel(product.retailPrice)}
+                              </span>
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-[10px] text-gray-400">/{displayUnit}</p>
                         </div>
                         <div>
                           <p className="text-[11px] text-gray-400 dark:text-slate-500">คงเหลือ</p>
