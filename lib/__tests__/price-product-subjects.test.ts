@@ -22,6 +22,21 @@ test("รถตู้แอร์ไม่เย็น (van AC complaint) does n
   assert.deepEqual(extractPriceProductSubjectsFromText("รถตู้แอร์ไม่เย็น ราคาซ่อมเท่าไหร่"), []);
 });
 
+test("component-of-the-unit asks do not extract a cooling-unit subject (head-noun guard)", () => {
+  // มอเตอร์/พัดลม/วาล์ว/แผง/สวิตช์/ล้าง + ตู้แอร์|คอยเย็น name a DIFFERENT
+  // product (blower motor, expansion valve, cleaner…) — the embedded unit word
+  // must not hijack the price turn into hanging cooling units.
+  assert.deepEqual(extractPriceProductSubjectsFromText("มอเตอร์ตู้แอร์ vigo ราคาเท่าไหร่"), []);
+  assert.deepEqual(extractPriceProductSubjectsFromText("พัดลมตู้แอร์ d-max ราคาเท่าไหร่"), []);
+  assert.deepEqual(extractPriceProductSubjectsFromText("วาล์วตู้แอร์ vios ราคากี่บาท"), []);
+  assert.deepEqual(extractPriceProductSubjectsFromText("แผงตู้แอร์ commuter ราคาเท่าไหร่"), []);
+  assert.deepEqual(extractPriceProductSubjectsFromText("วาล์วคอยล์เย็น triton ราคา"), []);
+  assert.deepEqual(extractPriceProductSubjectsFromText("พัดลมคอยล์เย็น vios ราคา"), []);
+  // A cleaner ask keeps only the refrigerant-free subjects it actually named.
+  const cleaner = extractPriceProductSubjectsFromText("น้ำยาล้างคอยเย็น ราคาเท่าไหร่");
+  assert.ok(!cleaner.some((s) => s.partType === "ตู้แอร์"), "no cooling-unit subject from ล้างคอยเย็น");
+});
+
 test("a real ตู้แอร์ ask still extracts the cooling-unit subject", () => {
   const subjects = extractPriceProductSubjectsFromText("ตู้แอร์ ราคาเท่าไหร่ครับ");
   assert.equal(subjects.length, 1);

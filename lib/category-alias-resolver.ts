@@ -171,6 +171,51 @@ export function matchAllCategoryAliasRows(
   };
 }
 
+/**
+ * Best MATCH row for one normalized text. A compound alias suppresses aliases
+ * NESTED inside its span — "พัดลมคอนเดนเซอร์" (Condenser Fan Motor, 225) must
+ * not lose to the embedded "คอนเดนเซอร์" (Condenser, 240) just because the
+ * short inner alias carries a higher priority: the longer word is what the
+ * customer actually typed. Non-overlapping matches keep the original
+ * priority-then-length ordering, so multi-part texts ("กรองแอร์กับกรองอากาศ")
+ * behave exactly as before. Same longest-span-first principle as
+ * `matchAllCategoryAliasRows`.
+ */
+function bestAliasMatchInText(
+  text: string,
+  activeRows: CategoryAliasResolverRow[],
+): CategoryAliasResolverRow | null {
+  type Candidate = { row: CategoryAliasResolverRow; start: number; end: number };
+  const candidates: Candidate[] = [];
+  for (const row of activeRows) {
+    if (row.kind !== "MATCH" || !row.category?.isActive) continue;
+    const alias = normalizeAliasText(row.alias);
+    for (const range of aliasMatchRanges(text, alias, row.matchMode)) {
+      candidates.push({ row, ...range });
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  candidates.sort(
+    (a, b) =>
+      b.end - b.start - (a.end - a.start) ||
+      b.row.priority - a.row.priority ||
+      a.start - b.start,
+  );
+  const accepted: Candidate[] = [];
+  for (const candidate of candidates) {
+    const overlaps = accepted.some(
+      (existing) => candidate.start < existing.end && candidate.end > existing.start,
+    );
+    if (!overlaps) accepted.push(candidate);
+  }
+
+  accepted.sort(
+    (a, b) => b.row.priority - a.row.priority || b.end - b.start - (a.end - a.start),
+  );
+  return accepted[0].row;
+}
+
 export function matchCategoryAliasRows(
   texts: Array<string | null | undefined>,
   rows: CategoryAliasResolverRow[],
@@ -189,22 +234,17 @@ export function matchCategoryAliasRows(
     return { kind: "SKIP_CATEGORY", alias: skip.alias };
   }
 
-  // Best alias PER TEXT first (activeRows is already sorted best-first), then
-  // pick across texts by priority / alias length — but break ties by TEXT
-  // ORDER, because callers pass the most trustworthy source first (partType,
-  // then the consolidated query, then raw text). Two equal-priority aliases
-  // living in DIFFERENT texts must not race on DB row order — e.g. partType
-  // "แผงแอร์" (Condenser, 240) vs an AI-rewritten query "ตู้แอร์" (Evaporator,
-  // 240): the partType's category wins. A strictly HIGHER-priority alias in a
-  // later text (the customer's own precise keyword in the raw text) still wins.
+  // Best alias PER TEXT first, then pick across texts by priority / alias
+  // length — but break ties by TEXT ORDER, because callers pass the most
+  // trustworthy source first (partType, then the consolidated query, then raw
+  // text). Two equal-priority aliases living in DIFFERENT texts must not race
+  // on DB row order — e.g. partType "แผงแอร์" (Condenser, 240) vs an
+  // AI-rewritten query "ตู้แอร์" (Evaporator, 240): the partType's category
+  // wins. A strictly HIGHER-priority alias in a later text (the customer's own
+  // precise keyword in the raw text) still wins.
   let best: CategoryAliasResolverRow | null = null;
   for (const text of normalizedTexts) {
-    const match = activeRows.find(
-      (row) =>
-        row.kind === "MATCH" &&
-        row.category?.isActive &&
-        aliasMatchesText(text, row.alias, row.matchMode),
-    );
+    const match = bestAliasMatchInText(text, activeRows);
     if (!match?.category) continue;
     const beatsBest =
       !best ||

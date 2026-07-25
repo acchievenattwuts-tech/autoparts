@@ -2800,6 +2800,54 @@ test("ungrounded classifier part rewrite: the search query falls back to the fra
   );
 });
 
+test("price turn: the LLM classifier's product subject beats the deterministic price-subject rule", async () => {
+  // "คอยเย็น d-max ปี2015 ราคาเท่าไหร่" matches the price-subject rule's
+  // cooling-unit pattern, which used to rewrite the WHOLE turn to a universal
+  // "ตู้แอร์" subject and drop the car + year. The classifier read the turn
+  // correctly — its intent must drive the search now.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยเย็น d-max 2015",
+    intentPartType: "คอยเย็น",
+    intentCarBrand: "Isuzu",
+    intentCarModel: "D-Max",
+    intentYear: 2015,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Isuzu", carModelName: "D-Max" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("คอยเย็น d-max ปี2015 ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.equal(
+    calls.searches.at(-1),
+    "คอยเย็น d-max 2015",
+    "classifier query drives the search, not the rule's generic ตู้แอร์",
+  );
+  assert.equal(calls.searchFitmentHints[0]?.fitmentYear, 2015, "year survives (rule used to drop it)");
+});
+
+test("price turn: the price-subject rule still drives when the classifier returned nothing", async () => {
+  // Classifier unavailable (Gemini down / returned null) — the deterministic
+  // extractor remains the fallback so a plain cooling-unit price ask still
+  // searches instead of dying.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({});
+
+  await processLineWebhookPayload(
+    textPayload("ตู้แอร์ ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searches.at(-1), "ตู้แอร์", "extractor fallback still searches the cooling unit");
+});
+
 test("Fix 1: a fresh (stale-session) turn keeps the classifier's spell-corrected part — no re-ask (คอล์ยเย็น case)", async () => {
   // Real case (conv cmr2xbf16): a NEW session ("คอล์ยเย็นนิสสันมาร์ค") after a
   // 9-day gap. The classifier spell-corrects to "คอยล์เย็น", but a STALE stored part

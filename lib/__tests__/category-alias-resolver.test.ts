@@ -127,6 +127,88 @@ test("equal-priority aliases in different texts resolve by text order, not row o
   });
 });
 
+test("a compound alias suppresses a higher-priority alias nested inside it (longest span wins)", () => {
+  const rows: CategoryAliasResolverRow[] = [
+    {
+      alias: "คอนเดนเซอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 240,
+      isActive: true,
+      category: { id: "cat-condenser", name: "คอยล์ร้อน (Condenser)", isActive: true },
+    },
+    {
+      alias: "พัดลมคอนเดนเซอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 225,
+      isActive: true,
+      category: { id: "cat-cfm", name: "มอเตอร์พัดลมหน้าเครื่อง (Condenser Fan Motor)", isActive: true },
+    },
+    {
+      alias: "ตู้แอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 240,
+      isActive: true,
+      category: { id: "cat-evap", name: "คอยล์เย็น (Evaporator)", isActive: true },
+    },
+    {
+      alias: "มอเตอร์ตู้แอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 220,
+      isActive: true,
+      category: { id: "cat-blower", name: "โบเวอร์ พัดลมแอร์ (Blower Motor)", isActive: true },
+    },
+  ];
+
+  // The customer typed the COMPOUND word — the nested short alias must not
+  // hijack the category on priority alone.
+  assert.equal(
+    matchCategoryAliasRows(["พัดลมคอนเดนเซอร์ d-max"], rows)?.categoryName,
+    "มอเตอร์พัดลมหน้าเครื่อง (Condenser Fan Motor)",
+  );
+  assert.equal(
+    matchCategoryAliasRows(["มอเตอร์ตู้แอร์ vigo"], rows)?.categoryName,
+    "โบเวอร์ พัดลมแอร์ (Blower Motor)",
+  );
+  // The short alias standing ALONE still resolves exactly as before.
+  assert.equal(
+    matchCategoryAliasRows(["คอนเดนเซอร์ d-max"], rows)?.categoryName,
+    "คอยล์ร้อน (Condenser)",
+  );
+  assert.equal(matchCategoryAliasRows(["ตู้แอร์ vigo"], rows)?.categoryName, "คอยล์เย็น (Evaporator)");
+});
+
+test("non-overlapping matches in one text keep the priority ordering", () => {
+  const rows: CategoryAliasResolverRow[] = [
+    {
+      alias: "กรองแอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 220,
+      isActive: true,
+      category: { id: "cat-cabin", name: "กรองแอร์ (Cabin air filter)", isActive: true },
+    },
+    {
+      alias: "กรองอากาศ",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 230,
+      isActive: true,
+      category: { id: "cat-air", name: "กรองอากาศ (Air Filter)", isActive: true },
+    },
+  ];
+
+  // Two separate part words side by side (multi-subject territory): the single
+  // resolver still picks by priority, unchanged from before.
+  assert.equal(
+    matchCategoryAliasRows(["กรองแอร์กับกรองอากาศ d-max"], rows)?.categoryName,
+    "กรองอากาศ (Air Filter)",
+  );
+});
+
 test("ignores inactive aliases and inactive categories", () => {
   const rows: CategoryAliasResolverRow[] = [
     {

@@ -35,7 +35,14 @@ export function extractPriceProductSubjectsFromText(text?: string | null): ChatS
   // "แผงแอร์รถตู้ commuter" extract a cooling-unit subject, which then overrode
   // the LLM classifier for the whole turn and answered with hanging cooling
   // units instead of condensers (production case 2026-07-25).
-  const hasCoolingUnit = /(?<!รถ)ตู้\s*(?:แอร์|เย็น)|คอย(?:ล์|ล)?\s*เย็น|คลู\s*เกี/i.test(normalized);
+  // It must also be the HEAD NOUN: a component-of-the-unit ask ("มอเตอร์ตู้แอร์",
+  // "พัดลมตู้แอร์", "วาล์วคอยล์เย็น") or a cleaner ("ล้างคอยเย็น") names a
+  // DIFFERENT product whose word merely embeds the unit — extracting the unit
+  // would misroute the turn the same way "รถตู้" did.
+  const hasCoolingUnit =
+    /(?<!รถ|มอเตอร์|พัดลม|วาล์ว|แผง|สวิตช์|สวิทช์|ล้าง)ตู้\s*(?:แอร์|เย็น)|(?<!มอเตอร์|พัดลม|วาล์ว|สวิตช์|สวิทช์|ล้าง)คอย(?:ล์|ล)?\s*เย็น|คลู\s*เกี/i.test(
+      normalized,
+    );
   if (hasCoolingUnit) {
     subjects.push({
       partType: THAI.coolingUnit,

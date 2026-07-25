@@ -1410,7 +1410,19 @@ export async function processLineAiReply(
       ? { ...classifiedSearchIntent!, group: "product", isProductQuery: true }
       : classifiedSearchIntent;
     const usedRuleIntent = ruleSearchIntent !== null;
-    const searchIntent = priceSubjectIntent ?? rawSearchIntent;
+    // The LLM classifier reads the customer's ACTUAL wording (live-verified: it
+    // keeps compound part words like "มอเตอร์ตู้แอร์" and the car/year, and
+    // returns proper multi-subjects), while the deterministic price-subject rule
+    // collapses anything containing ตู้แอร์/คอยเย็น into a generic universal
+    // "ตู้แอร์" subject and DROPS the car/year (production case 2026-07-25).
+    // Trust the classifier first whenever it produced a product subject; the
+    // rule stays as the fallback for classifier failure / no product part.
+    const classifierHasProductSubject =
+      rawSearchIntent?.group === "product" &&
+      Boolean(rawSearchIntent.partType || (rawSearchIntent.subjects?.length ?? 0) >= 2);
+    const searchIntent = classifierHasProductSubject
+      ? rawSearchIntent
+      : priceSubjectIntent ?? rawSearchIntent;
     const classifierProductHasCurrentEvidence =
       priceQuestionIntent &&
       searchIntent?.group === "product" &&
@@ -1484,7 +1496,7 @@ export async function processLineAiReply(
             ? "image_route"
             : usedRuleIntent
               ? "rule_dictionary"
-              : priceSubjectIntent
+              : priceSubjectIntent && !classifierHasProductSubject
                 ? "price_subject_rule"
               : classifyFailed
                 ? "regex_fallback"
