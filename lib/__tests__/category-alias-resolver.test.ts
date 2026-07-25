@@ -92,6 +92,41 @@ test("raw customer keyword resolves even when the AI rewrote the query", () => {
   );
 });
 
+test("equal-priority aliases in different texts resolve by text order, not row order", () => {
+  // Regression (2026-07-25 production): customer asked for "แผงแอร์" (Condenser);
+  // on the price follow-up the classifier rewrote the query to "ตู้แอร์"
+  // (Evaporator). Both aliases are priority 240 / same length, so the winner
+  // used to be decided by DB row order — "ตู้แอร์" was created first and beat
+  // the trusted frame partType. The earlier text (partType) must win the tie.
+  const rows: CategoryAliasResolverRow[] = [
+    {
+      // Deliberately listed FIRST to prove row order no longer decides the tie.
+      alias: "ตู้แอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 240,
+      isActive: true,
+      category: { id: "cat-evap", name: "คอยล์เย็น (Evaporator)", isActive: true },
+    },
+    {
+      alias: "แผงแอร์",
+      kind: "MATCH",
+      matchMode: "CONTAINS",
+      priority: 240,
+      isActive: true,
+      category: { id: "cat-condenser", name: "คอยล์ร้อน (Condenser)", isActive: true },
+    },
+  ];
+
+  // partType="แผงแอร์", consolidatedQuery="ตู้แอร์", rawText="ราคาประมาณเท่าไหร่ครับ"
+  assert.deepEqual(matchCategoryAliasRows(["แผงแอร์", "ตู้แอร์", "ราคาประมาณเท่าไหร่ครับ"], rows), {
+    kind: "MATCH",
+    categoryId: "cat-condenser",
+    categoryName: "คอยล์ร้อน (Condenser)",
+    alias: "แผงแอร์",
+  });
+});
+
 test("ignores inactive aliases and inactive categories", () => {
   const rows: CategoryAliasResolverRow[] = [
     {

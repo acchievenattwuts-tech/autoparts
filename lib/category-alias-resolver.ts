@@ -189,18 +189,36 @@ export function matchCategoryAliasRows(
     return { kind: "SKIP_CATEGORY", alias: skip.alias };
   }
 
-  const match = activeRows.find(
-    (row) =>
-      row.kind === "MATCH" &&
-      row.category?.isActive &&
-      normalizedTexts.some((text) => aliasMatchesText(text, row.alias, row.matchMode)),
-  );
-  if (!match?.category) return null;
+  // Best alias PER TEXT first (activeRows is already sorted best-first), then
+  // pick across texts by priority / alias length — but break ties by TEXT
+  // ORDER, because callers pass the most trustworthy source first (partType,
+  // then the consolidated query, then raw text). Two equal-priority aliases
+  // living in DIFFERENT texts must not race on DB row order — e.g. partType
+  // "แผงแอร์" (Condenser, 240) vs an AI-rewritten query "ตู้แอร์" (Evaporator,
+  // 240): the partType's category wins. A strictly HIGHER-priority alias in a
+  // later text (the customer's own precise keyword in the raw text) still wins.
+  let best: CategoryAliasResolverRow | null = null;
+  for (const text of normalizedTexts) {
+    const match = activeRows.find(
+      (row) =>
+        row.kind === "MATCH" &&
+        row.category?.isActive &&
+        aliasMatchesText(text, row.alias, row.matchMode),
+    );
+    if (!match?.category) continue;
+    const beatsBest =
+      !best ||
+      match.priority > best.priority ||
+      (match.priority === best.priority &&
+        normalizeAliasText(match.alias).length > normalizeAliasText(best.alias).length);
+    if (beatsBest) best = match;
+  }
+  if (!best?.category) return null;
 
   return {
     kind: "MATCH",
-    alias: match.alias,
-    categoryId: match.category.id,
-    categoryName: match.category.name,
+    alias: best.alias,
+    categoryId: best.category.id,
+    categoryName: best.category.name,
   };
 }

@@ -2766,6 +2766,40 @@ test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT
   assert.equal(calls.savedFrames.at(-1)?.carModel, "Vios");
 });
 
+test("ungrounded classifier part rewrite: the search query falls back to the frame query (แผงแอร์→ตู้แอร์ case)", async () => {
+  // Real case (conv cms07g5ew, 2026-07-25): the frame established "แผงแอร์"
+  // (Condenser) for a Toyota Commuter, but on a sparse follow-up the classifier
+  // rewrote query + partType to "ตู้แอร์" — a word the customer never typed —
+  // which then resolved to the Evaporator category and sent cooling-coil
+  // products. The frame correctly dropped the ungrounded part (test above), but
+  // the classifier's consolidated QUERY still drove the search. It must fall
+  // back to the frame query instead.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "แผงแอร์", carBrand: "Toyota", carModel: "Commuter" },
+    consolidatedQuery: "ตู้แอร์ Commuter 2013",
+    intentPartType: "ตู้แอร์",
+    intentCarModel: "Commuter",
+    intentYear: 2013,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "คอยล์ร้อน (Condenser)", carBrandName: "Toyota", carModelName: "Hiace Commuter" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("Commuter ปี2013ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.savedFrames.at(-1)?.partType, "แผงแอร์", "frame keeps the customer's part");
+  assert.equal(calls.searches.length, 1);
+  assert.equal(
+    calls.searches.at(-1),
+    "แผงแอร์ Toyota Commuter",
+    "search uses the frame query, not the hallucinated rewrite",
+  );
+});
+
 test("Fix 1: a fresh (stale-session) turn keeps the classifier's spell-corrected part — no re-ask (คอล์ยเย็น case)", async () => {
   // Real case (conv cmr2xbf16): a NEW session ("คอล์ยเย็นนิสสันมาร์ค") after a
   // 9-day gap. The classifier spell-corrects to "คอยล์เย็น", but a STALE stored part

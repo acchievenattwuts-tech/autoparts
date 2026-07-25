@@ -1601,6 +1601,11 @@ export async function processLineAiReply(
     // raw history. Only for product turns.
     let inquiryFrame: InquiryFrame | null = null;
     let frameTopicShift = false;
+    // True when THIS turn's classifier partType was rejected as an ungrounded
+    // hallucination (see groundedLatestPartType). The classifier's consolidated
+    // query is built from the same reading, so it carries the same wrong part
+    // word — the frame query must drive the search instead.
+    let droppedUngroundedClassifierPartType = false;
     if (!isNonProductTurn) {
       const loadFrame = dependencies.getLineInquiryFrame ?? getLineInquiryFrame;
       const saveFrame = dependencies.updateLineInquiryFrame ?? updateLineInquiryFrame;
@@ -1677,16 +1682,24 @@ export async function processLineAiReply(
       //    (lineValueHasCustomerTypoEvidence), so a typo'd part is kept, not dropped.
       // The hallucination guard still fires when the customer named NO part at all
       // (vehicle-only follow-up): no literal AND no typo evidence → dropped as before.
+      const classifierPartTypeUngrounded = Boolean(
+        !usedRuleIntent &&
+          !sessionStale &&
+          stored?.partType &&
+          classifierPartType &&
+          !lineValueHasCustomerEvidence(classifierPartType, processText, history) &&
+          !lineValueHasCustomerTypoEvidence(classifierPartType, processText, history),
+      );
       const groundedLatestPartType =
-        imagePartType ??
-        (!usedRuleIntent &&
-        !sessionStale &&
-        stored?.partType &&
-        classifierPartType &&
-        !lineValueHasCustomerEvidence(classifierPartType, processText, history) &&
-        !lineValueHasCustomerTypoEvidence(classifierPartType, processText, history)
-          ? null
-          : classifierPartType);
+        imagePartType ?? (classifierPartTypeUngrounded ? null : classifierPartType);
+      // Only a REWRITE poisons the consolidated query: an ungrounded part that
+      // simply repeats the stored frame part (normal carryover on a sparse
+      // follow-up like "ปี 15") keeps the classifier's query as before.
+      droppedUngroundedClassifierPartType =
+        !imagePartType &&
+        classifierPartTypeUngrounded &&
+        (classifierPartType ?? "").trim().toLowerCase() !==
+          (stored?.partType ?? "").trim().toLowerCase();
 
       const reconciled = reconcileInquiryFrame(
         stored
@@ -1855,7 +1868,14 @@ export async function processLineAiReply(
       ? null
       : frameTopicShift
         ? frameQuery ?? input.text?.trim() ?? null
-        : classifierQuery ?? frameQuery;
+        : // The classifier hallucinated this turn's part word (e.g. rewrote
+          // "แผงแอร์ รถตู้" as "ตู้แอร์" on a bare price follow-up) — its query
+          // carries that same wrong word, so rebuild from the trusted frame.
+          // A forceLiteralQuery is the customer's own text, grounded by
+          // construction, so it is never overridden.
+          droppedUngroundedClassifierPartType && !guardedSearch.forceLiteralQuery
+          ? frameQuery ?? classifierQuery
+          : classifierQuery ?? frameQuery;
     const currentProductSpecs = resolveChatProductSpecs(
       [consolidatedQuery, processText].filter(Boolean).join(" "),
     );
@@ -2227,6 +2247,7 @@ export async function processLineAiReply(
           fitmentYear: guardedSearchIntent?.year ?? null,
           forceLiteralQuery: guardedSearch.forceLiteralQuery,
           requiredTokens: guardedSearch.requiredTokens,
+          droppedUngroundedClassifierQuery: droppedUngroundedClassifierPartType,
         },
       });
     }
