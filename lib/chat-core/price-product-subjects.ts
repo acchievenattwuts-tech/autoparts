@@ -1,11 +1,15 @@
 import type { ChatSearchIntent, ChatSubject } from "@/lib/chat-core/ai-service";
 
 const THAI = {
-  vigo: "\u0e27\u0e35\u0e42\u0e01\u0e49",
-  coolingUnit: "\u0e15\u0e39\u0e49\u0e41\u0e2d\u0e23\u0e4c",
-  oil: "\u0e19\u0e49\u0e33\u0e21\u0e31\u0e19",
-  refrigerant: "\u0e19\u0e49\u0e33\u0e22\u0e32\u0e41\u0e2d\u0e23\u0e4c",
+  vigo: "วีโก้",
+  coolingUnit: "ตู้แอร์",
+  oil: "น้ำมัน",
+  refrigerant: "น้ำยาแอร์",
 };
+
+// "น้ำ" with either the single-glyph SARA AM (ำ) or the split NIKHAHIT + SARA AA
+// (ํ + า) form some keyboards/IMEs produce.
+const THAI_WATER_PATTERN = "น้(?:ำ|ํา)";
 
 function uniqueSubjects(subjects: ChatSubject[]): ChatSubject[] {
   const seen = new Set<string>();
@@ -24,11 +28,14 @@ export function extractPriceProductSubjectsFromText(text?: string | null): ChatS
   if (!normalized) return [];
 
   const subjects: ChatSubject[] = [];
-  const hasVigo = /\u0e27\u0e35\u0e42\u0e01\u0e49|vigo/i.test(normalized);
-  const hasCoolingUnit =
-    /\u0e15\u0e39\u0e49\s*(?:\u0e41\u0e2d\u0e23\u0e4c)?|\u0e04\u0e2d\u0e22(?:\u0e25\u0e4c|\u0e25)?\s*\u0e40\u0e22\u0e47\u0e19|\u0e04\u0e25\u0e39\s*\u0e40\u0e01\u0e35/i.test(
-      normalized,
-    );
+  const hasVigo = /วีโก้|vigo/i.test(normalized);
+  // The cooling-unit word must be CONTIGUOUS "ตู้แอร์"/"ตู้เย็น" (or the
+  // evaporator colloquials) — never the bare "ตู้" inside "รถตู้" (a van!).
+  // The old bare-"ตู้" alternative made a price turn that merely mentioned
+  // "แผงแอร์รถตู้ commuter" extract a cooling-unit subject, which then overrode
+  // the LLM classifier for the whole turn and answered with hanging cooling
+  // units instead of condensers (production case 2026-07-25).
+  const hasCoolingUnit = /(?<!รถ)ตู้\s*(?:แอร์|เย็น)|คอย(?:ล์|ล)?\s*เย็น|คลู\s*เกี/i.test(normalized);
   if (hasCoolingUnit) {
     subjects.push({
       partType: THAI.coolingUnit,
@@ -42,13 +49,10 @@ export function extractPriceProductSubjectsFromText(text?: string | null): ChatS
 
   const hasDenso = /denso/i.test(normalized);
   const cc = normalized.match(/(\d{2,4})\s*cc/i)?.[1] ?? null;
-  const thaiWater = "\\u0e19\\u0e49(?:\\u0e33|\\u0e4d\\u0e32)";
-  const hasWaterToken =
-    new RegExp(thaiWater, "i").test(normalized) ||
-    /เน€เธยเน€เธยเน€เธเธ“|เธเนเธณ/i.test(normalized);
-  const hasOil =
-    new RegExp(`${thaiWater}\\s*\\u0e21\\u0e31\\u0e19|${thaiWater}\\s*denso`, "i").test(normalized) ||
-    /เธเนเธณ\s*เธกเธฑเธ|เธเนเธณ\s*denso/i.test(normalized);
+  const hasWaterToken = new RegExp(THAI_WATER_PATTERN, "i").test(normalized);
+  const hasOil = new RegExp(`${THAI_WATER_PATTERN}\\s*มัน|${THAI_WATER_PATTERN}\\s*denso`, "i").test(
+    normalized,
+  );
   if (hasOil || (hasDenso && cc !== null && hasWaterToken)) {
     subjects.push({
       partType: THAI.oil,
@@ -60,11 +64,7 @@ export function extractPriceProductSubjectsFromText(text?: string | null): ChatS
     });
   }
 
-  if (
-    new RegExp(`${thaiWater}\\u0e22\\u0e32\\s*\\u0e41\\u0e2d\\u0e23\\u0e4c`, "i").test(normalized) ||
-    new RegExp(`${thaiWater}\\u0e22\\u0e32`, "i").test(normalized) ||
-    /เธเนเธณเธขเธฒ\s*เนเธญเธฃเน|เธเนเธณเธขเธฒ|เธเน.*เนเธญเธฃเน/i.test(normalized)
-  ) {
+  if (new RegExp(`${THAI_WATER_PATTERN}ยา\\s*แอร์|${THAI_WATER_PATTERN}ยา`, "i").test(normalized)) {
     subjects.push({
       partType: THAI.refrigerant,
       carBrand: null,
