@@ -5,8 +5,8 @@
 >
 > **ธงของเจ้าของงาน:** ห้ามส่งคำตอบมั่ว — ถ้าไม่มั่นใจให้ส่งเรื่องต่อแอดมินเท่านั้น
 >
-> สถานะเอกสาร: **แก้ข้อ A + F + G1/G2 + Fix1/Fix2 + D + E + Relevance Gate (เคส 🔴1/2/3) แล้ว** (2026-07-11) · เหลือ C (ดู §5)
-> วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5) · อัปเดต: 2026-07-11 (Claude Opus 4.8)
+> สถานะเอกสาร: **แก้ข้อ A + F + G1/G2 + Fix1/Fix2 + D + E + Relevance Gate (เคส 🔴1/2/3) + classifier-rewrite ข้ามหมวด (2026-07-25) แล้ว** · เหลือ C (ดู §5)
+> วันที่บันทึก: 2026-07-10 · ผู้ตรวจ: Claude (Fable 5) · อัปเดต: 2026-07-25 (Claude Fable 5)
 
 ---
 
@@ -200,3 +200,8 @@
   - **Processor:** guard `weakCategoryMatchGuard` ([line-webhook-processor.ts](../lib/line-webhook-processor.ts)) → ตอบ `CHAT_WEAK_MATCH_HANDOFF_REPLY` + notify + audit `AI_WEAK_CATEGORY_MATCH_HANDOFF`. Messenger parity ใน `replyWithProductSearch` ([messenger-webhook-processor.ts](../lib/messenger/messenger-webhook-processor.ts)) — ใช้ fitment hints แทน frame (Messenger ไม่มี frame)
   - **หมายเหตุ (นิยาม "name"):** `match_name` ยิงตั้งแต่ similarity 0.18 → ตามที่เจ้าของเลือก name อยู่ใน ก จึงเป็นเกณฑ์ที่ค่อนข้างผ่อนสำหรับชื่อ. หากอยากเข้มขึ้น (name เฉพาะ exact/prefix, fuzzy ให้ไปเข้า trigram≥0.5) แก้ได้ภายหลัง
   - **ไม่แตะ ranking/filtering ของ engine** → ไม่กระทบ storefront. Test: `line-product-search-bridge.test.ts` (propagate highTrigram), `line-webhook-processor.test.ts` (weak→handoff, strong name→show). `tsc --noEmit` ผ่าน, ชุด LINE 73 pass/5 fail เท่า baseline (5 fail = env `mock.module`)
+- 2026-07-25: **แก้เคส classifier rewrite ข้ามหมวด** (เคสจริง "แผงแอร์รถตู้ commuter หน้าสั้นปี 2013" → ตอบคอยล์เย็น 4 รายการแทนแผงแอร์/คอยล์ร้อน) — commit `670c835`
+  - **สาเหตุจริง (replay `LineAiAuditLog` conv `cms07g5ew…`):** 2 เทิร์นแรกค้นถูก (categoryName "คอยล์ร้อน (Condenser)") แต่เทิร์นราคา ("ราคาประมาณเท่าไหร่ครับ") classifier **rewrite query+partType เป็น "ตู้แอร์"** — คำที่ลูกค้าไม่เคยพิมพ์ (น่าจะยุบ "แผงแอร์**รถตู้**"). frame grounding เดิมตัด partType ปลอม ("ตู้แอร์") ทิ้งถูกต้อง (frame คง "แผงแอร์") แต่ **consolidatedQuery ไม่ถูก ground** → query "ตู้แอร์" ไหลเข้า `resolveChatFitmentFilters` → `matchDbCategoryAlias` เจอทั้ง "แผงแอร์"(Condenser, 240) จาก partType และ "ตู้แอร์"(Evaporator, 240) จาก query → priority เท่า+ยาวเท่า → แพ้ชนะด้วย**ลำดับ row จาก DB** → Evaporator ชนะ → ส่งคอยล์เย็นให้ลูกค้า
+  - **Fix A (processor — ground classifierQuery):** เมื่อ classifier partType ถูก drop เป็น ungrounded rewrite (**ต่างจาก** frame part ที่เก็บไว้ — carryover ที่ซ้ำ part เดิม เช่น follow-up "ปี 15" ไม่นับ) → `consolidatedQuery` fallback เป็น `frameQuery` แทน query ที่ LLM แต่ง (ยกเว้น `forceLiteralQuery` ซึ่ง ground โดยนิยาม). audit field ใหม่ `droppedUngroundedClassifierQuery` ใน `SEARCH_QUERY_CONSOLIDATED`
+  - **Fix B (category-alias-resolver — text-order tie-break):** `matchCategoryAliasRows` เลือก best alias ต่อ text แล้วตัดสินข้าม text ด้วย priority/ความยาวก่อน แต่**เสมอกันให้ text ลำดับแรกชนะ** (partType → query → rawText) แทน DB row order. alias priority สูงกว่าใน rawText (คำ precise ของลูกค้า เช่น "พัดลมโบ") ยังชนะเหมือนเดิม. Messenger ได้ประโยชน์อัตโนมัติ (ส่ง processText เป็น queryText อยู่แล้ว ไม่มี LLM query)
+  - **ไม่แตะ engine.** Test: `category-alias-resolver.test.ts` (tie → text order, regression พัดลมโบ), `line-webhook-processor.test.ts` (search ใช้ frameQuery "แผงแอร์ Toyota Commuter" ไม่ใช่ "ตู้แอร์"; เคส carryover "หม้อน้ำ ปี 15" ไม่เปลี่ยน). LINE 103 pass, ชุดข้างเคียง 115 pass, `npm run build` ผ่าน
