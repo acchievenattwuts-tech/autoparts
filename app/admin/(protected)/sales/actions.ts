@@ -2,6 +2,7 @@
 
 import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import {
   diffEntity,
@@ -721,10 +722,16 @@ export async function createSale(
       console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
     );
 
-    revalidateProfitDashboardCache();
-    revalidatePath("/admin");
-    revalidatePath("/admin/sales");
-    revalidatePath("/admin/products");
+    // ล้างแคชแบบ deferred ด้วย after() — callback ถูกรัน "หลัง" response ถูกส่ง
+    // ออกไปแล้ว ทำให้ Server Action ไม่แนบ RSC payload ของหน้าปัจจุบันกลับมา
+    // router จึงไม่ re-render หน้าฟอร์มทิ้ง (แก้อาการจอกระพริบ 1 ครั้งหลังบันทึก)
+    // ผลการล้างแคชเท่าเดิมทุกประการ เพียงเกิดขึ้นช้ากว่าไม่กี่มิลลิวินาที
+    after(() => {
+      revalidateProfitDashboardCache();
+      revalidatePath("/admin");
+      revalidatePath("/admin/sales");
+      revalidatePath("/admin/products");
+    });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
     console.error("[createSale]", err);
@@ -1385,11 +1392,15 @@ export async function updateSale(
       });
     }
 
-    revalidateProfitDashboardCache();
-    revalidatePath("/admin");
-    revalidatePath("/admin/sales");
-    revalidatePath(`/admin/sales/${id}`);
-    revalidatePath("/admin/products");
+    // ล้างแคชแบบ deferred ด้วย after() — เหตุผลเดียวกับใน createSale
+    // ฟอร์มแก้ไขอยู่หน้าเดิมหลังบันทึก จึงต้องไม่ให้ router re-render ทิ้ง
+    after(() => {
+      revalidateProfitDashboardCache();
+      revalidatePath("/admin");
+      revalidatePath("/admin/sales");
+      revalidatePath(`/admin/sales/${id}`);
+      revalidatePath("/admin/products");
+    });
     return { success: true };
   } catch (err) {
     console.error("[updateSale]", err);

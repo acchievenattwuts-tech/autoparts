@@ -9,6 +9,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generatePurchaseNo } from "@/lib/doc-number";
@@ -732,8 +733,14 @@ export async function createPurchase(
       });
     }
 
-    revalidatePath("/admin/purchases");
-    revalidatePath("/admin/products");
+    // ล้างแคชแบบ deferred ด้วย after() — callback ถูกรัน "หลัง" response ถูกส่ง
+    // ออกไปแล้ว ทำให้ Server Action ไม่แนบ RSC payload ของหน้าปัจจุบันกลับมา
+    // router จึงไม่ re-render หน้าฟอร์มทิ้ง (แก้อาการจอกระพริบ 1 ครั้งหลังบันทึก)
+    // ผลการล้างแคชเท่าเดิมทุกประการ เพียงเกิดขึ้นช้ากว่าไม่กี่มิลลิวินาที
+    after(() => {
+      revalidatePath("/admin/purchases");
+      revalidatePath("/admin/products");
+    });
     return { success: true, purchaseId: createdPurchaseId, purchaseNo };
   } catch (err) {
     console.error("[createPurchase]", err);
@@ -1529,9 +1536,13 @@ export async function updatePurchase(
       });
     }
 
-    revalidatePath("/admin/purchases");
-    revalidatePath(`/admin/purchases/${id}`);
-    revalidatePath("/admin/products");
+    // ล้างแคชแบบ deferred ด้วย after() — เหตุผลเดียวกับใน createPurchase
+    // ฟอร์มแก้ไขอยู่หน้าเดิมหลังบันทึก จึงต้องไม่ให้ router re-render ทิ้ง
+    after(() => {
+      revalidatePath("/admin/purchases");
+      revalidatePath(`/admin/purchases/${id}`);
+      revalidatePath("/admin/products");
+    });
     return { success: true };
   } catch (err) {
     console.error("[updatePurchase]", err);
