@@ -15,10 +15,29 @@ test("parses a product classification with consolidated query", async () => {
     partType: "หม้อน้ำ",
     carBrand: "Mazda",
     carModel: "Mazda 2",
+    // Absent from the reply (an older/looser model output) → null, i.e. "unknown
+    // whether the latest message named the car" → carry-over behaves as before.
+    carMentionInLatest: null,
     year: 2015,
     partKind: "fitment",
     tooBroad: false,
   });
+});
+
+test("parses carMentionInLatest — the customer's own words for the car this turn", async () => {
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
+    '{"group":"product","query":"พัดลม honda city","partType":"พัดลม","carBrand":"Honda","carModel":"City","carMentionInLatest":"ซิ้ตี้","year":2012,"partKind":"fitment","tooBroad":false}',
+  );
+  assert.equal(intent?.carMentionInLatest, "ซิ้ตี้");
+});
+
+test("carMentionInLatest: a 'null' string is normalized to null (no car named this turn)", async () => {
+  const { parseChatSearchIntent } = await import("@/lib/chat-core/ai-service");
+  const intent = parseChatSearchIntent(
+    '{"group":"product","query":"หม้อน้ำ","partType":"หม้อน้ำ","carMentionInLatest":"null","partKind":"fitment","tooBroad":false}',
+  );
+  assert.equal(intent?.carMentionInLatest, null);
 });
 
 test("parses partKind=universal and tooBroad flag", async () => {

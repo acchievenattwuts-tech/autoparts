@@ -178,6 +178,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   '  "partType": "ชนิดอะไหล่ เช่น หม้อน้ำ คอยล์เย็น คอมแอร์ แผงแอร์ กรองแอร์ (ถ้าไม่ทราบใส่ null)",',
   '  "carBrand": "ยี่ห้อรถ เช่น Mazda Toyota Isuzu (ถ้าไม่ทราบใส่ null)",',
   '  "carModel": "รุ่นรถ เช่น Mazda 2, D-Max, Vios (ถ้าไม่ทราบใส่ null)",',
+  '  "carMentionInLatest": "คัดลอกคำที่ลูกค้าใช้เรียก ยี่ห้อ/รุ่นรถ ใน \'ข้อความล่าสุด\' มาตรง ๆ ตามที่พิมพ์ (แม้สะกดผิดก็คัดลอกตามนั้น ห้ามแก้ให้ถูก) — ถ้า \'ข้อความล่าสุด\' ไม่ได้เอ่ยถึงยี่ห้อ/รุ่นรถเลย ใส่ null (ปีรถอย่างเดียวไม่นับ, รถที่เอ่ยในข้อความก่อนหน้าไม่นับ)",',
   '  "year": ปีรถเป็นเลข ค.ศ. 4 หลัก หรือ null,',
   '  "partKind": "fitment หรือ universal — fitment = อะไหล่ที่ต้องระบุรุ่นรถถึงจะหาตรงได้ (หม้อน้ำ คอยล์เย็น คอมแอร์ แผงร้อน ตู้แอร์ กรองแอร์ ฯลฯ); universal = สินค้าที่ค้นด้วยชื่อ/สเปกได้เองไม่ต้องผูกรุ่นรถ (น้ำยาล้างคอยล์ ฟองน้ำ น็อต โอริง หัวคอปเปอร์ เทปพันสายไฟ ฯลฯ) ถ้าไม่แน่ใจใส่ null",',
   '  "tooBroad": true/false — true เมื่อข้อความกว้าง/สั้นเกินจนค้นแล้วได้ผลกว้างมาก เช่น "น็อต" "สายไฟ" "อะไหล่" คำเดียวโดยไม่มีตัวขยาย',
@@ -208,6 +209,7 @@ const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "- ถ้า group=stock_availability แต่บทสนทนาก่อนหน้าเคยเอ่ยถึงอะไหล่/รถ ให้กรอก partType/carBrand/carModel/year เท่าที่ลูกค้าเคยระบุ (เหมือน product) — ห้ามแต่งเอง",
   "- แปลงปีย่อ 2 หลักเป็น ค.ศ. 4 หลัก เช่น '06' → 2006; ปี พ.ศ. เช่น 2560 → 2017",
   "- ห้ามแต่งข้อมูลที่ลูกค้าไม่ได้พูด ฟิลด์ใดไม่ทราบให้ใส่ null",
+  "- carMentionInLatest ต้องเป็นข้อความที่ตัดมาจาก 'ข้อความล่าสุด' แบบคำต่อคำเท่านั้น (ห้ามแปล ห้ามแก้ตัวสะกด ห้ามใส่ชื่อรุ่นจากข้อความก่อนหน้า) — ใช้เพื่อบอกว่า 'ลูกค้าเอ่ยถึงรถในข้อความนี้หรือไม่' ไม่ใช่เพื่อบอกว่ารุ่นอะไร; ถ้า carModel มาจากบทสนทนาก่อนหน้า ไม่ใช่จากข้อความล่าสุด ให้ carMentionInLatest = null",
   "- partKind/tooBroad ใส่เฉพาะเมื่อ group=product หรือ stock_availability เท่านั้น (กลุ่มอื่น partKind=null, tooBroad=false)",
   "- subjects: แยกเป็นหลายรายการเฉพาะเมื่อ 'ชนิดอะไหล่ต่างกัน' ตั้งแต่ 2 ชนิด; รุ่นรถต่างกันแต่ชนิดเดียว = subjects ว่าง ([])",
 ].join("\n");
@@ -242,6 +244,26 @@ export type ChatSearchIntent = {
   partType: string | null;
   carBrand: string | null;
   carModel: string | null;
+  /**
+   * The customer's OWN words for the vehicle in the LATEST message, copied
+   * verbatim (misspellings included) — or null when the latest message names no
+   * vehicle at all.
+   *
+   * This answers a question `carModel` cannot: did the customer name a car in
+   * THIS turn, or is `carModel` merged from earlier history? The distinction
+   * matters because the LINE inquiry frame carries the vehicle across turns —
+   * so a car the customer names but we FAIL to resolve must drop the carried
+   * vehicle instead of silently answering for the previous car.
+   *
+   * Never trusted as-is: the caller verifies the substring really occurs in the
+   * latest text before acting on it (an unverifiable value is treated as null,
+   * i.e. the previous carry-over behavior).
+   *
+   * Optional so every other intent producer (the rule-dictionary fast path, the
+   * multi-subject detector, tests) stays unchanged — absent means "unknown",
+   * which falls back to the previous carry-over behavior.
+   */
+  carMentionInLatest?: string | null;
   year: number | null;
   /** Whether the part needs a vehicle to find (fitment) or is searchable on its
    *  own name/spec (universal). Null when unknown / non-product. */
@@ -348,6 +370,7 @@ export const parseChatSearchIntent = (raw: string): ChatSearchIntent | null => {
     partType: cleanIntentString(obj.partType),
     carBrand: cleanIntentString(obj.carBrand),
     carModel: cleanIntentString(obj.carModel),
+    carMentionInLatest: cleanIntentString(obj.carMentionInLatest),
     year: cleanIntentYear(obj.year),
     partKind,
     tooBroad: isProductLike && obj.tooBroad === true,

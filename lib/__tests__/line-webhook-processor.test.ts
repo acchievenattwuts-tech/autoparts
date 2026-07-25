@@ -170,6 +170,9 @@ function createProcessorTestDeps(input?: {
   intentYear?: number | null;
   intentPartKind?: "fitment" | "universal" | null;
   intentTooBroad?: boolean;
+  /** The customer's own words for the vehicle in the latest message, as reported
+   *  by the classifier (null = the latest message names no vehicle). */
+  intentCarMentionInLatest?: string | null;
   storedFrame?: {
     partType?: string | null;
     carBrand?: string | null;
@@ -450,6 +453,7 @@ function createProcessorTestDeps(input?: {
             partType: input?.intentPartType ?? null,
             carBrand: input?.intentCarBrand ?? null,
             carModel: input?.intentCarModel ?? null,
+            carMentionInLatest: input?.intentCarMentionInLatest ?? null,
             year: input?.intentYear ?? null,
             // Default to universal so existing search-path tests still search
             // (the gate only blocks incomplete fitment turns).
@@ -1300,7 +1304,7 @@ test("search matched rows but none are showable → hands off + notifies (no sil
   assert.ok(calls.replies[0]?.text.includes("แอดมิน"));
 });
 
-test("escalates to admin (waiting + notify + send-off message) after repeated empty searches", async () => {
+test("an empty search escalates to admin (waiting + notify + send-off message)", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ failedSearchCount: 2 });
   // Resolved product turn (not a null/uncertain classification) so the repeated
@@ -1327,7 +1331,13 @@ test("escalates to admin (waiting + notify + send-off message) after repeated em
   assert.equal(calls.replies.length, 1);
   assert.match(calls.replies[0]?.text ?? "", /ส่งเรื่องให้แอดมิน/);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
-  assert.ok(calls.auditActions.includes("AI_ESCALATE_NO_RESULTS"));
+  // The counter-based escalation (`AI_ESCALATE_NO_RESULTS`, which this test was
+  // originally written for) now sits BEHIND `anySearchedNoMatch` in the hand-off
+  // chain, and `failedSearchCount` is only counted on a turn that searched and got
+  // zero — the exact condition that makes `anySearchedNoMatch` true. So the no-match
+  // branch always wins first. Customer-visible behaviour is identical (same message,
+  // same freeze, same notify); only the audit label differs.
+  assert.ok(calls.auditActions.includes("AI_SEARCH_NO_MATCH_HANDOFF"));
   assert.equal(calls.notifyHandoffs.length, 1);
 });
 
@@ -2596,6 +2606,136 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
   // Frame: part replaced, vehicle kept.
   assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น");
   assert.equal(calls.savedFrames.at(-1)?.carModel, "D-Max");
+});
+
+test("inquiry frame: a car named this turn but unreadable drops the carried vehicle (ซิ้ตี้ case)", async () => {
+  // Real case (conv cmq6o1g1u, 2026-07-25): after "อีซูซุเดก้า270" the customer asked
+  // "พัดลมโบซิ้ตี้ปี12" (Honda City, run-on + mis-keyed). The classifier could not read
+  // the model, so the session's Isuzu Deca answered instead — one ISUZU DECA blower
+  // shown for a Honda City. The verified car mention proves a vehicle WAS named this
+  // turn, so the carried car must go and the gate must ask which vehicle.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "คอยล์เย็น", carBrand: "Isuzu", carModel: "Deca" },
+    consolidatedQuery: "พัดลม Isuzu Deca",
+    intentPartType: "พัดลม",
+    // The car was named but neither brand nor model came out of it.
+    intentCarBrand: null,
+    intentCarModel: null,
+    intentCarMentionInLatest: "ซิ้ตี้",
+    intentYear: 2012,
+    intentPartKind: "fitment",
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "โบลเวอร์ ISUZU DECA/UD", code: "P0120", imageUrl: null, salePrice: 850, retailPrice: 850, memberPrice: 850 },
+  ];
+
+  const result = await processLineWebhookPayload(
+    textPayload("พัดลมโบซิ้ตี้ปี12"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "must not search the previous car");
+  assert.ok(calls.replies[0]?.text.includes("ยี่ห้อ"), "asks which vehicle instead of guessing");
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.carBrand, null, "carried Isuzu dropped");
+  assert.equal(framed?.carModel, null, "carried Deca dropped");
+  assert.equal(framed?.year, 2012, "the year the customer gave THIS turn is kept");
+});
+
+test("inquiry frame: an unverifiable car mention is ignored (carry-over unchanged)", async () => {
+  // The mention is LLM-produced, so it is only acted on when it really occurs in the
+  // customer's latest text. A value that does not (a slip, or one merged out of
+  // history) must fall back to the previous carry-over behaviour.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "คอยล์เย็น", carBrand: "Isuzu", carModel: "D-Max" },
+    consolidatedQuery: "พัดลม Isuzu D-Max",
+    intentPartType: "พัดลม",
+    intentCarBrand: null,
+    intentCarModel: null,
+    intentCarMentionInLatest: "วีโก้", // never typed in the latest message
+    intentPartKind: "fitment",
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "โบลเวอร์ Isuzu D-Max", code: "P1", imageUrl: null, salePrice: 850, retailPrice: 850, memberPrice: 850 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("พัดลมโบ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.carModel, "D-Max", "unverifiable mention must not drop the carried car");
+  assert.equal(calls.searches.length, 1, "still searches the carried subject");
+});
+
+test("inquiry frame: a turn that names NO car keeps the carried vehicle (ปี-only follow-up)", async () => {
+  // Guards the drip-feed path measured in production ("2007" alone → Toyota Vios):
+  // mention=null means the customer named no vehicle this turn, so nothing changes.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "มอเตอร์พัดลม", carBrand: "Toyota", carModel: "Vios" },
+    consolidatedQuery: "มอเตอร์พัดลม Toyota Vios 2007",
+    intentPartType: "มอเตอร์พัดลม",
+    intentCarBrand: null,
+    intentCarModel: null,
+    intentCarMentionInLatest: null,
+    intentYear: 2007,
+    intentPartKind: "fitment",
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "มอเตอร์พัดลม Toyota Vios", code: "P1", imageUrl: null, salePrice: 900, retailPrice: 900, memberPrice: 900 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("2007"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.carModel, "Vios", "carried car kept — no vehicle named this turn");
+  assert.equal(calls.searches.length, 1, "searches the carried subject, does not re-ask");
+});
+
+test("inquiry frame: a car named AND read this turn is used normally", async () => {
+  // The counterpart of the ซิ้ตี้ case: the mention resolved, so the new car simply
+  // replaces the old one — the guard must not fire and wipe a car we understood.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "คอยล์เย็น", carBrand: "Isuzu", carModel: "Deca" },
+    consolidatedQuery: "พัดลม Honda City",
+    intentPartType: "พัดลม",
+    intentCarBrand: "Honda",
+    intentCarModel: "City",
+    intentCarMentionInLatest: "ซิตี้",
+    intentYear: 2012,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "โบเวอร์ พัดลมแอร์ (Blower Motor)", carBrandName: "Honda", carModelName: "City" },
+  });
+  dependencies.getChatProductSummaries = async () => [
+    { id: "product-1", name: "โบลเวอร์ HONDA City", code: "P0119", imageUrl: null, salePrice: 730, retailPrice: 730, memberPrice: 730 },
+  ];
+
+  await processLineWebhookPayload(
+    textPayload("พัดลมโบซิตี้ปี12"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "searches the car the customer named");
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.carModel, "City", "the model the customer named is kept");
+  // The brand is dropped by the pre-existing per-turn brand guard (the customer typed
+  // no "ฮอนด้า"/"Honda"), NOT by this guard — what matters here is that the carried
+  // Isuzu Deca is gone and the model survived.
+  assert.notEqual(framed?.carBrand, "Isuzu", "carried Isuzu must not survive");
+  assert.notEqual(framed?.carModel, "Deca");
 });
 
 test("inquiry frame: a hallucinated part type on a vehicle-only follow-up is NOT a topic shift (Option A grounding)", async () => {

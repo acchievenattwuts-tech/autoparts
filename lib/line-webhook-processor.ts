@@ -106,6 +106,7 @@ import {
   extractPriceProductSubjectsFromText,
 } from "@/lib/chat-core/price-product-subjects";
 import {
+  chatCarMentionOccursInLatest,
   extractChatRequiredSearchTokens,
   guardChatSearchIntent,
   lineValueHasCustomerEvidence,
@@ -1713,6 +1714,44 @@ export async function processLineAiReply(
       inquiryFrame = reconciled.frame;
       frameTopicShift = reconciled.topicShift;
       const droppedStalePartOnVehicleSwitch = reconciled.droppedStalePart;
+      // ── Named-but-unreadable vehicle ────────────────────────────────────────
+      // The customer wrote a car in THIS message that we could not turn into a
+      // brand/model. The frame carries the PREVIOUS car, so without this guard the
+      // turn silently answers for the wrong vehicle — the 2026-07-25 case where
+      // "พัดลมโบซิ้ตี้ปี12" (Honda City, run-on + mis-keyed) was answered with an
+      // ISUZU DECA blower because "อีซูซุเดก้า270" was still the session's car.
+      //
+      // `carMentionInLatest` is the classifier reporting the customer's own words
+      // for the vehicle in the latest message (null when the message names none),
+      // verified against that text so an LLM slip can't trigger this. Combined with
+      // "and yet no brand/model came out", it is exactly the failure we want: a
+      // vehicle was named and we could not read it. Drop the carried car so the gate
+      // asks which vehicle instead of guessing — the shop's "ไม่มั่นใจอย่าตอบมั่ว"
+      // rule. The YEAR the customer gave THIS turn is kept (it is about the new car
+      // and saves them repeating it).
+      //
+      // Deliberately NOT gated on a topic shift: the same mistake happens when the
+      // part stays the same and only the car changes.
+      const verifiedCarMention =
+        chatCarMentionOccursInLatest(guardedSearchIntent?.carMentionInLatest, processText)
+          ? guardedSearchIntent?.carMentionInLatest ?? null
+          : null;
+      const namedUnreadableVehicle = Boolean(
+        verifiedCarMention &&
+          !imageFields &&
+          !guardedSearchIntent?.carBrand &&
+          !guardedSearchIntent?.carModel &&
+          inquiryFrame &&
+          (inquiryFrame.carBrand || inquiryFrame.carModel),
+      );
+      if (namedUnreadableVehicle && inquiryFrame) {
+        inquiryFrame = {
+          ...inquiryFrame,
+          carBrand: null,
+          carModel: null,
+          year: guardedSearchIntent?.year ?? null,
+        };
+      }
       const droppedVehicleCarryover = Boolean(
         inquiryFrame &&
           !latestHasVehicleEvidence &&
@@ -1797,6 +1836,11 @@ export async function processLineAiReply(
           classifierPartType,
           latestHasProductSpecificity,
           broadInquiryFrame,
+          // Measures how often the classifier reports a vehicle mention, whether it
+          // survives verification, and how often the carried car had to be dropped.
+          carMentionInLatest: guardedSearchIntent?.carMentionInLatest ?? null,
+          carMentionVerified: Boolean(verifiedCarMention),
+          namedUnreadableVehicle,
         },
       });
     }

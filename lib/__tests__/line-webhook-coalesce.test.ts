@@ -186,6 +186,19 @@ function createCoalesceHarness(options?: {
     resolveLinePriceTier: async () => "WHOLESALE",
     answerFromChatFaq: async () => ({ answered: false, reply: "" }),
     extractChatSearchIntent: async () => options?.textIntent ?? null,
+    // Hermetic: the real detector resolves categories against the DB, which this
+    // suite has no access to — it would fail closed (subjects: null) and silently
+    // route every multi-subject case down the single-subject path. Mirror the
+    // processor suite's stub: trust the classifier's own ≥2 subjects.
+    detectChatMultiSubjects: async ({ intent }) => {
+      const subjects = intent?.subjects && intent.subjects.length >= 2 ? intent.subjects : null;
+      return {
+        subjects,
+        source: subjects ? ("llm" as const) : ("none" as const),
+        handoffReason: null,
+        categories: [],
+      };
+    },
     resolveChatFitmentFilters: async () => ({}),
     generateChatSuggestion: async () => ({
       suggestedReply: "เบื้องต้นพบรายการที่ใกล้เคียงค่ะ",
@@ -733,6 +746,10 @@ test("B2c: two distinct part categories → multi-subject answer (2 searches), n
       { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
       { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
     ]);
+  // The car must RESOLVE, otherwise the Option A vehicle-unresolved guard (added
+  // after this test was written) hands off per subject instead of answering — the
+  // right behaviour for an unknown car, but not what this test is about.
+  dependencies.resolveChatFitmentFilters = async () => ({ carModelName: "D-Max" });
 
   const result = await processLineWebhookPayload(
     { events: [textEvent("e1", "คอมแอร์กับคอยเย็น D-Max")] },
@@ -767,7 +784,7 @@ test("B2c: same part type for two cars → NOT split (single path, no multi audi
   assert.ok(!auditActions.includes("AI_MULTI_SUBJECT"), "did not multi-split same category");
 });
 
-test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", async () => {
+test("B2c: mixed found/not-found → answers what it found, then notifies + freezes for the missing one", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createCoalesceHarness({});
   const auditActions: string[] = [];
@@ -809,11 +826,18 @@ test("B2c: mixed found/not-found → no-match line + notify, room NOT frozen", a
       { partType: "คอมแอร์", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอมแอร์ D-Max" },
       { partType: "คอยเย็น", carBrand: null, carModel: "D-Max", year: null, partKind: "fitment", query: "คอยเย็น D-Max" },
     ]);
+  // As above: the car must resolve so the vehicle-unresolved guard stays out of the
+  // way and this test measures the mixed found/not-found behaviour it is named for.
+  dependencies.resolveChatFitmentFilters = async () => ({ carModelName: "D-Max" });
 
   await processLineWebhookPayload({ events: [textEvent("e1", "คอมแอร์กับคอยเย็น D-Max")] }, baseConfig, dependencies);
 
   assert.ok(auditActions.includes("AI_MULTI_SUBJECT"));
   assert.ok(allReplyTexts.some((t) => t.includes("ช่วยเช็กให้ชัวร์ก่อน")), "missing category shows a no-match line");
   assert.equal(notifyCount, 1, "admin notified about the missing category");
-  assert.ok(!calls.statePatches.includes("waiting_admin"), "room NOT frozen (other category answered)");
+  // Policy change (see the `anyNotFound` branch in the multi-subject path): a missing
+  // subject is an admin handoff, so the room freezes AFTER the found subject has been
+  // answered. The customer still gets the คอมแอร์ result — asserted above — but the AI
+  // stops so a human resolves the คอยเย็น the shop could not match.
+  assert.ok(calls.statePatches.includes("waiting_admin"), "room frozen for the unresolved category");
 });

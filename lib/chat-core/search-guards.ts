@@ -20,6 +20,30 @@ export function lineQueryContainsRequiredTokens(query: string | null | undefined
   );
 }
 
+/**
+ * Verifies the classifier's `carMentionInLatest` — the customer's own words for
+ * the vehicle in the LATEST message — really occurs in that message.
+ *
+ * The field is the only signal that separates "the customer named a car in THIS
+ * turn" from "the classifier merged a car out of the conversation history", which
+ * is what decides whether a carried-over vehicle may still answer this turn. Since
+ * it is produced by the LLM it is never trusted on its own: an unverifiable value
+ * is treated as absent, i.e. the previous carry-over behaviour.
+ *
+ * Whitespace is ignored on both sides — Thai is written without spaces, so the
+ * model may return "ซิ้ตี้" for the run-on text "พัดลมโบซิ้ตี้ปี12", or echo a
+ * spaced form of a token the customer typed compactly.
+ */
+export function chatCarMentionOccursInLatest(
+  mention: string | null | undefined,
+  latestText: string | null | undefined,
+): boolean {
+  const needle = normalizeSearchText(mention).replace(/\s+/g, "");
+  if (!needle) return false;
+  const haystack = normalizeSearchText(latestText).replace(/\s+/g, "");
+  return haystack.includes(needle);
+}
+
 export function lineValueHasCustomerEvidence(
   value: string | null | undefined,
   latestText: string | null | undefined,
