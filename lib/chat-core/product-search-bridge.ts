@@ -113,6 +113,10 @@ export type ChatProductSearchBridgeResult =
        *  dropped — so a corrected/year-stripped match never reads as an exact hit.
        *  Null on a normal (non-recovered) search. */
       didYouMean: { suggestion: string; droppedYear: boolean } | null;
+      /** True when an accessory/universal search only succeeded after the carried
+       *  vehicle filters were dropped (see the rescue in the search body). Surfaced
+       *  for the audit trail so the rescue rate is measurable. */
+      accessoryVehicleDropped?: boolean;
     };
 
 export type ChatMatchedProductSummary = {
@@ -458,7 +462,51 @@ export async function searchChatProductInquiry(
     cacheProfile: "storefront",
   });
 
-  // Graceful fallback: the strict head-noun search found nothing (e.g. the
+  // Accessory rescue #1 — drop the VEHICLE, keep the head noun. A universal SKU
+  // (น้ำยาล้างคอยล์, ฟองน้ำ, โอริง…) has no fitment rows at all, so ANY carried
+  // brand/model/year filter forces the search to zero. The LINE inquiry frame keeps
+  // the customer's car across a topic shift on purpose, and its vehicle-carryover
+  // guard only fires when the turn carries a digit-bearing token — so a plain-word
+  // ask ("มีน้ำยาล้างคอยล์ไหม") right after "หม้อน้ำ vios 2010" searched Vios+2010 and
+  // came back empty, which the caller reports as "we don't stock this". Measured
+  // against the live catalog: น้ำยาล้างคอยล์ 1 → 0, ฟองน้ำ 4 → 0, โอริง 68 → 1.
+  //
+  // Done as a retry-on-empty rather than stripping the filters up-front: a turn that
+  // already found vehicle-scoped rows is never affected, so a fitment part the
+  // classifier mislabelled as `universal` cannot lose its vehicle scope and start
+  // showing another car's parts. The head-noun anchor still constrains every row,
+  // and the caller's relevance gate still judges the result.
+  let accessoryVehicleDropped = false;
+  const vehicleScoped = Boolean(
+    baseFilters.carBrandName || baseFilters.carModelName || baseFilters.fitmentYear !== null,
+  );
+  let effectiveFilters = baseFilters;
+  if (result.total === 0 && accessoryHeadNoun && vehicleScoped) {
+    const carlessFilters = {
+      categoryName: baseFilters.categoryName,
+      carBrandName: null,
+      carModelName: null,
+      fitmentYear: null,
+    };
+    const carless = await resolvedSearchFn({
+      query,
+      isActive: true,
+      isStorefrontVisible: true,
+      ...carlessFilters,
+      ...(primaryRequiredTokens.length > 0 ? { requiredTokens: primaryRequiredTokens } : {}),
+      ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
+      skip: 0,
+      take: input.take ?? 5,
+      cacheProfile: "storefront",
+    });
+    if (carless.total > 0) {
+      result = carless;
+      effectiveFilters = carlessFilters;
+      accessoryVehicleDropped = true;
+    }
+  }
+
+  // Accessory rescue #2 — the strict head-noun search still found nothing (e.g. the
   // customer's word differs from the catalog wording). Drop the head-noun anchor
   // and rerun the broad search — the worst case is exactly the previous behaviour,
   // never a wrong "not found". Applies ONLY to the accessory anchor; the fitment
@@ -541,7 +589,9 @@ export async function searchChatProductInquiry(
       ? "SEARCHED_FITMENT_PART_NO_MATCH"
       : fitmentPartHeadNoun
         ? "SEARCHED_FITMENT_PART_ANCHORED"
-        : accessoryHeadNoun && !accessoryHeadFallback
+        : accessoryVehicleDropped
+          ? "SEARCHED_ACCESSORY_HEAD_ANCHORED_NO_VEHICLE"
+          : accessoryHeadNoun && !accessoryHeadFallback
           ? "SEARCHED_ACCESSORY_HEAD_ANCHORED"
           : accessoryHeadFallback
             ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
@@ -554,8 +604,12 @@ export async function searchChatProductInquiry(
         }
       : result,
     needsMoreInfo: result.total === 0 || result.ids.length === 0,
-    appliedFilters: baseFilters,
+    // Mirrors the filters the SUCCESSFUL search actually used, so the "view all on
+    // web" link lands on the same set the customer saw (the accessory rescue drops
+    // the vehicle; re-adding it to the link would zero the storefront results).
+    appliedFilters: effectiveFilters,
     droppedImageCodes,
     didYouMean: null,
+    accessoryVehicleDropped,
   };
 }

@@ -701,3 +701,115 @@ test("did-you-mean retry still recovers from the 2nd suggestion under the cap (C
   assert.equal(result.query, "ตัวเลือกที่สอง");
   assert.deepEqual(queries, ["คอมแarr", "ตัวเลือกแรก", "ตัวเลือกที่สอง"]);
 });
+
+test("accessory rescue: empty vehicle-scoped search retries without the vehicle", async () => {
+  // The LINE inquiry frame carries the customer's car across a topic shift, so a
+  // universal ask ("มีน้ำยาล้างคอยล์ไหม") right after "หม้อน้ำ vios 2010" arrives with
+  // Vios/2010 hard filters. A universal SKU has no fitment rows, so that search is
+  // always empty — the rescue re-runs it car-less, keeping the head-noun anchor.
+  const inputs: Array<{ carModelName: unknown; fitmentYear: unknown; requiredTokens?: unknown }> = [];
+
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "น้ำยาล้างคอยล์",
+      fitmentHints: {
+        categoryName: null,
+        carBrandName: "Toyota",
+        carModelName: "Vios",
+        fitmentYear: 2010,
+      },
+      accessoryHeadNoun: "น้ำยาล้างคอยล์",
+      take: 5,
+    },
+    async (input) => {
+      inputs.push({
+        carModelName: input.carModelName,
+        fitmentYear: input.fitmentYear,
+        requiredTokens: input.requiredTokens,
+      });
+      const vehicleScoped = Boolean(input.carModelName || input.fitmentYear);
+      return vehicleScoped
+        ? { ids: [], total: 0, mode: "v2" }
+        : { ids: ["cleaner-1"], total: 1, mode: "v2", matchReasons: { "cleaner-1": ["name"] } };
+    },
+  );
+
+  assert.equal(inputs.length, 2, "one vehicle-scoped attempt, then the car-less retry");
+  assert.equal(inputs[0]?.carModelName, "Vios");
+  assert.equal(inputs[1]?.carModelName, null, "retry drops the model");
+  assert.equal(inputs[1]?.fitmentYear, null, "retry drops the year");
+  assert.deepEqual(
+    inputs[1]?.requiredTokens,
+    ["น้ำยาล้างคอยล์"],
+    "retry keeps the head-noun anchor so results stay on topic",
+  );
+  assert.equal(result.searched && result.result.total, 1);
+  assert.equal(result.searched && result.reason, "SEARCHED_ACCESSORY_HEAD_ANCHORED_NO_VEHICLE");
+  assert.equal(result.searched && result.accessoryVehicleDropped, true);
+  assert.deepEqual(
+    result.searched && result.appliedFilters,
+    { categoryName: null, carBrandName: null, carModelName: null, fitmentYear: null },
+    "the web link must mirror the car-less search the customer actually saw",
+  );
+});
+
+test("accessory rescue never runs when the vehicle-scoped search already found rows", async () => {
+  let calls = 0;
+
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "สายน้ำยาแอร์",
+      fitmentHints: {
+        categoryName: null,
+        carBrandName: "Honda",
+        carModelName: "CRV",
+        fitmentYear: 2014,
+      },
+      accessoryHeadNoun: "สายน้ำยาแอร์",
+      take: 5,
+    },
+    async () => {
+      calls += 1;
+      return { ids: ["hose-1"], total: 1, mode: "v2", matchReasons: { "hose-1": ["name"] } };
+    },
+  );
+
+  assert.equal(calls, 1, "a successful vehicle-scoped search is never re-run car-less");
+  assert.equal(result.searched && result.accessoryVehicleDropped, false);
+  assert.deepEqual(result.searched && result.appliedFilters, {
+    categoryName: null,
+    carBrandName: "Honda",
+    carModelName: "CRV",
+    fitmentYear: 2014,
+  });
+});
+
+test("accessory rescue leaves a non-accessory (fitment) turn untouched", async () => {
+  // A fitment part the classifier mislabels must NOT lose its vehicle scope — that
+  // is why the rescue is gated on the accessory head-noun anchor.
+  let calls = 0;
+
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอยล์เย็น Vios",
+      fitmentHints: {
+        categoryName: "คอยล์เย็น (Evaporator)",
+        carBrandName: "Toyota",
+        carModelName: "Vios",
+        fitmentYear: 2010,
+      },
+      take: 5,
+    },
+    async () => {
+      calls += 1;
+      return { ids: [], total: 0, mode: "v2" };
+    },
+  );
+
+  assert.equal(calls, 1, "no car-less retry without the accessory anchor");
+  assert.equal(result.searched && result.accessoryVehicleDropped, false);
+  assert.equal(result.searched && result.result.total, 0);
+});

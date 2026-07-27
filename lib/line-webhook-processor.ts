@@ -2286,6 +2286,17 @@ export async function processLineAiReply(
               // a query (null = normal search) — feeds the decision on tuning
               // DID_YOU_MEAN_MAX_RETRIES further.
               didYouMean: productSearch.didYouMean?.suggestion ?? null,
+              // The engine fell back to broad OR recall: every row matched only
+              // PART of the query (right car / wrong part, or the reverse), so the
+              // customer was shown near-matches carrying BROAD_FALLBACK_NEAR_MATCH_NOTE.
+              // The reply path already branches on this, but it was never recorded —
+              // leaving no way to measure how often near-matches are presented, or
+              // whether the relevance guards are strict enough. Logged here so the
+              // rate is auditable alongside total/didYouMean.
+              usedBroadFallback: productSearch.result.usedBroadFallback === true,
+              // An accessory/universal search that only succeeded once the carried
+              // vehicle filters were dropped — measures how often that rescue fires.
+              accessoryVehicleDropped: productSearch.accessoryVehicleDropped === true,
             }
           : {
               lineEventId: input.lineEventId,

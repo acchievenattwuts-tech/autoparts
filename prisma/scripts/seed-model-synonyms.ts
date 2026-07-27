@@ -99,6 +99,13 @@ const MODEL_SYNONYM_CLUSTERS: string[][] = [
   ["Vigo", "วีโก๊"],
   ["Strada", "สตาด้า"],
   ["Navara", "นาวาด้า"],
+  // 2026-07-27: production LINE log evidence — the classifier returned the model as
+  // "Hilux Tiger D4D", which resolved to NO model filter (the "Tiger" cluster held
+  // only bare "Tiger" spellings, and "hilux …" only prefix-matches when the suffix is
+  // a generation/engine-size qualifier — an engine CODE like "D4D" is not one). The
+  // turn then hit the vehicle-unresolved guard and handed off to an admin twice on
+  // 2026-07-24. Registering the compound spellings makes it an exact cluster hit.
+  ["Tiger", "Hilux Tiger", "Hilux Tiger D4D", "Tiger D4D", "ไฮลักซ์ไทเกอร์"],
 ];
 
 const dryRun = process.argv.includes("--dry-run");
