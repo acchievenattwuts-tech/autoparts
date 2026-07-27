@@ -39,6 +39,7 @@ model User {
   deliveryCommissionRunsCreated DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
   deliveryProofs                DeliveryProof[]
   expenses                      Expense[]
+  expenseAttachments            ExpenseAttachment[]
   lineSummaryDispatches         LineDailySummaryDispatch[]
   lineConversationsAssigned     LineConversation[]         @relation("LineConversationAssignedAdmin")
   lineMessagesAdminAuthored     LineMessage[]              @relation("LineMessageAdminAuthor")
@@ -1447,6 +1448,7 @@ model Expense {
   shopeeEscrowOrder     ShopeeOrderImport?     @relation("ShopeeEscrowExpense")
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
+  attachments           ExpenseAttachment[]
 
   @@index([cashBankAccountId])
   @@index([expenseDate(sort: Desc), status])
@@ -1517,6 +1519,23 @@ model ExpenseItem {
   expense       Expense     @relation(fields: [expenseId], references: [id], onDelete: Cascade)
 
   @@index([expenseId, lineNo])
+}
+
+/// หลักฐานแนบของบันทึกค่าใช้จ่าย (สลิปโอนเงิน / ใบเสร็จ) — ไม่บังคับ
+model ExpenseAttachment {
+  id           String   @id @default(cuid())
+  expenseId    String
+  url          String
+  fileName     String
+  contentType  String
+  fileSize     Int
+  uploadedById String
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  expense      Expense  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([expenseId, createdAt])
+  @@index([uploadedById])
 }
 
 model FactProfit {

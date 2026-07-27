@@ -24,6 +24,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: { expenseCode: { select: { id: true } } },
         },
+        _count: { select: { attachments: true } },
       },
     }),
     getActiveExpenseCodeOptions(),
@@ -50,6 +51,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     vatType:     expense.vatType,
     vatRate:     Number(expense.vatRate),
     note:        expense.note ?? "",
+    attachmentCount: expense._count.attachments,
     items:       expense.items.map((item) => ({
       expenseCodeId: item.expenseCodeId,
       description:   item.description ?? "",

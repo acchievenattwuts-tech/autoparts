@@ -116,7 +116,7 @@ async function getExpenseAuditSnapshot(expenseId: string) {
 
 export async function createExpense(
   formData: FormData
-): Promise<{ success?: boolean; expenseNo?: string; error?: string }> {
+): Promise<{ success?: boolean; expenseNo?: string; expenseId?: string; error?: string }> {
   const session = await requirePermission("expenses.create").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
@@ -227,7 +227,7 @@ export async function createExpense(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
-    return { success: true, expenseNo };
+    return { success: true, expenseNo, expenseId: createdExpenseId };
   } catch (err) {
     console.error("[createExpense]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

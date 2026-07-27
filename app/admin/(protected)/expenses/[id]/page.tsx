@@ -8,8 +8,9 @@ import { notFound } from "next/navigation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import ExpenseAttachmentsPanel, { type ExpenseAttachmentView } from "./ExpenseAttachmentsPanel";
 
 const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("expenses.view");
@@ -28,6 +29,18 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             expenseCode: { select: { code: true, name: true } },
           },
         },
+        attachments: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            url: true,
+            fileName: true,
+            contentType: true,
+            fileSize: true,
+            createdAt: true,
+            uploadedBy: { select: { name: true } },
+          },
+        },
       },
     }),
     db.documentPayment.findMany({
@@ -42,6 +55,16 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
 
   if (!expense) notFound();
   const activityEvents = await getDocumentActivityTimeline("Expense", expense.id);
+
+  const attachments: ExpenseAttachmentView[] = expense.attachments.map((attachment) => ({
+    id: attachment.id,
+    url: attachment.url,
+    fileName: attachment.fileName,
+    contentType: attachment.contentType,
+    fileSize: attachment.fileSize,
+    createdAtLabel: formatDateTimeThai(attachment.createdAt),
+    uploadedByName: attachment.uploadedBy?.name ?? "-",
+  }));
 
   const vatLabel: Record<string, string> = {
     NO_VAT:        "ไม่มี VAT",
@@ -143,6 +166,12 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           )}
         </div>
       </div>
+
+      <ExpenseAttachmentsPanel
+        expenseId={expense.id}
+        attachments={attachments}
+        canManage={canUpdate && expense.status === "ACTIVE"}
+      />
 
       <DocumentActivityTimeline events={activityEvents} />
 

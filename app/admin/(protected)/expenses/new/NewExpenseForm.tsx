@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createExpense, updateExpense } from "../actions";
+import { uploadExpenseAttachments } from "../attachment-actions";
+import ExpenseAttachmentPicker from "@/components/shared/ExpenseAttachmentPicker";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -40,6 +42,8 @@ interface InitialData {
   vatRate: number;
   note: string;
   items: LineItem[];
+  /** Attachments already stored on the document — counts toward the per-document cap. */
+  attachmentCount: number;
 }
 
 interface Props {
@@ -70,6 +74,7 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
         ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
         : [{ cashBankAccountId: "", amount: 0 }],
   );
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
@@ -92,6 +97,17 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
 
   const totalAmount = items.reduce((s, it) => s + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType as VatType, vatRate);
+
+  /** Uploads the picked evidence files once the expense document exists. */
+  const uploadPendingAttachments = async (expenseId: string): Promise<string | null> => {
+    if (attachmentFiles.length === 0) return null;
+    const attachmentData = new FormData();
+    for (const file of attachmentFiles) attachmentData.append("files", file);
+    const res = await uploadExpenseAttachments(expenseId, attachmentData);
+    if (res.error) return res.error;
+    setAttachmentFiles([]);
+    return null;
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -124,10 +140,19 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
       if (isEdit && initialData) {
         const res = await updateExpense(initialData.id, fd);
         if (res.error) { setError(res.error); return; }
-        router.push("/admin/expenses");
+        const attachmentError = await uploadPendingAttachments(initialData.id);
+        if (attachmentError) { setError(attachmentError); return; }
+        router.push(`/admin/expenses/${initialData.id}`);
       } else {
         const res = await createExpense(fd);
         if (res.error) { setError(res.error); return; }
+        // The document is already saved — an attachment failure must not hide the docNo.
+        const attachmentError = res.expenseId ? await uploadPendingAttachments(res.expenseId) : null;
+        if (attachmentError) {
+          setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${res.expenseNo}`);
+          setError(`${attachmentError} — แนบไฟล์ใหม่ได้ที่หน้ารายละเอียดเอกสาร`);
+          return;
+        }
         setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${res.expenseNo}`);
         setTimeout(() => router.push("/admin/expenses"), 1500);
       }
@@ -320,6 +345,17 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
           targetAmount={netAmount}
           label="ช่องทางจ่ายเงิน"
           placeholder="โปรดระบุบัญชีจ่ายเงิน"
+        />
+      </div>
+
+      {/* Attachments (optional evidence) */}
+      <div className="border-t border-gray-100 pt-4 dark:border-white/10">
+        <ExpenseAttachmentPicker
+          files={attachmentFiles}
+          onChange={setAttachmentFiles}
+          onError={setError}
+          existingCount={initialData?.attachmentCount ?? 0}
+          disabled={isPending}
         />
       </div>
 
