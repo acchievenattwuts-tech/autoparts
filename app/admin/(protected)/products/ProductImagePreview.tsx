@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Image from "next/image";
 import { ZoomIn } from "lucide-react";
-import ProductImageZoomLightbox, { type ProductZoomImage } from "@/components/shared/ProductImageZoomLightbox";
+import ProductImageZoomLightbox from "@/components/shared/ProductImageZoomLightbox";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
+import { buildProductZoomImages } from "@/lib/product-zoom-images";
 
 interface Props {
   imageUrl?: string | null;
@@ -14,24 +15,8 @@ interface Props {
   size?: "sm" | "lg";
 }
 
-function buildImageList(
-  imageUrl: string | null | undefined,
-  images: { url: string; alt: string | null }[] | undefined,
-  fallbackAlt: string,
-): ProductZoomImage[] {
-  const extra: ProductZoomImage[] =
-    images?.map((img) => ({ url: img.url, alt: img.alt ?? fallbackAlt })) ?? [];
-
-  if (!imageUrl) return extra;
-
-  const alreadyIncluded = extra.some((img) => img.url === imageUrl);
-  if (alreadyIncluded) return extra;
-
-  return [{ url: imageUrl, alt: fallbackAlt }, ...extra];
-}
-
 const ProductImagePreview = ({ imageUrl, images, alt, size = "sm" }: Props) => {
-  const galleryImages = buildImageList(imageUrl, images, alt);
+  const galleryImages = buildProductZoomImages(imageUrl, images, alt);
   const hasMultiple = galleryImages.length > 1;
   const isLarge = size === "lg";
   const [open, setOpen] = useState(false);

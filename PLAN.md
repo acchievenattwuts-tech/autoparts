@@ -312,6 +312,28 @@
 - [x] **ลบ `CustomerType.showPrice`** — เป็น dead field: schema ระบุว่าคุมการแสดงราคาบน LINE แต่ `applyChatPriceTier()` ไม่เคยอ่านค่านี้เลย เปลี่ยนป้ายในหน้าลูกค้าไปใช้ `priceTier` จริงแทน (`db push --accept-data-loss`)
 - [x] Test: `buildUnlinkedPriceNote` 4 เคส + e2e "unlinked ได้ข้อความ + ไม่ freeze" / "linked ไม่ได้ข้อความ"
 
+## หน้าค้นหาสินค้าแอดมิน `/admin/products/search` — search ตามคำสั่ง + bug fix (2026-07-29)
+- บริบท: ตรวจบัคตามที่เจ้าของแจ้ง ("กดล้างแล้ว filter ไม่เคลียร์") + เปลี่ยน logic การค้นหาให้ตัวกรองไม่ยิงค้นหาเอง
+- **Logic ใหม่ 3 ชั้น** ([MobileProductSearchForm.tsx](app/admin/(protected)/products/search/MobileProductSearchForm.tsx)): `draft` (ติ๊กอยู่ในชีต) → `confirmedFilters` (กดตกลงแล้ว = จำไว้ ยังไม่ค้น URL ไม่เปลี่ยน) → `urlFilters` (ใช้จริง ตรงกับผลลัพธ์). ตัดสินใจร่วมกับเจ้าของ:
+    - [x] เพิ่มปุ่ม **"ค้นหา"** ข้างปุ่มตัวกรอง — เป็นจุดเดียวที่ยิง `confirmedFilters` ออกไปจริง; **Enter ในช่องค้นหายังค้นทันทีเหมือนเดิม** (เทียบเท่ากดปุ่ม)
+    - [x] **"ตกลง"** = จำไว้ + ปิดชีต ไม่ค้นหา · **"ล้าง"** = เคลียร์เฉพาะ draft ไม่ปิดชีต ไม่ค้นหา · ปิดด้วย X/แตะพื้นหลัง = ทิ้งค่าที่เพิ่งติ๊ก กลับไปค่าที่ยืนยันล่าสุด (seed `draft` ใหม่ทุกครั้งที่เปิดชีต)
+    - [x] filter ที่จำไว้เป็น **in-memory เท่านั้น** (ไม่ใช้ sessionStorage) — refresh/back-forward แล้ว sync กลับตาม URL เสมอ
+    - [x] แถบแจ้งเตือนสีฟ้าเมื่อ `confirmedFilters` ยังไม่ตรงกับ URL → "ตัวกรองที่เลือกไว้ยังไม่ถูกใช้ — กดปุ่มค้นหา"
+- **บัคที่แก้ในรอบเดียวกัน**
+    - [x] `clearFilters()` เดิม navigate ทิ้ง filter ใน URL แต่**ไม่ reset state `draft`** → เปิดชีตซ้ำ checkbox ยังติ๊กค้าง และกดตกลงต่อค่าเก่าถูกยิงกลับมา (บัคที่เจ้าของเจอ) · ปุ่ม "ล้างทั้งหมด" ก็มีปัญหาเดียวกัน
+    - [x] `draft` ไม่เคย sync กับ props/URL (`useState` รันแค่ตอน mount) → กด back/forward แล้วตัวกรองในชีตไม่ตรงผลลัพธ์ → เพิ่ม `useEffect` sync จาก `urlFilters`
+    - [x] spinner/ปุ่ม disable ค้างถาวร — เดิมล้าง `pendingFeedback` ด้วยการเทียบ `href === currentSearchHref` ซึ่งไม่มีวันตรงถ้าผู้ใช้กด back ระหว่าง transition → เปลี่ยนไปผูกกับ `isRoutePending` ของ `useTransition` ตรง ๆ (จบเสมอ)
+    - [x] badge บนปุ่มตัวกรองเดิมนับคำค้นหาเป็นตัวกรองด้วย → นับเฉพาะตัวกรองจริง และช่วงปีนับเป็น 1 (`countFilters()`)
+    - [x] ช่วงปีรถ: เพิ่มข้อความเตือน "ปีเริ่มต้องไม่มากกว่าปีสิ้นสุด" (ไม่บล็อกการค้น)
+    - [x] ชีตกด Escape ปิดได้ (เดิม `role="dialog" aria-modal` แต่ไม่มี key handler)
+    - [x] ตรวจ dark mode เดิมใช้ `document.querySelector(".dark")` ซึ่งจับ element ไหนก็ได้ในหน้า → เหลือเช็คแค่ `<html>`/`<body>` ตามที่ `LiffThemeProvider` toggle จริง
+- **การ์ดสินค้า** ([search/page.tsx](app/admin/(protected)/products/search/page.tsx))
+    - [x] คลิกรูป → popup รูปใหญ่ **ทุกรูปของสินค้านั้น** ผ่าน `ProductImageZoomLightbox` ตัวเดียวกับหน้ารายการสินค้า/preview (component ใหม่ [ProductCardImage.tsx](app/admin/(protected)/products/search/ProductCardImage.tsx)) — เดิมคลิกรูปแล้วเด้งไปหน้า preview และเห็นรูปเดียว; ลิงก์ชื่อสินค้า/ลูกศรยังไปหน้า preview เหมือนเดิม
+    - [x] เพิ่มปุ่ม **"แก้ไข"** ท้ายการ์ด (แนบ `returnTo` กลับผลค้นหาเดิม) gate ด้วย `products.update` แบบเดียวกับหน้า `/admin/products`
+    - [x] แยก `buildProductZoomImages()` เป็น [lib/product-zoom-images.ts](lib/product-zoom-images.ts) ใช้ร่วมกับ `ProductImagePreview` (DRY — ลำดับรูป/การกันรูปซ้ำเหมือนกันทั้งระบบ)
+- [x] เพิ่ม prop `onValueChange` (optional) ใน [ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx) — ให้ปุ่มค้นหาภายนอกรู้ข้อความที่พิมพ์ (จำเป็นเพราะ `enhanced="mobile"` ให้ input ตัวนอกเป็น readOnly trigger); additive ไม่กระทบผู้เรียกเดิม
+- [x] `npm run build` ผ่าน (TypeScript 0 error) — 5 error เดิมใน `lib/__tests__/category-alias-resolver.test.ts` มีมาก่อนรอบนี้ ไม่เกี่ยวกับการแก้
+
 ## ลำดับสต็อกการ์ดวันเดียวกัน (2026-07-24)
 - บริบท: พบยอดคงเหลือติดลบ 2 รายการ (P0488/P0489 เอกสาร SAC26050001 vs RR26050036 ลงวันที่ 27/05/2026) — ใบขายถูกคีย์ก่อน แล้วใบซื้อวันเดียวกันถูกแก้ทีหลังจึงได้ `sorder` ต่อท้าย ทำให้ต้นทุนขายเป็น 0 และมูลค่าซื้อ 1,769.64 บาทหายจาก MAVG (`isBackdated` เดิมใช้ `<` ล้วน จึงไม่ถือว่าวันเดียวกันคือการลงย้อนหลัง)
 - [x] `lib/stock-card.ts` — เพิ่ม `STOCK_SOURCE_SEQUENCE_GROUP` (BF → ของเข้าทุกชนิด → ของออกทุกชนิด) + `sortRowsForReplay()` / `buildSorderUpdates()`; `recalculateStockCard()` และ `recalculateStockCardMany()` จัดลำดับ `sorder` ใหม่แบบ diff-write ก่อนรีเพลย์ MAVG เสมอ → ข้อมูลเก่าที่ลำดับสลับถูกซ่อมเองทุกครั้งที่คำนวณใหม่

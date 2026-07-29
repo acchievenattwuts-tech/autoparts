@@ -1,8 +1,7 @@
 export const dynamic = "force-dynamic";
 
-import Image from "next/image";
 import Link from "next/link";
-import { AlertTriangle, Box, ChevronRight, MapPin, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronRight, MapPin, Pencil, ShieldCheck, Sparkles } from "lucide-react";
 
 import Pagination from "@/components/shared/Pagination";
 import ProductMatchChips from "@/components/shared/ProductMatchChips";
@@ -13,16 +12,17 @@ import {
   type AdminProductFilterParams,
 } from "@/lib/admin-product-filter-params";
 import type { Prisma } from "@/lib/generated/prisma";
-import { requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
-import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 
 import MobileProductSearchForm from "./MobileProductSearchForm";
+import ProductCardImage from "./ProductCardImage";
 
 const PAGE_SIZE = 20;
 
@@ -64,6 +64,9 @@ const buildProductSearchUrl = (params: Record<string, string>) => {
 
 const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProps) => {
   await requirePermission("products.view");
+
+  const { role, permissions } = await getSessionPermissionContext();
+  const canUpdate = hasPermissionAccess(role, permissions, "products.update");
 
   const rawParams = await searchParams;
   const { page } = rawParams;
@@ -267,8 +270,6 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                 stockNum <= 0 ? "out" :
                 stockNum <= minStockNum ? "low" :
                 "ok";
-              const rawPrimaryImage = product.imageUrl || product.images[0]?.url || null;
-              const primaryImage = toProductImageCdnPath(rawPrimaryImage);
               const displayUnit = product.saleUnitName || product.reportUnitName;
 
               return (
@@ -277,30 +278,12 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                   className="group rounded-[24px] border border-gray-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:border-white/10 dark:bg-slate-900 dark:hover:border-orange-400/40"
                 >
                   <div className="flex gap-3">
-                    <Link
-                      href={`/admin/products/${product.id}/preview?returnTo=${encodeURIComponent(currentSearchHref)}`}
-                      className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-gray-100 outline-none transition active:scale-[0.98] focus-visible:ring-2 focus-visible:ring-orange-500 dark:bg-slate-800 sm:h-32 sm:w-32"
-                      aria-label={`ดูข้อมูลสินค้า ${product.name}`}
-                    >
-                        {primaryImage ? (
-                          <Image
-                            src={primaryImage}
-                            alt={product.name}
-                            fill
-                            className="object-cover transition duration-300 group-hover:scale-105"
-                            sizes="128px"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-gray-300 dark:text-slate-600">
-                            <Box size={34} />
-                          </div>
-                        )}
-                        {!product.isActive ? (
-                          <span className="absolute left-2 top-2 rounded-full bg-gray-900/80 px-2 py-0.5 text-[10px] font-semibold text-white">
-                            ปิดใช้งาน
-                          </span>
-                        ) : null}
-                    </Link>
+                    <ProductCardImage
+                      imageUrl={product.imageUrl}
+                      images={product.images}
+                      name={product.name}
+                      isActive={product.isActive}
+                    />
 
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-start justify-between gap-2">
@@ -412,6 +395,18 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                       ) : null}
                     </div>
                   </div>
+
+                  {canUpdate ? (
+                    <div className="mt-3 flex justify-end border-t border-gray-100 pt-3 dark:border-white/10">
+                      <Link
+                        href={`/admin/products/${product.id}/edit?returnTo=${encodeURIComponent(currentSearchHref)}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055]"
+                      >
+                        <Pencil size={12} />
+                        แก้ไข
+                      </Link>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}

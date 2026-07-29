@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Loader2, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
@@ -21,8 +29,7 @@ type FilterDraft = {
   statusFilter: string;
   trackingFilter: string;
 };
-type PendingAction = "search" | "filter" | "clear";
-type PendingFeedback = { action: PendingAction; href: string };
+type PendingAction = "search" | "clear";
 
 type Props = {
   search?: string;
@@ -43,6 +50,18 @@ type Props = {
 };
 
 const PREVIEW_COUNT = 6;
+
+const EMPTY_FILTERS: FilterDraft = {
+  categoryId: "",
+  brandId: "",
+  carBrandId: "",
+  carModelId: "",
+  yearMin: "",
+  yearMax: "",
+  stockStatus: "",
+  statusFilter: "",
+  trackingFilter: "",
+};
 
 const stockOptions = [
   { id: "in_stock", name: "มีสต็อก" },
@@ -65,6 +84,22 @@ const buildUrl = (params: Record<string, string | undefined>) => {
   return `/admin/products/search${query ? `?${query}` : ""}`;
 };
 
+/** ช่วงปีนับเป็นตัวกรองเดียว ไม่ใช่สองตัว เพื่อให้ตัวเลขบน badge ตรงกับที่ผู้ใช้เห็น */
+const countFilters = (filters: FilterDraft): number =>
+  [
+    filters.categoryId,
+    filters.brandId,
+    filters.carBrandId,
+    filters.carModelId,
+    filters.yearMin || filters.yearMax,
+    filters.stockStatus,
+    filters.statusFilter,
+    filters.trackingFilter,
+  ].filter(Boolean).length;
+
+const filtersAreEqual = (a: FilterDraft, b: FilterDraft): boolean =>
+  (Object.keys(EMPTY_FILTERS) as (keyof FilterDraft)[]).every((key) => a[key] === b[key]);
+
 export default function MobileProductSearchForm({
   search,
   categoryId,
@@ -84,78 +119,95 @@ export default function MobileProductSearchForm({
 }: Props) {
   const router = useRouter();
   const [isRoutePending, startRouteTransition] = useTransition();
-  const [pendingFeedback, setPendingFeedback] = useState<PendingFeedback | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [draft, setDraft] = useState<FilterDraft>({
-    categoryId: categoryId ?? "",
-    brandId: brandId ?? "",
-    carBrandId: carBrandId ?? "",
-    carModelId: carModelId ?? "",
-    yearMin: yearMin ?? "",
-    yearMax: yearMax ?? "",
-    stockStatus: stockStatus ?? "",
-    statusFilter: statusFilter ?? "",
-    trackingFilter: trackingFilter ?? "",
-  });
+  const [searchText, setSearchText] = useState(search ?? "");
+
+  // ชั้นที่ 3 — ตัวกรองที่ "ใช้จริง" อยู่ใน URL และตรงกับผลลัพธ์ที่แสดงอยู่
+  const urlFilters = useMemo<FilterDraft>(
+    () => ({
+      categoryId: categoryId ?? "",
+      brandId: brandId ?? "",
+      carBrandId: carBrandId ?? "",
+      carModelId: carModelId ?? "",
+      yearMin: yearMin ?? "",
+      yearMax: yearMax ?? "",
+      stockStatus: stockStatus ?? "",
+      statusFilter: statusFilter ?? "",
+      trackingFilter: trackingFilter ?? "",
+    }),
+    [categoryId, brandId, carBrandId, carModelId, yearMin, yearMax, stockStatus, statusFilter, trackingFilter],
+  );
+
+  // ชั้นที่ 2 — ตัวกรองที่ "จำไว้" หลังกดตกลง ยังไม่ถูกใช้จนกว่าจะกดปุ่มค้นหา
+  const [confirmedFilters, setConfirmedFilters] = useState<FilterDraft>(urlFilters);
+  // ชั้นที่ 1 — ตัวกรองที่กำลังติ๊กอยู่ในชีต ถูก seed ใหม่ทุกครั้งที่เปิดชีต
+  const [draft, setDraft] = useState<FilterDraft>(urlFilters);
+
+  // URL เปลี่ยน (ค้นหาเสร็จ / กด back-forward / ล้างทั้งหมด) → sync ชั้นที่ 2 ให้ตรงเสมอ
+  // ไม่มี effect นี้ ตัวกรองในชีตจะค้างค่าเก่าไม่ตรงกับผลลัพธ์ที่เห็น
+  useEffect(() => {
+    setConfirmedFilters(urlFilters);
+  }, [urlFilters]);
+
+  useEffect(() => {
+    setSearchText(search ?? "");
+  }, [search]);
+
+  // ผูก pending กับ useTransition โดยตรง — transition จบเมื่อไหร่ป้ายโหลดหายเมื่อนั้น
+  // จึงไม่มีทางค้างแม้ผู้ใช้กด back ระหว่างที่ยังโหลดไม่เสร็จ
+  useEffect(() => {
+    if (!isRoutePending) setPendingAction(null);
+  }, [isRoutePending]);
 
   const selectedCarBrand = useMemo(
     () => carBrands.find((brand) => brand.id === draft.carBrandId),
     [carBrands, draft.carBrandId],
   );
 
-  const activeFilterCount = [
-    search,
-    categoryId,
-    brandId,
-    carBrandId,
-    carModelId,
-    yearMin || yearMax,
-    stockStatus,
-    statusFilter,
-    trackingFilter,
-  ].filter(Boolean).length;
-  const pendingAction = pendingFeedback?.href === currentSearchHref ? null : (pendingFeedback?.action ?? null);
-  const isSubmitting = isRoutePending || pendingAction !== null;
+  const confirmedFilterCount = countFilters(confirmedFilters);
+  const isSubmitting = isRoutePending;
+  const hasAppliedQuery = Boolean(search) || countFilters(urlFilters) > 0;
+  const hasUnappliedChanges =
+    !filtersAreEqual(confirmedFilters, urlFilters) || searchText.trim() !== (search ?? "");
 
   const navigateWithFeedback = (href: string, action: PendingAction) => {
-    if (href === currentSearchHref) {
-      setPendingFeedback(null);
-      return;
-    }
+    if (href === currentSearchHref) return;
 
-    setPendingFeedback({ action, href });
+    setPendingAction(action);
     startRouteTransition(() => {
       router.push(href);
     });
   };
 
-  const searchWithCurrentFilters = (query: string) => {
-    navigateWithFeedback(
-      buildUrl({
-        search: query.trim(),
-        categoryId,
-        brandId,
-        carBrandId,
-        carModelId,
-        yearMin,
-        yearMax,
-        stockStatus,
-        statusFilter,
-        trackingFilter,
-      }),
-      "search",
-    );
+  /** ปุ่ม "ค้นหา" และการกด Enter — จุดเดียวที่ยิงตัวกรองที่จำไว้ออกไปจริง */
+  const runSearch = (query: string) => {
+    navigateWithFeedback(buildUrl({ search: query.trim(), ...confirmedFilters }), "search");
   };
 
-  const applyFilters = () => {
-    setFilterOpen(false);
-    navigateWithFeedback(buildUrl({ search, ...draft }), "filter");
+  const clearEverything = () => {
+    setSearchText("");
+    setDraft(EMPTY_FILTERS);
+    setConfirmedFilters(EMPTY_FILTERS);
+    navigateWithFeedback("/admin/products/search", "clear");
   };
 
-  const clearFilters = () => {
-    setFilterOpen(false);
-    navigateWithFeedback(buildUrl({ search }), "clear");
+  const openFilterSheet = () => {
+    // seed ใหม่จากค่าที่ยืนยันล่าสุดเสมอ = ปิดชีตด้วย X/แตะพื้นหลังแล้วค่าที่เพิ่งติ๊กถูกทิ้ง
+    setDraft(confirmedFilters);
+    setFilterOpen(true);
   };
+
+  const closeFilterSheet = useCallback(() => setFilterOpen(false), []);
+
+  /** ตกลง = จำไว้เฉย ๆ ปิดชีต แต่ยังไม่ค้นหา */
+  const confirmFilters = () => {
+    setConfirmedFilters(draft);
+    setFilterOpen(false);
+  };
+
+  /** ล้าง = เคลียร์เฉพาะสิ่งที่ติ๊กอยู่ในชีต ไม่ปิดชีต ไม่ค้นหา */
+  const clearDraft = () => setDraft(EMPTY_FILTERS);
 
   const setSingle = (key: keyof FilterDraft, value: string) => {
     setDraft((prev) => {
@@ -176,32 +228,51 @@ export default function MobileProductSearchForm({
             initialValue={search ?? ""}
             placeholder="ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ..."
             enhanced="mobile"
-            onSubmit={searchWithCurrentFilters}
+            onSubmit={runSearch}
+            onValueChange={setSearchText}
             adminReturnTo={currentSearchHref}
             inputClassName={`h-12 rounded-xl border-gray-300 bg-white text-[15px] shadow-sm dark:border-white/10 dark:bg-slate-900 ${isSubmitting ? "opacity-75" : ""}`}
           />
         </div>
         <button
           type="button"
-          onClick={() => setFilterOpen(true)}
+          onClick={openFilterSheet}
           disabled={isSubmitting}
-          className="relative flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 text-[#1e3a5f] shadow-sm transition active:scale-95 dark:border-white/10 dark:bg-slate-900 dark:text-sky-300"
+          className="relative flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white px-3 text-[#1e3a5f] shadow-sm transition active:scale-95 disabled:cursor-wait disabled:opacity-70 dark:border-white/10 dark:bg-slate-900 dark:text-sky-300"
           aria-label="เปิดตัวกรอง"
         >
-          {pendingAction === "filter" ? <Loader2 size={19} className="animate-spin" /> : <SlidersHorizontal size={19} />}
+          <SlidersHorizontal size={19} />
           <span className="hidden text-sm font-semibold sm:inline">ตัวกรอง</span>
-          {activeFilterCount > 0 ? (
+          {confirmedFilterCount > 0 ? (
             <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1 text-[11px] font-bold text-white">
-              {activeFilterCount}
+              {confirmedFilterCount}
             </span>
           ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={() => runSearch(searchText)}
+          disabled={isSubmitting}
+          className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#df7a32] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#cb6a25] active:scale-95 disabled:cursor-wait disabled:opacity-85"
+        >
+          {pendingAction === "search" ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <Search size={18} />
+          )}
+          <span className="hidden sm:inline">ค้นหา</span>
         </button>
       </div>
 
       {isSubmitting ? (
         <div className="mt-2 flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700 shadow-sm dark:border-orange-400/30 dark:bg-orange-500/15 dark:text-orange-100">
           <Loader2 size={14} className="animate-spin" />
-          <span>{pendingAction === "filter" ? "กำลังกรองสินค้า..." : pendingAction === "clear" ? "กำลังล้างตัวกรอง..." : "กำลังค้นหาสินค้า..."}</span>
+          <span>{pendingAction === "clear" ? "กำลังล้างตัวกรอง..." : "กำลังค้นหาสินค้า..."}</span>
+        </div>
+      ) : hasUnappliedChanges ? (
+        <div className="mt-2 flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-800 shadow-sm dark:border-sky-400/30 dark:bg-sky-500/15 dark:text-sky-100">
+          <Search size={14} />
+          <span>ตัวกรองที่เลือกไว้ยังไม่ถูกใช้ — กดปุ่ม &ldquo;ค้นหา&rdquo; เพื่อแสดงผลลัพธ์</span>
         </div>
       ) : null}
 
@@ -210,10 +281,10 @@ export default function MobileProductSearchForm({
           <Search size={13} />
           พบ {resultCount.toLocaleString("th-TH")} รายการ
         </span>
-        {activeFilterCount > 0 ? (
+        {hasAppliedQuery ? (
           <button
             type="button"
-            onClick={() => navigateWithFeedback("/admin/products/search", "clear")}
+            onClick={clearEverything}
             disabled={isSubmitting}
             className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-600 transition hover:text-red-600 disabled:cursor-wait disabled:opacity-70 dark:bg-white/10 dark:text-slate-300"
           >
@@ -225,7 +296,7 @@ export default function MobileProductSearchForm({
 
       <FilterSheet
         open={filterOpen}
-        onClose={() => setFilterOpen(false)}
+        onClose={closeFilterSheet}
         draft={draft}
         setDraft={setDraft}
         categories={categories}
@@ -233,10 +304,8 @@ export default function MobileProductSearchForm({
         carBrands={carBrands}
         selectedCarBrand={selectedCarBrand}
         setSingle={setSingle}
-        clearFilters={clearFilters}
-        applyFilters={applyFilters}
-        isSubmitting={isSubmitting}
-        pendingAction={pendingAction}
+        clearDraft={clearDraft}
+        confirmFilters={confirmFilters}
       />
     </div>
   );
@@ -252,10 +321,8 @@ type FilterSheetProps = {
   carBrands: CarBrandOption[];
   selectedCarBrand?: CarBrandOption;
   setSingle: (key: keyof FilterDraft, value: string) => void;
-  clearFilters: () => void;
-  applyFilters: () => void;
-  isSubmitting: boolean;
-  pendingAction: PendingAction | null;
+  clearDraft: () => void;
+  confirmFilters: () => void;
 };
 
 function FilterSheet(props: FilterSheetProps) {
@@ -273,12 +340,11 @@ function FilterSheetContent({
   carBrands,
   selectedCarBrand,
   setSingle,
-  clearFilters,
-  applyFilters,
-  isSubmitting,
-  pendingAction,
+  clearDraft,
+  confirmFilters,
 }: FilterSheetProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const draftCount = countFilters(draft);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -289,11 +355,19 @@ function FilterSheetContent({
   }, []);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  useEffect(() => {
+    // ธีมถูก toggle ที่ <html> และ <body> เท่านั้น (ดู LiffThemeProvider)
+    // จึงตรวจแค่สองจุดนี้ ไม่กวาดทั้งหน้าเพราะจะจับ element อื่นที่บังเอิญมี class dark
     const resolveDarkMode = () => {
       setIsDarkMode(
-        document.documentElement.classList.contains("dark") ||
-          document.body.classList.contains("dark") ||
-          Boolean(document.querySelector(".dark")),
+        document.documentElement.classList.contains("dark") || document.body.classList.contains("dark"),
       );
     };
 
@@ -314,16 +388,12 @@ function FilterSheetContent({
         aria-label="ปิดตัวกรอง"
         onClick={onClose}
       />
-      <div
-        className="absolute inset-x-0 bottom-0 top-10 z-10 flex flex-col overflow-hidden rounded-t-[26px] border border-gray-200 bg-white text-slate-900 shadow-2xl dark:border-slate-600 dark:bg-[#111827] dark:text-white sm:mx-auto sm:max-w-md"
-        aria-busy={isSubmitting}
-      >
+      <div className="absolute inset-x-0 bottom-0 top-10 z-10 flex flex-col overflow-hidden rounded-t-[26px] border border-gray-200 bg-white text-slate-900 shadow-2xl dark:border-slate-600 dark:bg-[#111827] dark:text-white sm:mx-auto sm:max-w-md">
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-5 py-4 dark:border-slate-600 dark:bg-[#111827]">
           <h2 className="font-kanit text-lg font-semibold text-slate-950 dark:text-white">ตัวกรอง</h2>
           <button
             type="button"
             onClick={onClose}
-            disabled={isSubmitting}
             className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 dark:text-slate-100 dark:hover:bg-white/10 dark:hover:text-white"
             aria-label="ปิด"
           >
@@ -331,7 +401,7 @@ function FilterSheetContent({
           </button>
         </div>
 
-        <div className="relative flex-1 overflow-y-auto bg-white px-5 py-4 dark:bg-[#111827]">
+        <div className="flex-1 overflow-y-auto bg-white px-5 py-4 dark:bg-[#111827]">
           <div className="space-y-6">
             <CheckboxList
               title="หมวดหมู่สินค้า"
@@ -392,47 +462,27 @@ function FilterSheetContent({
               onSelect={(id) => setSingle("trackingFilter", id)}
             />
           </div>
-          {isSubmitting ? <FilterPendingOverlay pendingAction={pendingAction} /> : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-3 border-t border-slate-100 bg-white px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] dark:border-slate-600 dark:bg-[#111827]">
           <button
             type="button"
-            onClick={clearFilters}
-            disabled={isSubmitting}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:cursor-wait disabled:opacity-75 dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:hover:border-red-300 dark:hover:text-red-200"
+            onClick={clearDraft}
+            disabled={draftCount === 0}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:border-red-300 hover:text-red-600 disabled:opacity-50 dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:hover:border-red-300 dark:hover:text-red-200"
           >
-            {pendingAction === "clear" ? <Loader2 size={15} className="animate-spin" /> : null}
+            <RotateCcw size={15} />
             ล้าง
           </button>
           <button
             type="button"
-            onClick={applyFilters}
-            disabled={isSubmitting}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#df7a32] text-sm font-semibold text-white transition hover:bg-[#cb6a25] disabled:cursor-wait disabled:opacity-85"
+            onClick={confirmFilters}
+            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-[#df7a32] text-sm font-semibold text-white transition hover:bg-[#cb6a25]"
           >
-            {pendingAction === "filter" ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+            <Check size={16} />
             ตกลง
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function FilterPendingOverlay({ pendingAction }: { pendingAction: PendingAction | null }) {
-  const label =
-    pendingAction === "clear"
-      ? "กำลังล้างตัวกรอง..."
-      : pendingAction === "filter"
-        ? "กำลังกรองสินค้า..."
-        : "กำลังค้นหาสินค้า...";
-
-  return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/80 px-6 backdrop-blur-sm dark:bg-[#111827]/82">
-      <div className="flex min-w-48 flex-col items-center gap-3 rounded-2xl border border-orange-200 bg-white px-5 py-4 text-center text-sm font-semibold text-slate-900 shadow-xl dark:border-orange-300/40 dark:bg-slate-900 dark:text-white">
-        <Loader2 size={24} className="animate-spin text-[#df7a32]" />
-        <span>{label}</span>
       </div>
     </div>
   );
@@ -502,6 +552,8 @@ function YearRange({
   yearMax: string;
   onChange: (next: { yearMin: string; yearMax: string }) => void;
 }) {
+  const isInvalidRange = Boolean(yearMin && yearMax && Number(yearMin) > Number(yearMax));
+
   return (
     <section>
       <h3 className="mb-3 font-kanit text-base font-semibold text-slate-950 dark:text-white">ช่วงปีรถ</h3>
@@ -526,6 +578,11 @@ function YearRange({
           className="h-10 min-w-0 rounded-lg border border-slate-200 px-3 text-sm text-slate-700 focus:border-[#f97316] focus:outline-none focus:ring-1 focus:ring-[#f97316] dark:border-slate-500 dark:bg-slate-900 dark:text-white dark:placeholder:text-slate-400"
         />
       </div>
+      {isInvalidRange ? (
+        <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-300">
+          ปีเริ่มต้องไม่มากกว่าปีสิ้นสุด
+        </p>
+      ) : null}
     </section>
   );
 }

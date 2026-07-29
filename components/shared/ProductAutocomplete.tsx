@@ -54,6 +54,11 @@ interface Props {
   inputName?: string;
   /** Called when user presses Enter without selecting a suggestion. */
   onSubmit?: (q: string) => void;
+  /**
+   * Called whenever the input text changes — lets a parent mirror the current
+   * query (e.g. to drive its own submit button) without controlling the input.
+   */
+  onValueChange?: (value: string) => void;
   /** Optional className for the outer wrapper. */
   className?: string;
   /** Optional className for the input element. */
@@ -84,6 +89,7 @@ const ProductAutocomplete = ({
   mode,
   inputName,
   onSubmit,
+  onValueChange,
   className,
   inputClassName,
   autoFocus,
@@ -122,6 +128,17 @@ const ProductAutocomplete = ({
   useEffect(() => {
     setValue(initialValue ?? "");
   }, [initialValue]);
+
+  // เก็บ callback ไว้ใน ref เพื่อให้ effect ด้านล่างผูกกับ value อย่างเดียว
+  // (parent ส่ง arrow function ใหม่ทุก render ได้โดยไม่ทำให้ยิงซ้ำ)
+  const onValueChangeRef = useRef(onValueChange);
+  useEffect(() => {
+    onValueChangeRef.current = onValueChange;
+  }, [onValueChange]);
+
+  useEffect(() => {
+    onValueChangeRef.current?.(value);
+  }, [value]);
 
   useEffect(() => {
     setMounted(true);
