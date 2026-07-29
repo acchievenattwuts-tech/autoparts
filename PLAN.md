@@ -339,6 +339,15 @@
 - [x] เพิ่ม prop `onValueChange` (optional) ใน [ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx) — ให้ปุ่มค้นหาภายนอกรู้ข้อความที่พิมพ์ (จำเป็นเพราะ `enhanced="mobile"` ให้ input ตัวนอกเป็น readOnly trigger); additive ไม่กระทบผู้เรียกเดิม
 - [x] `npm run build` ผ่าน (TypeScript 0 error) — 5 error เดิมใน `lib/__tests__/category-alias-resolver.test.ts` มีมาก่อนรอบนี้ ไม่เกี่ยวกับการแก้
 
+## Log noise — `[auth][error] CredentialsSignin` บน production (2026-07-29)
+- บริบท: เจ้าของส่ง Vercel log `level:error` ให้ตรวจ — `POST /api/auth/callback/credentials` ตอบ **HTTP 200** แต่มี `[auth][error] CredentialsSignin` + stack ยาว (28/07 17:53 GMT+7, iPad)
+- **สรุปผลตรวจ: ไม่ใช่บัค** — `@auth/core/lib/actions/callback/index.js:236` โยน `CredentialsSignin` ทุกครั้งที่ `authorize()` return `null` (= login ไม่ผ่านตามปกติ) แล้ว log เป็น level `error` เสมอ; ถ้า `authorize()` throw จริงจะขึ้นเป็น `CallbackRouteError` แทน · flow ทำงานถูกต้องอยู่แล้ว (ผู้ใช้เห็นข้อความผิดพลาด, AuditLog `LOGIN_FAILED` ถูกเขียนพร้อม `meta.reason`)
+- [x] เพิ่ม custom `logger.error` ใน [auth.ts](auth.ts) — ดักเฉพาะ `CredentialsSignin` ให้ลดเป็น `console.warn("[auth] credentials sign-in rejected")` (ไม่พิมพ์ stack/ข้อมูลผู้ใช้) · error อื่นของ Auth.js ยัง `console.error` ครบเหมือนเดิม → log `level:error` บน production เหลือแต่ปัญหาจริง
+- [x] `isCredentialsSigninError()` เช็ค 3 ทาง (`instanceof` → `error.name` → `error.type`) เผื่อ `@auth/core` ถูก bundle ซ้ำจน class identity ไม่ตรง
+- [x] ไม่แตะ `authorize()`, throttle, AuditLog, หรือข้อความบนหน้า login — พฤติกรรมฝั่งผู้ใช้เหมือนเดิมทุกอย่าง
+- [x] `npm run build` ผ่าน (TypeScript 0 error) — 5 error เดิมใน `lib/__tests__/category-alias-resolver.test.ts` มีมาก่อนรอบนี้
+- [ ] ค้างไว้ (รอตัดสินใจ): [lib/login-rate-limit.ts](lib/login-rate-limit.ts) นับ failure ที่ key `ip:` ด้วย → พนักงานหลายคนหลัง IP เดียวกัน (เน็ตร้าน) กรอกผิดรวมกันครบ 5 ครั้ง/5 นาที จะถูกล็อกยกชุด 5 นาที และหน้าเว็บยังขึ้นว่า "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง" (แยกไม่ออกจากรหัสผิด) — แก้ได้ 2 ทาง: แยกข้อความตอนโดน throttle หรือผ่อนเกณฑ์ของ IP key ให้สูงกว่า username key
+
 ## ลำดับสต็อกการ์ดวันเดียวกัน (2026-07-24)
 - บริบท: พบยอดคงเหลือติดลบ 2 รายการ (P0488/P0489 เอกสาร SAC26050001 vs RR26050036 ลงวันที่ 27/05/2026) — ใบขายถูกคีย์ก่อน แล้วใบซื้อวันเดียวกันถูกแก้ทีหลังจึงได้ `sorder` ต่อท้าย ทำให้ต้นทุนขายเป็น 0 และมูลค่าซื้อ 1,769.64 บาทหายจาก MAVG (`isBackdated` เดิมใช้ `<` ล้วน จึงไม่ถือว่าวันเดียวกันคือการลงย้อนหลัง)
 - [x] `lib/stock-card.ts` — เพิ่ม `STOCK_SOURCE_SEQUENCE_GROUP` (BF → ของเข้าทุกชนิด → ของออกทุกชนิด) + `sortRowsForReplay()` / `buildSorderUpdates()`; `recalculateStockCard()` และ `recalculateStockCardMany()` จัดลำดับ `sorder` ใหม่แบบ diff-write ก่อนรีเพลย์ MAVG เสมอ → ข้อมูลเก่าที่ลำดับสลับถูกซ่อมเองทุกครั้งที่คำนวณใหม่

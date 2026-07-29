@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -21,6 +21,17 @@ const loginSchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
 });
+
+/**
+ * Auth.js throws CredentialsSignin whenever authorize() returns null, i.e. on
+ * every ordinary failed login. The class identity can differ if @auth/core is
+ * bundled more than once, so fall back to the error type/name markers.
+ */
+function isCredentialsSigninError(error: Error): boolean {
+  if (error instanceof CredentialsSignin) return true;
+  if (error.name === "CredentialsSignin") return true;
+  return "type" in error && error.type === "CredentialsSignin";
+}
 
 export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
   ...authConfig,
@@ -128,6 +139,18 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
       },
     }),
   ],
+  logger: {
+    error(error) {
+      // A rejected credentials login is an expected outcome, not a fault: the
+      // reason is already captured in AuditLog (LOGIN_FAILED). Keep it out of
+      // the production error stream so real auth failures stay visible.
+      if (isCredentialsSigninError(error)) {
+        console.warn("[auth] credentials sign-in rejected");
+        return;
+      }
+      console.error("[auth] error", error);
+    },
+  },
   events: {
     async signOut(message) {
       const sessionValue = "session" in message ? message.session : undefined;
