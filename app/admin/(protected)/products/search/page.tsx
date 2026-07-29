@@ -278,12 +278,23 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                   className="group rounded-[24px] border border-gray-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-md dark:border-white/10 dark:bg-slate-900 dark:hover:border-orange-400/40"
                 >
                   <div className="flex gap-3">
-                    <ProductCardImage
-                      imageUrl={product.imageUrl}
-                      images={product.images}
-                      name={product.name}
-                      isActive={product.isActive}
-                    />
+                    <div className="flex w-28 shrink-0 flex-col gap-2 sm:w-32">
+                      <ProductCardImage
+                        imageUrl={product.imageUrl}
+                        images={product.images}
+                        name={product.name}
+                        isActive={product.isActive}
+                      />
+                      {canUpdate ? (
+                        <Link
+                          href={`/admin/products/${product.id}/edit?returnTo=${encodeURIComponent(currentSearchHref)}`}
+                          className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055]"
+                        >
+                          <Pencil size={12} />
+                          แก้ไข
+                        </Link>
+                      ) : null}
+                    </div>
 
                     <div className="min-w-0 flex-1">
                       <div className="mb-1 flex items-start justify-between gap-2">
@@ -395,18 +406,6 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                       ) : null}
                     </div>
                   </div>
-
-                  {canUpdate ? (
-                    <div className="mt-3 flex justify-end border-t border-gray-100 pt-3 dark:border-white/10">
-                      <Link
-                        href={`/admin/products/${product.id}/edit?returnTo=${encodeURIComponent(currentSearchHref)}`}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055]"
-                      >
-                        <Pencil size={12} />
-                        แก้ไข
-                      </Link>
-                    </div>
-                  ) : null}
                 </article>
               );
             })}

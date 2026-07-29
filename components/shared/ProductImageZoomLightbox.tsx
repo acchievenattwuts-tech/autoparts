@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
+import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, X } from "lucide-react";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 
@@ -41,6 +43,10 @@ const ProductImageZoomLightbox = ({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  // ฝั่งแอดมิน class `dark` อยู่ที่ `.admin-theme-root` ซึ่ง portal นี้อยู่นอกออกมา
+  // จึงต้องพก theme มาเอง (บนหน้าบ้าน `dark` อยู่ที่ <html> อยู่แล้ว = ไม่กระทบ)
+  const adminTheme = useOptionalAdminTheme();
   const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const singleStart = useRef<{ x: number; y: number; lastX: number; lastY: number } | null>(null);
   const pinchStart = useRef<{ dist: number; zoom: number } | null>(null);
@@ -98,6 +104,10 @@ const ProductImageZoomLightbox = ({
     },
     [clampPan],
   );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -291,11 +301,14 @@ const ProductImageZoomLightbox = ({
     setZoom(2);
   };
 
-  if (!open || images.length === 0 || !activeImage) return null;
+  if (!open || images.length === 0 || !activeImage || !mounted) return null;
 
-  return (
+  // ต้อง portal ออกไปที่ body เสมอ — ถ้า render อยู่กับที่ ancestor ที่มี transform/filter
+  // (เช่นการ์ดสินค้าที่มี hover:-translate-y) จะกลายเป็น containing block ของ position:fixed
+  // ทำให้ overlay ถูกขังอยู่ในกรอบการ์ดแทนที่จะเต็มจอ
+  return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 p-0 backdrop-blur-sm sm:p-4"
+      className={`${adminTheme?.isDark ? "dark" : ""} fixed inset-0 z-[9999] flex items-center justify-center bg-black/92 p-0 backdrop-blur-sm sm:p-4`}
       onClick={handleClose}
       role="dialog"
       aria-modal="true"
@@ -458,7 +471,8 @@ const ProductImageZoomLightbox = ({
 
         <p className="shrink-0 truncate px-4 pb-3 text-center text-sm text-white/65">{title}</p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

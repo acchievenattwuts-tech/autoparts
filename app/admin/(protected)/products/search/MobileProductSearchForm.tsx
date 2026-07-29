@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Loader2, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 
 import { buildAdminProductFilterSearchParams } from "@/lib/admin-product-filter-params";
+import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 type Option = { id: string; name: string };
@@ -343,7 +344,11 @@ function FilterSheetContent({
   clearDraft,
   confirmFilters,
 }: FilterSheetProps) {
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  // ฝั่งแอดมิน class `dark` อยู่ที่ `.admin-theme-root` (AdminShell) ไม่ใช่ <html>/<body>
+  // ชีตนี้ถูก portal ไป document.body = อยู่นอก root นั้น → ต้องติด class เองจาก context
+  // (แพตเทิร์นเดียวกับ SearchableSelect / ProductSearchSelect — context ไหลผ่าน portal ได้)
+  const adminTheme = useOptionalAdminTheme();
+  const isDark = adminTheme?.isDark ?? false;
   const draftCount = countFilters(draft);
 
   useEffect(() => {
@@ -362,26 +367,8 @@ function FilterSheetContent({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  useEffect(() => {
-    // ธีมถูก toggle ที่ <html> และ <body> เท่านั้น (ดู LiffThemeProvider)
-    // จึงตรวจแค่สองจุดนี้ ไม่กวาดทั้งหน้าเพราะจะจับ element อื่นที่บังเอิญมี class dark
-    const resolveDarkMode = () => {
-      setIsDarkMode(
-        document.documentElement.classList.contains("dark") || document.body.classList.contains("dark"),
-      );
-    };
-
-    resolveDarkMode();
-
-    const observer = new MutationObserver(resolveDarkMode);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    observer.observe(document.body, { attributes: true, attributeFilter: ["class"] });
-
-    return () => observer.disconnect();
-  }, []);
-
   return (
-    <div className={`${isDarkMode ? "dark" : ""} fixed inset-0 z-[120]`} role="dialog" aria-modal="true">
+    <div className={`${isDark ? "dark" : ""} fixed inset-0 z-[120]`} role="dialog" aria-modal="true">
       <button
         type="button"
         className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
