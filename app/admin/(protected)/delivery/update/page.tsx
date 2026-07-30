@@ -5,7 +5,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
-import { getThailandDateKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import { resolveDeliveryDateRange } from "@/lib/delivery-date-filter";
 import MobileDeliveryQueue from "./MobileDeliveryQueue";
 
 const VALID_STATUSES = ["PENDING", "OUT_FOR_DELIVERY", "DELIVERED"] as const;
@@ -23,7 +23,7 @@ const clampLimit = (value: string | undefined) => {
 const DeliveryUpdatePage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; deliveredDate?: string; limit?: string }>;
+  searchParams: Promise<{ status?: string; from?: string; to?: string; limit?: string }>;
 }) => {
   await requirePermission("delivery.view");
 
@@ -33,16 +33,13 @@ const DeliveryUpdatePage = async ({
       ? (params.status as ShippingStatusFilter)
       : undefined;
 
-  const deliveredDateKey = params.deliveredDate || getThailandDateKey();
+  const { fromKey, toKey, saleDateFilter, isDefaultFrom } = resolveDeliveryDateRange({
+    status: statusFilter,
+    from: params.from,
+    to: params.to,
+  });
   const limit = clampLimit(params.limit);
   const openStatuses: ShippingStatusFilter[] = ["PENDING", "OUT_FOR_DELIVERY"];
-  const deliveredRange =
-    statusFilter === "DELIVERED"
-      ? {
-          gte: parseDateOnlyToStartOfDay(deliveredDateKey),
-          lte: parseDateOnlyToEndOfDay(deliveredDateKey),
-        }
-      : undefined;
 
   const [{ role, permissions }, session] = await Promise.all([
     getSessionPermissionContext(),
@@ -55,13 +52,9 @@ const DeliveryUpdatePage = async ({
     fulfillmentType: "DELIVERY" as const,
     status: "ACTIVE" as const,
     ...(statusFilter
-      ? statusFilter === "DELIVERED"
-        ? {
-            shippingStatus: "DELIVERED" as const,
-            updatedAt: deliveredRange,
-          }
-        : { shippingStatus: statusFilter }
+      ? { shippingStatus: statusFilter }
       : { shippingStatus: { in: openStatuses } }),
+    ...(saleDateFilter ? { saleDate: saleDateFilter } : {}),
   };
 
   // Optimize: Use index hint for common query patterns
@@ -195,8 +188,9 @@ const DeliveryUpdatePage = async ({
       canReorder={canReorder}
       canTrack={canTrack}
       myOutForDeliveryIds={myOutForDeliveryIds}
-      deliveredDate={statusFilter === "DELIVERED" ? deliveredDateKey : null}
-      deliveredDateLabel={statusFilter === "DELIVERED" ? deliveredDateKey : null}
+      fromDate={fromKey}
+      toDate={toKey}
+      linkFromDate={isDefaultFrom ? "" : fromKey}
       currentLimit={limit}
       hasMore={hasMore}
     />

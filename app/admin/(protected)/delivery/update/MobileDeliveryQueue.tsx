@@ -23,6 +23,7 @@ import { AlertTriangle } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import { appendDeliveryDateParams } from "@/lib/delivery-date-filter";
 import { reorderDeliveryQueue } from "../../sales/actions";
 import GpsUpdateBanner from "./GpsUpdateBanner";
 import MobileDeliveryCard from "./MobileDeliveryCard";
@@ -86,8 +87,10 @@ type Props = {
   canReorder: boolean;
   canTrack: boolean;
   myOutForDeliveryIds: string[];
-  deliveredDate: string | null;
-  deliveredDateLabel: string | null;
+  fromDate: string;
+  toDate: string;
+  /** `fromDate` minus the `ส่งแล้ว` default, so tab links don't leak it. */
+  linkFromDate: string;
   currentLimit: number;
   hasMore: boolean;
 };
@@ -100,7 +103,9 @@ const MobileDeliveryQueue = ({
   canReorder,
   canTrack,
   myOutForDeliveryIds,
-  deliveredDate,
+  fromDate,
+  toDate,
+  linkFromDate,
   currentLimit,
   hasMore,
 }: Props) => {
@@ -165,7 +170,7 @@ const MobileDeliveryQueue = ({
   const loadMoreHref = (() => {
     const params = new URLSearchParams();
     if (currentFilter) params.set("status", currentFilter);
-    if (deliveredDate) params.set("deliveredDate", deliveredDate);
+    appendDeliveryDateParams(params, { fromKey: linkFromDate, toKey: toDate });
     params.set("limit", String(Math.min(300, currentLimit + 100)));
     return `/admin/delivery/update?${params.toString()}`;
   })();
@@ -194,21 +199,43 @@ const MobileDeliveryQueue = ({
         />
         {mode === "view" ? (
           <div className="mt-3 space-y-3">
-            <MobileStatusTabs current={currentFilter} counts={counts} disabled={false} />
-            {currentFilter === "DELIVERED" ? (
-              <AdminSearchForm method="GET" className="grid grid-cols-[1fr_auto] gap-2">
-                <input type="hidden" name="status" value="DELIVERED" />
-                <input
-                  type="date"
-                  name="deliveredDate"
-                  defaultValue={deliveredDate ?? ""}
-                  className="rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-                />
-                <AdminSearchSubmitButton className="inline-flex items-center justify-center rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a]">
-                  แสดงรายการ
-                </AdminSearchSubmitButton>
-              </AdminSearchForm>
-            ) : null}
+            <MobileStatusTabs
+              current={currentFilter}
+              counts={counts}
+              disabled={false}
+              fromDate={linkFromDate}
+              toDate={toDate}
+            />
+            <AdminSearchForm method="GET" className="space-y-2">
+              {currentFilter ? <input type="hidden" name="status" value={currentFilter} /> : null}
+              <div className="grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                    ตั้งแต่วันที่
+                  </span>
+                  <input
+                    type="date"
+                    name="from"
+                    defaultValue={fromDate}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                    ถึงวันที่
+                  </span>
+                  <input
+                    type="date"
+                    name="to"
+                    defaultValue={toDate}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </label>
+              </div>
+              <AdminSearchSubmitButton className="inline-flex w-full items-center justify-center rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600">
+                แสดงรายการ
+              </AdminSearchSubmitButton>
+            </AdminSearchForm>
           </div>
         ) : null}
       </div>

@@ -7,6 +7,10 @@ import NavLink from "@/components/shared/NavLink";
 import { ExternalLink, Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import AdminSearchForm from "@/components/shared/AdminSearchForm";
+import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import type { SelectOption } from "@/components/shared/SearchableSelect";
+import { appendDeliveryDateParams, resolveDeliveryDateRange } from "@/lib/delivery-date-filter";
 import { formatDateThai } from "@/lib/th-date";
 
 const getDeliveryStaffLabel = ({
@@ -39,43 +43,82 @@ const getDeliveryStaffLabel = ({
 const DeliveryPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; from?: string; to?: string }>;
 }) => {
   await requirePermission("delivery.view");
-  const { status } = await searchParams;
+  const { status, from, to } = await searchParams;
   const statusFilter =
     status && ["PENDING", "OUT_FOR_DELIVERY", "DELIVERED"].includes(status)
       ? status
       : undefined;
 
-  const sales = await db.sale.findMany({
-    where: {
-      fulfillmentType: "DELIVERY",
-      status: "ACTIVE",
-      ...(statusFilter
-        ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
-        : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
-    },
-    orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
-    take: 100,
-    select: {
-      id: true,
-      saleNo: true,
-      saleDate: true,
-      customerName: true,
-      shippingAddress: true,
-      shippingStatus: true,
-      shippingMethod: true,
-      trackingNo: true,
-      netAmount: true,
-      paymentType: true,
-      amountRemain: true,
-      _count: { select: { deliveryProofs: true } },
-      customer: { select: { name: true, phone: true } },
-      deliveryStaff: { select: { name: true } },
-      shopeeOrderImport: { select: { id: true, orderSn: true } },
-    },
+  const { fromKey, toKey, saleDateFilter, isDefaultFrom } = resolveDeliveryDateRange({
+    status: statusFilter,
+    from,
+    to,
   });
+  // A defaulted `ตั้งแต่` must not follow the user into the other tabs.
+  const linkFromKey = isDefaultFrom ? "" : fromKey;
+
+  const [sales, staffUsers] = await Promise.all([
+    db.sale.findMany({
+      where: {
+        fulfillmentType: "DELIVERY",
+        status: "ACTIVE",
+        ...(statusFilter
+          ? { shippingStatus: statusFilter as "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" }
+          : { shippingStatus: { in: ["PENDING", "OUT_FOR_DELIVERY"] } }),
+        ...(saleDateFilter ? { saleDate: saleDateFilter } : {}),
+      },
+      orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
+      take: 100,
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        customerName: true,
+        shippingAddress: true,
+        shippingStatus: true,
+        shippingMethod: true,
+        trackingNo: true,
+        netAmount: true,
+        paymentType: true,
+        amountRemain: true,
+        deliveryStaffId: true,
+        _count: { select: { deliveryProofs: true } },
+        customer: { select: { name: true, phone: true } },
+        deliveryStaff: { select: { name: true } },
+        shopeeOrderImport: { select: { id: true, orderSn: true } },
+      },
+    }),
+    db.user.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, email: true },
+    }),
+  ]);
+
+  const staffOptions: SelectOption[] = staffUsers.map((user) => ({
+    id: user.id,
+    label: user.name,
+    sublabel: user.email,
+  }));
+
+  const buildTabHref = (value: string | undefined) => {
+    const params = new URLSearchParams();
+    if (value) params.set("status", value);
+    appendDeliveryDateParams(params, { fromKey: linkFromKey, toKey });
+    const query = params.toString();
+    return query ? `/admin/delivery?${query}` : "/admin/delivery";
+  };
+
+  const mobileViewHref = (() => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.set("status", statusFilter);
+    appendDeliveryDateParams(params, { fromKey: linkFromKey, toKey });
+    const query = params.toString();
+    return query ? `/admin/delivery/update?${query}` : "/admin/delivery/update";
+  })();
 
   const tabs = [
     { label: "รอจัดส่ง + กำลังส่ง", value: undefined },
@@ -96,7 +139,7 @@ const DeliveryPage = async ({
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500 dark:text-slate-400">{sales.length} รายการ</span>
           <NavLink
-            href={`/admin/delivery/update${statusFilter ? `?status=${statusFilter}` : ""}`}
+            href={mobileViewHref}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 dark:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors"
           >
             <Smartphone size={14} /> มุมมองมือถือ
@@ -119,7 +162,7 @@ const DeliveryPage = async ({
         {tabs.map((tab) => (
           <NavLink
             key={tab.label}
-            href={tab.value ? `/admin/delivery?status=${tab.value}` : "/admin/delivery"}
+            href={buildTabHref(tab.value)}
             className={`relative inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
               statusFilter === tab.value
                 ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
@@ -131,6 +174,39 @@ const DeliveryPage = async ({
           </NavLink>
         ))}
       </div>
+
+      {/* Date range filter (saleDate) */}
+      <AdminSearchForm
+        method="GET"
+        className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm dark:border-white/10 dark:bg-[#101b2e]"
+      >
+        {statusFilter ? <input type="hidden" name="status" value={statusFilter} /> : null}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">
+            ตั้งแต่วันที่
+          </label>
+          <input
+            type="date"
+            name="from"
+            defaultValue={fromKey}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 dark:border-white/15 dark:bg-slate-900 dark:text-slate-100"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-slate-400">
+            ถึงวันที่
+          </label>
+          <input
+            type="date"
+            name="to"
+            defaultValue={toKey}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 dark:border-white/15 dark:bg-slate-900 dark:text-slate-100"
+          />
+        </div>
+        <AdminSearchSubmitButton className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600">
+          ค้นหา
+        </AdminSearchSubmitButton>
+      </AdminSearchForm>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden dark:border-white/10 dark:bg-[#101b2e]">
         <div className="overflow-x-auto">
@@ -259,9 +335,12 @@ const DeliveryPage = async ({
                     <td className="py-3 px-4 align-top">
                       <DeliveryUpdateButton
                         saleId={s.id}
+                        saleNo={s.saleNo}
                         currentStatus={s.shippingStatus}
                         currentTrackingNo={s.trackingNo ?? null}
                         currentShippingMethod={s.shippingMethod ?? "NONE"}
+                        currentDeliveryStaffId={s.deliveryStaffId ?? null}
+                        staffOptions={staffOptions}
                       />
                     </td>
                     <td className="py-3 px-4 align-top">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
+import { appendDeliveryDateParams } from "@/lib/delivery-date-filter";
 
 type Filter = "PENDING" | "OUT_FOR_DELIVERY" | "DELIVERED" | null;
 
@@ -28,15 +29,21 @@ type Props = {
   current:  Filter;
   counts:   Counts;
   disabled: boolean;
+  fromDate: string;
+  toDate:   string;
 };
 
-const MobileStatusTabs = ({ current, counts, disabled }: Props) => (
+const MobileStatusTabs = ({ current, counts, disabled, fromDate, toDate }: Props) => (
   <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1">
     {TABS.map((tab) => {
       const active = current === tab.value;
-      const href = tab.value
-        ? `/admin/delivery/update?status=${tab.value}`
-        : "/admin/delivery/update";
+      const href = (() => {
+        const params = new URLSearchParams();
+        if (tab.value) params.set("status", tab.value);
+        appendDeliveryDateParams(params, { fromKey: fromDate, toKey: toDate });
+        const query = params.toString();
+        return query ? `/admin/delivery/update?${query}` : "/admin/delivery/update";
+      })();
       const count = tab.count?.(counts);
 
       const baseClass = `relative inline-flex min-h-11 shrink-0 snap-start items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${

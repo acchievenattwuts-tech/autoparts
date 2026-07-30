@@ -2,28 +2,45 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Truck, CheckCircle, RotateCcw, Save } from "lucide-react";
+import { Truck, CheckCircle, RotateCcw, Save, UserRound } from "lucide-react";
 import { updateShippingStatus } from "../sales/actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
+import type { SelectOption } from "@/components/shared/SearchableSelect";
+import DeliveryStaffDialog from "./DeliveryStaffDialog";
 
 interface Props {
   saleId: string;
+  saleNo: string;
   currentStatus: string;
   currentTrackingNo: string | null;
   currentShippingMethod: string;
+  currentDeliveryStaffId: string | null;
+  staffOptions: SelectOption[];
 }
+
+type StaffDialogMode = "deliver" | "edit";
 
 const PREV_STATUS: Record<string, string> = {
   OUT_FOR_DELIVERY: "PENDING",
   DELIVERED:        "OUT_FOR_DELIVERY",
 };
 
-const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, currentShippingMethod }: Props) => {
+const DeliveryUpdateButton = ({
+  saleId,
+  saleNo,
+  currentStatus,
+  currentTrackingNo,
+  currentShippingMethod,
+  currentDeliveryStaffId,
+  staffOptions,
+}: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [trackingNo, setTrackingNo]       = useState(currentTrackingNo ?? "");
   const [shippingMethod, setShippingMethod] = useState(currentShippingMethod);
   const [error, setError]                 = useState("");
+  const [staffDialogMode, setStaffDialogMode] = useState<StaffDialogMode | null>(null);
+  const [staffDialogError, setStaffDialogError] = useState("");
 
   const requiresTracking = shippingMethod !== "NONE" && shippingMethod !== "SELF";
 
@@ -59,6 +76,38 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
         setError(result.error);
         return;
       }
+      router.refresh();
+    });
+  };
+
+  const handleOpenDeliverDialog = () => {
+    if (requiresTracking && !trackingNo.trim()) {
+      setError("กรุณากรอกเลข Tracking ก่อนอัปเดตสถานะ");
+      return;
+    }
+    setError("");
+    setStaffDialogError("");
+    setStaffDialogMode("deliver");
+  };
+
+  const handleConfirmStaff = (staffId: string) => {
+    if (!staffId) {
+      setStaffDialogError("กรุณาเลือกผู้ส่งก่อนยืนยัน");
+      return;
+    }
+    setStaffDialogError("");
+    startTransition(async () => {
+      const result = await updateShippingStatus(saleId, {
+        shippingStatus:  staffDialogMode === "edit" ? currentStatus : "DELIVERED",
+        trackingNo:      trackingNo.trim(),
+        shippingMethod,
+        deliveryStaffId: staffId,
+      });
+      if (result?.error) {
+        setStaffDialogError(result.error);
+        return;
+      }
+      setStaffDialogMode(null);
       router.refresh();
     });
   };
@@ -126,11 +175,25 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
         )}
         {currentStatus !== "DELIVERED" && (
           <button
-            onClick={() => handleUpdateStatus("DELIVERED")}
+            onClick={handleOpenDeliverDialog}
             disabled={isPending}
             className="inline-flex items-center gap-1 rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50 dark:bg-emerald-600 dark:hover:bg-emerald-700"
           >
             <CheckCircle size={11} /> ส่งแล้ว
+          </button>
+        )}
+        {currentStatus === "DELIVERED" && (
+          <button
+            onClick={() => {
+              setError("");
+              setStaffDialogError("");
+              setStaffDialogMode("edit");
+            }}
+            disabled={isPending}
+            title="แก้ไขผู้ส่งของบิลนี้"
+            className="inline-flex items-center gap-1 rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs text-blue-700 hover:bg-blue-100 disabled:opacity-50 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200 dark:hover:bg-sky-500/20"
+          >
+            <UserRound size={11} /> แก้ผู้ส่ง
           </button>
         )}
         {PREV_STATUS[currentStatus] && (
@@ -146,6 +209,29 @@ const DeliveryUpdateButton = ({ saleId, currentStatus, currentTrackingNo, curren
       </div>
 
       {error && <p className="text-xs text-red-500 dark:text-rose-400">{error}</p>}
+
+      {staffDialogMode !== null && (
+        <DeliveryStaffDialog
+          title={staffDialogMode === "edit" ? "แก้ไขผู้ส่ง" : "ยืนยันการส่งสำเร็จ"}
+          description={
+            staffDialogMode === "edit"
+              ? "เลือกผู้ส่งที่ถูกต้องสำหรับบิลนี้ แล้วกดบันทึก"
+              : "เลือกผู้ส่งของบิลนี้ก่อนอัปเดตสถานะเป็น “ส่งแล้ว”"
+          }
+          confirmLabel={staffDialogMode === "edit" ? "บันทึกผู้ส่ง" : "ยืนยันส่งแล้ว"}
+          saleNo={saleNo}
+          staffOptions={staffOptions}
+          initialStaffId={currentDeliveryStaffId}
+          isPending={isPending}
+          error={staffDialogError}
+          onClose={() => {
+            if (isPending) return;
+            setStaffDialogMode(null);
+            setStaffDialogError("");
+          }}
+          onConfirm={handleConfirmStaff}
+        />
+      )}
     </div>
   );
 };

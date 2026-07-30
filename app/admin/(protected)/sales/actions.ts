@@ -1677,14 +1677,20 @@ export async function saveDeliveryProof(
 }
 
 const shippingUpdateSchema = z.object({
-  shippingStatus: z.nativeEnum(ShippingStatus),
-  trackingNo:     z.string().max(100).optional(),
-  shippingMethod: z.nativeEnum(ShippingMethod).optional(),
+  shippingStatus:  z.nativeEnum(ShippingStatus),
+  trackingNo:      z.string().max(100).optional(),
+  shippingMethod:  z.nativeEnum(ShippingMethod).optional(),
+  deliveryStaffId: z.string().min(1).max(50).optional(),
 });
 
 export async function updateShippingStatus(
   saleId: string,
-  data: { shippingStatus: string; trackingNo?: string; shippingMethod?: string }
+  data: {
+    shippingStatus: string;
+    trackingNo?: string;
+    shippingMethod?: string;
+    deliveryStaffId?: string;
+  }
 ): Promise<{ success?: boolean; error?: string }> {
   const session = await requirePermission("delivery.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
@@ -1747,9 +1753,27 @@ export async function updateShippingStatus(
       return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
     }
 
+    // Explicit pick from the delivery queue popup wins over the auto-stamp below.
+    const selectedStaffId = parsed.data.deliveryStaffId;
+    if (selectedStaffId && selectedStaffId !== sale.deliveryStaffId) {
+      if (sale.deliveryCommissionItems.length > 0) {
+        return {
+          error:
+            "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนผู้ส่ง กรุณายกเลิกเอกสารทำจ่ายก่อน",
+        };
+      }
+
+      const staff = await db.user.findFirst({
+        where:  { id: selectedStaffId, isActive: true },
+        select: { id: true },
+      });
+      if (!staff) return { error: "ไม่พบผู้ส่งที่เลือก หรือบัญชีถูกปิดใช้งานแล้ว" };
+    }
+
     const shouldStampDeliveryStaff =
-      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY ||
-      (parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId);
+      !selectedStaffId &&
+      (parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY ||
+        (parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId));
 
     // Auto-generate tracking token when sale first moves to OUT_FOR_DELIVERY
     const shouldGenerateToken =
@@ -1772,6 +1796,7 @@ export async function updateShippingStatus(
         shippingStatus: parsed.data.shippingStatus,
         ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
         ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+        ...(selectedStaffId ? { deliveryStaffId: selectedStaffId } : {}),
         ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
         ...(shouldGenerateToken
           ? {

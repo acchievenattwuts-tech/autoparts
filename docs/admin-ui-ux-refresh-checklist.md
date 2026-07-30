@@ -275,8 +275,8 @@ Batch 1 changed files:
 - [x] [app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/DeliveryCommissionsReportFilter.tsx)
 - [x] [app/admin/(protected)/delivery-commissions/[id]/page.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/[id]/page.tsx)
 - [x] [app/admin/(protected)/delivery/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/page.tsx)
-- [x] [app/admin/(protected)/delivery/DeliveryStaffPicker.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryStaffPicker.tsx)
 - [x] [app/admin/(protected)/delivery/DeliveryUpdateButton.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryUpdateButton.tsx)
+- [x] [app/admin/(protected)/delivery/DeliveryStaffDialog.tsx](/D:/autoparts/app/admin/(protected)/delivery/DeliveryStaffDialog.tsx) — popup เลือกผู้ส่ง (แทน `DeliveryStaffPicker.tsx` ที่ลบทิ้งแล้ว)
 - [x] [app/admin/(protected)/delivery-commissions/loading.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/loading.tsx) — dark mode text fix
 - [x] [app/admin/(protected)/delivery-commissions/[id]/loading.tsx](/D:/autoparts/app/admin/(protected)/delivery-commissions/[id]/loading.tsx) — dark mode text fix
 - [x] ยืนยันว่าไม่มีการแก้ [app/admin/(protected)/delivery/update/page.tsx](/D:/autoparts/app/admin/(protected)/delivery/update/page.tsx)
