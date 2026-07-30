@@ -82,7 +82,7 @@ function getModel(): string {
   return process.env.GOOGLE_AI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
-function getEmbeddingModel(): string {
+export function getGeminiEmbeddingModel(): string {
   return process.env.GOOGLE_AI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
 }
 
@@ -245,7 +245,7 @@ function extractEmbedding(payload: unknown): number[] {
 }
 
 async function embedContentOnce(secret: string, text: string): Promise<number[]> {
-  const model = getEmbeddingModel();
+  const model = getGeminiEmbeddingModel();
   // gemini-embedding-001 supports `embedContent` (single) — NOT the legacy
   // `batchEmbedContents`. outputDimensionality trims the native vector to the
   // 768 dims stored in product_search_documents.embedding.

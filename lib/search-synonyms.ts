@@ -32,13 +32,14 @@ type SynonymRow = {
  * Load active synonyms from DB. Cached for 5 minutes; revalidate via
  * `revalidateTag("search-synonyms")` after admin mutations.
  */
+const loadActiveSynonymsUncached = (): Promise<SynonymRow[]> =>
+  db.searchSynonym.findMany({
+    where: { isActive: true },
+    select: { term: true, synonyms: true },
+  });
+
 const loadActiveSynonyms = unstable_cache(
-  async (): Promise<SynonymRow[]> => {
-    return db.searchSynonym.findMany({
-      where: { isActive: true },
-      select: { term: true, synonyms: true },
-    });
-  },
+  loadActiveSynonymsUncached,
   SYNONYM_CACHE_KEY,
   { tags: [SYNONYM_CACHE_TAG], revalidate: SYNONYM_CACHE_REVALIDATE },
 );
@@ -123,14 +124,17 @@ export async function expandQueryTokens(rawQuery: string): Promise<string[]> {
  * (`expandQueryTokens` stays as the flat OR-recall fallback used when the strict
  * AND query returns nothing.)
  */
-export async function expandQueryTokenGroups(rawQuery: string): Promise<string[][]> {
+export async function expandQueryTokenGroups(
+  rawQuery: string,
+  options: { bypassCache?: boolean } = {},
+): Promise<string[][]> {
   const normalized = normalizeSearchText(rawQuery);
   if (!normalized) return [];
 
   const conceptTokens = normalized.split(/\s+/).filter(Boolean);
   if (conceptTokens.length === 0) return [];
 
-  const rows = await loadActiveSynonyms();
+  const rows = await (options.bypassCache ? loadActiveSynonymsUncached() : loadActiveSynonyms());
   const map = rows.length > 0 ? buildExpansionMap(rows) : null;
 
   const groups: string[][] = [];

@@ -17,8 +17,10 @@ import { runProductSearchRefreshWithRequestLifetime } from "@/lib/product-search
 // rank score. Kept below the exact-code (1500) / OEM (1400) / contains (600)
 // weights so semantics enriches recall + ranking without overriding a strong
 // textual/exact match.
-const SEARCH_V2_VECTOR_RECALL_LIMIT = 100;
+export const SEARCH_V2_VECTOR_RECALL_LIMIT = 30;
 const SEARCH_V2_VECTOR_WEIGHT = 500;
+export const SEARCH_V2_VECTOR_MIN_SIMILARITY = 0.62;
+export const SEARCH_V2_LEXICAL_SUFFICIENT_RESULTS = 5;
 
 /** A bare 1-2 digit number (e.g. the "2" in "Mazda 2"). Must NOT become a `:*`
  *  prefix lexeme — otherwise it matches every token starting with that digit
@@ -157,6 +159,36 @@ export const buildCandidateTextMatchSql = (params: {
       AND similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
     )
   `;
+};
+
+/**
+ * Cheap first-stage recall. These predicates stay on compact, purpose-specific
+ * fields (plus FTS) and avoid the broad search_text/trigram probes. The broad
+ * candidate builder above is reserved for low/no-result rescue only.
+ */
+export const buildFastCandidateTextMatchSql = (params: {
+  prefixQuery: string;
+  containsQuery: string;
+  ts: PrismaTypes.Sql;
+}): PrismaTypes.Sql => {
+  const { prefixQuery, containsQuery, ts } = params;
+  return Prisma.sql`
+    f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
+    OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR f_unaccent(lower(psd.keyword_text)) LIKE f_unaccent(lower(${containsQuery}))
+    OR psd.search_document @@ ${ts}
+  `;
+};
+
+export const shouldUseSemanticRecall = (params: {
+  lexicalResultCount: number;
+  take: number;
+  disabled: boolean;
+  isYearOnly: boolean;
+}): boolean => {
+  if (params.disabled || params.isYearOnly) return false;
+  return params.lexicalResultCount < Math.min(params.take, SEARCH_V2_LEXICAL_SUFFICIENT_RESULTS);
 };
 
 /**
@@ -313,7 +345,7 @@ export type ProductMatchReason =
   | "fitment"
   | "year";
 
-type ProductSearchResult = {
+export type ProductSearchResult = {
   ids: string[];
   total: number;
   mode: "v2" | "fallback";
@@ -330,6 +362,12 @@ type ProductSearchResult = {
    *  only — lets the chat layer allow a category-less near-match through when the
    *  text is genuinely close. Storefront callers can ignore it. */
   highTrigramProductIds?: string[];
+  /** Retrieval path used after the exact-code/name short circuit. */
+  retrievalMode?: "unfiltered" | "exact" | "lexical" | "hybrid" | "fallback";
+  /** Cosine similarity for semantic candidates returned on this page. */
+  semanticSimilarities?: Record<string, number>;
+  /** Returned products admitted only by vector recall, with no lexical evidence. */
+  vectorOnlyProductIds?: string[];
 };
 
 type RankedSearchRow = {
@@ -344,6 +382,8 @@ type RankedSearchRow = {
   /** Best lexical trigram similarity across code/oem/name/keyword/search_text
    *  reached SEARCH_V2_CHAT_TRIGRAM_STRONG. Chat-gate signal only. */
   match_trigram_high?: boolean | null;
+  semantic_similarity?: number | null;
+  vector_only?: boolean | null;
 };
 
 type ExactSearchRow = {
@@ -918,8 +958,9 @@ async function searchProductIdsFallback(
   };
 }
 
-async function searchProductIdsV2(
+export async function searchProductIdsV2(
   input: ProductSearchInput,
+  options: { bypassInternalCaches?: boolean } = {},
 ): Promise<ProductSearchResult> {
   const normalizedQuery = normalizeSearchQuery(input.query);
   const normalizedCarModelNames = normalizeCarModelNames(input);
@@ -963,7 +1004,7 @@ async function searchProductIdsV2(
   const [{ year: targetYear, sourceToken: targetYearSourceToken }, tokenGroups] =
     await Promise.all([
       resolveQueryYear(normalizedQuery, input.fitmentYear),
-      expandQueryTokenGroups(normalizedQuery),
+      expandQueryTokenGroups(normalizedQuery, { bypassCache: options.bypassInternalCaches }),
     ]);
 
   // Drop the detected model-year token from the FTS clause: the year is enforced
@@ -1409,10 +1450,19 @@ async function searchProductIdsV2(
       total: coerceCount(exactRows[0].total_count),
       mode: "v2",
       matchReasons: reasons,
+      retrievalMode: "exact",
     };
   }
 
-  // Semantic recall (Phase 1, gated). When enabled, pull the nearest products by
+  // Semantic recall (adaptive hybrid). A fast lexical pass runs first below.
+  // Only low/no-result searches pay for embedding + broad recall.
+  //
+  // When lexical evidence exists, vectors may boost those rows but cannot admit
+  // vector-only products. Vector-only rescue is allowed only when lexical recall
+  // is empty, preventing semantically-related products of the wrong type from
+  // flooding otherwise-correct narrow results.
+  //
+  // When enabled, pull the nearest products by
   // embedding cosine distance under the SAME hard filters (exactScope), to inject
   // as extra candidates + a rank boost in the ranked query below. Skipped for
   // year-only queries, and any failure (keys exhausted, extension missing, flag
@@ -1423,14 +1473,12 @@ async function searchProductIdsV2(
   // the external API. The actual vector query runs inside the bundled
   // transaction below (see dbSearchTx) so it shares one connection with the
   // ranked query.
-  const queryEmbedding =
-    isYearOnlyQuery || input.disableSemantic ? null : await embedQuery(normalizedQuery);
-
   const vectorRecallSql = (qvec: string): PrismaTypes.Sql => Prisma.sql`
     SELECT psd.product_id, (1 - (psd.embedding <=> ${qvec}::vector))::float8 AS sim
     FROM product_search_documents psd
     ${exactScope}
       AND psd.embedding IS NOT NULL
+      AND (1 - (psd.embedding <=> ${qvec}::vector)) >= ${SEARCH_V2_VECTOR_MIN_SIMILARITY}
     ORDER BY psd.embedding <=> ${qvec}::vector
     LIMIT ${SEARCH_V2_VECTOR_RECALL_LIMIT}
   `;
@@ -1441,12 +1489,17 @@ async function searchProductIdsV2(
     vectorJoin: PrismaTypes.Sql;
     vectorCandidate: PrismaTypes.Sql;
     vectorScore: PrismaTypes.Sql;
+    vectorSimilarity: PrismaTypes.Sql;
+    allowVectorOnly: boolean;
   };
   // Vector-derived SQL fragments depend on the recalled matches, so they are
   // rebuilt from whatever the (possibly-failed) vector query returned. With zero
   // matches every fragment is empty and the ranked query is byte-identical to the
   // lexical-only form.
-  const buildVectorFragments = (vectorMatches: VectorMatch[]): VectorFragments => {
+  const buildVectorFragments = (
+    vectorMatches: VectorMatch[],
+    allowVectorOnly = false,
+  ): VectorFragments => {
     const hasVector = vectorMatches.length > 0;
     return {
       vectorCte: hasVector
@@ -1457,10 +1510,12 @@ async function searchProductIdsV2(
       vectorJoin: hasVector
         ? Prisma.sql`LEFT JOIN vec v ON v.product_id = psd.product_id`
         : Prisma.empty,
-      vectorCandidate: hasVector ? Prisma.sql`OR v.product_id IS NOT NULL` : Prisma.empty,
+      vectorCandidate: hasVector && allowVectorOnly ? Prisma.sql`OR v.product_id IS NOT NULL` : Prisma.empty,
       vectorScore: hasVector
         ? Prisma.sql`+ COALESCE(v.sim, 0) * ${SEARCH_V2_VECTOR_WEIGHT}`
         : Prisma.empty,
+      vectorSimilarity: hasVector ? Prisma.sql`v.sim` : Prisma.sql`NULL::float8`,
+      allowVectorOnly: hasVector && allowVectorOnly,
     };
   };
 
@@ -1469,8 +1524,10 @@ async function searchProductIdsV2(
   // keyword/alias/free-text/FTS/trigram, OR by semantic similarity (vector). The
   // FTS clause (`@@ tsQuery`) is the only term that varies between the precise AND
   // query and the OR recall fallback.
-  const buildTextMatchOr = (ts: PrismaTypes.Sql) =>
-    buildCandidateTextMatchSql({ normalizedQuery, prefixQuery, containsQuery, ts });
+  const buildTextMatchOr = (ts: PrismaTypes.Sql, candidateMode: "fast" | "broad") =>
+    candidateMode === "fast"
+      ? buildFastCandidateTextMatchSql({ prefixQuery, containsQuery, ts })
+      : buildCandidateTextMatchSql({ normalizedQuery, prefixQuery, containsQuery, ts });
 
   const runRankedQuery = (
     ts: PrismaTypes.Sql,
@@ -1478,8 +1535,12 @@ async function searchProductIdsV2(
     run: <R>(query: PrismaTypes.Sql) => Promise<R>,
     rangeSkip: number = skip,
     rangeTake: number = take,
+    candidateMode: "fast" | "broad" = "broad",
   ) => {
-    const textMatchOr = buildTextMatchOr(ts);
+    const textMatchOr = buildTextMatchOr(ts, candidateMode);
+    const vectorOnlyExpr = frags.allowVectorOnly
+      ? Prisma.sql`(v.product_id IS NOT NULL AND NOT (${textMatchOr}))`
+      : Prisma.sql`false`;
     // Year-only queries union the text clause with a fitment-year cover so they
     // match BOTH part-number fragments and products fitting that year.
     const candidateClause = isYearOnlyQuery
@@ -1503,6 +1564,8 @@ async function searchProductIdsV2(
           OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_keyword,
         (f_unaccent(lower(psd.fitment_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_fitment,
         (${yearBoostExpr} > 0) AS match_year,
+        ${frags.vectorSimilarity} AS semantic_similarity,
+        ${vectorOnlyExpr} AS vector_only,
         -- Chat-gate signal (Phase: relevance gate): best lexical trigram across
         -- the searchable text columns ≥ strong threshold. Same similarity() calls
         -- as the score's trigram block below — this only thresholds them into a
@@ -1578,6 +1641,8 @@ async function searchProductIdsV2(
       ranked.match_fitment,
       ranked.match_year,
       ranked.match_trigram_high,
+      ranked.semantic_similarity,
+      ranked.vector_only,
       COUNT(*) OVER() AS total_count
     FROM ranked
     WHERE ranked.score > 0
@@ -1599,7 +1664,9 @@ async function searchProductIdsV2(
   // continue with lexical-only ranking in the SAME transaction, preserving the
   // previous "semantic failure degrades to lexical" behaviour instead of poisoning
   // the whole transaction.
-  const { vectorMatches, primaryRows } = await dbSearchTx(async (tx) => {
+  // Stage 1: compact lexical recall. Most ordinary searches finish here without
+  // a Gemini call or the expensive broad trigram/search_text probes.
+  const lexicalRows = await dbSearchTx(async (tx) => {
     const run = <R>(query: PrismaTypes.Sql): Promise<R> => tx.$queryRaw<R>(query);
 
     // Pin the candidate `%` trigram threshold for THIS transaction so the indexed
@@ -1609,8 +1676,30 @@ async function searchProductIdsV2(
       SELECT set_config('pg_trgm.similarity_threshold', ${SEARCH_V2_TRGM_CANDIDATE_THRESHOLD}, true)
     `;
 
-    let vectorMatches: VectorMatch[] = [];
-    if (queryEmbedding) {
+    return runRankedQuery(tsQuery, buildVectorFragments([]), run, skip, take, "fast");
+  });
+
+  // Stage 2: adaptive semantic recall only for low/no-result lexical searches.
+  // Embedding happens outside a DB transaction, so Gemini latency never holds a
+  // pooled connection.
+  const useSemantic = shouldUseSemanticRecall({
+    lexicalResultCount: lexicalRows.length,
+    take,
+    disabled: Boolean(input.disableSemantic),
+    isYearOnly: isYearOnlyQuery,
+  });
+  const queryEmbedding = useSemantic
+    ? await embedQuery(normalizedQuery, { bypassCache: options.bypassInternalCaches })
+    : null;
+  let vectorMatches: VectorMatch[] = [];
+  let primaryRows = lexicalRows;
+
+  if (queryEmbedding) {
+    primaryRows = await dbSearchTx(async (tx) => {
+      const run = <R>(query: PrismaTypes.Sql): Promise<R> => tx.$queryRaw<R>(query);
+      await tx.$executeRaw`
+        SELECT set_config('pg_trgm.similarity_threshold', ${SEARCH_V2_TRGM_CANDIDATE_THRESHOLD}, true)
+      `;
       try {
         await tx.$executeRaw`SAVEPOINT vec_recall`;
         // Widen HNSW traversal so filtered semantic recall keeps enough real
@@ -1634,12 +1723,17 @@ async function searchProductIdsV2(
         }
         vectorMatches = [];
       }
-    }
-
-    const frags = buildVectorFragments(vectorMatches);
-    const primaryRows = await runRankedQuery(tsQuery, frags, run);
-    return { vectorMatches, primaryRows };
-  });
+      const allowVectorOnly = lexicalRows.length === 0;
+      return runRankedQuery(
+        tsQuery,
+        buildVectorFragments(vectorMatches, allowVectorOnly),
+        run,
+        skip,
+        take,
+        "broad",
+      );
+    });
+  }
 
   // Same-transaction runner for the broad-OR fallback + out-of-range probes below.
   // These ranked queries also use the indexed `%` candidate OR, so they need the
@@ -1661,8 +1755,11 @@ async function searchProductIdsV2(
     // matches and run the broad OR query in its own short transaction.
     rows = await runRankedQuery(
       buildTsQuery(fallbackExpression),
-      buildVectorFragments(vectorMatches),
+      buildVectorFragments(vectorMatches, lexicalRows.length === 0),
       runRankedRaw,
+      skip,
+      take,
+      "broad",
     );
     // Flag only when the OR fallback actually returned something — an empty
     // fallback is indistinguishable (to the customer) from a plain no-match.
@@ -1676,8 +1773,8 @@ async function searchProductIdsV2(
   // the real total. This extra query fires only on the rare out-of-range case.
   let total = rows.length > 0 ? coerceCount(rows[0].total_count) : 0;
   if (rows.length === 0 && skip > 0) {
-    const vectorFrags = buildVectorFragments(vectorMatches);
-    const probePrimary = await runRankedQuery(tsQuery, vectorFrags, runRankedRaw, 0, 1);
+    const vectorFrags = buildVectorFragments(vectorMatches, lexicalRows.length === 0);
+    const probePrimary = await runRankedQuery(tsQuery, vectorFrags, runRankedRaw, 0, 1, "broad");
     if (probePrimary.length > 0) {
       total = coerceCount(probePrimary[0].total_count);
     } else if (hasMultipleConcepts && !input.disableBroadFallback) {
@@ -1687,6 +1784,7 @@ async function searchProductIdsV2(
         runRankedRaw,
         0,
         1,
+        "broad",
       );
       if (probeFallback.length > 0) {
         total = coerceCount(probeFallback[0].total_count);
@@ -1701,6 +1799,13 @@ async function searchProductIdsV2(
     matchReasons: buildMatchReasons(rows),
     usedBroadFallback,
     highTrigramProductIds: buildHighTrigramIds(rows),
+    retrievalMode: vectorMatches.length > 0 ? "hybrid" : "lexical",
+    semanticSimilarities: Object.fromEntries(
+      rows
+        .filter((row) => typeof row.semantic_similarity === "number")
+        .map((row) => [row.product_id, row.semantic_similarity as number]),
+    ),
+    vectorOnlyProductIds: rows.filter((row) => row.vector_only).map((row) => row.product_id),
   };
 }
 

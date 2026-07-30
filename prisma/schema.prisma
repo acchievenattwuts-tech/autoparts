@@ -8,57 +8,57 @@ datasource db {
 }
 
 model User {
-  id                            String                     @id @default(cuid())
-  name                          String
-  email                         String                     @unique
-  password                      String
-  role                          Role                       @default(STAFF)
-  isActive                      Boolean                    @default(true)
-  authVersion                   Int                        @default(0)
-  createdAt                     DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt                     DateTime                   @updatedAt @db.Timestamptz(3)
-  appRoleId                     String?
-  mustChangePassword            Boolean                    @default(false)
-  username                      String?                    @unique
-  signatureUpdatedAt            DateTime?                  @db.Timestamptz(3)
-  signatureUrl                  String?
-  phone                         String?
-  adjustments                   Adjustment[]
-  auditLogs                     AuditLog[]
-  balanceForwards               BalanceForward[]
-  cashBankAdjustments           CashBankAdjustment[]
-  cashBankTransfers             CashBankTransfer[]
-  contentApprovalsToReview      ContentApproval[]          @relation("ContentApprovalApprover")
-  contentApprovalsRequested     ContentApproval[]          @relation("ContentApprovalRequestedBy")
-  contentAuditLogs              ContentAuditLog[]          @relation("ContentAuditActor")
-  contentPostsApproved          ContentPost[]              @relation("ContentPostApprovedBy")
-  contentPostsCreated           ContentPost[]              @relation("ContentPostCreatedBy")
-  contentScheduledJobsCreated   ContentScheduledJob[]      @relation("ContentScheduledJobCreatedBy")
-  creditNotes                   CreditNote[]
-  deliveryCommissionRuns        DeliveryCommissionRun[]    @relation("DeliveryCommissionStaff")
-  deliveryCommissionRunsCreated DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
-  deliveryProofs                DeliveryProof[]
-  expenses                      Expense[]
-  expenseAttachments            ExpenseAttachment[]
-  lineSummaryDispatches         LineDailySummaryDispatch[]
-  lineConversationsAssigned     LineConversation[]         @relation("LineConversationAssignedAdmin")
-  lineMessagesAdminAuthored     LineMessage[]              @relation("LineMessageAdminAuthor")
-  messengerConversationsAssigned MessengerConversation[]   @relation("MessengerConversationAssignedAdmin")
-  messengerMessagesAdminAuthored MessengerMessage[]        @relation("MessengerMessageAdminAuthor")
-  paymentSlipsReviewed          PaymentSlip[]              @relation("PaymentSlipReviewer")
-  profitExplanationHistories    ProfitExplanationHistory[]
-  purchases                     Purchase[]
-  purchaseReturns               PurchaseReturn[]
-  receipts                      Receipt[]
-  deliverySales                 Sale[]                     @relation("SaleDeliveryStaff")
-  sales                         Sale[]
-  notifications                 Notification[]
-  backupJobs                    BackupJob[]
-  shopeeShopsAuthorized         ShopeeShop[]
-  supplierAdvances              SupplierAdvance[]
-  supplierPayments              SupplierPayment[]
-  appRole                       AppRole?                   @relation(fields: [appRoleId], references: [id])
-  lineRecipientLinks            UserLineRecipient?
+  id                             String                     @id @default(cuid())
+  name                           String
+  email                          String                     @unique
+  password                       String
+  role                           Role                       @default(STAFF)
+  isActive                       Boolean                    @default(true)
+  authVersion                    Int                        @default(0)
+  createdAt                      DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt                      DateTime                   @updatedAt @db.Timestamptz(3)
+  appRoleId                      String?
+  mustChangePassword             Boolean                    @default(false)
+  username                       String?                    @unique
+  signatureUpdatedAt             DateTime?                  @db.Timestamptz(3)
+  signatureUrl                   String?
+  phone                          String?
+  adjustments                    Adjustment[]
+  auditLogs                      AuditLog[]
+  balanceForwards                BalanceForward[]
+  cashBankAdjustments            CashBankAdjustment[]
+  cashBankTransfers              CashBankTransfer[]
+  contentApprovalsToReview       ContentApproval[]          @relation("ContentApprovalApprover")
+  contentApprovalsRequested      ContentApproval[]          @relation("ContentApprovalRequestedBy")
+  contentAuditLogs               ContentAuditLog[]          @relation("ContentAuditActor")
+  contentPostsApproved           ContentPost[]              @relation("ContentPostApprovedBy")
+  contentPostsCreated            ContentPost[]              @relation("ContentPostCreatedBy")
+  contentScheduledJobsCreated    ContentScheduledJob[]      @relation("ContentScheduledJobCreatedBy")
+  creditNotes                    CreditNote[]
+  deliveryCommissionRuns         DeliveryCommissionRun[]    @relation("DeliveryCommissionStaff")
+  deliveryCommissionRunsCreated  DeliveryCommissionRun[]    @relation("DeliveryCommissionCreatedBy")
+  deliveryProofs                 DeliveryProof[]
+  expenses                       Expense[]
+  expenseAttachments             ExpenseAttachment[]
+  lineSummaryDispatches          LineDailySummaryDispatch[]
+  lineConversationsAssigned      LineConversation[]         @relation("LineConversationAssignedAdmin")
+  lineMessagesAdminAuthored      LineMessage[]              @relation("LineMessageAdminAuthor")
+  messengerConversationsAssigned MessengerConversation[]    @relation("MessengerConversationAssignedAdmin")
+  messengerMessagesAdminAuthored MessengerMessage[]         @relation("MessengerMessageAdminAuthor")
+  paymentSlipsReviewed           PaymentSlip[]              @relation("PaymentSlipReviewer")
+  profitExplanationHistories     ProfitExplanationHistory[]
+  purchases                      Purchase[]
+  purchaseReturns                PurchaseReturn[]
+  receipts                       Receipt[]
+  deliverySales                  Sale[]                     @relation("SaleDeliveryStaff")
+  sales                          Sale[]
+  notifications                  Notification[]
+  backupJobs                     BackupJob[]
+  shopeeShopsAuthorized          ShopeeShop[]
+  supplierAdvances               SupplierAdvance[]
+  supplierPayments               SupplierPayment[]
+  appRole                        AppRole?                   @relation(fields: [appRoleId], references: [id])
+  lineRecipientLinks             UserLineRecipient?
 
   @@index([username])
   @@index([appRoleId])
@@ -572,7 +572,7 @@ model AuditLog {
 model BackupJob {
   id             String              @id @default(cuid())
   kind           BackupJobKind
-  status         BackupJobStatus      @default(PENDING)
+  status         BackupJobStatus     @default(PENDING)
   phase          String?
   message        String?
   processedItems Int                 @default(0)
@@ -685,11 +685,11 @@ model CarModel {
 }
 
 model Category {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  isActive  Boolean   @default(true)
-  slug      String?   @unique
+  id        String          @id @default(cuid())
+  name      String          @unique
+  createdAt DateTime        @default(now()) @db.Timestamptz(3)
+  isActive  Boolean         @default(true)
+  slug      String?         @unique
   aliases   CategoryAlias[]
   products  Product[]
 }
@@ -717,20 +717,20 @@ enum CategoryAliasReviewStatus {
 }
 
 model CategoryAlias {
-  id             String                    @id @default(cuid())
-  categoryId     String?
-  alias          String
-  kind           CategoryAliasKind         @default(MATCH)
-  matchMode      CategoryAliasMatchMode     @default(CONTAINS)
-  priority       Int                        @default(0)
-  isActive       Boolean                    @default(true)
-  notes          String?
-  source         CategoryAliasSource        @default(MANUAL)
-  reviewStatus   CategoryAliasReviewStatus  @default(APPROVED)
+  id              String                    @id @default(cuid())
+  categoryId      String?
+  alias           String
+  kind            CategoryAliasKind         @default(MATCH)
+  matchMode       CategoryAliasMatchMode    @default(CONTAINS)
+  priority        Int                       @default(0)
+  isActive        Boolean                   @default(true)
+  notes           String?
+  source          CategoryAliasSource       @default(MANUAL)
+  reviewStatus    CategoryAliasReviewStatus @default(APPROVED)
   aiCorrectedTerm String?
-  createdAt      DateTime                   @default(now()) @db.Timestamptz(3)
-  updatedAt      DateTime                   @updatedAt @db.Timestamptz(3)
-  category       Category?                  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  createdAt       DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                  @updatedAt @db.Timestamptz(3)
+  category        Category?                 @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([alias, kind])
   @@index([categoryId])
@@ -889,19 +889,19 @@ model SearchSynonym {
 /// as-you-type dropdown does a single indexed prefix lookup (btree on `normalized`)
 /// and NEVER touches the heavy V2 product search on every keystroke.
 model SearchKeyword {
-  id           String   @id @default(cuid())
+  id         String   @id @default(cuid())
   /// Human-facing term shown in the dropdown (original casing / Thai).
-  term         String   @db.VarChar(120)
+  term       String   @db.VarChar(120)
   /// Lowercased + accent-folded form used for the prefix lookup.
-  normalized   String   @db.VarChar(120)
+  normalized String   @db.VarChar(120)
   /// What this keyword resolves to, so submit can apply it as a hard filter.
-  kind         String   @db.VarChar(20)
+  kind       String   @db.VarChar(20)
   /// Optional grouping hint shown as a sublabel (e.g. category / brand name).
-  sublabel     String?  @db.VarChar(120)
+  sublabel   String?  @db.VarChar(120)
   /// Higher = surfaced first. Derived from sales / search hit counts.
-  popularity   Int      @default(0)
-  createdAt    DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(3)
+  popularity Int      @default(0)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   @@unique([normalized, kind])
   @@index([normalized])
@@ -1103,31 +1103,31 @@ model PurchaseItem {
 }
 
 model Customer {
-  id               String       @id @default(cuid())
-  code             String?      @unique
-  name             String
-  phone            String?      @unique
-  address          String?
-  taxId            String?
-  note             String?
-  createdAt        DateTime     @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime     @updatedAt @db.Timestamptz(3)
-  shippingAddress  String?
-  isActive         Boolean      @default(true)
-  creditTerm       Int?
-  lineLinkedAt     DateTime?    @db.Timestamptz(3)
-  lineUserId       String?      @unique
-  source           String       @default("ADMIN")
-  defaultLatitude  Float?
-  defaultLongitude Float?
-  customerTypeId   String?
-  customerType     CustomerType? @relation(fields: [customerTypeId], references: [id])
-  lineConversations LineConversation[]
+  id                     String                  @id @default(cuid())
+  code                   String?                 @unique
+  name                   String
+  phone                  String?                 @unique
+  address                String?
+  taxId                  String?
+  note                   String?
+  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @db.Timestamptz(3)
+  shippingAddress        String?
+  isActive               Boolean                 @default(true)
+  creditTerm             Int?
+  lineLinkedAt           DateTime?               @db.Timestamptz(3)
+  lineUserId             String?                 @unique
+  source                 String                  @default("ADMIN")
+  defaultLatitude        Float?
+  defaultLongitude       Float?
+  customerTypeId         String?
+  customerType           CustomerType?           @relation(fields: [customerTypeId], references: [id])
+  lineConversations      LineConversation[]
   messengerConversations MessengerConversation[]
-  creditNotes      CreditNote[]
-  receipts         Receipt[]
-  sales            Sale[]
-  warranties       Warranty[]
+  creditNotes            CreditNote[]
+  receipts               Receipt[]
+  sales                  Sale[]
+  warranties             Warranty[]
 
   @@index([name])
   @@index([lineLinkedAt])
@@ -2085,26 +2085,29 @@ model CreditNoteItemLot {
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
 /// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
 model product_search_documents {
-  product_id          String                  @id
-  is_active           Boolean
-  product_code        String
-  product_name        String
-  product_description String                  @default("")
-  category_name       String                  @default("")
-  brand_name          String                  @default("")
-  alias_text          String                  @default("")
-  car_brand_text      String                  @default("")
-  car_model_text      String                  @default("")
-  fitment_text        String                  @default("")
-  search_text         String                  @default("")
-  search_document     Unsupported("tsvector")
-  embedding           Unsupported("vector(768)")?
-  product_created_at  DateTime                @db.Timestamptz(6)
-  updated_at          DateTime                @default(now()) @db.Timestamptz(6)
-  oem_text            String                  @default("")
-  keyword_text        String                  @default("")
-  sales_count         Int                     @default(0)
-  stock               Int                     @default(0)
+  product_id            String                      @id
+  is_active             Boolean
+  product_code          String
+  product_name          String
+  product_description   String                      @default("")
+  category_name         String                      @default("")
+  brand_name            String                      @default("")
+  alias_text            String                      @default("")
+  car_brand_text        String                      @default("")
+  car_model_text        String                      @default("")
+  fitment_text          String                      @default("")
+  search_text           String                      @default("")
+  search_document       Unsupported("tsvector")
+  embedding             Unsupported("vector(768)")?
+  embedding_model       String?
+  embedding_source_hash String?
+  embedded_at           DateTime?                   @db.Timestamptz(3)
+  product_created_at    DateTime                    @db.Timestamptz(6)
+  updated_at            DateTime                    @default(now()) @db.Timestamptz(6)
+  oem_text              String                      @default("")
+  keyword_text          String                      @default("")
+  sales_count           Int                         @default(0)
+  stock                 Int                         @default(0)
 
   @@index([product_created_at(sort: Desc)], map: "idx_product_search_documents_created_at")
   @@index([search_document], map: "idx_product_search_documents_document", type: Gin)

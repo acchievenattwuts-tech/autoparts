@@ -1,5 +1,10 @@
 import { unstable_cache } from "next/cache";
-import { generateGeminiEmbedding, GEMINI_EMBEDDING_DIMENSIONS } from "@/lib/google-ai-client";
+import { createHash } from "node:crypto";
+import {
+  generateGeminiEmbedding,
+  GEMINI_EMBEDDING_DIMENSIONS,
+  getGeminiEmbeddingModel,
+} from "@/lib/google-ai-client";
 import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 
 /**
@@ -55,6 +60,14 @@ export function buildProductEmbeddingText(input: {
   );
 }
 
+export function buildProductEmbeddingSourceHash(text: string): string {
+  return createHash("sha256").update(clip(text), "utf8").digest("hex");
+}
+
+export function getProductEmbeddingModelId(): string {
+  return `${getGeminiEmbeddingModel()}:${GEMINI_EMBEDDING_DIMENSIONS}`;
+}
+
 /** Formats a vector as a pgvector literal: `[0.1,0.2,...]`. */
 export function toPgVectorLiteral(values: number[]): string {
   return `[${values.join(",")}]`;
@@ -82,7 +95,7 @@ const EMBED_QUERY_CACHE_TTL_SECONDS = 60 * 60 * 24; // 1 day
  * serve a stale-shape vector from cache.
  */
 export function buildQueryEmbeddingCacheKey(clippedQuery: string): string {
-  return `query-embedding:v${GEMINI_EMBEDDING_DIMENSIONS}:${clippedQuery}`;
+  return `query-embedding:${getProductEmbeddingModelId()}:${clippedQuery}`;
 }
 
 /**
@@ -112,12 +125,19 @@ const fetchCachedQueryEmbedding = (clippedQuery: string): Promise<number[]> =>
  * implementation, so the resulting vector is byte-for-byte the same; only the
  * Gemini round-trip is now memoised per query.
  */
-export async function embedQuery(text: string | null | undefined): Promise<number[] | null> {
+export async function embedQuery(
+  text: string | null | undefined,
+  options: { bypassCache?: boolean } = {},
+): Promise<number[] | null> {
   const trimmed = text?.trim();
   if (!trimmed || !isSemanticSearchEnabled()) return null;
   const clipped = clip(trimmed);
   if (!clipped) return null;
   try {
+    if (options.bypassCache) {
+      const [vector] = await generateGeminiEmbedding([clipped]);
+      return vector?.length === GEMINI_EMBEDDING_DIMENSIONS ? vector : null;
+    }
     return await fetchCachedQueryEmbedding(clipped);
   } catch {
     return null;

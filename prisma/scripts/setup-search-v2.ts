@@ -9,7 +9,7 @@ if (!connectionString) {
 const setupSql = `
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS unaccent;
--- Phase 1 (hybrid search): pgvector for semantic embeddings (text-embedding-004, 768d).
+-- Phase 1 (hybrid search): pgvector for semantic embeddings (Gemini, 768d).
 CREATE EXTENSION IF NOT EXISTS vector;
 
 -- IMMUTABLE wrapper around unaccent so it can be used in expression indexes.
@@ -62,6 +62,12 @@ ALTER TABLE product_search_documents
 -- app re-embeds. NULL until backfilled; lexical search ignores NULL embeddings.
 ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS embedding vector(768);
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS embedding_model text;
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS embedding_source_hash text;
+ALTER TABLE product_search_documents
+  ADD COLUMN IF NOT EXISTS embedded_at timestamptz(3);
 
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_is_active
   ON product_search_documents (is_active);

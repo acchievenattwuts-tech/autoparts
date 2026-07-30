@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ??= "postgresql://user:pass@localhost:5432/autoparts_test";
 
-test("cache key folds in the model dimension so a model swap can't serve a stale vector", async () => {
-  const { buildQueryEmbeddingCacheKey } = await import("@/lib/embeddings");
-  const { GEMINI_EMBEDDING_DIMENSIONS } = await import("@/lib/embeddings");
+test("cache key folds in model identity so a model swap can't serve a stale vector", async () => {
+  const { buildQueryEmbeddingCacheKey, getProductEmbeddingModelId } = await import("@/lib/embeddings");
   const key = buildQueryEmbeddingCacheKey("vios");
-  assert.equal(key, `query-embedding:v${GEMINI_EMBEDDING_DIMENSIONS}:vios`);
+  assert.equal(key, `query-embedding:${getProductEmbeddingModelId()}:vios`);
 });
 
 test("distinct queries produce distinct cache keys", async () => {

@@ -25,6 +25,8 @@
     "db:push": "prisma db push && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "db:push:accept-data-loss": "prisma db push --accept-data-loss && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "db:setup-search-v2": "tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
+    "check:search-v2-health": "tsx --env-file=.env.local prisma/scripts/check-search-v2-health.ts",
+    "evaluate:search-v2": "tsx --env-file=.env.local prisma/scripts/evaluate-search-v2.ts",
     "refresh:search-popularity": "tsx --env-file=.env.local prisma/scripts/refresh-search-popularity.ts",
     "refresh:search-keywords": "tsx --env-file=.env.local prisma/scripts/refresh-search-keywords.ts",
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",

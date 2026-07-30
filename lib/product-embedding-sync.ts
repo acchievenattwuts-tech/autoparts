@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
 import {
   buildProductEmbeddingText,
+  buildProductEmbeddingSourceHash,
   embedTexts,
+  getProductEmbeddingModelId,
   isSemanticSearchEnabled,
   toPgVectorLiteral,
 } from "@/lib/embeddings";
@@ -51,10 +53,16 @@ export async function reembedProductSearchDocument(productId: string): Promise<v
 
     const [vector] = await embedTexts([text]);
     if (!vector) return;
+    const sourceHash = buildProductEmbeddingSourceHash(text);
+    const modelId = getProductEmbeddingModelId();
 
     await db.$executeRaw`
       UPDATE product_search_documents
-      SET embedding = ${toPgVectorLiteral(vector)}::vector, updated_at = now()
+      SET embedding = ${toPgVectorLiteral(vector)}::vector,
+          embedding_model = ${modelId},
+          embedding_source_hash = ${sourceHash},
+          embedded_at = now(),
+          updated_at = now()
       WHERE product_id = ${productId}
     `;
   } catch (error) {
