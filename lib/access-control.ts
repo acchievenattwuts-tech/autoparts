@@ -123,6 +123,13 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "content.update", group: "การตลาด", label: "แก้ไขและส่งอนุมัติคอนเทนต์ Facebook" },
   { key: "content.manage", group: "การตลาด", label: "อนุมัติและโพสต์คอนเทนต์ Facebook" },
 
+  { key: "knowledge.view", group: "คลังความรู้ AI", label: "ดูคลังความรู้ AI" },
+  { key: "knowledge.create", group: "คลังความรู้ AI", label: "สร้างเนื้อหาคลังความรู้ AI" },
+  { key: "knowledge.update", group: "คลังความรู้ AI", label: "แก้ไขและส่งอนุมัติคลังความรู้ AI" },
+  { key: "knowledge.approve", group: "คลังความรู้ AI", label: "อนุมัติและเผยแพร่คลังความรู้ AI" },
+  { key: "knowledge.sync", group: "คลังความรู้ AI", label: "สั่ง Sync และทดลองถาม AI" },
+  { key: "knowledge.archive", group: "คลังความรู้ AI", label: "ยกเลิกเผยแพร่คลังความรู้ AI" },
+
   { key: "line_conversations.view", group: "LINE OA", label: "ดูบทสนทนา LINE OA" },
   { key: "line_conversations.reply", group: "LINE OA", label: "ตอบบทสนทนา LINE OA" },
   { key: "line_conversations.manage", group: "LINE OA", label: "จัดการสถานะ AI ในบทสนทนา LINE OA" },
@@ -161,6 +168,19 @@ type RoleTemplate = {
 };
 
 const ALL_PERMISSION_KEYS = PERMISSION_CATALOG.map((permission) => permission.key);
+
+export const KNOWLEDGE_PERMISSION_KEYS = [
+  "knowledge.view",
+  "knowledge.create",
+  "knowledge.update",
+  "knowledge.approve",
+  "knowledge.sync",
+  "knowledge.archive",
+] as const;
+
+export function isKnowledgePermission(permission: string): boolean {
+  return (KNOWLEDGE_PERMISSION_KEYS as readonly string[]).includes(permission);
+}
 
 const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "workboard.view",
@@ -296,6 +316,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/content/approval-queue", permission: "content.view" },
   { prefix: "/admin/content", permission: "content.view" },
+  { prefix: "/admin/knowledge", permission: "knowledge.view" },
   { prefix: "/admin/marketplace", permission: "marketplace.view" },
   { prefix: "/admin/line-ai-keys", permission: "line_ai_keys.view" },
   { prefix: "/admin/line-payment-slips", permission: "line_payment_slips.view" },
@@ -404,18 +425,27 @@ export async function getUserPermissionKeys(userId: string): Promise<PermissionK
           },
         },
       },
+      directPermissionGrants: {
+        select: {
+          permission: { select: { key: true } },
+        },
+      },
     },
   });
 
   if (!user) return [];
-  if (user.role === "ADMIN") return [...ALL_PERMISSION_KEYS];
+  if (user.role === "ADMIN") {
+    const directlyGranted = new Set(user.directPermissionGrants.map((item) => item.permission.key));
+    return ALL_PERMISSION_KEYS.filter(
+      (permission) => !isKnowledgePermission(permission) || directlyGranted.has(permission),
+    );
+  }
 
-  return (
-    user.appRole?.permissions
-      .map((item) => item.permission.key)
-      .filter((permissionKey): permissionKey is PermissionKey =>
-        ALL_PERMISSION_KEYS.includes(permissionKey as PermissionKey)
-      ) ?? []
+  return [...new Set([
+    ...(user.appRole?.permissions.map((item) => item.permission.key) ?? []),
+    ...user.directPermissionGrants.map((item) => item.permission.key),
+  ])].filter((permissionKey): permissionKey is PermissionKey =>
+    ALL_PERMISSION_KEYS.includes(permissionKey as PermissionKey)
   );
 }
 
@@ -423,12 +453,31 @@ export function getAllPermissionKeys(): PermissionKey[] {
   return [...ALL_PERMISSION_KEYS];
 }
 
+export async function setUserKnowledgeAccess(userId: string, enabled: boolean): Promise<void> {
+  await ensureAccessControlSetup();
+  const permissions = await db.permission.findMany({
+    where: { key: { in: [...KNOWLEDGE_PERMISSION_KEYS] } },
+    select: { id: true },
+  });
+  await db.$transaction(async (tx) => {
+    await tx.userPermissionGrant.deleteMany({
+      where: { userId, permissionId: { in: permissions.map((item) => item.id) } },
+    });
+    if (enabled && permissions.length > 0) {
+      await tx.userPermissionGrant.createMany({
+        data: permissions.map((permission) => ({ userId, permissionId: permission.id })),
+        skipDuplicates: true,
+      });
+    }
+    await tx.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } });
+  });
+}
+
 export function hasPermissionAccess(
   role: string | null | undefined,
   permissions: readonly string[] | null | undefined,
   permission: PermissionKey
 ): boolean {
-  if (role === "ADMIN") return true;
   return Array.isArray(permissions) && permissions.includes(permission);
 }
 
@@ -437,7 +486,6 @@ export function hasAnyPermissionAccess(
   permissions: readonly string[] | null | undefined,
   requiredPermissions: readonly PermissionKey[]
 ): boolean {
-  if (role === "ADMIN") return true;
   if (!Array.isArray(permissions)) return false;
   return requiredPermissions.some((permission) => permissions.includes(permission));
 }
@@ -472,6 +520,8 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (pathname === "/admin/content") return "content.view";
   if (pathname === "/admin/content/approval-queue") return "content.view";
   if (/^\/admin\/content\/[^/]+$/.test(pathname)) return "content.view";
+  if (pathname === "/admin/knowledge/new") return "knowledge.create";
+  if (/^\/admin\/knowledge\/[^/]+$/.test(pathname)) return "knowledge.view";
   if (pathname === "/admin/users/new") return "admin.users.create";
   if (/^\/admin\/users\/[^/]+\/edit$/.test(pathname)) return "admin.users.update";
   if (pathname === "/admin/roles/new") return "admin.roles.manage";

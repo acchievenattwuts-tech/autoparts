@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AdminShell from "@/components/shared/AdminShell";
 import { getAdminThemeCookieName, parseAdminTheme } from "@/lib/admin-theme";
-import { getAllPermissionKeys } from "@/lib/access-control";
 
 const AdminLayout = async ({ children }: { children: ReactNode }) => {
   const session = await auth();
@@ -12,10 +11,7 @@ const AdminLayout = async ({ children }: { children: ReactNode }) => {
     redirect("/admin/login");
   }
 
-  const permissions =
-    session.user.role === "ADMIN"
-      ? getAllPermissionKeys()
-      : (session.user.permissions ?? []);
+  const permissions = session.user.permissions ?? [];
   const initialTheme = parseAdminTheme(
     (await cookies()).get(getAdminThemeCookieName(session.user.id))?.value,
   );

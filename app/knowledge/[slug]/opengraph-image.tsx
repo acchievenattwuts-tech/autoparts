@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import OgImageTemplate from "@/components/seo/OgImageTemplate";
-import { knowledgeArticleMap, knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticle, getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 
 export const size = {
   width: 1200,
@@ -13,7 +13,8 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const knowledgeArticles = await getPublicKnowledgeArticles();
   return knowledgeArticles.map((article) => ({
     slug: article.slug,
   }));
@@ -21,7 +22,7 @@ export function generateStaticParams() {
 
 export default async function OpenGraphImage({ params }: Props) {
   const { slug } = await params;
-  const article = knowledgeArticleMap.get(slug);
+  const article = await getPublicKnowledgeArticle(slug);
 
   if (!article) {
     notFound();

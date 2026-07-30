@@ -63,7 +63,6 @@ export const filterCommandsByPermission = (
   role: string | null | undefined,
   permissions: readonly string[] | null | undefined,
 ): QuickCommand[] => {
-  if (role === "ADMIN") return [...commands];
   if (!Array.isArray(permissions)) return [];
   return commands.filter((cmd) => !cmd.permission || permissions.includes(cmd.permission));
 };

@@ -19,7 +19,8 @@ import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 import { getCategorySeoDescription } from "@/lib/category-seo-content";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
-import { knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
+import type { KnowledgeArticle } from "@/lib/knowledge-content";
 import {
   getActiveStorefrontCategoryBySlug,
   getStorefrontCategoryPageData,
@@ -30,7 +31,7 @@ interface Props {
   params: Promise<{ categorySlug: string }>;
 }
 
-const getCategorySupportArticles = (categoryName: string) => {
+const getCategorySupportArticles = (categoryName: string, knowledgeArticles: KnowledgeArticle[]) => {
   const normalizedCategoryName = categoryName.toLowerCase();
 
   return [...knowledgeArticles]
@@ -118,7 +119,7 @@ const CategoryPage = async ({ params }: Props) => {
   const { category, products, total, pageSize } = categoryData;
   const canonicalPath = getCategoryPath(category);
   const requestedPath = `/products/${decodeURIComponent(categorySlug)}`;
-  const supportArticles = getCategorySupportArticles(category.name);
+  const supportArticles = getCategorySupportArticles(category.name, await getPublicKnowledgeArticles());
 
   if (requestedPath !== canonicalPath) {
     permanentRedirect(canonicalPath);

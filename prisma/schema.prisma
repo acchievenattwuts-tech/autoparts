@@ -58,6 +58,15 @@ model User {
   supplierAdvances               SupplierAdvance[]
   supplierPayments               SupplierPayment[]
   appRole                        AppRole?                   @relation(fields: [appRoleId], references: [id])
+  directPermissionGrants         UserPermissionGrant[]
+  knowledgeSourcesCreated        KnowledgeSource[]          @relation("KnowledgeSourceCreatedBy")
+  knowledgeRevisionsCreated      KnowledgeRevision[]        @relation("KnowledgeRevisionCreatedBy")
+  knowledgeRevisionsSubmitted    KnowledgeRevision[]        @relation("KnowledgeRevisionSubmittedBy")
+  knowledgeRevisionsApproved     KnowledgeRevision[]        @relation("KnowledgeRevisionApprovedBy")
+  knowledgeApprovalsRequested    KnowledgeApproval[]        @relation("KnowledgeApprovalRequestedBy")
+  knowledgeApprovalsActed        KnowledgeApproval[]        @relation("KnowledgeApprovalActedBy")
+  knowledgeSyncJobsTriggered     KnowledgeSyncJob[]         @relation("KnowledgeSyncJobTriggeredBy")
+  knowledgeAuditLogs             KnowledgeAuditLog[]        @relation("KnowledgeAuditActor")
   lineRecipientLinks             UserLineRecipient?
 
   @@index([username])
@@ -626,14 +635,15 @@ model AppRole {
 }
 
 model Permission {
-  id          String              @id @default(cuid())
-  key         String              @unique
+  id          String                @id @default(cuid())
+  key         String                @unique
   group       String
   label       String
   description String?
-  createdAt   DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime            @updatedAt @db.Timestamptz(3)
+  createdAt   DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime              @updatedAt @db.Timestamptz(3)
   roles       AppRolePermission[]
+  userGrants  UserPermissionGrant[]
 }
 
 model AppRolePermission {
@@ -645,6 +655,172 @@ model AppRolePermission {
 
   @@id([appRoleId, permissionId])
   @@index([permissionId])
+}
+
+model UserPermissionGrant {
+  id           String     @id @default(cuid())
+  userId       String
+  permissionId String
+  grantedAt    DateTime   @default(now()) @db.Timestamptz(3)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permissionId])
+  @@index([permissionId])
+}
+
+model KnowledgeSource {
+  id               String              @id @default(cuid())
+  sourceKey        String              @unique
+  type             KnowledgeSourceType
+  slug             String?             @unique
+  isArchived       Boolean             @default(false)
+  activeRevisionId String?             @unique
+  createdByUserId  String
+  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
+  createdByUser    User                @relation("KnowledgeSourceCreatedBy", fields: [createdByUserId], references: [id])
+  activeRevision   KnowledgeRevision?  @relation("KnowledgeActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
+  revisions        KnowledgeRevision[] @relation("KnowledgeSourceRevisions")
+  auditLogs        KnowledgeAuditLog[]
+
+  @@index([type, isArchived])
+  @@index([createdByUserId, createdAt])
+}
+
+model KnowledgeRevision {
+  id                String                  @id @default(cuid())
+  sourceId          String
+  revisionNo        Int
+  title             String
+  description       String?
+  category          String?
+  content           Json
+  answerScope       String
+  riskLevel         KnowledgeRiskLevel      @default(LOW)
+  ragEnabled        Boolean                 @default(true)
+  sourceUrls        Json                    @default("[]")
+  status            KnowledgeRevisionStatus @default(DRAFT)
+  checksum          String
+  rejectionReason   String?
+  syncError         String?
+  createdByUserId   String
+  submittedByUserId String?
+  approvedByUserId  String?
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+  submittedAt       DateTime?               @db.Timestamptz(3)
+  approvedAt        DateTime?               @db.Timestamptz(3)
+  activatedAt       DateTime?               @db.Timestamptz(3)
+  source            KnowledgeSource         @relation("KnowledgeSourceRevisions", fields: [sourceId], references: [id], onDelete: Cascade)
+  activeForSource   KnowledgeSource?        @relation("KnowledgeActiveRevision")
+  createdByUser     User                    @relation("KnowledgeRevisionCreatedBy", fields: [createdByUserId], references: [id])
+  submittedByUser   User?                   @relation("KnowledgeRevisionSubmittedBy", fields: [submittedByUserId], references: [id])
+  approvedByUser    User?                   @relation("KnowledgeRevisionApprovedBy", fields: [approvedByUserId], references: [id])
+  approvals         KnowledgeApproval[]
+  syncJobs          KnowledgeSyncJob[]
+  auditLogs         KnowledgeAuditLog[]
+
+  @@unique([sourceId, revisionNo])
+  @@index([status, updatedAt])
+  @@index([sourceId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model KnowledgeApproval {
+  id                String                  @id @default(cuid())
+  revisionId        String
+  requestedByUserId String
+  actedByUserId     String?
+  status            KnowledgeApprovalStatus @default(PENDING)
+  requestNote       String?
+  decisionNote      String?
+  requestedAt       DateTime                @default(now()) @db.Timestamptz(3)
+  actedAt           DateTime?               @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
+  revision          KnowledgeRevision       @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  requestedByUser   User                    @relation("KnowledgeApprovalRequestedBy", fields: [requestedByUserId], references: [id])
+  actedByUser       User?                   @relation("KnowledgeApprovalActedBy", fields: [actedByUserId], references: [id])
+
+  @@index([revisionId, status])
+  @@index([status, requestedAt])
+}
+
+model KnowledgeSyncJob {
+  id                String                 @id @default(cuid())
+  revisionId        String
+  status            KnowledgeSyncJobStatus @default(PENDING)
+  trigger           String
+  attemptCount      Int                    @default(0)
+  lastError         String?
+  triggeredByUserId String?
+  createdAt         DateTime               @default(now()) @db.Timestamptz(3)
+  startedAt         DateTime?              @db.Timestamptz(3)
+  finishedAt        DateTime?              @db.Timestamptz(3)
+  revision          KnowledgeRevision      @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+  triggeredByUser   User?                  @relation("KnowledgeSyncJobTriggeredBy", fields: [triggeredByUserId], references: [id])
+
+  @@index([status, createdAt])
+  @@index([revisionId, createdAt])
+}
+
+model KnowledgeAuditLog {
+  id          String             @id @default(cuid())
+  sourceId    String
+  revisionId  String?
+  actorUserId String?
+  action      String
+  detail      String?
+  metadata    Json?
+  createdAt   DateTime           @default(now()) @db.Timestamptz(3)
+  source      KnowledgeSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  revision    KnowledgeRevision? @relation(fields: [revisionId], references: [id], onDelete: SetNull)
+  actorUser   User?              @relation("KnowledgeAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([sourceId, createdAt])
+  @@index([revisionId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+// Derived pgvector index used by Knowledge RAG. Declaring the existing raw-SQL
+// tables here prevents `prisma db push` from treating them as unknown objects
+// and proposing destructive drops. Application search still uses optimized raw SQL.
+model KnowledgeDocumentIndex {
+  id                  String                  @id
+  sourceType          String                  @map("source_type")
+  sourceRef           String                  @map("source_ref")
+  title               String
+  sectionHeading      String                  @default("") @map("section_heading")
+  content             String
+  answerScope         String                  @map("answer_scope")
+  riskLevel           String                  @map("risk_level")
+  status              String                  @default("APPROVED")
+  sourceUrls          Json                    @default("[]") @map("source_urls") @db.JsonB
+  metadata            Json                    @default("{}") @db.JsonB
+  searchText          String                  @default("") @map("search_text")
+  searchDocument      Unsupported("tsvector") @map("search_document")
+  embedding           Unsupported("vector")?
+  embeddingModel      String?                 @map("embedding_model")
+  embeddingSourceHash String?                 @map("embedding_source_hash")
+  embeddedAt          DateTime?               @map("embedded_at") @db.Timestamptz(3)
+  validUntil          DateTime?               @map("valid_until") @db.Timestamptz(3)
+  updatedAt           DateTime                @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, validUntil], map: "idx_knowledge_documents_active")
+  @@map("knowledge_documents")
+}
+
+model KnowledgeSyncState {
+  id             String    @id
+  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz(3)
+  lastStartedAt  DateTime? @map("last_started_at") @db.Timestamptz(3)
+  lastFinishedAt DateTime? @map("last_finished_at") @db.Timestamptz(3)
+  lastSuccessAt  DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastError      String?   @map("last_error")
+  runCount       Int       @default(0) @map("run_count")
+
+  @@map("knowledge_sync_state")
 }
 
 model CarBrand {
@@ -2142,6 +2318,41 @@ enum ProductSearchReviewStatus {
 enum Role {
   ADMIN
   STAFF
+}
+
+enum KnowledgeSourceType {
+  ARTICLE
+  FAQ
+  POLICY
+}
+
+enum KnowledgeRiskLevel {
+  LOW
+  MEDIUM
+}
+
+enum KnowledgeRevisionStatus {
+  DRAFT
+  PENDING_APPROVAL
+  SYNCING
+  ACTIVE
+  SYNC_FAILED
+  REJECTED
+  ARCHIVED
+}
+
+enum KnowledgeApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum KnowledgeSyncJobStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
 }
 
 enum LineRecipientType {

@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
-import { getRoutePermission } from "@/lib/access-control";
+import { getAllPermissionKeys, getRoutePermission, isKnowledgePermission } from "@/lib/access-control";
 import { db, withDbRetry } from "@/lib/db";
 import { isSessionRevisionInvalid } from "@/lib/auth-session-revocation";
 
@@ -35,8 +35,8 @@ export const authConfig: NextAuthConfig = {
         if (mustChangePassword && !isChangePasswordPage) {
           return Response.redirect(new URL("/admin/profile/change-password", nextUrl));
         }
-        if (isAdmin) return true;
-        if (!hasAppRole) return false;
+        if (isAdmin && !(requiredPermission && isKnowledgePermission(requiredPermission))) return true;
+        if (!hasAppRole && !isAdmin) return false;
         if (typeof requiredPermission === "undefined") return false;
         if (requiredPermission === null) return true;
         return permissions.includes(requiredPermission);
@@ -65,7 +65,19 @@ export const authConfig: NextAuthConfig = {
         const current = await withDbRetry(() =>
           db.user.findUnique({
             where: { id: token.id as string },
-            select: { authVersion: true, isActive: true },
+            select: {
+              authVersion: true,
+              isActive: true,
+              role: true,
+              appRole: {
+                select: {
+                  permissions: { select: { permission: { select: { key: true } } } },
+                },
+              },
+              directPermissionGrants: {
+                select: { permission: { select: { key: true } } },
+              },
+            },
           }),
         );
         token.sessionInvalid = isSessionRevisionInvalid({
@@ -73,6 +85,12 @@ export const authConfig: NextAuthConfig = {
           currentVersion: current?.authVersion,
           isActive: current?.isActive,
         });
+        if (current && !token.sessionInvalid) {
+          const direct = current.directPermissionGrants.map((item) => item.permission.key);
+          token.permissions = current.role === "ADMIN"
+            ? getAllPermissionKeys().filter((permission) => !isKnowledgePermission(permission) || direct.includes(permission))
+            : [...new Set([...(current.appRole?.permissions.map((item) => item.permission.key) ?? []), ...direct])];
+        }
       } catch (error) {
         // Authorization must fail closed when the revocation check cannot run.
         console.error("[auth] session revocation check failed", error);

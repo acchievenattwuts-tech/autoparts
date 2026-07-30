@@ -3,6 +3,7 @@ import {
   Archive,
   Award,
   BarChart3,
+  BookOpenCheck,
   Boxes,
   Car,
   ClipboardList,
@@ -132,6 +133,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
   {
     section: "การตลาด & เว็บไซต์",
     items: [
+      { label: "คลังความรู้ AI", href: "/admin/knowledge", icon: BookOpenCheck, permission: "knowledge.view", keywords: "knowledge rag faq article policy คลังความรู้ บทความ นโยบาย อนุมัติ ai line messenger" },
       { label: "คอนเทนต์ Facebook", href: "/admin/content", icon: Megaphone, permission: "content.view", keywords: "content facebook คอนเทนต์" },
       { label: "คิวอนุมัติโพสต์", href: "/admin/content/approval-queue", icon: ListChecks, permission: "content.view", keywords: "approval queue อนุมัติโพสต์ content" },
       { label: "Shopee / Marketplace", href: "/admin/marketplace/shopee", icon: Store, permission: "marketplace.view", keywords: "shopee marketplace ช่องทางขาย ออเดอร์ sync มาร์เก็ตเพลส" },

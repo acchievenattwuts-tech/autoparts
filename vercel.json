@@ -25,6 +25,10 @@
       "schedule": "1-59/2 * * * *"
     },
     {
+      "path": "/api/knowledge/cron/sync",
+      "schedule": "0 */6 * * *"
+    },
+    {
       "path": "/api/purchases/cron/cleanup-ocr-temp",
       "schedule": "0 3 * * *"
     },

@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { getAllPermissionKeys, getUserPermissionKeys, type PermissionKey } from "@/lib/access-control";
+import { getUserPermissionKeys, type PermissionKey } from "@/lib/access-control";
 import type { Session } from "next-auth";
 
 export type UserRole = "ADMIN" | "STAFF";
@@ -46,20 +46,13 @@ export const getSessionPermissionContext = async (): Promise<{
 }> => {
   const session = await getRequiredSession();
   const role = session.user.role;
-  const permissions =
-    role === "ADMIN"
-      ? getAllPermissionKeys()
-      : ((session.user.permissions ?? []) as PermissionKey[]);
+  const permissions = (session.user.permissions ?? []) as PermissionKey[];
 
   return { session, role, permissions };
 };
 
 export const requirePermission = async (permission: PermissionKey): Promise<Session> => {
   const session = await getRequiredSession();
-
-  if (session.user.role === "ADMIN") {
-    return session;
-  }
 
   const permissionKeys = await getUserPermissionKeys(session.user.id);
   if (!permissionKeys.includes(permission)) {
@@ -71,10 +64,6 @@ export const requirePermission = async (permission: PermissionKey): Promise<Sess
 
 export const requireAnyPermission = async (permissions: PermissionKey[]): Promise<Session> => {
   const session = await getRequiredSession();
-
-  if (session.user.role === "ADMIN") {
-    return session;
-  }
 
   const permissionKeys = await getUserPermissionKeys(session.user.id);
   if (!permissions.some((permission) => permissionKeys.includes(permission))) {

@@ -11,13 +11,14 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
-import { knowledgeArticleMap, knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticle, getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 
 interface Props {
   params: Promise<{ slug: string }>;
 }
 
-export function generateStaticParams() {
+export async function generateStaticParams() {
+  const knowledgeArticles = await getPublicKnowledgeArticles();
   return knowledgeArticles.map((article) => ({
     slug: article.slug,
   }));
@@ -25,7 +26,7 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const article = knowledgeArticleMap.get(slug);
+  const article = await getPublicKnowledgeArticle(slug);
 
   if (!article) {
     return {};
@@ -63,8 +64,8 @@ const compactDescription = (value: string, maxLength = 88) => {
 };
 
 const KnowledgeArticlePage = async ({ params }: Props) => {
-  const [{ slug }, config] = await Promise.all([params, getSiteConfig()]);
-  const article = knowledgeArticleMap.get(slug);
+  const [{ slug }, config, knowledgeArticles] = await Promise.all([params, getSiteConfig(), getPublicKnowledgeArticles()]);
+  const article = await getPublicKnowledgeArticle(slug);
 
   if (!article) {
     notFound();

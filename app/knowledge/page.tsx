@@ -10,7 +10,7 @@ import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
-import { knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
@@ -40,8 +40,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const KnowledgePage = async () => {
-  const config = await getPublicSiteConfig();
+  const [config, knowledgeArticles] = await Promise.all([getPublicSiteConfig(), getPublicKnowledgeArticles()]);
   const featuredArticle = knowledgeArticles[0];
+  if (!featuredArticle) return null;
   const categories = Array.from(new Set(knowledgeArticles.map((article) => article.category)));
   const groupedArticles = categories.map((category) => ({
     category,

@@ -1,4 +1,10 @@
-import { LineConversationAiStatus, LineIntent, LineMessageDirection, LineMessageType } from "@/lib/generated/prisma";
+import {
+  LineAiConfidence,
+  LineConversationAiStatus,
+  LineIntent,
+  LineMessageDirection,
+  LineMessageType,
+} from "@/lib/generated/prisma";
 import {
   buildJuneTextNoMatchHandoffReply,
   extractChatSearchIntent,
@@ -8,6 +14,9 @@ import {
   type ChatSubject,
 } from "@/lib/chat-core/ai-service";
 import { groupToRoute, intentToGroup } from "@/lib/chat-core/intent-groups";
+import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
+import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildChatSearchAskReply,
@@ -640,7 +649,29 @@ async function replyToMessengerTurn(params: {
   // the preceding history contains a product subject.
   const effectiveRoute = classifiedIntent ? groupToRoute(classifiedIntent.group) ?? route : route;
 
+  if (effectiveRoute.intent === LineIntent.SHOP_INFO) {
+    const reply = buildChatShopInfoMessage(await getPublicSiteConfig());
+    await sendMessengerText({ pageAccessToken, psid, text: reply });
+    await persistOutbound(conversationId, psid, reply, { intent: effectiveRoute.intent });
+    return;
+  }
+
   if (classifiedIntent?.group === "general_faq" || classifiedIntent?.group === "other") {
+    const faqAnswer: ChatFaqAnswer = await answerFromChatFaq({
+      text: processText,
+      channel: "messenger",
+    }).catch(
+      () => ({ answered: false, reply: "" }),
+    );
+    if (faqAnswer.answered) {
+      await sendMessengerText({ pageAccessToken, psid, text: faqAnswer.reply });
+      await persistOutbound(conversationId, psid, faqAnswer.reply, {
+        intent: route.intent,
+        confidence: LineAiConfidence.POSSIBLE_MATCH,
+        reasoningSummary: `KNOWLEDGE_RAG:${faqAnswer.citations?.map((citation) => citation.id).join(",") ?? "unknown"}`,
+      });
+      return;
+    }
     await handoffUncertainMessengerProduct({
       pageAccessToken,
       conversationId,

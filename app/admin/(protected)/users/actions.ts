@@ -10,7 +10,7 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { ensureAccessControlSetup } from "@/lib/access-control";
+import { ensureAccessControlSetup, setUserKnowledgeAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
@@ -38,6 +38,7 @@ const userSchema = z.object({
   role: z.enum(["ADMIN", "STAFF"]),
   appRoleId: z.string().max(50).optional(),
   mustChangePassword: z.boolean().default(false),
+  knowledgeAccess: z.boolean().default(false),
   signatureUrl: optionalImageUrl.optional(),
 });
 
@@ -95,6 +96,7 @@ export async function createUser(
     role: formData.get("role"),
     appRoleId: formData.get("appRoleId") || undefined,
     mustChangePassword: formData.get("mustChangePassword") === "true",
+    knowledgeAccess: formData.get("knowledgeAccess") === "true",
     signatureUrl: formData.get("signatureUrl") || "",
   });
 
@@ -102,7 +104,7 @@ export async function createUser(
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, username, password, phone, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
+  const { name, username, password, phone, role, appRoleId, mustChangePassword, knowledgeAccess, signatureUrl } = parsed.data;
 
   if (role === "ADMIN" && session.user.role !== "ADMIN") {
     return { error: "เฉพาะผู้ดูแลระบบ (ADMIN) เท่านั้นที่กำหนดบทบาท ADMIN ได้" };
@@ -137,6 +139,10 @@ export async function createUser(
         isActive: true,
       },
     });
+
+    if (knowledgeAccess) {
+      await setUserKnowledgeAccess(user.id, true);
+    }
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -180,6 +186,7 @@ export async function updateUser(
     role: formData.get("role"),
     appRoleId: formData.get("appRoleId") || undefined,
     mustChangePassword: formData.get("mustChangePassword") === "true",
+    knowledgeAccess: formData.get("knowledgeAccess") === "true",
     signatureUrl: formData.get("signatureUrl") || "",
   });
 
@@ -187,7 +194,7 @@ export async function updateUser(
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, username, password, phone, role, appRoleId, mustChangePassword, signatureUrl } = parsed.data;
+  const { name, username, password, phone, role, appRoleId, mustChangePassword, knowledgeAccess, signatureUrl } = parsed.data;
 
   try {
     const requestContext = await getRequestContext();
@@ -204,11 +211,17 @@ export async function updateUser(
         signatureUrl: true,
         signatureUpdatedAt: true,
         isActive: true,
+        directPermissionGrants: {
+          select: { permission: { select: { key: true } } },
+        },
       },
     });
     if (!existingUser) {
       return { error: "User not found" };
     }
+    const existingKnowledgeAccess = existingUser.directPermissionGrants.some(
+      (item) => item.permission.key === "knowledge.view",
+    );
 
     const isCallerAdmin = session.user.role === "ADMIN";
     if (existingUser.role === "ADMIN" && !isCallerAdmin) {
@@ -259,6 +272,10 @@ export async function updateUser(
         isActive: true,
       },
     });
+
+    if (knowledgeAccess !== existingKnowledgeAccess) {
+      await setUserKnowledgeAccess(id, knowledgeAccess);
+    }
 
     const diff = diffEntity(
       {

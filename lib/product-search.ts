@@ -18,7 +18,9 @@ import { runProductSearchRefreshWithRequestLifetime } from "@/lib/product-search
 // weights so semantics enriches recall + ranking without overriding a strong
 // textual/exact match.
 export const SEARCH_V2_VECTOR_RECALL_LIMIT = 30;
-const SEARCH_V2_VECTOR_WEIGHT = 500;
+// Exported so the offline retrieval harness (scripts/semantic-eval-core.ts) can
+// mirror the production score without hardcoding a second copy of this number.
+export const SEARCH_V2_VECTOR_WEIGHT = 500;
 export const SEARCH_V2_VECTOR_MIN_SIMILARITY = 0.62;
 export const SEARCH_V2_LEXICAL_SUFFICIENT_RESULTS = 5;
 

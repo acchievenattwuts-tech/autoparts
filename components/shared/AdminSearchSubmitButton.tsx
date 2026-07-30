@@ -7,13 +7,16 @@ import { cn } from "@/lib/utils";
 
 import { useAdminSearchFormPending } from "./AdminSearchForm";
 
-type AdminSearchSubmitButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>>;
+type AdminSearchSubmitButtonProps = PropsWithChildren<ButtonHTMLAttributes<HTMLButtonElement>> & {
+  label?: string;
+};
 
 const AdminSearchSubmitButton = ({
   children,
   className,
   disabled,
   type,
+  label,
   ...props
 }: AdminSearchSubmitButtonProps) => {
   const isPending = useAdminSearchFormPending();
@@ -29,7 +32,7 @@ const AdminSearchSubmitButton = ({
       )}
     >
       {isPending ? <LoaderCircle size={14} className="animate-spin" /> : null}
-      {children ?? "ค้นหา"}
+      {children ?? label ?? "ค้นหา"}
     </button>
   );
 };

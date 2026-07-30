@@ -29,6 +29,7 @@ const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => 
         mustChangePassword: true,
         isActive: true,
         signatureUrl: true,
+        directPermissionGrants: { select: { permission: { select: { key: true } } } },
       },
     }),
     db.appRole.findMany({
@@ -54,6 +55,7 @@ const EditUserPage = async ({ params }: { params: Promise<{ id: string }> }) => 
         user={{
           ...user,
           username: user.username ?? user.email,
+          knowledgeAccess: user.directPermissionGrants.some((item) => item.permission.key === "knowledge.view"),
         }}
         roleOptions={roleOptions}
       />

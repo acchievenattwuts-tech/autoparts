@@ -14,7 +14,7 @@ import {
   isLoginBlocked,
   recordFailedLogin,
 } from "@/lib/login-rate-limit";
-import { getAllPermissionKeys } from "@/lib/access-control";
+import { getAllPermissionKeys, isKnowledgePermission } from "@/lib/access-control";
 import { authConfig } from "./auth.config";
 
 const loginSchema = z.object({
@@ -73,6 +73,11 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
                 },
               },
             },
+            directPermissionGrants: {
+              include: {
+                permission: { select: { key: true } },
+              },
+            },
           },
         });
         if (!user || !user.isActive) {
@@ -110,8 +115,14 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
 
         const permissions =
           user.role === "ADMIN"
-            ? getAllPermissionKeys()
-            : user.appRole?.permissions.map((item) => item.permission.key) ?? [];
+            ? getAllPermissionKeys().filter(
+                (permission) => !isKnowledgePermission(permission) ||
+                  user.directPermissionGrants.some((item) => item.permission.key === permission),
+              )
+            : [...new Set([
+                ...(user.appRole?.permissions.map((item) => item.permission.key) ?? []),
+                ...user.directPermissionGrants.map((item) => item.permission.key),
+              ])];
 
         await clearFailedLogins(throttleKeys);
         await safeWriteAuditLog({

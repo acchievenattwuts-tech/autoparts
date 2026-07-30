@@ -430,6 +430,13 @@ function createProcessorTestDeps(input?: {
     classifyPurchaseIntent: async () => input?.purchaseIntent ?? false,
     answerFromChatFaq: async () =>
       input?.faqReply ? { answered: true, reply: input.faqReply } : { answered: false, reply: "" },
+    getPublicSiteConfig: async () => ({
+      shopName: "ศรีวรรณ อะไหล่แอร์",
+      shopPhone: "065-751-7873",
+      shopPhoneSecondary: "",
+      shopBusinessHours: "จันทร์ - อาทิตย์ 08:30 - 18:00 น.",
+      shopGoogleMapUrl: "https://maps.example.test/shop",
+    }) as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["getPublicSiteConfig"]>>>,
     // Default: no extraction (mirrors Gemini-off / first-turn), so the search
     // falls back to the latest text. Tests that exercise carryover set it.
     extractChatSearchIntent: async () =>
@@ -937,10 +944,10 @@ test("non-product turn skips search and product cards entirely", async () => {
   assert.ok(!calls.auditActions.includes("SEARCH_QUERY_CONSOLIDATED"));
 });
 
-test("general non-product turn is handed off without searching or using FAQ", async () => {
+test("general non-product turn uses grounded FAQ without product search or handoff", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  // A general question the keyword router didn't catch as SHOP_INFO is not a
-  // catalog search and must wait for a human even when FAQ could answer it.
+  // A general question the keyword router didn't catch as SHOP_INFO may use the
+  // separately grounded knowledge corpus, but must never enter catalog search.
   const { calls, dependencies } = createProcessorTestDeps({
     nonProductTurn: true,
     faqReply: "ร้านศรีวรรณอยู่ปทุมธานีค่ะ 🙏",
@@ -953,11 +960,10 @@ test("general non-product turn is handed off without searching or using FAQ", as
   );
 
   assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /แอดมิน/);
-  assert.ok(!(calls.replies[0]?.text ?? "").includes("ปทุมธานี"));
+  assert.equal(calls.replies[0]?.text, "ร้านศรีวรรณอยู่ปทุมธานีค่ะ 🙏");
   assert.deepEqual(calls.searches, []);
-  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
-  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
 });
 
 test("social group gets a brief ack and never searches", async () => {
@@ -1017,7 +1023,7 @@ test("out_of_scope group declines politely via scoped reply, no search", async (
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
 });
 
-test("shop_info group answers from the canned shop message, no search", async () => {
+test("shop_info group answers from current site config, no search", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "shop_info" });
 

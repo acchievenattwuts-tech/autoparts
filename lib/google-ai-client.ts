@@ -10,6 +10,7 @@ import {
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 const DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001";
+const DEFAULT_KNOWLEDGE_EMBEDDING_MODEL = "gemini-embedding-2";
 /** Embedding size requested via outputDimensionality. Kept in sync with the
  *  `embedding vector(768)` column in product_search_documents. */
 export const GEMINI_EMBEDDING_DIMENSIONS = 768;
@@ -84,6 +85,18 @@ function getModel(): string {
 
 export function getGeminiEmbeddingModel(): string {
   return process.env.GOOGLE_AI_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;
+}
+
+/**
+ * Dedicated model selector for Knowledge RAG. This intentionally does not reuse
+ * GOOGLE_AI_EMBEDDING_MODEL: product vectors and knowledge vectors live in
+ * incompatible embedding spaces and must never be switched together.
+ */
+export function getGeminiKnowledgeEmbeddingModel(): string {
+  return (
+    process.env.GOOGLE_AI_KNOWLEDGE_EMBEDDING_MODEL?.trim() ||
+    DEFAULT_KNOWLEDGE_EMBEDDING_MODEL
+  );
 }
 
 function getThinkingLevel(): string {
@@ -280,6 +293,42 @@ async function embedContentOnce(secret: string, text: string): Promise<number[]>
   }
 }
 
+async function embedKnowledgeContentOnce(secret: string, text: string): Promise<number[]> {
+  const model = getGeminiKnowledgeEmbeddingModel();
+  // gemini-embedding-2 does not accept the legacy taskType field. Callers add
+  // the documented task prefix to the text instead (question-answering for a
+  // query; title/text structure for a document).
+  const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:embedContent?key=${encodeURIComponent(secret)}`;
+  const body = {
+    model: `models/${model}`,
+    content: { parts: [{ text }] },
+    outputDimensionality: GEMINI_EMBEDDING_DIMENSIONS,
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const errorBody = (await response.text()).slice(0, 800);
+      throw new GeminiHttpError(
+        response.status,
+        `GEMINI_KNOWLEDGE_EMBED_HTTP_${response.status}:${errorBody}`,
+        response.status === 429 && detectDailyQuota(errorBody),
+      );
+    }
+    const payload = (await response.json()) as unknown;
+    return extractEmbedding(payload);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
  * Embeds one or more texts via Gemini (gemini-embedding-001 by default, 768d)
  * with the same multi-key rotation/cooldown as generation. Returns one vector per
@@ -339,5 +388,72 @@ export async function generateGeminiEmbedding(texts: string[]): Promise<number[]
 
   throw new AllGeminiKeysExhaustedError(
     `ALL_GEMINI_EMBED_KEYS_FAILED:${lastError instanceof Error ? lastError.message : String(lastError)}`,
+  );
+}
+
+/**
+ * Embeds Knowledge RAG documents/queries with gemini-embedding-2. Kept as a
+ * separate public function so product search cannot accidentally migrate away
+ * from gemini-embedding-001 or compare vectors across incompatible spaces.
+ */
+export async function generateGeminiKnowledgeEmbedding(texts: string[]): Promise<number[][]> {
+  if (texts.length === 0) return [];
+  if (!hasGeminiKeysConfigured()) {
+    throw new AllGeminiKeysExhaustedError("NO_GEMINI_KEYS_CONFIGURED");
+  }
+
+  const keys = await getAvailableGeminiKeys();
+  if (keys.length === 0) {
+    throw new AllGeminiKeysExhaustedError("ALL_GEMINI_KEYS_COOLING_DOWN_OR_DISABLED");
+  }
+
+  let lastError: unknown = null;
+  for (const key of keys) {
+    try {
+      const vectors: number[][] = [];
+      for (const text of texts) {
+        const vector = await embedKnowledgeContentOnce(key.secret, text);
+        if (vector.length !== GEMINI_EMBEDDING_DIMENSIONS) {
+          throw new Error(`KNOWLEDGE_EMBED_DIM_MISMATCH:${vector.length}`);
+        }
+        vectors.push(vector);
+      }
+      void markGeminiKeySuccess(key.keyRef).catch(() => undefined);
+      return vectors;
+    } catch (error) {
+      lastError = error;
+      if (error instanceof GeminiHttpError) {
+        // A model/request-shape error applies to every key; rotating secrets only
+        // burns quota and can incorrectly disable healthy keys.
+        if (error.status === 400 || error.status === 404) {
+          throw new AllGeminiKeysExhaustedError(
+            `GEMINI_KNOWLEDGE_EMBED_REQUEST_ERROR:${error.message}`,
+          );
+        }
+        if (error.status === 429) {
+          await markGeminiKeyRateLimited(key.keyRef, {
+            daily: error.isDailyQuota,
+            message: error.message,
+          });
+          continue;
+        }
+        if (error.status >= 500) {
+          await markGeminiKeyTransientError(key.keyRef, error.message);
+          continue;
+        }
+        if (error.status === 401 || error.status === 403) {
+          await markGeminiKeyDisabled(key.keyRef, error.message);
+          continue;
+        }
+      }
+      await markGeminiKeyTransientError(
+        key.keyRef,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  throw new AllGeminiKeysExhaustedError(
+    `ALL_GEMINI_KNOWLEDGE_EMBED_KEYS_FAILED:${lastError instanceof Error ? lastError.message : String(lastError)}`,
   );
 }

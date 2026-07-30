@@ -27,7 +27,7 @@ import { absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
-import { knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 import {
   extractProductIdFromSlug,
   getCategoryPath,
@@ -254,7 +254,7 @@ const ProductDetailPage = async ({ params }: Props) => {
     return null;
   };
 
-  const prepArticles = knowledgeArticles.filter((article) =>
+  const prepArticles = (await getPublicKnowledgeArticles()).filter((article) =>
     [
       "how-to-check-oem-part-number-before-ordering",
       "can-one-ac-part-fit-multiple-car-models",

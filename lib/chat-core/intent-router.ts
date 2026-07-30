@@ -52,6 +52,8 @@ const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|�
 const QUOTATION_REQUEST_RE =
   /(?:ใบ\s*เสนอ\s*ราคา|ใบ\s*(?:quotation|quote)\b|(?:ขอ|ทำ|ออก|จัดทำ|รบกวน\s*(?:ทำ|ออก|จัดทำ))\s*(?:ใบ\s*)?(?:quotation|quote)\b)/i;
 const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|เสีย|พัง|ชำรุด|เปลี่ยนสินค้า|รับประกัน|claim|return)/i;
+const CLAIM_POLICY_INFORMATION_RE =
+  /(นโยบาย|เงื่อนไข|ขั้นตอน|ต้องเตรียม|หลักฐาน|ภายใน\s*กี่วัน|ได้\s*กี่วัน)/i;
 const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
 const SHOP_INFO_RE =
@@ -112,6 +114,19 @@ function routeText(text: string): ChatIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "SHIPPING_ADDRESS_KEYWORD",
+    };
+  }
+
+  // Informational policy questions may be answered from the approved Knowledge
+  // RAG corpus. An active claim/return still follows the admin-only branch below.
+  if (CLAIM_RE.test(normalized) && CLAIM_POLICY_INFORMATION_RE.test(normalized)) {
+    return {
+      intent: LineIntent.UNKNOWN,
+      allowsSearch: false,
+      requiresAdmin: false,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "CLAIM_POLICY_INFORMATION",
     };
   }
 

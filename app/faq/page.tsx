@@ -11,7 +11,7 @@ import FaqJsonLd from "@/components/seo/FaqJsonLd";
 import { LOCAL_SEO_KEYWORDS, absoluteUrl, buildOgCardImage } from "@/lib/seo";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
-import { storefrontFaqItems } from "@/lib/storefront-content";
+import { getPublicFaqItems } from "@/lib/knowledge-public";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
@@ -41,7 +41,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const FaqPage = async () => {
-  const config = await getPublicSiteConfig();
+  const [config, storefrontFaqItems] = await Promise.all([getPublicSiteConfig(), getPublicFaqItems()]);
 
   const quickGuides = [
     {

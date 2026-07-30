@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
-import { knowledgeArticles } from "@/lib/knowledge-content";
+import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 import { getCategoryPath, getProductPath } from "@/lib/product-slug";
 import { ROOT_CANONICAL_URL, absoluteUrl } from "@/lib/seo";
 
@@ -79,8 +79,8 @@ function getLatestDate(candidates: Array<Date | string | null | undefined>) {
 }
 
 export async function getStorefrontSitemap(): Promise<MetadataRoute.Sitemap> {
-  const { latestSiteContentUpdatedAt, activeCategories, activeProducts } =
-    await getStorefrontSitemapData();
+  const [{ latestSiteContentUpdatedAt, activeCategories, activeProducts }, knowledgeArticles] =
+    await Promise.all([getStorefrontSitemapData(), getPublicKnowledgeArticles()]);
 
   const productsLastModified =
     getLatestDate([

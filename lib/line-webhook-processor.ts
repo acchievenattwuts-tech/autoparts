@@ -96,7 +96,9 @@ import {
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
-import { answerFromChatFaq } from "@/lib/chat-core/faq";
+import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
+import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
@@ -206,6 +208,8 @@ export type LineWebhookProcessorDependencies = {
   classifyPurchaseIntent?: typeof classifyPurchaseIntent;
   /** Optional override; answers UNKNOWN questions grounded in the shop FAQ. */
   answerFromChatFaq?: typeof answerFromChatFaq;
+  /** Optional override; loads the current public shop contact/location fields. */
+  getPublicSiteConfig?: typeof getPublicSiteConfig;
   /** Optional override; extracts the running search subject + structured fitment
    *  hints from conversation history (search-side memory for drip-fed details). */
   extractChatSearchIntent?: typeof extractChatSearchIntent;
@@ -275,6 +279,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   countPendingPaymentSlipsForConversation,
   classifyPurchaseIntent,
   answerFromChatFaq,
+  getPublicSiteConfig,
   extractChatSearchIntent,
   detectChatMultiSubjects,
   resolveChatFitmentFilters,
@@ -335,22 +340,6 @@ const STOCK_AVAILABILITY_ASK_RE =
 // เป็นคนยืนยันสต็อกเสมอ
 const STOCK_AVAILABILITY_HANDOFF_MESSAGE =
   "จูนขอส่งเรื่องให้แอดมินช่วยเช็กของให้ชัวร์ก่อนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับโดยเร็วที่สุดค่ะ 😊";
-const SHOP_INFO_MESSAGE = `🔧 ยินดีให้บริการค่ะ
-
-ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้
-เดี๋ยวจูนค้นให้ทันทีเลยค่ะ 👇
-1️⃣ ยี่ห้อ / รุ่นรถ (เช่น Toyota Vios 2020)
-2️⃣ อะไหล่ที่ต้องการ (เช่น คอมเพรสเซอร์, แผงร้อน, ตู้แอร์, หม้อน้ำ)
-3️⃣ รูปอะไหล่เก่า (ถ้ามี จะช่วยให้ระบุรุ่นแม่นขึ้น)
-
-🚚 มีบริการจัดส่งทั่วประเทศ — ค่าขนส่งคิดตามขนาด/น้ำหนักสินค้า ภายใน จ.นครสวรรค์คิดตามระยะทางค่ะ
-
-💻 ใช้งานผ่าน LINE PC: พิมพ์คำว่า “เมนู” เพื่อเปิดบริการ
-
-📞 โทรสอบถาม: 065-751-7873
-📍 แผนที่ร้าน: https://maps.app.goo.gl/VeXeuTUA9CjTuxhEA
-🕐 เปิดทุกวัน จันทร์ - อาทิตย์ เวลา 08:30 - 18:00 น. ค่ะ 🙏`;
-
 // "เมนู" / "menu" opens LINE's rich menu (handled by LINE itself). The AI must
 // stay silent and active — no reply, no handoff — and wait for the next message.
 const MENU_COMMAND_RE = /^(เมนู|menu)$/i;
@@ -2583,24 +2572,35 @@ export async function processLineAiReply(
     // so it must skip FAQ and fall through to the escalation / ask path instead.
     const anySearchedNoMatch =
       liveMode && productSearch.searched && productSearch.result.total === 0;
-    const generalInquiryHandoff = liveMode && (group === "general_faq" || group === "other");
-    const faqAnswer =
+    const faqAnswer: ChatFaqAnswer =
       liveMode &&
       // (Option E) admin-owned room → a FAQ auto-answer would never be sent
       // (store_only wins in the send policy), so skip the Gemini call entirely.
       !conversationBlocked &&
-      !generalInquiryHandoff &&
       // A purchase-commitment turn ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") is classified as
       // a non-product turn, which would otherwise match the FAQ gate below and let an
       // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase
       // hand-off. Skip FAQ entirely for purchase turns (also avoids a wasted call).
       !isPurchaseIntent &&
-      (tryFaqThenAsk || (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO))
-        ? await (dependencies.answerFromChatFaq ?? answerFromChatFaq)({ text: input.text }).catch(() => ({
+      (tryFaqThenAsk ||
+        route.reason === "SHIPPING_SERVICE_INQUIRY" ||
+        (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO))
+        ? await (dependencies.answerFromChatFaq ?? answerFromChatFaq)({
+            text: input.text,
+            channel: "line",
+          }).catch(() => ({
             answered: false,
             reply: "",
           }))
         : { answered: false, reply: "" };
+    const generalInquiryHandoff =
+      liveMode && (group === "general_faq" || group === "other") && !faqAnswer.answered;
+    const shopInfoMessage =
+      liveMode && route.intent === LineIntent.SHOP_INFO
+        ? buildChatShopInfoMessage(
+            await (dependencies.getPublicSiteConfig ?? getPublicSiteConfig)(),
+          )
+        : "";
 
     // A forced response replaces the normal AI reply with a deterministic message.
     // `handoff: true` also routes the conversation to a human (escalation / purchase
@@ -2854,9 +2854,18 @@ export async function processLineAiReply(
               auditPayload: { lineEventId: input.lineEventId, source: isKeywordPurchase ? "keyword" : "ai" },
             }
           : faqAnswer.answered
-          ? { message: faqAnswer.reply, reason: "FAQ", handoff: false }
+          ? {
+              message: faqAnswer.reply,
+              reason: "KNOWLEDGE_RAG",
+              handoff: false,
+              audit: "AI_KNOWLEDGE_RAG_ANSWER",
+              auditPayload: {
+                lineEventId: input.lineEventId,
+                sources: faqAnswer.citations?.map((citation) => citation.id).join(",") ?? null,
+              },
+            }
           : liveMode && route.intent === LineIntent.SHOP_INFO
-            ? { message: SHOP_INFO_MESSAGE, reason: "SHOP_INFO", handoff: false }
+            ? { message: shopInfoMessage, reason: "SHOP_INFO", handoff: false }
             : liveMode && tryFaqThenAsk
               ? {
                   // general_faq / other that the FAQ couldn't answer → ask the
