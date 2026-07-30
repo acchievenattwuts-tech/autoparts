@@ -40,6 +40,15 @@
 - งาน UI admin ต้องดูทั้ง light/dark mode
 - Date/time field ใหม่ใน Prisma ต้องใช้ `@db.Timestamptz(3)`
 
+## AI Search and Knowledge RAG
+
+- Product Search และ Knowledge RAG แยกดัชนี แยก embedding model และแยกหน้าที่อย่างชัดเจน
+- Product Search ใช้ `product_search_documents`; ห้ามเปลี่ยน routing หรือผลการค้นหาสินค้าเพื่อเพิ่มความสามารถ RAG
+- Knowledge RAG ใช้ `knowledge_documents` สำหรับคำถามความรู้ทั่วไปที่ผ่านอนุมัติเท่านั้น และใช้ร่วมกันทั้ง LINE/Facebook Messenger
+- เรื่องประกัน คืนสินค้า ค่าจัดส่ง และการจัดส่งเป็น admin-only: router, channel processor, RAG runtime, CMS validation และ publisher ป้องกันซ้ำแบบ defense in depth
+- Telemetry ของ RAG ห้ามเก็บข้อความคำถาม/คำตอบหรือข้อมูลระบุตัวลูกค้า เก็บเฉพาะ query hash และค่าการทำงานเชิง aggregate
+- Source of truth และแผนต่อยอดอยู่ที่ [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
+
 ## Suggested Reading Order
 1. [AGENTS.md](/D:/autoparts/AGENTS.md)
 2. [PLAN.md](/D:/autoparts/PLAN.md)

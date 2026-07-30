@@ -14,6 +14,12 @@ import {
 import { routeChatIntent } from "@/lib/chat-core/intent-router";
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
 import { isKnowledgeDocumentStale, type CurrentKnowledgeRow } from "@/lib/knowledge-sync";
+import {
+  buildJuneAdminOnlyHandoffMessage,
+  detectAdminOnlyKnowledgeTopic,
+  findKnowledgeRagPolicyViolations,
+  knowledgeRagPolicyError,
+} from "@/lib/chat-core/admin-only-knowledge";
 
 test("knowledge corpus includes only the reviewed low-risk article allowlist", () => {
   const documents = getApprovedKnowledgeDocuments();
@@ -70,20 +76,65 @@ test("grounded answer rejects missing or invented citations", () => {
   );
 });
 
-test("policy information stays eligible for RAG while an active claim requires admin", () => {
-  const policy = routeChatIntent({
-    messageType: LineMessageType.TEXT,
-    text: "นโยบายคืนสินค้าภายในกี่วัน",
-  });
-  assert.equal(policy.intent, LineIntent.UNKNOWN);
-  assert.equal(policy.requiresAdmin, false);
+test("warranty, returns and shipping are admin-only with June-style replies", () => {
+  const cases = [
+    ["นโยบายคืนสินค้าภายในกี่วัน", "warranty_return"],
+    ["ประกันสินค้ากี่เดือน", "warranty_return"],
+    ["ค่าจัดส่งเท่าไร", "shipping"],
+    ["ส่งต่างจังหวัดไหม", "shipping"],
+  ] as const;
+  for (const [question, topic] of cases) {
+    assert.equal(detectAdminOnlyKnowledgeTopic(question), topic);
+    assert.match(buildJuneAdminOnlyHandoffMessage(topic), /จูน.*แอดมิน.*แชตนี้/);
+    const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: question });
+    assert.equal(route.requiresAdmin, true);
+    assert.ok(
+      route.intent === LineIntent.CLAIM_OR_RETURN || route.intent === LineIntent.SHIPPING_ADDRESS,
+    );
+  }
+});
 
-  const activeClaim = routeChatIntent({
-    messageType: LineMessageType.TEXT,
-    text: "ขอเคลมสินค้าชิ้นนี้",
-  });
-  assert.equal(activeClaim.intent, LineIntent.CLAIM_OR_RETURN);
-  assert.equal(activeClaim.requiresAdmin, true);
+test("knowledge CMS policy blocks admin-only overview and enabled sections", () => {
+  const base = {
+    title: "วิธีเตรียมข้อมูลก่อนสั่งซื้อ",
+    description: "ข้อมูลทั่วไป",
+    content: {
+      intro: "เตรียมรุ่นรถ ปีรถ และรูปอะไหล่เดิม",
+      highlights: [] as string[],
+      sections: [
+        {
+          heading: "ค่าจัดส่ง",
+          body: ["สอบถามค่าจัดส่งก่อนสั่งซื้อ"],
+          format: "PARAGRAPHS" as const,
+          aiEnabled: true,
+        },
+      ],
+      relatedSearches: [] as string[],
+      internalLinks: [],
+      readingMinutes: 3,
+    },
+    ragEnabled: true,
+  };
+  assert.deepEqual(findKnowledgeRagPolicyViolations(base), [
+    { topic: "shipping", scope: "SECTION", sectionIndex: 0 },
+  ]);
+  assert.match(knowledgeRagPolicyError(base) ?? "", /หัวข้อที่ 1.*แอดมิน/);
+
+  const sourceBlocked = {
+    ...base,
+    title: "นโยบายการคืนสินค้า",
+    content: {
+      ...base.content,
+      sections: [{ ...base.content.sections[0]!, aiEnabled: false }],
+    },
+  };
+  assert.deepEqual(findKnowledgeRagPolicyViolations(sourceBlocked), [
+    { topic: "warranty_return", scope: "SOURCE" },
+  ]);
+  assert.equal(
+    findKnowledgeRagPolicyViolations({ ...sourceBlocked, ragEnabled: false }).length,
+    0,
+  );
 });
 
 test("auto-sync detects source edits and ignores an identical indexed row", () => {

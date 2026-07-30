@@ -718,7 +718,30 @@ test("admin-only intent sends a polite ack, then hands off to admin (no search)"
   assert.equal(result.processedCount, 1);
   assert.equal(result.repliedCount, 1);
   assert.deepEqual(calls.searches, []);
-  assert.match(calls.replies[0]?.text ?? "", /เคลม/);
+  assert.match(calls.replies[0]?.text ?? "", /จูน.*แอดมิน.*แชตนี้/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
+test("shipping questions use June-style admin handoff and never call FAQ or product search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  let faqCalls = 0;
+  const { calls, dependencies } = createProcessorTestDeps();
+  dependencies.answerFromChatFaq = async () => {
+    faqCalls += 1;
+    return { answered: true, reply: "FAQ must not answer shipping" };
+  };
+
+  const result = await processLineWebhookPayload(
+    textPayload("ค่าจัดส่งเท่าไร ส่งต่างจังหวัดไหม"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(faqCalls, 0);
+  assert.deepEqual(calls.searches, []);
+  assert.match(calls.replies[0]?.text ?? "", /เรื่องค่าจัดส่งหรือการจัดส่ง.*จูน.*แอดมิน.*แชตนี้/);
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 1);
 });

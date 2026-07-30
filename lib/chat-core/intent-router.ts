@@ -1,7 +1,5 @@
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
-
-const SERVICE_INQUIRY_RE =
-  /(รับ\s*(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)\s*(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์)|รับซ่อม|รับทำ).*(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์)|(?:สายแอร์|น้ำยาแอร์|แอร์รถ|แอร์รถยนต์).*(?:รับ\s*(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|(?:อัด|ทำ|ซ่อม|เติม|ล้าง|ติดตั้ง)|รับซ่อม|รับทำ)/i;
+import { detectAdminOnlyKnowledgeTopic } from "@/lib/chat-core/admin-only-knowledge";
 
 const SERVICE_INQUIRY_SAFE_RE = new RegExp(
   [
@@ -52,8 +50,6 @@ const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|�
 const QUOTATION_REQUEST_RE =
   /(?:ใบ\s*เสนอ\s*ราคา|ใบ\s*(?:quotation|quote)\b|(?:ขอ|ทำ|ออก|จัดทำ|รบกวน\s*(?:ทำ|ออก|จัดทำ))\s*(?:ใบ\s*)?(?:quotation|quote)\b)/i;
 const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|เสีย|พัง|ชำรุด|เปลี่ยนสินค้า|รับประกัน|claim|return)/i;
-const CLAIM_POLICY_INFORMATION_RE =
-  /(นโยบาย|เงื่อนไข|ขั้นตอน|ต้องเตรียม|หลักฐาน|ภายใน\s*กี่วัน|ได้\s*กี่วัน)/i;
 const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
 const SHOP_INFO_RE =
@@ -95,14 +91,35 @@ function routeText(text: string): ChatIntentRouteResult {
     };
   }
 
-  if (SHIPPING_SERVICE_INQUIRY_RE.test(normalized)) {
+  // Warranty/returns and every shipping-related question are business operations
+  // owned by an admin. Keep this deterministic and ahead of FAQ/shop-info routing
+  // so neither the intent LLM nor Knowledge RAG can auto-answer these topics.
+  const adminOnlyKnowledgeTopic = detectAdminOnlyKnowledgeTopic(normalized);
+  if (adminOnlyKnowledgeTopic) {
     return {
-      intent: LineIntent.SHOP_INFO,
+      intent:
+        adminOnlyKnowledgeTopic === "warranty_return"
+          ? LineIntent.CLAIM_OR_RETURN
+          : LineIntent.SHIPPING_ADDRESS,
       allowsSearch: false,
-      requiresAdmin: false,
+      requiresAdmin: true,
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
-      reason: "SHIPPING_SERVICE_INQUIRY",
+      reason:
+        adminOnlyKnowledgeTopic === "warranty_return"
+          ? "WARRANTY_RETURN_ADMIN_ONLY"
+          : "SHIPPING_ADMIN_ONLY",
+    };
+  }
+
+  if (SHIPPING_SERVICE_INQUIRY_RE.test(normalized)) {
+    return {
+      intent: LineIntent.SHIPPING_ADDRESS,
+      allowsSearch: false,
+      requiresAdmin: true,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "SHIPPING_ADMIN_ONLY",
     };
   }
 
@@ -114,19 +131,6 @@ function routeText(text: string): ChatIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "SHIPPING_ADDRESS_KEYWORD",
-    };
-  }
-
-  // Informational policy questions may be answered from the approved Knowledge
-  // RAG corpus. An active claim/return still follows the admin-only branch below.
-  if (CLAIM_RE.test(normalized) && CLAIM_POLICY_INFORMATION_RE.test(normalized)) {
-    return {
-      intent: LineIntent.UNKNOWN,
-      allowsSearch: false,
-      requiresAdmin: false,
-      requiresImageAnalysis: false,
-      requiresMoreInfo: false,
-      reason: "CLAIM_POLICY_INFORMATION",
     };
   }
 

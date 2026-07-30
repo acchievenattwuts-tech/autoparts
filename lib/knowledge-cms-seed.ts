@@ -19,7 +19,9 @@ export type KnowledgeSeedEntry = {
 };
 
 const approvedArticleSlugs = new Set<string>(APPROVED_KNOWLEDGE_ARTICLE_SLUGS);
-const approvedFaqIndexes = new Set([0, 1, 2, 4, 5, 10]);
+// Shipping, shipping fees, warranty and returns are always admin-owned in chat.
+// They may remain public storefront content, but must not enter the RAG corpus.
+const approvedFaqIndexes = new Set([0, 1, 2, 4, 10]);
 
 const articleEntries: KnowledgeSeedEntry[] = knowledgeArticles.map((article) => {
   const ragEnabled = approvedArticleSlugs.has(article.slug);
@@ -124,7 +126,7 @@ const policyEntry: KnowledgeSeedEntry = {
       {
         heading: "สินค้าชำรุดหรือแตกหักจากการขนส่ง",
         format: "BULLETS",
-        aiEnabled: true,
+        aiEnabled: false,
         body: [
           "ถ่ายคลิปวิดีโอขณะแกะกล่องพัสดุแบบต่อเนื่องไม่ตัดต่อ ตั้งแต่กล่องยังปิดสนิทจนเห็นตัวสินค้า",
           "แจ้งร้านภายใน 24–48 ชั่วโมงหลังได้รับพัสดุ พร้อมรูปกล่อง ตัวสินค้า และใบจัดส่ง",
@@ -134,7 +136,7 @@ const policyEntry: KnowledgeSeedEntry = {
       {
         heading: "การคืนหรือเปลี่ยนสินค้า",
         format: "BULLETS",
-        aiEnabled: true,
+        aiEnabled: false,
         body: [
           "แจ้งความประสงค์ภายใน 7 วันนับจากวันที่ได้รับสินค้า",
           "สินค้าต้องอยู่ในสภาพสมบูรณ์ ครบกล่องและอุปกรณ์ และยังไม่ผ่านการติดตั้งหรือใช้งาน",
@@ -145,7 +147,7 @@ const policyEntry: KnowledgeSeedEntry = {
       {
         heading: "ขั้นตอนการแจ้งเคลม",
         format: "STEPS",
-        aiEnabled: true,
+        aiEnabled: false,
         body: [
           "ติดต่อร้านพร้อมเลขที่ใบเสร็จหรือเลขออเดอร์",
           "ส่งรูปหรือคลิปวิดีโอ พร้อมอธิบายอาการของสินค้า",
@@ -160,7 +162,7 @@ const policyEntry: KnowledgeSeedEntry = {
   },
   answerScope: "อธิบายเงื่อนไขและขั้นตอนทั่วไปได้ แต่ห้ามยืนยันผลเคลมของเคสจริงหรือรับรองว่าสินค้ารายการใดอยู่ในการรับประกัน",
   riskLevel: "MEDIUM",
-  ragEnabled: true,
+  ragEnabled: false,
   sourceUrls: [absoluteUrl("/return-warranty-policy")],
 };
 

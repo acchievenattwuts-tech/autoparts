@@ -15,6 +15,10 @@ import {
 } from "@/lib/chat-core/ai-service";
 import { groupToRoute, intentToGroup } from "@/lib/chat-core/intent-groups";
 import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
+import {
+  buildJuneAdminOnlyHandoffMessage,
+  detectAdminOnlyKnowledgeTopic,
+} from "@/lib/chat-core/admin-only-knowledge";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import {
@@ -622,10 +626,13 @@ async function replyToMessengerTurn(params: {
     await safeNotify(
       notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
     );
+    const adminOnlyKnowledgeTopic = detectAdminOnlyKnowledgeTopic(processText);
     const reply =
       route.reason === "QUOTATION_REQUEST_KEYWORD"
         ? QUOTATION_HANDOFF_MESSAGE
-        : "เรื่องนี้ขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวมีแอดมินติดต่อกลับค่ะ";
+        : adminOnlyKnowledgeTopic
+          ? buildJuneAdminOnlyHandoffMessage(adminOnlyKnowledgeTopic)
+          : "เรื่องนี้จูนขอส่งต่อให้แอดมินช่วยดูแลนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับทางแชตนี้ค่ะ";
     await sendMessengerText({ pageAccessToken, psid, text: reply });
     await persistOutbound(conversationId, psid, reply, { intent: route.intent });
     return;

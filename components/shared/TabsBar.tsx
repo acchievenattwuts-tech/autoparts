@@ -47,6 +47,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/reports": "รายงาน",
   "/admin/content": "คอนเทนต์ Facebook",
   "/admin/content/approval-queue": "คิวอนุมัติโพสต์",
+  "/admin/knowledge": "คลังความรู้ AI",
   "/admin/settings/company": "ตั้งค่าร้านค้า",
   "/admin/users": "ผู้ใช้งาน",
   "/admin/roles": "บทบาทและสิทธิ์",

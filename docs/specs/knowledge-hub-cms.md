@@ -1,5 +1,7 @@
 # Knowledge Hub CMS
 
+> สถานะล่าสุด 2026-07-30: Knowledge CMS ใช้งานจริงแล้ว และเพิ่ม safety baseline สำหรับ RAG ตาม [Knowledge RAG Roadmap](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md) เรื่องประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งยังแสดงบน storefront ได้ แต่ถูกบล็อกจาก AI ที่ชั้น editor, server validation, approval และ publisher ส่วน Product Search ยังคงแยก logic และ embedding model เดิม
+
 ## Goal
 
 สร้างระบบ Knowledge Hub แบบ database-first สำหรับบทความ SEO / AEO / AIO ของ storefront โดยแยกขาดจากระบบคอนเทนต์ Facebook เดิม เพื่อให้ AI และผู้ดูแลระบบสามารถร่าง ตรวจ อนุมัติ เผยแพร่ และวัดผลบทความความรู้ได้โดยไม่ต้อง deploy โค้ดทุกครั้ง

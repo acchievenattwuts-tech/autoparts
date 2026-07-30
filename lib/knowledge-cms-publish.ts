@@ -1,6 +1,7 @@
 import { Prisma, KnowledgeRevisionStatus, KnowledgeSyncJobStatus } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { parseKnowledgeContent } from "@/lib/knowledge-cms-types";
+import { findKnowledgeRagPolicyViolations } from "@/lib/chat-core/admin-only-knowledge";
 import {
   embedKnowledgeDocuments,
   getKnowledgeEmbeddingModelId,
@@ -29,6 +30,21 @@ function buildChunks(revision: {
 }): PublishChunk[] {
   if (!revision.ragEnabled) return [];
   const content = parseKnowledgeContent(revision.content);
+  const violations = findKnowledgeRagPolicyViolations({
+    title: revision.title,
+    content,
+    ragEnabled: revision.ragEnabled,
+  });
+  const sourceBlocked = violations.some((violation) => violation.scope === "SOURCE");
+  const blockedSections = new Set(
+    violations
+      .filter(
+        (violation): violation is typeof violation & { sectionIndex: number } =>
+          violation.scope === "SECTION" && violation.sectionIndex !== undefined,
+      )
+      .map((violation) => violation.sectionIndex),
+  );
+  if (sourceBlocked) return [];
   const chunks: PublishChunk[] = [];
   const overview = [content.intro, ...content.highlights].filter(Boolean).join("\n");
   if (overview) {
@@ -40,7 +56,7 @@ function buildChunks(revision: {
     });
   }
   content.sections.forEach((section, index) => {
-    if (!section.aiEnabled || section.body.length === 0) return;
+    if (!section.aiEnabled || blockedSections.has(index) || section.body.length === 0) return;
     const text = section.body.join("\n");
     chunks.push({
       id: `cms:${revision.id}:section:${index + 1}`,

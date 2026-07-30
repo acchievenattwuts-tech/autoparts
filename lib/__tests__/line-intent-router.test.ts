@@ -58,7 +58,7 @@ test("routes shipping address away from product search", () => {
   assert.equal(result.allowsSearch, false);
 });
 
-test("routes shipping-service questions to the AI shop-info reply (no admin)", () => {
+test("routes every shipping-service question to admin", () => {
   for (const text of [
     "มีบริการจัดส่งไหม",
     "ส่งต่างจังหวัดได้ไหม",
@@ -69,10 +69,10 @@ test("routes shipping-service questions to the AI shop-info reply (no admin)", (
   ]) {
     const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
 
-    assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
+    assert.equal(result.intent, LineIntent.SHIPPING_ADDRESS, `expected shipping handoff for "${text}"`);
     assert.equal(result.allowsSearch, false);
-    assert.equal(result.requiresAdmin, false, `expected no admin handoff for "${text}"`);
-    assert.equal(result.reason, "SHIPPING_SERVICE_INQUIRY");
+    assert.equal(result.requiresAdmin, true, `expected admin handoff for "${text}"`);
+    assert.equal(result.reason, "SHIPPING_ADMIN_ONLY");
   }
 });
 
@@ -124,6 +124,21 @@ test("routes claim and return to admin", () => {
 
   assert.equal(result.intent, LineIntent.CLAIM_OR_RETURN);
   assert.equal(result.requiresAdmin, true);
+});
+
+test("routes informational warranty and return-policy questions to admin", () => {
+  for (const text of [
+    "ประกันกี่วัน",
+    "เงื่อนไขรับประกันมีอะไรบ้าง",
+    "คืนสินค้าได้ไหม",
+    "นโยบายคืนสินค้าภายในกี่วัน",
+  ]) {
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+    assert.equal(result.intent, LineIntent.CLAIM_OR_RETURN, `expected claim handoff for "${text}"`);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, true);
+    assert.equal(result.reason, "WARRANTY_RETURN_ADMIN_ONLY");
+  }
 });
 
 test("routes greeting without requiring search", () => {

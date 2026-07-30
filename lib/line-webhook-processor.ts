@@ -97,6 +97,7 @@ import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/l
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
 import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
+import { buildJuneAdminOnlyHandoffMessage } from "@/lib/chat-core/admin-only-knowledge";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
@@ -617,9 +618,9 @@ function handoffAckForIntent(intent: LineIntent): string {
     case LineIntent.PRICE_NEGOTIATION:
       return "เรื่องราคา/ส่วนลด เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
     case LineIntent.CLAIM_OR_RETURN:
-      return "เรื่องเคลม/เปลี่ยน-คืนสินค้า เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
+      return buildJuneAdminOnlyHandoffMessage("warranty_return");
     case LineIntent.SHIPPING_ADDRESS:
-      return "รับทราบเรื่องที่อยู่/การจัดส่งค่ะ 🙏 เดี๋ยวแอดมินดำเนินการให้นะคะ";
+      return buildJuneAdminOnlyHandoffMessage("shipping");
     case LineIntent.ORDER_STATUS:
       return "เดี๋ยวแอดมินช่วยเช็กสถานะ/พัสดุให้นะคะ 🙏 รอสักครู่ค่ะ";
     default:
@@ -1335,6 +1336,8 @@ export async function processLineAiReply(
     const hardGuard =
       layer1Group === "payment" ||
       layer1Group === "claim_or_return" ||
+      input.route.reason === "SHIPPING_ADMIN_ONLY" ||
+      input.route.reason === "SHIPPING_ADDRESS_KEYWORD" ||
       quotationRequest ||
       input.route.reason === "SERVICE_INQUIRY_KEYWORD";
     // True when the regex flagged a price/buy intent — used to (a) skip the
@@ -2468,7 +2471,10 @@ export async function processLineAiReply(
     //    → ส่งแอดมินตรง ไม่โชว์การ์ดซ้ำ
     // (priceAskThisTurn is hoisted above the multi-subject dispatch — same policy
     // for both paths.)
-    const hiddenPriceInquiry = liveMode && priceAskThisTurn;
+    // "ค่าส่งเท่าไร" contains price-like wording but belongs to the explicit
+    // shipping admin-only route, not the product-price flow.
+    const hiddenPriceInquiry =
+      liveMode && priceAskThisTurn && input.route.reason !== "SHIPPING_ADMIN_ONLY";
     // guardedSearchIntent = evidence-gated intent ของ "ข้อความเทิร์นนี้" (เฉพาะสิ่งที่ลูกค้าพิมพ์จริง
     // ไม่รวม history) → ใช้แยกว่าลูกค้าเปิดสินค้าใหม่ในข้อความนี้ หรือถามราคาล้วน
     const currentTurnNamedProduct = Boolean(
@@ -2577,6 +2583,9 @@ export async function processLineAiReply(
       // (Option E) admin-owned room → a FAQ auto-answer would never be sent
       // (store_only wins in the send policy), so skip the Gemini call entirely.
       !conversationBlocked &&
+      // Deterministic admin-only intents (including warranty/returns and every
+      // shipping question) must never spend a Knowledge RAG call before handoff.
+      !route.requiresAdmin &&
       // A purchase-commitment turn ("เอาตัวนี้ / เอาตัว 900 / 1 อัน") is classified as
       // a non-product turn, which would otherwise match the FAQ gate below and let an
       // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase

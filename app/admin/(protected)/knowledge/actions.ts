@@ -12,6 +12,7 @@ import {
 import { publishKnowledgeRevision } from "@/lib/knowledge-cms-publish";
 import { requirePermission } from "@/lib/require-auth";
 import { answerFromKnowledgeRag, retrieveKnowledgeDocuments } from "@/lib/chat-core/knowledge-rag";
+import { knowledgeRagPolicyError } from "@/lib/chat-core/admin-only-knowledge";
 
 export type KnowledgeActionState = { success?: boolean; id?: string; error?: string };
 
@@ -55,7 +56,25 @@ function readPayload(formData: FormData) {
   if (parsed.data.type === "ARTICLE" && !parsed.data.slug) {
     return { success: false as const, error: "บทความต้องมี slug สำหรับ URL หน้าเว็บ" };
   }
+  const policyError = knowledgeRagPolicyError(parsed.data);
+  if (policyError) return { success: false as const, error: policyError };
   return { success: true as const, data: parsed.data };
+}
+
+function storedRevisionPolicyError(revision: {
+  title: string;
+  description: string | null;
+  content: unknown;
+  ragEnabled: boolean;
+}): string | null {
+  const content = knowledgeContentSchema.safeParse(revision.content);
+  if (!content.success) return "รูปแบบข้อมูลเนื้อหาไม่ถูกต้อง";
+  return knowledgeRagPolicyError({
+    title: revision.title,
+    description: revision.description,
+    content: content.data,
+    ragEnabled: revision.ragEnabled,
+  });
 }
 
 function revalidateKnowledge(sourceSlug?: string | null) {
@@ -199,6 +218,8 @@ export async function submitKnowledgeForApproval(revisionId: string, note?: stri
   if (!revision || !(revision.status === KnowledgeRevisionStatus.DRAFT || revision.status === KnowledgeRevisionStatus.REJECTED || revision.status === KnowledgeRevisionStatus.SYNC_FAILED)) {
     return { error: "revision นี้ไม่สามารถส่งอนุมัติได้" };
   }
+  const policyError = storedRevisionPolicyError(revision);
+  if (policyError) return { error: policyError };
   await db.$transaction([
     db.knowledgeApproval.updateMany({ where: { revisionId, status: KnowledgeApprovalStatus.PENDING }, data: { status: KnowledgeApprovalStatus.CANCELLED, actedAt: new Date() } }),
     db.knowledgeApproval.create({ data: { revisionId, requestedByUserId: session.user.id, requestNote: note?.trim() || null } }),
@@ -215,6 +236,8 @@ export async function approveAndPublishKnowledge(revisionId: string, note?: stri
   if (!revision || !(revision.status === KnowledgeRevisionStatus.PENDING_APPROVAL || revision.status === KnowledgeRevisionStatus.SYNC_FAILED)) {
     return { error: "revision นี้ไม่อยู่ในสถานะที่อนุมัติได้" };
   }
+  const policyError = storedRevisionPolicyError(revision);
+  if (policyError) return { error: policyError };
   const job = await db.$transaction(async (tx) => {
     await tx.knowledgeApproval.updateMany({
       where: { revisionId, status: KnowledgeApprovalStatus.PENDING },

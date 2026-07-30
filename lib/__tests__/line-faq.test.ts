@@ -15,3 +15,10 @@ test("returns not-answered when Gemini keys are not configured", async () => {
   const result = await answerFromChatFaq({ text: "ส่งต่างจังหวัดไหม" });
   assert.equal(result.answered, false);
 });
+
+test("admin-only topics never reach a Knowledge RAG answer", async () => {
+  const { answerFromChatFaq } = await import("@/lib/chat-core/faq");
+  for (const text of ["ประกันกี่วัน", "คืนสินค้าได้ไหม", "ค่าส่งเท่าไร", "ส่งต่างจังหวัดไหม"]) {
+    assert.deepEqual(await answerFromChatFaq({ text }), { answered: false, reply: "" });
+  }
+});

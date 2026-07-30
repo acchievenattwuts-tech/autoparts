@@ -342,6 +342,60 @@ test(
   calls.escalations.length = 0;
   calls.notifications.length = 0;
   calls.outboundMessages.length = 0;
+  currentText = "ค่าจัดส่งเท่าไร ส่งต่างจังหวัดไหม";
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-shipping",
+        fbEventId: "event-shipping",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, [], "shipping questions never search products");
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.match(calls.textReplies[0] ?? "", /เรื่องค่าจัดส่งหรือการจัดส่ง.*จูน.*แอดมิน.*แชตนี้/);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentText = "ประกันกี่วัน คืนสินค้าได้ไหม";
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-warranty",
+        fbEventId: "event-warranty",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, [], "warranty questions never search products");
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.match(calls.textReplies[0] ?? "", /เรื่องประกันหรือการคืนสินค้า.*จูน.*แอดมิน.*แชตนี้/);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
   currentText = "ช่วยดำเนินการรายการนี้ต่อให้ด้วยค่ะ";
   classifiedGroup = "purchase";
 

@@ -13,6 +13,7 @@
 - Cash/Bank Lite (Phase 6.6) implement เสร็จและใช้งานจริงแล้ว — เหลือเฉพาะงานติดตามหลัง rollout บางส่วน
 
 ## Current Focus
+- **Knowledge RAG Safety & Evaluation (2026-07-30)** — Round A implement แล้วใน code: ล็อกประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งให้ส่งแอดมินทุกชั้น (LINE + Messenger + CMS + publisher), เพิ่ม golden production evaluation `10/10` retrieval และ `24/24` admin-only, เพิ่ม telemetry แบบไม่เก็บข้อความ/PII และยืนยัน embedding แยกจากสินค้า (`gemini-embedding-2:768` vs `gemini-embedding-001:768`). งาน Round B–D อยู่ใน [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
 - `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite — **เสร็จและใช้งานจริงแล้ว** (schema 4 model + 5-step permission + nav + posting wire ครบทุกเอกสารเงิน + ledger/transfer/adjustment report). รายละเอียดด้านล่าง Active Workstreams #1
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
 - Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
