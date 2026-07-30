@@ -19,11 +19,12 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronUp } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { appendDeliveryDateParams } from "@/lib/delivery-date-filter";
+import { formatDateThai, parseDateOnlyToDate } from "@/lib/th-date";
 import { reorderDeliveryQueue } from "../../sales/actions";
 import GpsUpdateBanner from "./GpsUpdateBanner";
 import MobileDeliveryCard from "./MobileDeliveryCard";
@@ -116,6 +117,7 @@ const MobileDeliveryQueue = ({
   const [draftOrder, setDraftOrder] = useState<string[]>(initialIds);
   const [error, setError] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const [selectedProofSale, setSelectedProofSale] = useState<QueueItem | null>(null);
   const [selectedPinSale, setSelectedPinSale] = useState<QueueItem | null>(null);
 
@@ -167,6 +169,16 @@ const MobileDeliveryQueue = ({
     });
   };
 
+  // Shown on the collapsed toggle so an active range is never invisible.
+  const dateRangeLabel = (() => {
+    const from = fromDate ? formatDateThai(parseDateOnlyToDate(fromDate)) : "";
+    const to = toDate ? formatDateThai(parseDateOnlyToDate(toDate)) : "";
+    if (from && to) return `${from} - ${to}`;
+    if (from) return `ตั้งแต่ ${from}`;
+    if (to) return `ถึง ${to}`;
+    return "";
+  })();
+
   const loadMoreHref = (() => {
     const params = new URLSearchParams();
     if (currentFilter) params.set("status", currentFilter);
@@ -206,36 +218,55 @@ const MobileDeliveryQueue = ({
               fromDate={linkFromDate}
               toDate={toDate}
             />
-            <AdminSearchForm method="GET" className="space-y-2">
-              {currentFilter ? <input type="hidden" name="status" value={currentFilter} /> : null}
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
-                    ตั้งแต่วันที่
+            <button
+              type="button"
+              onClick={() => setShowDateFilter((prev) => !prev)}
+              aria-expanded={showDateFilter}
+              className="inline-flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-sky-400 dark:hover:text-sky-200"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <CalendarDays size={16} />
+                ช่วงวันที่
+                {dateRangeLabel ? (
+                  <span className="rounded-full bg-[#1e3a5f]/10 px-2 py-0.5 text-[11px] font-semibold text-[#1e3a5f] dark:bg-sky-400/15 dark:text-sky-200">
+                    {dateRangeLabel}
                   </span>
-                  <input
-                    type="date"
-                    name="from"
-                    defaultValue={fromDate}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </label>
-                <label className="space-y-1">
-                  <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
-                    ถึงวันที่
-                  </span>
-                  <input
-                    type="date"
-                    name="to"
-                    defaultValue={toDate}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-                  />
-                </label>
-              </div>
-              <AdminSearchSubmitButton className="inline-flex w-full items-center justify-center rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600">
-                แสดงรายการ
-              </AdminSearchSubmitButton>
-            </AdminSearchForm>
+                ) : null}
+              </span>
+              {showDateFilter ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showDateFilter ? (
+              <AdminSearchForm method="GET" className="space-y-2">
+                {currentFilter ? <input type="hidden" name="status" value={currentFilter} /> : null}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1">
+                    <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                      ตั้งแต่วันที่
+                    </span>
+                    <input
+                      type="date"
+                      name="from"
+                      defaultValue={fromDate}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[11px] font-medium text-gray-500 dark:text-slate-400">
+                      ถึงวันที่
+                    </span>
+                    <input
+                      type="date"
+                      name="to"
+                      defaultValue={toDate}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+                    />
+                  </label>
+                </div>
+                <AdminSearchSubmitButton className="inline-flex w-full items-center justify-center rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600">
+                  แสดงรายการ
+                </AdminSearchSubmitButton>
+              </AdminSearchForm>
+            ) : null}
           </div>
         ) : null}
       </div>

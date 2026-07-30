@@ -333,6 +333,7 @@
     - [x] แยก `isDefaultFrom` — ค่า default ที่ระบบใส่เองจะ**ไม่ถูกส่งต่อในลิงก์แท็บ/โหลดเพิ่ม** (ไม่ให้ "วันนี้" รั่วไปทับแท็บรอจัดส่ง) · ผู้ใช้ล้างช่องแล้ว submit → มาเป็น `from=""` ซึ่งถือว่า "ไม่กรอง" (ต่างจาก undefined)
     - [x] UI ใช้ `AdminSearchForm` + `AdminSearchSubmitButton` ตาม `.rules` §11 ทั้งเดสก์ท็อป (ปุ่ม "ค้นหา") และมุมมองมือถือ (ปุ่ม "แสดงรายการ", 2 คอลัมน์) — ครบทั้ง light/dark
     - [x] `MobileStatusTabs` รับ `fromDate`/`toDate` เพื่อคงช่วงวันที่ตอนสลับแท็บ; `loadMoreHref` คงช่วงวันที่เช่นกัน
+    - [x] **เพิ่มตามคำสั่งรอบที่ 2 (2026-07-30)**: หน้า `/admin/delivery/update` ยุบตัวกรองวันที่เป็นปุ่ม "ช่วงวันที่" กด แสดง/ซ่อน **ค่าเริ่มต้น = ซ่อน** (state ในหน้า ไม่ persist) · ปุ่มโชว์ป้ายช่วงวันที่ที่กรองอยู่ (`formatDateThai`, C.E.) เพื่อไม่ให้ตัวกรองที่ทำงานอยู่ถูกซ่อนแบบมองไม่เห็น — เช่นค่า default "วันนี้" ของแท็บส่งแล้ว · ครบทั้ง light/dark
 - **popup เลือกผู้ส่ง** ([DeliveryStaffDialog.tsx](app/admin/(protected)/delivery/DeliveryStaffDialog.tsx) + [DeliveryUpdateButton.tsx](app/admin/(protected)/delivery/DeliveryUpdateButton.tsx))
     - [x] กด "ส่งแล้ว" → modal ให้เลือกผู้ส่งด้วย `SearchableSelect` (ตาม `.rules` §Dropdown) **บังคับเลือกก่อนยืนยัน** (ปุ่มยืนยัน disabled จนกว่าจะเลือก) · ยังเช็คเลข Tracking ก่อนเปิด popup เหมือนเดิม
     - [x] เพิ่มปุ่ม "แก้ผู้ส่ง" บนแถวที่สถานะ = ส่งแล้ว (ตามที่เจ้าของสั่ง) — เปิด modal เดิม ค่าเริ่มต้นคือผู้ส่งปัจจุบัน
