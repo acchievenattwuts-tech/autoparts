@@ -4,8 +4,18 @@ import { Ban, FilePlus2, Pencil, Route, RotateCw } from "lucide-react";
 import type { DocumentActivityEvent, DocumentActivityTone } from "@/lib/document-activity";
 import { formatDateTimeThai } from "@/lib/th-date";
 
+/**
+ * "default" = wide 3-column grid (time | icon | content).
+ * "compact" = single rail with the timestamp stacked above the title,
+ *             for narrow side columns (~380px) where the wide grid squeezes
+ *             the content column down to an unreadable width.
+ */
+type DocumentActivityTimelineVariant = "default" | "compact";
+
 type Props = {
   events: DocumentActivityEvent[];
+  variant?: DocumentActivityTimelineVariant;
+  className?: string;
 };
 
 const toneClass: Record<DocumentActivityTone, string> = {
@@ -24,9 +34,17 @@ function ActivityIcon({ tone }: { tone: DocumentActivityTone }) {
   return <Route size={15} />;
 }
 
-export default function DocumentActivityTimeline({ events }: Props) {
+export default function DocumentActivityTimeline({
+  events,
+  variant = "default",
+  className = "mb-6",
+}: Props) {
+  const isCompact = variant === "compact";
+
   return (
-    <section className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+    <section
+      className={`rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e] ${className}`}
+    >
       <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">
           ประวัติเอกสาร
@@ -45,18 +63,39 @@ export default function DocumentActivityTimeline({ events }: Props) {
           {events.map((event, index) => (
             <li
               key={event.id}
-              className="relative grid grid-cols-[5.5rem_2rem_1fr] gap-3 pb-5 last:pb-0 sm:grid-cols-[7rem_2rem_1fr]"
+              className={
+                isCompact
+                  ? "relative pb-5 pl-11 last:pb-0"
+                  : "relative grid grid-cols-[5.5rem_2rem_1fr] gap-3 pb-5 last:pb-0 sm:grid-cols-[7rem_2rem_1fr]"
+              }
             >
               {index < events.length - 1 ? (
-                <span className="absolute bottom-0 left-[7.25rem] top-8 w-px -translate-x-1/2 bg-gray-300 dark:bg-slate-500 sm:left-[8.75rem]" />
+                <span
+                  className={
+                    isCompact
+                      ? "absolute bottom-0 left-4 top-8 w-px -translate-x-1/2 bg-gray-300 dark:bg-slate-500"
+                      : "absolute bottom-0 left-[7.25rem] top-8 w-px -translate-x-1/2 bg-gray-300 dark:bg-slate-500 sm:left-[8.75rem]"
+                  }
+                />
               ) : null}
-              <time className="pt-1 text-right text-xs leading-5 text-gray-500 dark:text-slate-400">
-                {formatDateTimeThai(event.occurredAt)}
-              </time>
-              <span className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full ${toneClass[event.tone]}`}>
+              {isCompact ? null : (
+                <time className="pt-1 text-right text-xs leading-5 text-gray-500 dark:text-slate-400">
+                  {formatDateTimeThai(event.occurredAt)}
+                </time>
+              )}
+              <span
+                className={`z-10 flex h-8 w-8 items-center justify-center rounded-full ${toneClass[event.tone]} ${
+                  isCompact ? "absolute left-0 top-0" : "relative"
+                }`}
+              >
                 <ActivityIcon tone={event.tone} />
               </span>
               <div className="min-w-0 pt-0.5">
+                {isCompact ? (
+                  <time className="mb-0.5 block text-xs leading-5 text-gray-500 dark:text-slate-400">
+                    {formatDateTimeThai(event.occurredAt)}
+                  </time>
+                ) : null}
                 <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
                   {event.title}
                   {event.href && event.hrefLabel ? (

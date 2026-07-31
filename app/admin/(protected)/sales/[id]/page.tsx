@@ -425,8 +425,39 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         </div>
 
-        <DocumentActivityTimeline events={activityEvents} />
+      </div>
 
+      {/* Activity history (30%) beside the print preview (70%) on wide screens.
+          Must NOT be `relative` — the print stylesheet positions #receipt absolutely. */}
+      <div className="mb-6 grid items-start gap-6 xl:grid-cols-[30fr_70fr]">
+        <div className="no-print xl:sticky xl:top-4">
+          <DocumentActivityTimeline events={activityEvents} variant="compact" className="mb-0" />
+        </div>
+
+        <div className="min-w-0">
+          <SharedSalesDeliveryPrintDocument
+            sale={{ ...sale, signerSignatureUrl }}
+            shopConfig={cfg}
+            dueDate={dueDate}
+            signerDisplayName={signerDisplayName}
+            transferPrimaryAccount={transferPrimaryAccount}
+            receivedTransferAccount={receivedTransferAccount}
+            payments={salePayments.map((payment) => ({
+              accountName: payment.cashBankAccount.name,
+              accountType: payment.cashBankAccount.type,
+              bankName: payment.cashBankAccount.bankName,
+              accountNo: payment.cashBankAccount.accountNo,
+              amount: Number(payment.amount),
+            }))}
+            promptPayQrDataUrl={promptPayQrDataUrl}
+            qrAmount={transferDocumentState.qrAmount}
+            verify={verify}
+            rootId="receipt"
+          />
+        </div>
+      </div>
+
+      <div className="no-print">
         {sale.fulfillmentType === "DELIVERY" ? (
           <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-900">
             <div className="mb-4 flex items-center justify-between gap-3 border-b border-gray-100 pb-3 dark:border-white/10">
@@ -545,26 +576,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           </div>
         ) : null}
       </div>
-
-      <SharedSalesDeliveryPrintDocument
-        sale={{ ...sale, signerSignatureUrl }}
-        shopConfig={cfg}
-        dueDate={dueDate}
-        signerDisplayName={signerDisplayName}
-        transferPrimaryAccount={transferPrimaryAccount}
-        receivedTransferAccount={receivedTransferAccount}
-        payments={salePayments.map((payment) => ({
-          accountName: payment.cashBankAccount.name,
-          accountType: payment.cashBankAccount.type,
-          bankName: payment.cashBankAccount.bankName,
-          accountNo: payment.cashBankAccount.accountNo,
-          amount: Number(payment.amount),
-        }))}
-        promptPayQrDataUrl={promptPayQrDataUrl}
-        qrAmount={transferDocumentState.qrAmount}
-        verify={verify}
-        rootId="receipt"
-      />
     </>
   );
 };

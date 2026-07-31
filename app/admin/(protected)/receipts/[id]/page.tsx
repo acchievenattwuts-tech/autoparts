@@ -284,8 +284,43 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
 
-        <DocumentActivityTimeline events={activityEvents} />
+      </div>
 
+      {/* Activity history (30%) beside the print preview (70%) on wide screens.
+          Must NOT be `relative` — the print stylesheet positions #receipt absolutely. */}
+      <div className="mb-6 grid items-start gap-6 xl:grid-cols-[30fr_70fr]">
+        <div className="no-print xl:sticky xl:top-4">
+          <DocumentActivityTimeline events={activityEvents} variant="compact" className="mb-0" />
+        </div>
+
+        <div className="min-w-0">
+          <SharedReceiptSettlementPrintDocument
+            receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
+            shopConfig={{
+              shopName: cfg.shopName,
+              shopAddress: cfg.shopAddress,
+              shopPhone: cfg.shopPhone,
+              shopLogoUrl: cfg.shopLogoUrl,
+              shopWebsiteUrl: cfg.shopWebsiteUrl,
+              shopLineId: cfg.shopLineId,
+              printNoticeText: cfg.printNoticeText,
+            }}
+            signerDisplayName={signerDisplayName}
+            receivedTransferAccount={receivedTransferAccount}
+            payments={receiptPayments.map((payment) => ({
+              accountName: payment.cashBankAccount.name,
+              accountType: payment.cashBankAccount.type,
+              bankName: payment.cashBankAccount.bankName,
+              accountNo: payment.cashBankAccount.accountNo,
+              amount: Number(payment.amount),
+            }))}
+            verify={verify}
+            rootId="receipt"
+          />
+        </div>
+      </div>
+
+      <div className="no-print">
         <div className="no-print overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
           <div className="border-b border-gray-100 px-6 py-4 dark:border-white/10">
             <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">รายการชำระ</h2>
@@ -353,30 +388,6 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           </div>
         </div>
       </div>
-
-      <SharedReceiptSettlementPrintDocument
-        receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
-        shopConfig={{
-        shopName: cfg.shopName,
-        shopAddress: cfg.shopAddress,
-        shopPhone: cfg.shopPhone,
-        shopLogoUrl: cfg.shopLogoUrl,
-        shopWebsiteUrl: cfg.shopWebsiteUrl,
-        shopLineId: cfg.shopLineId,
-        printNoticeText: cfg.printNoticeText,
-        }}
-        signerDisplayName={signerDisplayName}
-        receivedTransferAccount={receivedTransferAccount}
-        payments={receiptPayments.map((payment) => ({
-          accountName: payment.cashBankAccount.name,
-          accountType: payment.cashBankAccount.type,
-          bankName: payment.cashBankAccount.bankName,
-          accountNo: payment.cashBankAccount.accountNo,
-          amount: Number(payment.amount),
-        }))}
-        verify={verify}
-        rootId="receipt"
-      />
     </>
   );
 };

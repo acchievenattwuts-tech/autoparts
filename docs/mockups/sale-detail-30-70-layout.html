@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mockup — /admin/sales/[id] แบ่ง 30/70</title>
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;500;600;700&family=Sarabun:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f3f4f6; --card:#ffffff; --border:#f3f4f6; --border2:#e5e7eb;
+    --text:#111827; --muted:#6b7280; --brand:#1e3a5f; --rail:#d1d5db;
+  }
+  html[data-theme="dark"]{
+    --bg:#0b1220; --card:#101b2e; --border:rgba(255,255,255,.10); --border2:rgba(255,255,255,.14);
+    --text:#e2e8f0; --muted:#94a3b8; --brand:#bae6fd; --rail:#64748b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:Sarabun,system-ui,sans-serif;padding:24px}
+  h1,h2,h3,.kanit{font-family:Kanit,Sarabun,sans-serif}
+  .wrap{max-width:1500px;margin:0 auto}
+  .bar{display:flex;gap:8px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .btn{border:1px solid var(--border2);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit}
+  .btn.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  html[data-theme="dark"] .btn.on{background:#0ea5e9;border-color:#0ea5e9;color:#04121f}
+  .note{font-size:12px;color:var(--muted)}
+
+  .card{border:1px solid var(--border);background:var(--card);border-radius:12px;padding:24px;box-shadow:0 1px 2px rgba(0,0,0,.04);margin-bottom:24px}
+  .card h2{margin:0;font-size:17px;font-weight:600;color:var(--brand)}
+  .cardhead{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:20px}
+
+  /* ---- the 30/70 row ---- */
+  .split{display:grid;gap:24px;align-items:start;margin-bottom:24px}
+  @media (min-width:1280px){ .split{grid-template-columns:30fr 70fr} }
+  .sticky .col-left{position:sticky;top:16px}
+
+  /* timeline (narrow variant) */
+  .tl{list-style:none;margin:0;padding:0}
+  .tl li{position:relative;padding-left:44px;padding-bottom:20px}
+  .tl li:last-child{padding-bottom:0}
+  .tl li::before{content:"";position:absolute;left:15px;top:32px;bottom:0;width:1px;background:var(--rail)}
+  .tl li:last-child::before{display:none}
+  .dot{position:absolute;left:0;top:0;width:32px;height:32px;border-radius:999px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px}
+  .c-create{background:#10b981}.c-update{background:#f59e0b}.c-cancel{background:#f43f5e}.c-used{background:#0ea5e9}
+  .tl time{display:block;font-size:11px;color:var(--muted);line-height:1.4;margin-bottom:2px}
+  .tl .t{font-size:14px;font-weight:600;margin:0}
+  .tl .d{font-size:12px;color:var(--muted);margin:4px 0 0}
+
+  /* wide (current) timeline variant, for comparison */
+  .tl-wide li{display:grid;grid-template-columns:7rem 2rem 1fr;gap:12px;padding-left:0}
+  .tl-wide li::before{left:8.75rem}
+  .tl-wide .dot{position:relative;left:auto;top:auto}
+  .tl-wide time{text-align:right;padding-top:4px;margin:0}
+
+  /* preview */
+  .paper{background:#fff;color:#111827;max-width:900px;margin:0 auto;padding:32px;font-size:13px;line-height:1.35;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  .paper .hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+  .logo{width:44px;height:44px;border-radius:999px;background:#e5e7eb;display:inline-block;margin-right:10px;vertical-align:top}
+  .paper .doctype{border:1px solid #9ca3af;border-radius:4px;padding:8px 18px;font-weight:600;font-family:Kanit,sans-serif}
+  .boxes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;font-size:12px}
+  .box{border:1px solid #d1d5db;border-radius:4px;padding:8px}
+  .box .lbl{font-size:10px;font-weight:600;color:#374151;margin:0 0 4px;text-transform:uppercase}
+  table.items{width:100%;border-collapse:collapse;font-size:12px}
+  table.items th{background:#f3f4f6;border:1px solid #d1d5db;padding:5px 6px;text-align:left}
+  table.items td{border:1px solid #d1d5db;padding:5px 6px}
+  .r{text-align:right}.c{text-align:center}
+  .totals{display:grid;grid-template-columns:1fr 300px;gap:12px;margin-top:0}
+  .totrow{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
+  .totrow.sum{font-weight:700;border-top:1px solid #d1d5db;padding-top:4px;margin-top:4px}
+  .ftr{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;font-size:11px}
+  .qr{width:90px;height:90px;background:#e5e7eb;border-radius:4px}
+  .warn{font-size:11px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;margin-bottom:16px}
+  html[data-theme="dark"] .warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35);color:#fcd34d}
+  .lbl2{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="bar">
+    <button class="btn" id="theme">🌗 สลับ Light / Dark</button>
+    <button class="btn on" data-v="a">A · ประวัติซ้าย 30 / พรีวิว 70</button>
+    <button class="btn" data-v="b">B · พรีวิวซ้าย 70 / ประวัติขวา 30</button>
+    <button class="btn" id="stick">📌 ตรึงคอลัมน์ประวัติ (sticky)</button>
+    <span class="note">ย่อหน้าต่างให้แคบกว่า 1280px เพื่อดูการซ้อนบนมือถือ/แท็บเล็ต</span>
+  </div>
+
+  <!-- unchanged summary card on top -->
+  <div class="card">
+    <div class="cardhead">
+      <h2 class="kanit" style="color:var(--text)">สรุปข้อมูลใบขาย <span style="font-size:12px;background:#dcfce7;color:#15803d;border-radius:999px;padding:2px 8px;margin-left:8px">ใช้งาน</span></h2>
+      <div class="note">✏️ แก้ไข &nbsp; 🖨️ พิมพ์ใบเสร็จ</div>
+    </div>
+    <div class="note">— ส่วนสรุป (ลูกค้า / ยอดเงิน / รายการสินค้า) คงเดิมทั้งหมด ไม่แตะ —</div>
+  </div>
+
+  <!-- the split row -->
+  <div class="split" id="split">
+    <div class="col-left" id="colHist">
+      <span class="lbl2">30%</span>
+      <div class="card" style="margin:0">
+        <div class="cardhead">
+          <h2>ประวัติเอกสาร</h2>
+          <span class="note">3 เหตุการณ์</span>
+        </div>
+        <ol class="tl" id="tl">
+          <li><span class="dot c-create">＋</span><time>31/07/2026 11:12</time><p class="t">สร้างเอกสาร</p><p class="d">โดย ไอลดา ศรีนายอด</p></li>
+          <li><span class="dot c-update">✎</span><time>31/07/2026 13:40</time><p class="t">แก้ไขเอกสาร</p><p class="d">โดย ไอลดา ศรีนายอด</p></li>
+          <li><span class="dot c-used">↗</span><time>31/07/2026 15:02</time><p class="t">อ้างอิงโดย <span style="font-family:monospace;color:#1e3a5f;text-decoration:underline">RCP26070031</span></p><p class="d">รับชำระ 1,160.00 บาท</p></li>
+        </ol>
+      </div>
+    </div>
+
+    <div class="col-right" id="colPrev">
+      <span class="lbl2">70% — พรีวิวแบบฟอร์ม (#receipt)</span>
+      <div class="paper">
+        <div class="hd">
+          <div>
+            <span class="logo"></span>
+            <div style="display:inline-block;vertical-align:top">
+              <div style="font-weight:700;font-family:Kanit,sans-serif">ศรีวรรณ อะไหล่แอร์</div>
+              <div style="font-size:11px;color:#374151">118/7 หมู่12 ต.บางม่วง อ.เมือง จ.นครสวรรค์ 60000</div>
+              <div style="font-size:11px;color:#374151">โทร: 065-751-7873</div>
+              <div style="font-size:11px;color:#1e3a5f">https://www.sriwanparts.com/ | Line: @sriwanparts</div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div class="doctype">ใบแจ้งหนี้ / ใบส่งของ</div>
+            <div style="font-size:11px;color:#6b7280;margin-top:4px">หน้า 1/1</div>
+          </div>
+        </div>
+
+        <div class="boxes">
+          <div class="box">
+            <p class="lbl">ข้อมูลลูกค้า</p>
+            <div>ชื่อ: <b>เอสวี ไดนาโม</b></div>
+            <div>ที่อยู่: 118 ม.12 ต.บางม่วง อ.เมือง จ.นครสวรรค์ 60000</div>
+            <div>โทร: <b>081-596-0068</b></div>
+          </div>
+          <div class="box">
+            <p class="lbl">ข้อมูลเอกสาร</p>
+            <div style="display:flex;justify-content:space-between"><span>เลขที่เอกสาร</span><b style="font-family:monospace">SAC26070025</b></div>
+            <div style="display:flex;justify-content:space-between"><span>วันที่เอกสาร</span><b>31/07/2026</b></div>
+            <div style="display:flex;justify-content:space-between"><span>เงื่อนไขชำระ</span><b>0 วัน</b></div>
+            <div style="display:flex;justify-content:space-between"><span>วันครบกำหนด</span><b>31/07/2026</b></div>
+          </div>
+        </div>
+
+        <table class="items">
+          <thead><tr><th class="c">#</th><th>รหัสสินค้า</th><th>รายละเอียด</th><th class="c">จำนวน</th><th class="c">หน่วย</th><th class="r">ราคา/หน่วย</th><th class="r">ยอดรวม</th></tr></thead>
+          <tbody>
+            <tr><td class="c">1</td><td>P0762</td><td>คอยล์เย็นตู้แอร์รถยนต์ 432 หัว F-SP / หัวแฟร์ หัวเทเปอร์ STAL STE-3001 (รับประกัน 180 วัน)</td><td class="c">1</td><td class="c">ชิ้น</td><td class="r">800.00</td><td class="r">800.00</td></tr>
+            <tr><td class="c">2</td><td>P0444</td><td>วาล์วทางแอร์รถยนต์ STAL 3/8 หัวเตเปอร์/แฟร์ Isuzu Dragon eye / TFR STD-2003A</td><td class="c">1</td><td class="c">ชิ้น</td><td class="r">210.00</td><td class="r">210.00</td></tr>
+            <tr><td class="c">3</td><td>P0764</td><td>ไดเออร์ Drier 3R 3/8 F (หัวเปเปอร์,หัวแฟร์) STAL STC-6137C</td><td class="c">1</td><td class="c">ชิ้น</td><td class="r">150.00</td><td class="r">150.00</td></tr>
+          </tbody>
+        </table>
+
+        <div class="totals" style="margin-top:12px">
+          <div class="box" style="min-height:80px"><p class="lbl">หมายเหตุ:</p></div>
+          <div>
+            <div class="totrow"><span>มูลค่ารวม</span><span>1,160.00</span></div>
+            <div class="totrow"><span>ส่วนลด</span><span>0.00</span></div>
+            <div class="totrow sum"><span>ยอดสุทธิ</span><span>1,160.00</span></div>
+            <div style="font-size:11px;color:#6b7280;text-align:right">(หนึ่งพันหนึ่งร้อยหกสิบบาทถ้วน)</div>
+          </div>
+        </div>
+
+        <div class="ftr">
+          <div class="box">
+            <p class="lbl">ข้อมูลบัญชีรับโอน</p>
+            <div>กรุงไทย</div><div><b>665-7-99389-7</b></div>
+            <div>ชื่อบัญชี: ศรีวรรณอะไหล่แอร์</div>
+            <div style="margin-top:8px"><span class="qr" style="display:inline-block"></span></div>
+          </div>
+          <div class="box">
+            <p class="lbl">โปรดทราบ</p>
+            <div>1. โปรดเก็บเอกสารนี้ไว้เป็นหลักฐาน</div>
+            <div>2. การติดต่อกับทางร้าน โปรดนำเอกสารมาทุกครั้ง</div>
+            <div>3. ทางร้านจะรับคืนสินค้าภายใน 3 วัน</div>
+            <div>4. สินค้าที่ชำรุดต้องอยู่ในสภาพเดิม</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>หลักฐานการส่ง (ถ้ามี)</h2></div>
+    <div class="note">— บล็อกนี้ยังอยู่เต็มความกว้างด้านล่างเหมือนเดิม —</div>
+  </div>
+
+  <div class="card">
+    <div class="cardhead"><h2>หมายเหตุทางเทคนิค</h2></div>
+    <ul style="font-size:13px;line-height:1.9;margin:0;padding-left:20px">
+      <li>พรีวิวใช้ <code>max-width:900px</code> อยู่แล้ว → ใส่ในคอลัมน์ 70% ได้โดยไม่ต้องย่อ (จอ 1600px → ~1030px, จอ 1280px → ~830px ยังอ่านตารางได้ครบ)</li>
+      <li>ต่ำกว่า 1280px จะซ้อนเป็นแถวเดียว (ประวัติอยู่บน พรีวิวอยู่ล่าง) เหมือนเดิม</li>
+      <li>ไทม์ไลน์เดิมใช้ grid <code>7rem / 2rem / 1fr</code> — ในคอลัมน์ 30% เนื้อหาจะเหลือแคบมาก จึงเสนอเปลี่ยนเป็นแบบ "เวลาอยู่บนหัวข้อ" (ตามที่แสดงในม็อกอัพนี้) เฉพาะตอนอยู่คอลัมน์แคบ</li>
+      <li>การพิมพ์ไม่กระทบ: <code>#receipt</code> ใช้ <code>position:absolute; width:100%</code> ตอนพิมพ์ → wrapper ใหม่ต้อง <b>ไม่</b> ใส่ <code>position:relative</code> และคอลัมน์ประวัติต้องมี <code>no-print</code></li>
+    </ul>
+  </div>
+
+</div>
+<script>
+  document.getElementById('theme').onclick=()=>{
+    const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';
+  };
+  const split=document.getElementById('split'),hist=document.getElementById('colHist'),prev=document.getElementById('colPrev');
+  document.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('[data-v]').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    if(b.dataset.v==='b'){split.style.gridTemplateColumns='70fr 30fr';split.append(hist);document.getElementById('tl').className='tl';}
+    else{split.style.gridTemplateColumns='30fr 70fr';split.prepend(hist);}
+  });
+  document.getElementById('stick').onclick=function(){split.classList.toggle('sticky');this.classList.toggle('on');};
+</script>
+</body>
+</html>
