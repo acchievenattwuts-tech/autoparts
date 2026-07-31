@@ -111,7 +111,18 @@ globalForPrisma.prisma = db;
 // short backoff is safe (no risk of double-applying a write) and clears almost
 // all of the noise, including failed ISR cache revalidations.
 const TRANSIENT_DB_ERROR_PATTERN =
-  /connection terminated|connection timeout|ECONNRESET|Connection ended|too many connections|Closed the connection/i;
+  /connection terminated|connection timeout|timeout exceeded when trying to connect|ECONNRESET|Connection ended|too many connections|Closed the connection/i;
+
+// node-postgres throws exactly "timeout exceeded when trying to connect" when a
+// caller waits longer than `connectionTimeoutMillis` for a free pool slot — the
+// pool is saturated (or the pooler refused a new physical connection), the query
+// never reached Postgres, so retrying is safe. It is matched separately from the
+// generic transient pattern because it has already burned a full 15s
+// connection-acquire window: allowing the default 2 retries could pin a Vercel
+// function for ~45s. One retry (worst case ~30s) keeps the request inside the
+// function budget while still riding out a short burst.
+const POOL_ACQUIRE_TIMEOUT_PATTERN = /timeout exceeded when trying to connect/i;
+const POOL_ACQUIRE_MAX_RETRIES = 1;
 
 const collectErrorMessages = (error: unknown, depth = 0): string => {
   if (depth > 4 || !(error instanceof Error)) {
@@ -124,6 +135,9 @@ const collectErrorMessages = (error: unknown, depth = 0): string => {
 
 const isTransientDbError = (error: unknown): boolean =>
   TRANSIENT_DB_ERROR_PATTERN.test(collectErrorMessages(error));
+
+const isPoolAcquireTimeoutError = (error: unknown): boolean =>
+  POOL_ACQUIRE_TIMEOUT_PATTERN.test(collectErrorMessages(error));
 
 // Base backoff, doubled per attempt (150ms → 300ms), plus random jitter up to
 // one base window. A fixed backoff makes parallel revalidations (e.g. the 3 admin
@@ -155,7 +169,10 @@ export async function withDbRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error;
-      if (attempt < retries && isTransientDbError(error)) {
+      const maxRetriesForError = isPoolAcquireTimeoutError(error)
+        ? Math.min(retries, POOL_ACQUIRE_MAX_RETRIES)
+        : retries;
+      if (attempt < maxRetriesForError && isTransientDbError(error)) {
         await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs(attempt)));
         continue;
       }

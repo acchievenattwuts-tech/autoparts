@@ -13,7 +13,7 @@
 - Cash/Bank Lite (Phase 6.6) implement เสร็จและใช้งานจริงแล้ว — เหลือเฉพาะงานติดตามหลัง rollout บางส่วน
 
 ## Current Focus
-- **Knowledge RAG Safety & Evaluation (2026-07-30)** — Round A implement แล้วใน code: ล็อกประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งให้ส่งแอดมินทุกชั้น (LINE + Messenger + CMS + publisher), เพิ่ม golden production evaluation `10/10` retrieval และ `24/24` admin-only, เพิ่ม telemetry แบบไม่เก็บข้อความ/PII และยืนยัน embedding แยกจากสินค้า (`gemini-embedding-2:768` vs `gemini-embedding-001:768`). งาน Round B–D อยู่ใน [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
+- **Knowledge RAG Quality (2026-07-31)** — Round A–B เสร็จ: ล็อก admin-only ทุกชั้น, เพิ่ม inventory owner/review/expiry/evidence, quality gate duplicate/conflict/stale ก่อนอนุมัติและ publish, เพิ่ม FAQ ที่มีหลักฐาน 3 เรื่อง, backfill production 38 sources สำเร็จ; golden `13/13` retrieval + `24/24` admin-only, corpus quality ไม่มี failure และ embedding แยกจากสินค้า (`gemini-embedding-2:768` vs `gemini-embedding-001:768`). งาน Round C–D อยู่ใน [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
 - `Phase 6.6` โมดูลบัญชีธนาคาร/เงินสด Lite — **เสร็จและใช้งานจริงแล้ว** (schema 4 model + 5-step permission + nav + posting wire ครบทุกเอกสารเงิน + ledger/transfer/adjustment report). รายละเอียดด้านล่าง Active Workstreams #1
 - ติดตาม manual/ongoing work ของ `Phase 7` ด้าน SEO, verification, และ content expansion
 - Product Search Quality phase ถัดไป: Review Outcome Tracking, Fitment/Year remediation, Closed-Loop Measurement, และ Guarded Auto-Apply
@@ -325,6 +325,15 @@
 - [x] **ไม่ freeze AI / ไม่แจ้งแอดมิน** — เป็นข้อความแจ้งให้ทราบ ลูกค้ายังไม่ได้ขออะไร ถ้า freeze ทุกครั้งลูกค้าใหม่จะคุยกับ AI ไม่ได้เลย (Messenger แทบทุกคนเป็น UNLINKED) · การ freeze เดิมตอนลูกค้า**ถามราคาเอง** (`hiddenPriceWithProducts`) ยังทำงานเหมือนเดิม
 - [x] **ลบ `CustomerType.showPrice`** — เป็น dead field: schema ระบุว่าคุมการแสดงราคาบน LINE แต่ `applyChatPriceTier()` ไม่เคยอ่านค่านี้เลย เปลี่ยนป้ายในหน้าลูกค้าไปใช้ `priceTier` จริงแทน (`db push --accept-data-loss`)
 - [x] Test: `buildUnlinkedPriceNote` 4 เคส + e2e "unlinked ได้ข้อความ + ไม่ freeze" / "linked ไม่ได้ข้อความ"
+
+## Log noise — `timeout exceeded when trying to connect` ตอน revalidate cache หน้า `/products` (2026-07-31)
+- บริบท: เจ้าของส่ง Vercel log `level:error` (30/07 13:55 GMT+7, iPhone) — `POST /products` ตอบ **HTTP 200** แต่มี `prisma:error timeout exceeded when trying to connect` ตอน background revalidate cache key `storefront-products-landing-products` ([lib/storefront-catalog.ts](lib/storefront-catalog.ts))
+- **สาเหตุ**: ข้อความนี้เป็น error ของ node-postgres pool ตอนรอ connection ครบ `connectionTimeoutMillis` (15s) — pool 5 ตัว/instance เต็ม (Vercel Fluid compute รวมหลาย request ไว้ instance เดียว) query ยังไม่เคยถึง Postgres · จุดพลาดจริงคือ `TRANSIENT_DB_ERROR_PATTERN` ใน [lib/db.ts](lib/db.ts) **ไม่ match ข้อความนี้** (มีแค่ `connection timeout` ซึ่งเรียงคำคนละแบบ) → `withDbRetry` โยน error ทันทีโดยไม่ retry สักครั้ง ทั้งที่ตั้งใจให้ retry
+- [x] เพิ่ม `timeout exceeded when trying to connect` เข้า `TRANSIENT_DB_ERROR_PATTERN` → `withDbRetry` retry ได้จริง (ปลอดภัย: caller ทั้ง 17 จุดเป็น read-only ล้วน — `findMany`/`count`/`findUnique` ไม่มี write)
+- [x] แยก `POOL_ACQUIRE_TIMEOUT_PATTERN` + `POOL_ACQUIRE_MAX_RETRIES = 1` — error ประเภทนี้เผาเวลาไปแล้ว 15s ต่อครั้ง ถ้าปล่อย retry ตาม default (2) จะกิน ~45s และไปขัดเจตนาเดิมของ `DEFAULT_DB_CONNECTION_TIMEOUT_MS` ที่ตั้งใจให้ fail fast ไม่ pin Vercel function · จำกัด 1 retry → worst case ~30s
+- [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, query, หรือ cache config — พฤติกรรมฝั่งผู้ใช้เหมือนเดิม (เดิมก็ได้ cache เก่าเสิร์ฟอยู่แล้ว) ต่างแค่ revalidate สำเร็จบ่อยขึ้น
+- [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `timeout exceeded` (ควรลดลงชัดเจน) + เช็ค Supabase → Connection Pooling ว่า client count ไม่แตะ 200
+- [ ] ค้างไว้ (รอ metric): ขยาย `DB_POOL_MAX` 5 → 8–10 ให้เข้ากับ Fluid compute — ยังไม่ทำเพราะยังไม่มีข้อมูลจำนวน warm instance จริง เสี่ยงชนเพดาน Supavisor 200 clients (ตรงกับข้อค้าง "Option B" ใน §5 (4e))
 
 ## คิวจัดส่ง — ตัวกรองช่วงวันที่ + popup เลือกผู้ส่งตอนกด "ส่งแล้ว" (2026-07-30)
 - บริบท: เจ้าของสั่งเพิ่มตัวกรอง `ตั้งแต่ - ถึง` ทั้ง `/admin/delivery` และ `/admin/delivery/update` และให้ปุ่ม "ส่งแล้ว" หน้าเดสก์ท็อปเด้ง popup เลือกชื่อผู้ส่ง (เดิม stamp ผู้ล็อกอินอัตโนมัติเท่านั้น)
