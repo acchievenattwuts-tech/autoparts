@@ -262,6 +262,30 @@ export async function notifyMessengerNeedsAdmin(input: {
   });
 }
 
+export async function notifyKnowledgeRagFailure(input: {
+  sourceId: string;
+  revisionId?: string | null;
+  jobId?: string | null;
+  title: string;
+  failureType: "SYNC" | "QUALITY_GATE";
+  errorCode: string;
+}): Promise<number> {
+  const label =
+    input.failureType === "QUALITY_GATE"
+      ? "Knowledge quality gate ไม่ผ่าน"
+      : "Knowledge RAG sync ล้มเหลว";
+  return createNotification({
+    type: NotificationType.GENERAL,
+    severity: NotificationSeverity.ERROR,
+    title: label,
+    body: `${input.title} · ${input.errorCode.slice(0, 240)}`,
+    link: `/admin/knowledge/${input.sourceId}`,
+    entityType: "KnowledgeSource",
+    entityId: input.sourceId,
+    dedupeKey: `knowledge-rag-failure:${input.jobId ?? input.revisionId ?? input.sourceId}`,
+  });
+}
+
 export type NotificationListItem = {
   id: string;
   type: NotificationType;

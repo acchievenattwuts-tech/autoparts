@@ -47,6 +47,13 @@
 - Knowledge RAG ใช้ `knowledge_documents` สำหรับคำถามความรู้ทั่วไปที่ผ่านอนุมัติเท่านั้น และใช้ร่วมกันทั้ง LINE/Facebook Messenger
 - เรื่องประกัน คืนสินค้า ค่าจัดส่ง และการจัดส่งเป็น admin-only: router, channel processor, RAG runtime, CMS validation และ publisher ป้องกันซ้ำแบบ defense in depth
 - Telemetry ของ RAG ห้ามเก็บข้อความคำถาม/คำตอบหรือข้อมูลระบุตัวลูกค้า เก็บเฉพาะ query hash และค่าการทำงานเชิง aggregate
+- Retrieval policy มี source of truth ที่ `lib/knowledge-rag-retrieval-policy.ts`; runtime และ production check ต้องใช้ weight/threshold/exclusion ชุดเดียวกัน การทดลอง candidate ทำแบบ read-only และห้าม rollout หาก retrieval/admin-only/hard-negative ต่ำกว่า baseline หรือ latency เกินงบ
+- Round C telemetry ระบุ retrieval version/policy เพิ่ม แต่ตัว aggregate exporter จะไม่ส่งออก query hash รายตัว ใช้สำหรับเทียบ outcome, answer/no-answer และ latency แยก LINE/Messenger โดยไม่เก็บข้อความลูกค้า
+- Round D เก็บเฉพาะ aggregate รายวันใน `knowledge_rag_daily_metrics`, feedback แบบ closed reason code ใน `knowledge_rag_feedback` และ gap signals แบบ query hash ใน `knowledge_rag_gap_signals`; ห้ามเพิ่ม customer text/id หรือ conversation id
+- Gap จะสร้าง Knowledge draft ได้หลังสถานะ `REVIEWED` เท่านั้น และ draft ต้องเริ่มที่ `ragEnabled=false` ก่อนผ่าน governance/approval/publish pipeline เดิม
+- Sync/quality failure แจ้งผู้ดูแลผ่าน Notification และยังคง active revision เดิมเสมอ; runbook อยู่ที่ `docs/runbooks/knowledge-rag-operations.md`
+- Governance ของคลังความรู้เก็บแบบ versioned ใน `KnowledgeRevision.content.governance`; claim-level evidence อยู่ใน `sections[].evidenceUrls` และ publisher ส่ง `valid_until` ลงแต่ละ Knowledge chunk
+- Approval และ publisher ต้องผ่าน corpus quality gate: active owner, review/expiry, evidence/checklist, duplicate/conflict และ freshness
 - Source of truth และแผนต่อยอดอยู่ที่ [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
 
 ## Suggested Reading Order

@@ -13,6 +13,11 @@ import { publishKnowledgeRevision } from "@/lib/knowledge-cms-publish";
 import { requirePermission } from "@/lib/require-auth";
 import { answerFromKnowledgeRag, retrieveKnowledgeDocuments } from "@/lib/chat-core/knowledge-rag";
 import { knowledgeRagPolicyError } from "@/lib/chat-core/admin-only-knowledge";
+import {
+  assessKnowledgeQuality,
+  findKnowledgeDuplicateIssues,
+} from "@/lib/knowledge-cms-quality";
+import { hashKnowledgeRagQuery } from "@/lib/knowledge-rag-telemetry";
 
 export type KnowledgeActionState = { success?: boolean; id?: string; error?: string };
 
@@ -77,10 +82,82 @@ function storedRevisionPolicyError(revision: {
   });
 }
 
+async function storedRevisionQualityError(revision: {
+  id: string;
+  sourceId: string;
+  title: string;
+  content: unknown;
+  ragEnabled: boolean;
+  sourceUrls: unknown;
+  source: { type: "ARTICLE" | "FAQ" | "POLICY" };
+}): Promise<string | null> {
+  const parsedContent = knowledgeContentSchema.safeParse(revision.content);
+  if (!parsedContent.success) return "รูปแบบข้อมูลเนื้อหาไม่ถูกต้อง";
+  const sourceUrls = Array.isArray(revision.sourceUrls)
+    ? revision.sourceUrls.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const qualityIssues = assessKnowledgeQuality({
+    type: revision.source.type,
+    content: parsedContent.data,
+    ragEnabled: revision.ragEnabled,
+    sourceUrls,
+  });
+  const ownerUserId = parsedContent.data.governance?.ownerUserId;
+  if (ownerUserId) {
+    const owner = await db.user.findFirst({
+      where: { id: ownerUserId, isActive: true },
+      select: { id: true },
+    });
+    if (!owner) {
+      qualityIssues.unshift({
+        code: "OWNER_MISSING",
+        severity: "BLOCKING",
+        message: "ผู้รับผิดชอบเนื้อหาต้องเป็นผู้ใช้ที่มีสถานะใช้งาน",
+      });
+    }
+  }
+
+  const otherSources = await db.knowledgeSource.findMany({
+    where: { id: { not: revision.sourceId }, isArchived: false },
+    select: {
+      id: true,
+      revisions: {
+        orderBy: { revisionNo: "desc" },
+        take: 1,
+        select: { title: true, content: true },
+      },
+    },
+  });
+  const duplicateIssues = findKnowledgeDuplicateIssues({
+    sourceId: revision.sourceId,
+    title: revision.title,
+    intro: parsedContent.data.intro,
+    others: otherSources.flatMap((source) => {
+      const otherRevision = source.revisions[0];
+      if (!otherRevision) return [];
+      const otherContent = knowledgeContentSchema.safeParse(
+        otherRevision.content,
+      );
+      if (!otherContent.success) return [];
+      return [
+        {
+          sourceId: source.id,
+          title: otherRevision.title,
+          intro: otherContent.data.intro,
+        },
+      ];
+    }),
+  });
+  return [...qualityIssues, ...duplicateIssues][0]?.message ?? null;
+}
+
 function revalidateKnowledge(sourceSlug?: string | null) {
   revalidatePath("/admin/knowledge");
   revalidatePath("/admin/knowledge/approval");
   revalidatePath("/admin/knowledge/sync");
+  revalidatePath("/admin/knowledge/quality");
   revalidatePath("/knowledge");
   revalidatePath("/faq");
   revalidatePath("/return-warranty-policy");
@@ -220,6 +297,8 @@ export async function submitKnowledgeForApproval(revisionId: string, note?: stri
   }
   const policyError = storedRevisionPolicyError(revision);
   if (policyError) return { error: policyError };
+  const qualityError = await storedRevisionQualityError(revision);
+  if (qualityError) return { error: qualityError };
   await db.$transaction([
     db.knowledgeApproval.updateMany({ where: { revisionId, status: KnowledgeApprovalStatus.PENDING }, data: { status: KnowledgeApprovalStatus.CANCELLED, actedAt: new Date() } }),
     db.knowledgeApproval.create({ data: { revisionId, requestedByUserId: session.user.id, requestNote: note?.trim() || null } }),
@@ -238,6 +317,8 @@ export async function approveAndPublishKnowledge(revisionId: string, note?: stri
   }
   const policyError = storedRevisionPolicyError(revision);
   if (policyError) return { error: policyError };
+  const qualityError = await storedRevisionQualityError(revision);
+  if (qualityError) return { error: qualityError };
   const job = await db.$transaction(async (tx) => {
     await tx.knowledgeApproval.updateMany({
       where: { revisionId, status: KnowledgeApprovalStatus.PENDING },
@@ -313,11 +394,21 @@ export async function testKnowledgeQuestion(question: string, channel: "line" | 
   if (value.length < 2 || value.length > 500) return { error: "กรุณาระบุคำถาม 2-500 ตัวอักษร" };
   const [rows, answer] = await Promise.all([
     retrieveKnowledgeDocuments(value),
-    answerFromKnowledgeRag({ text: value, channel }),
+    answerFromKnowledgeRag({ text: value, channel, recordOperations: false }),
   ]);
   return {
     success: true,
     answer,
+    feedbackContext: {
+      queryHash: hashKnowledgeRagQuery(value),
+      channel,
+      outcome: answer.answered
+        ? ("ANSWERED" as const)
+        : rows.length === 0
+          ? ("NO_RETRIEVAL" as const)
+          : ("UNSUPPORTED" as const),
+      citationIds: answer.citations.map((item) => item.id),
+    },
     rows: rows.map((row) => ({ id: row.id, title: row.title, heading: row.section_heading, semantic: Number(row.semantic_score), hybrid: Number(row.hybrid_score) })),
   };
 }

@@ -5,16 +5,16 @@
 - งานที่เสร็จแล้วแบบสรุปอยู่ที่ [completed.md](/D:/autoparts/docs/roadmap/completed.md)
 
 ## Active Now
-### Knowledge RAG Quality — Round A เสร็จใน code, Round B–D รอดำเนินการ
+### Knowledge RAG Quality — Round A–D เสร็จ
 
 - สเปก: [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)
 - [x] ล็อกหัวข้อประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งให้ส่งแอดมินทั้ง LINE และ Messenger
 - [x] บังคับ policy ซ้ำใน Knowledge CMS และ publish boundary โดยไม่กระทบ public storefront
 - [x] golden production evaluation: retrieval 10/10, admin-only 24/24
 - [x] PII-safe RAG telemetry และตรวจ model isolation จาก Product Search
-- [ ] Round B: source inventory, evidence/freshness, FAQ gap และ conflict checks
-- [ ] Round C: offline retrieval experiments, hard negatives และ threshold gate
-- [ ] Round D: quality dashboard, admin feedback, gap backlog และ runbook
+- [x] Round B: source inventory 38 แหล่ง, owner/review/expiry, claim-level evidence, quality gate, FAQ gap 3 เรื่อง และ production backfill
+- [x] Round C: production retrieval `21/21` (baseline 13 + paraphrase 8), admin-only `24/24`, hard negative `8/8`, offline weighting/chunk experiments และ threshold/latency gate; ยังรักษา production baseline เดิมเพราะ candidate ที่ผ่านไม่ได้ดีขึ้นอย่างมีนัยสำคัญ
+- [x] Round D: quality dashboard แยก LINE/Messenger, feedback แบบ reason code, PII-safe gap backlog ที่บังคับ review ก่อนสร้าง draft, failure notification และ rollback/runbook
 
 ### Phase 6.6 - Cash/Bank Lite — เสร็จแล้ว (ใช้งานจริง)
 - สถานะ: **DONE** — implement เสร็จและใช้งานจริง

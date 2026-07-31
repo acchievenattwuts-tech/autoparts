@@ -2,13 +2,10 @@
 
 import Link, { useLinkStatus } from "next/link";
 import { LoaderCircle } from "lucide-react";
-
-const tabs = [
-  ["คลังความรู้", "/admin/knowledge"],
-  ["รออนุมัติ", "/admin/knowledge/approval"],
-  ["สถานะ Sync", "/admin/knowledge/sync"],
-  ["ทดลองถาม AI", "/admin/knowledge/test"],
-] as const;
+import {
+  KNOWLEDGE_ADMIN_TABS,
+  type KnowledgeAdminTabId,
+} from "@/lib/knowledge-admin-navigation";
 
 function TabPendingIndicator() {
   const { pending } = useLinkStatus();
@@ -23,18 +20,17 @@ function TabPendingIndicator() {
 export default function KnowledgeTabs({
   active,
 }: {
-  active: "library" | "approval" | "sync" | "test";
+  active: KnowledgeAdminTabId;
 }) {
-  const activeIndex = { library: 0, approval: 1, sync: 2, test: 3 }[active];
   return (
     <nav className="mb-5 flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-      {tabs.map(([label, href], index) => (
+      {KNOWLEDGE_ADMIN_TABS.map((tab) => (
         <Link
-          key={href}
-          href={href}
-          className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${index === activeIndex ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"}`}
+          key={tab.href}
+          href={tab.href}
+          className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition ${tab.id === active ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900" : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"}`}
         >
-          <span>{label}</span>
+          <span>{tab.label}</span>
           <TabPendingIndicator />
         </Link>
       ))}

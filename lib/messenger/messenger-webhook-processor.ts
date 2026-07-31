@@ -19,6 +19,7 @@ import {
   buildJuneAdminOnlyHandoffMessage,
   detectAdminOnlyKnowledgeTopic,
 } from "@/lib/chat-core/admin-only-knowledge";
+import { recordKnowledgeRagHumanOnlySignal } from "@/lib/chat-core/knowledge-rag";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import {
@@ -627,6 +628,12 @@ async function replyToMessengerTurn(params: {
       notifyMessengerNeedsAdmin({ conversationId, text: mergedText, messageType: "TEXT" }),
     );
     const adminOnlyKnowledgeTopic = detectAdminOnlyKnowledgeTopic(processText);
+    if (adminOnlyKnowledgeTopic) {
+      await recordKnowledgeRagHumanOnlySignal({
+        question: processText,
+        channel: "messenger",
+      });
+    }
     const reply =
       route.reason === "QUOTATION_REQUEST_KEYWORD"
         ? QUOTATION_HANDOFF_MESSAGE

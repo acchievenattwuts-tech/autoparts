@@ -97,7 +97,11 @@ import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/l
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
 import { extractFitmentTerms } from "@/lib/chat-core/fitment-extract";
 import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
-import { buildJuneAdminOnlyHandoffMessage } from "@/lib/chat-core/admin-only-knowledge";
+import {
+  buildJuneAdminOnlyHandoffMessage,
+  detectAdminOnlyKnowledgeTopic,
+} from "@/lib/chat-core/admin-only-knowledge";
+import { recordKnowledgeRagHumanOnlySignal } from "@/lib/chat-core/knowledge-rag";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
@@ -2570,6 +2574,18 @@ export async function processLineAiReply(
       input.imageClassification.confidence !== "LOW" &&
       productSearch.searched &&
       productSearch.result.total === 0;
+
+    if (
+      liveMode &&
+      route.requiresAdmin &&
+      input.text &&
+      detectAdminOnlyKnowledgeTopic(input.text)
+    ) {
+      await recordKnowledgeRagHumanOnlySignal({
+        question: input.text,
+        channel: "line",
+      });
+    }
 
     // A product turn whose subject is anchored (the frame already has a part type)
     // but the search found nothing is a genuine "we don't stock this" — NOT a

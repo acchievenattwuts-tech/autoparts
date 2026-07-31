@@ -1,5 +1,6 @@
 import type { PermissionKey } from "@/lib/access-control";
 import { ADMIN_NAVIGATION, flattenAdminNavigation } from "@/lib/admin-navigation";
+import { KNOWLEDGE_ADMIN_TABS } from "@/lib/knowledge-admin-navigation";
 
 export type CommandGroupKey =
   | "create"
@@ -36,6 +37,14 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
 
   // Navigate
   ...flattenAdminNavigation(ADMIN_NAVIGATION).map((item) => ({
+    id: `nav-${item.href.replace(/^\/+/, "").replace(/[^\w]+/g, "-")}`,
+    label: item.label,
+    href: item.href,
+    permission: item.permission,
+    group: "navigate" as const,
+    keywords: item.keywords,
+  })),
+  ...KNOWLEDGE_ADMIN_TABS.slice(1).map((item) => ({
     id: `nav-${item.href.replace(/^\/+/, "").replace(/[^\w]+/g, "-")}`,
     label: item.label,
     href: item.href,

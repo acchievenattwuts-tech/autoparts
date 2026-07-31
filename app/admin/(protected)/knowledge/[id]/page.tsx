@@ -6,6 +6,10 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import { ensureAccessControlSetupOnce } from "@/lib/access-control";
 import { parseKnowledgeContent } from "@/lib/knowledge-cms-types";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-cms-format";
+import {
+  assessKnowledgeQuality,
+  knowledgeEvidenceLevelLabel,
+} from "@/lib/knowledge-cms-quality";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import KnowledgeActions from "../KnowledgeActions";
@@ -27,27 +31,34 @@ export default async function KnowledgeDetailPage({
   params: Promise<{ id: string }>;
 }) {
   await ensureAccessControlSetupOnce();
-  await requirePermission("knowledge.view");
+  const session = await requirePermission("knowledge.view");
   const { id } = await params;
-  const source = await db.knowledgeSource.findUnique({
-    where: { id },
-    include: {
-      activeRevision: true,
-      revisions: {
-        orderBy: { revisionNo: "desc" },
-        include: {
-          createdByUser: { select: { name: true } },
-          approvedByUser: { select: { name: true } },
-          approvals: { orderBy: { requestedAt: "desc" }, take: 1 },
+  const [source, ownerOptions] = await Promise.all([
+    db.knowledgeSource.findUnique({
+      where: { id },
+      include: {
+        activeRevision: true,
+        revisions: {
+          orderBy: { revisionNo: "desc" },
+          include: {
+            createdByUser: { select: { name: true } },
+            approvedByUser: { select: { name: true } },
+            approvals: { orderBy: { requestedAt: "desc" }, take: 1 },
+          },
+        },
+        auditLogs: {
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          include: { actorUser: { select: { name: true } } },
         },
       },
-      auditLogs: {
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        include: { actorUser: { select: { name: true } } },
-      },
-    },
-  });
+    }),
+    db.user.findMany({
+      where: { isActive: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+  ]);
   if (!source) notFound();
   const revision =
     source.revisions.find((item) =>
@@ -63,6 +74,22 @@ export default async function KnowledgeDetailPage({
     source.revisions[0];
   if (!revision) notFound();
   const content = parseKnowledgeContent(revision.content);
+  const sourceUrls = Array.isArray(revision.sourceUrls)
+    ? revision.sourceUrls.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const qualityIssues = assessKnowledgeQuality({
+    type: source.type,
+    content,
+    ragEnabled: revision.ragEnabled,
+    sourceUrls,
+  });
+  const ownerName = content.governance?.ownerUserId
+    ? ownerOptions.find(
+        (owner) => owner.id === content.governance?.ownerUserId,
+      )?.name
+    : undefined;
   const editable = ["DRAFT", "REJECTED", "SYNC_FAILED"].includes(
     revision.status,
   );
@@ -107,13 +134,11 @@ export default async function KnowledgeDetailPage({
             answerScope: revision.answerScope,
             riskLevel: revision.riskLevel,
             ragEnabled: revision.ragEnabled,
-            sourceUrls: Array.isArray(revision.sourceUrls)
-              ? revision.sourceUrls.filter(
-                  (item): item is string => typeof item === "string",
-                )
-              : [],
+            sourceUrls,
             updatedAt: revision.updatedAt.toISOString(),
           }}
+          ownerOptions={ownerOptions}
+          currentUserId={session.user.id}
         />
       ) : (
         <>
@@ -165,6 +190,67 @@ export default async function KnowledgeDetailPage({
           </AdminSectionCard>
         </>
       )}
+      <AdminSectionCard
+        title="สถานะคุณภาพและหลักฐาน"
+        description="ข้อมูลนี้ใช้ควบคุมรอบตรวจทานและการอนุมัติ ไม่แสดงบนหน้าร้าน"
+      >
+        <div className="grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              ผู้รับผิดชอบ
+            </p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-slate-100">
+              {ownerName ?? "ยังไม่กำหนด"}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              ตรวจทานล่าสุด
+            </p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-slate-100">
+              {content.governance?.reviewedOn ?? "ยังไม่กำหนด"}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              ครบกำหนดทบทวน
+            </p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-slate-100">
+              {content.governance?.validUntil ?? "ยังไม่กำหนด"}
+            </p>
+          </div>
+          <div>
+            <p className="text-slate-500 dark:text-slate-400">
+              ระดับหลักฐาน
+            </p>
+            <p className="mt-1 font-medium text-slate-900 dark:text-slate-100">
+              {content.governance?.evidenceLevel
+                ? knowledgeEvidenceLevelLabel[
+                    content.governance.evidenceLevel
+                  ]
+                : "ยังไม่กำหนด"}
+            </p>
+          </div>
+        </div>
+        {content.governance?.evidenceNotes && (
+          <p className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-600 dark:bg-white/5 dark:text-slate-300">
+            {content.governance.evidenceNotes}
+          </p>
+        )}
+        <div className="mt-4">
+          {qualityIssues.length === 0 ? (
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+              ผ่าน quality gate และพร้อมส่งอนุมัติ
+            </p>
+          ) : (
+            <ul className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+              {qualityIssues.map((issue) => (
+                <li key={issue.code}>• {issue.message}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </AdminSectionCard>
       <AdminSectionCard title="ประวัติเวอร์ชันและกิจกรรม" bodyClassName="p-0">
         <div className="divide-y divide-slate-100 dark:divide-white/5">
           {source.revisions.map((item) => (

@@ -3,16 +3,22 @@ import { db } from "@/lib/db";
 import { parseKnowledgeContent } from "@/lib/knowledge-cms-types";
 import { findKnowledgeRagPolicyViolations } from "@/lib/chat-core/admin-only-knowledge";
 import {
+  assessKnowledgeQuality,
+  findKnowledgeDuplicateIssues,
+} from "@/lib/knowledge-cms-quality";
+import {
   embedKnowledgeDocuments,
   getKnowledgeEmbeddingModelId,
   toKnowledgePgVectorLiteral,
 } from "@/lib/knowledge-embeddings";
+import { notifyKnowledgeRagFailure } from "@/lib/notifications";
 
 type PublishChunk = {
   id: string;
   heading: string;
   content: string;
   searchText: string;
+  sourceUrls: string[];
 };
 
 function sourceType(type: "ARTICLE" | "FAQ" | "POLICY"): string {
@@ -27,6 +33,7 @@ function buildChunks(revision: {
   content: unknown;
   answerScope: string;
   ragEnabled: boolean;
+  sourceUrls: unknown;
 }): PublishChunk[] {
   if (!revision.ragEnabled) return [];
   const content = parseKnowledgeContent(revision.content);
@@ -46,6 +53,11 @@ function buildChunks(revision: {
   );
   if (sourceBlocked) return [];
   const chunks: PublishChunk[] = [];
+  const revisionUrls = Array.isArray(revision.sourceUrls)
+    ? revision.sourceUrls.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
   const overview = [content.intro, ...content.highlights].filter(Boolean).join("\n");
   if (overview) {
     chunks.push({
@@ -53,6 +65,7 @@ function buildChunks(revision: {
       heading: "สรุป",
       content: overview,
       searchText: `title: ${revision.title} | section: สรุป | text: ${overview} | answer scope: ${revision.answerScope}`,
+      sourceUrls: revisionUrls,
     });
   }
   content.sections.forEach((section, index) => {
@@ -63,6 +76,7 @@ function buildChunks(revision: {
       heading: section.heading,
       content: text,
       searchText: `title: ${revision.title} | section: ${section.heading} | text: ${text} | answer scope: ${revision.answerScope}`,
+      sourceUrls: [...new Set([...(section.evidenceUrls ?? []), ...revisionUrls])],
     });
   });
   return chunks;
@@ -85,12 +99,16 @@ async function stageChunks(input: {
   if (chunks.length === 0) return [];
   const vectors = await embedKnowledgeDocuments(chunks.map((chunk) => chunk.searchText));
   if (vectors.length !== chunks.length) throw new Error("KNOWLEDGE_EMBED_RESULT_COUNT_MISMATCH");
-  const urls = JSON.stringify(Array.isArray(input.revision.sourceUrls) ? input.revision.sourceUrls : []);
+  const parsedContent = parseKnowledgeContent(input.revision.content);
+  const validUntil = parsedContent.governance?.validUntil
+    ? new Date(`${parsedContent.governance.validUntil}T23:59:59.999+07:00`)
+    : null;
 
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
     const vector = vectors[index];
     if (!vector) throw new Error(`KNOWLEDGE_EMBED_FAILED:${chunk.id}`);
+    const urls = JSON.stringify(chunk.sourceUrls);
     const metadata = JSON.stringify({
       cmsSourceId: input.source.id,
       cmsRevisionId: input.revision.id,
@@ -101,14 +119,14 @@ async function stageChunks(input: {
       INSERT INTO knowledge_documents (
         id, source_type, source_ref, title, section_heading, content, answer_scope,
         risk_level, status, source_urls, metadata, search_text, search_document,
-        embedding, embedding_model, embedding_source_hash, embedded_at, updated_at
+        embedding, embedding_model, embedding_source_hash, valid_until, embedded_at, updated_at
       ) VALUES (
         ${chunk.id}, ${sourceType(input.source.type)}, ${input.source.sourceKey}, ${input.revision.title},
         ${chunk.heading}, ${chunk.content}, ${input.revision.answerScope}, ${input.revision.riskLevel},
         'ARCHIVED', ${urls}::jsonb, ${metadata}::jsonb, ${chunk.searchText},
         to_tsvector('simple', f_unaccent(${chunk.searchText})),
         ${toKnowledgePgVectorLiteral(vector)}::vector, ${getKnowledgeEmbeddingModelId()},
-        ${input.revision.checksum}, now(), now()
+        ${input.revision.checksum}, ${validUntil}, now(), now()
       )
       ON CONFLICT (id) DO UPDATE SET
         source_type=EXCLUDED.source_type, source_ref=EXCLUDED.source_ref,
@@ -119,10 +137,84 @@ async function stageChunks(input: {
         search_document=EXCLUDED.search_document, embedding=EXCLUDED.embedding,
         embedding_model=EXCLUDED.embedding_model,
         embedding_source_hash=EXCLUDED.embedding_source_hash,
+        valid_until=EXCLUDED.valid_until,
         embedded_at=EXCLUDED.embedded_at, updated_at=now()
     `);
   }
   return chunks.map((chunk) => chunk.id);
+}
+
+async function assertKnowledgePublishQuality(input: {
+  id: string;
+  sourceId: string;
+  title: string;
+  content: unknown;
+  ragEnabled: boolean;
+  sourceUrls: unknown;
+  source: { type: "ARTICLE" | "FAQ" | "POLICY" };
+}): Promise<void> {
+  const content = parseKnowledgeContent(input.content);
+  const sourceUrls = Array.isArray(input.sourceUrls)
+    ? input.sourceUrls.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  const issues = assessKnowledgeQuality({
+    type: input.source.type,
+    content,
+    ragEnabled: input.ragEnabled,
+    sourceUrls,
+  });
+  const ownerUserId = content.governance?.ownerUserId;
+  if (ownerUserId) {
+    const owner = await db.user.findFirst({
+      where: { id: ownerUserId, isActive: true },
+      select: { id: true },
+    });
+    if (!owner) {
+      issues.unshift({
+        code: "OWNER_MISSING",
+        severity: "BLOCKING",
+        message: "ผู้รับผิดชอบเนื้อหาไม่ได้อยู่ในสถานะใช้งาน",
+      });
+    }
+  }
+  const otherSources = await db.knowledgeSource.findMany({
+    where: { id: { not: input.sourceId }, isArchived: false },
+    select: {
+      id: true,
+      revisions: {
+        orderBy: { revisionNo: "desc" },
+        take: 1,
+        select: { title: true, content: true },
+      },
+    },
+  });
+  issues.push(
+    ...findKnowledgeDuplicateIssues({
+      sourceId: input.sourceId,
+      title: input.title,
+      intro: content.intro,
+      others: otherSources.flatMap((source) => {
+        const revision = source.revisions[0];
+        if (!revision) return [];
+        try {
+          return [
+            {
+              sourceId: source.id,
+              title: revision.title,
+              intro: parseKnowledgeContent(revision.content).intro,
+            },
+          ];
+        } catch {
+          return [];
+        }
+      }),
+    }),
+  );
+  if (issues[0]) {
+    throw new Error(`KNOWLEDGE_QUALITY_GATE:${issues[0].code}`);
+  }
 }
 
 export async function publishKnowledgeRevision(jobId: string): Promise<void> {
@@ -146,6 +238,7 @@ export async function publishKnowledgeRevision(jobId: string): Promise<void> {
   if (claimed.count !== 1) return;
 
   try {
+    await assertKnowledgePublishQuality(job.revision);
     const stagedIds = await stageChunks({
       source: job.revision.source,
       revision: job.revision,
@@ -201,6 +294,24 @@ export async function publishKnowledgeRevision(jobId: string): Promise<void> {
         data: { status: KnowledgeRevisionStatus.SYNC_FAILED, syncError: message },
       }),
     ]);
+    await notifyKnowledgeRagFailure({
+      sourceId: job.revision.sourceId,
+      revisionId: job.revisionId,
+      jobId: job.id,
+      title: job.revision.title,
+      failureType: message.startsWith("KNOWLEDGE_QUALITY_GATE:")
+        ? "QUALITY_GATE"
+        : "SYNC",
+      errorCode: message,
+    }).catch((notificationError) => {
+      console.error("[knowledge-rag] failure notification failed", {
+        jobId: job.id,
+        errorName:
+          notificationError instanceof Error
+            ? notificationError.name
+            : "UnknownError",
+      });
+    });
     throw error;
   }
 }

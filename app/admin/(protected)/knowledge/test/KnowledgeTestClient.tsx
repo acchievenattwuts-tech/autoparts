@@ -1,8 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bot, LoaderCircle, Search } from "lucide-react";
+import { Bot, LoaderCircle, Search, ThumbsDown, ThumbsUp } from "lucide-react";
 import { testKnowledgeQuestion } from "../actions";
+import { submitKnowledgeRagFeedback } from "../quality/actions";
+import {
+  KNOWLEDGE_FEEDBACK_REASONS,
+  type KnowledgeFeedbackReason,
+} from "@/lib/knowledge-rag-feedback";
 
 type Result = Awaited<ReturnType<typeof testKnowledgeQuestion>>;
 
@@ -11,17 +16,49 @@ export default function KnowledgeTestClient() {
   const [channel, setChannel] = useState<"line" | "messenger">("line");
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
+  const [feedbackPending, startFeedbackTransition] = useTransition();
+  const [badReason, setBadReason] =
+    useState<Exclude<KnowledgeFeedbackReason, "HELPFUL">>("INCOMPLETE");
+  const [feedbackState, setFeedbackState] = useState<{
+    saved: boolean;
+    error?: string;
+  } | null>(null);
 
   const runTest = () => {
     const value = question.trim();
     if (pending || value.length < 2) return;
     setResult(null);
+    setFeedbackState(null);
     startTransition(async () => {
       try {
         setResult(await testKnowledgeQuestion(value, channel));
       } catch {
         setResult({ error: "ทดสอบไม่สำเร็จ กรุณาลองใหม่" });
       }
+    });
+  };
+
+  const saveFeedback = (rating: "GOOD" | "BAD") => {
+    if (
+      feedbackPending ||
+      !result ||
+      !("success" in result) ||
+      !result.success ||
+      !result.feedbackContext
+    ) {
+      return;
+    }
+    startFeedbackTransition(async () => {
+      const response = await submitKnowledgeRagFeedback({
+        ...result.feedbackContext,
+        rating,
+        reasonCode: rating === "GOOD" ? "HELPFUL" : badReason,
+      });
+      setFeedbackState(
+        response.success
+          ? { saved: true }
+          : { saved: false, error: response.error ?? "บันทึกไม่สำเร็จ" },
+      );
     });
   };
 
@@ -110,6 +147,70 @@ export default function KnowledgeTestClient() {
                 ))}
               </ul>
             )}
+            <div className="mt-5 border-t border-slate-200 pt-4 dark:border-white/10">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                คำตอบนี้มีคุณภาพหรือไม่
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                ระบบเก็บเฉพาะคะแนน เหตุผล และ query hash ไม่เก็บข้อความที่พิมพ์
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={feedbackPending || feedbackState?.saved}
+                  onClick={() => saveFeedback("GOOD")}
+                  className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-500/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                >
+                  {feedbackPending ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ThumbsUp className="h-4 w-4" />
+                  )}
+                  ดี
+                </button>
+                <select
+                  value={badReason}
+                  disabled={feedbackPending || feedbackState?.saved}
+                  onChange={(event) =>
+                    setBadReason(
+                      event.target.value as Exclude<
+                        KnowledgeFeedbackReason,
+                        "HELPFUL"
+                      >,
+                    )
+                  }
+                  aria-label="เหตุผลที่คำตอบต้องปรับปรุง"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50 dark:border-white/10 dark:bg-slate-900"
+                >
+                  {Object.entries(KNOWLEDGE_FEEDBACK_REASONS)
+                    .filter(([code]) => code !== "HELPFUL")
+                    .map(([code, label]) => (
+                      <option key={code} value={code}>
+                        {label}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={feedbackPending || feedbackState?.saved}
+                  onClick={() => saveFeedback("BAD")}
+                  className="inline-flex items-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                >
+                  <ThumbsDown className="h-4 w-4" />
+                  ต้องปรับ
+                </button>
+              </div>
+              {feedbackState && (
+                <p
+                  className={`mt-3 text-xs ${feedbackState.saved ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}
+                  role={feedbackState.saved ? "status" : "alert"}
+                >
+                  {feedbackState.saved
+                    ? "บันทึก feedback แล้ว"
+                    : feedbackState.error}
+                </p>
+              )}
+            </div>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
             <h2 className="font-kanit font-semibold text-slate-900 dark:text-white">

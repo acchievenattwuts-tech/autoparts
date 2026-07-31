@@ -5,7 +5,10 @@ import {
   buildKnowledgeSourceHash,
   getApprovedKnowledgeDocuments,
 } from "@/lib/knowledge-corpus";
-import { parseGroundedKnowledgeAnswer } from "@/lib/chat-core/knowledge-rag";
+import {
+  isKnowledgeRagHumanOnlyQuestion,
+  parseGroundedKnowledgeAnswer,
+} from "@/lib/chat-core/knowledge-rag";
 import {
   formatKnowledgeDocumentForEmbedding,
   formatKnowledgeQueryForEmbedding,
@@ -57,6 +60,8 @@ test("grounded answer rejects missing or invented citations", () => {
       source_urls: ["https://example.com/faq"],
       semantic_score: 0.8,
       lexical_score: 0.1,
+      title_score: 0.1,
+      section_score: 0.1,
       hybrid_score: 0.66,
     },
   ];
@@ -91,6 +96,17 @@ test("warranty, returns and shipping are admin-only with June-style replies", ()
     assert.ok(
       route.intent === LineIntent.CLAIM_OR_RETURN || route.intent === LineIntent.SHIPPING_ADDRESS,
     );
+  }
+});
+
+test("product and transaction hard negatives never enter Knowledge RAG", () => {
+  for (const question of [
+    "คอมแอร์รุ่นนี้ราคาเท่าไร",
+    "มีของพร้อมส่งไหม",
+    "อะไหล่ตัวนี้ใส่รถผมได้ไหม",
+    "ขอใบเสนอราคาสินค้าชุดนี้",
+  ]) {
+    assert.equal(isKnowledgeRagHumanOnlyQuestion(question), true);
   }
 });
 

@@ -12,6 +12,11 @@ import {
   detectAdminOnlyKnowledgeTopic,
   type AdminOnlyKnowledgeTopic,
 } from "@/lib/chat-core/admin-only-knowledge";
+import {
+  defaultKnowledgeGovernance,
+  KNOWLEDGE_FRESHNESS_DAYS,
+  knowledgeEvidenceLevelLabel,
+} from "@/lib/knowledge-cms-quality";
 import { createKnowledgeDraft, updateKnowledgeDraft } from "./actions";
 
 type EditorValue = {
@@ -30,6 +35,8 @@ type EditorValue = {
   updatedAt?: string;
 };
 
+type OwnerOption = { id: string; name: string };
+
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-orange-400 focus:ring-2 focus:ring-orange-200 dark:border-white/10 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-orange-400 dark:focus:ring-orange-500/20";
 const labelClass =
@@ -40,12 +47,18 @@ const emptySection = (): KnowledgeSection => ({
   body: [""],
   format: "PARAGRAPHS",
   aiEnabled: true,
+  evidenceUrls: [],
+  evidenceNote: "",
 });
 
 export default function KnowledgeEditor({
   initial,
+  ownerOptions,
+  currentUserId,
 }: {
   initial?: EditorValue;
+  ownerOptions: OwnerOption[];
+  currentUserId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -68,6 +81,13 @@ export default function KnowledgeEditor({
   );
   const [sourceUrls, setSourceUrls] = useState(
     (initial?.sourceUrls ?? []).join("\n"),
+  );
+  const [governance, setGovernance] = useState(
+    initial?.content.governance ??
+      defaultKnowledgeGovernance(
+        initial?.type ?? "FAQ",
+        currentUserId,
+      ),
   );
   const sourceAdminTopic = detectAdminOnlyKnowledgeTopic(
     [title, intro, highlights].filter(Boolean).join("\n"),
@@ -110,11 +130,20 @@ export default function KnowledgeEditor({
         heading: section.heading.trim(),
         body: section.body.map((item) => item.trim()).filter(Boolean),
         aiEnabled: section.aiEnabled && !sectionAdminTopic(section),
+        evidenceUrls: (section.evidenceUrls ?? [])
+          .map((item) => item.trim())
+          .filter(Boolean),
+        evidenceNote: section.evidenceNote?.trim() || undefined,
       })),
       relatedSearches: lines(relatedSearches),
       internalLinks: initial?.content.internalLinks ?? [],
       readingMinutes: Math.max(1, Number(formData.get("readingMinutes")) || 3),
       publishedAt: initial?.content.publishedAt,
+      governance: {
+        ...governance,
+        ownerUserId: governance.ownerUserId?.trim() || undefined,
+        evidenceNotes: governance.evidenceNotes?.trim() || undefined,
+      },
     };
     formData.set("type", type);
     formData.set("riskLevel", riskLevel);
@@ -148,7 +177,22 @@ export default function KnowledgeEditor({
             <select
               value={type}
               disabled={Boolean(initial)}
-              onChange={(e) => setType(e.target.value as EditorValue["type"])}
+              onChange={(e) => {
+                const nextType = e.target.value as EditorValue["type"];
+                setType(nextType);
+                if (!initial) {
+                  setGovernance((current) => ({
+                    ...defaultKnowledgeGovernance(
+                      nextType,
+                      current.ownerUserId || currentUserId,
+                      current.reviewedOn,
+                    ),
+                    evidenceLevel: current.evidenceLevel,
+                    evidenceNotes: current.evidenceNotes,
+                    checklist: current.checklist,
+                  }));
+                }
+              }}
               className={`${inputClass} disabled:cursor-not-allowed disabled:opacity-60`}
             >
               <option value="FAQ">FAQ</option>
@@ -302,6 +346,38 @@ export default function KnowledgeEditor({
                   className={`${inputClass} mt-3`}
                   placeholder="หนึ่งย่อหน้าหรือหนึ่งรายการต่อบรรทัด"
                 />
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <label className={labelClass}>
+                      URL หลักฐานเฉพาะหัวข้อนี้
+                    </label>
+                    <textarea
+                      value={(section.evidenceUrls ?? []).join("\n")}
+                      onChange={(event) =>
+                        updateSection(index, {
+                          evidenceUrls: event.target.value.split(/\r?\n/),
+                        })
+                      }
+                      rows={3}
+                      className={inputClass}
+                      placeholder="เว้นว่างเพื่อใช้แหล่งอ้างอิงหลักของเอกสาร"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>หมายเหตุหลักฐาน</label>
+                    <textarea
+                      value={section.evidenceNote ?? ""}
+                      onChange={(event) =>
+                        updateSection(index, {
+                          evidenceNote: event.target.value,
+                        })
+                      }
+                      rows={3}
+                      className={inputClass}
+                      placeholder="ระบุว่าหลักฐานรองรับข้อเท็จจริงใด"
+                    />
+                  </div>
+                </div>
                 <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <input
                     type="checkbox"
@@ -411,6 +487,147 @@ export default function KnowledgeEditor({
               className={inputClass}
             />
           </div>
+        </div>
+      </AdminSectionCard>
+
+      <AdminSectionCard
+        title="ผู้รับผิดชอบและรอบตรวจทาน"
+        description={`มาตรฐานทบทวน: FAQ ${KNOWLEDGE_FRESHNESS_DAYS.FAQ} วัน · บทความ ${KNOWLEDGE_FRESHNESS_DAYS.ARTICLE} วัน · นโยบาย ${KNOWLEDGE_FRESHNESS_DAYS.POLICY} วัน`}
+      >
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <label className={labelClass}>ผู้รับผิดชอบเนื้อหา *</label>
+              <select
+                value={governance.ownerUserId ?? ""}
+                onChange={(event) =>
+                  setGovernance((current) => ({
+                    ...current,
+                    ownerUserId: event.target.value,
+                  }))
+                }
+                className={inputClass}
+              >
+                <option value="">เลือกผู้รับผิดชอบ</option>
+                {ownerOptions.map((owner) => (
+                  <option key={owner.id} value={owner.id}>
+                    {owner.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>ระดับหลักฐาน *</label>
+              <select
+                value={governance.evidenceLevel ?? "UNVERIFIED"}
+                onChange={(event) =>
+                  setGovernance((current) => ({
+                    ...current,
+                    evidenceLevel: event.target
+                      .value as NonNullable<typeof current.evidenceLevel>,
+                  }))
+                }
+                className={inputClass}
+              >
+                {Object.entries(knowledgeEvidenceLevelLabel).map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>ตรวจทานล่าสุด *</label>
+              <input
+                type="date"
+                value={governance.reviewedOn ?? ""}
+                onChange={(event) =>
+                  setGovernance((current) => ({
+                    ...current,
+                    reviewedOn: event.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>ครบกำหนดทบทวน *</label>
+              <input
+                type="date"
+                value={governance.validUntil ?? ""}
+                onChange={(event) =>
+                  setGovernance((current) => ({
+                    ...current,
+                    validUntil: event.target.value,
+                  }))
+                }
+                className={inputClass}
+              />
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>หมายเหตุแหล่งข้อมูล</label>
+            <textarea
+              value={governance.evidenceNotes ?? ""}
+              onChange={(event) =>
+                setGovernance((current) => ({
+                  ...current,
+                  evidenceNotes: event.target.value,
+                }))
+              }
+              rows={3}
+              className={inputClass}
+              placeholder="สรุปว่าใครตรวจอะไร และแหล่งข้อมูลรองรับส่วนใด"
+            />
+          </div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {[
+              ["factsChecked", "ตรวจข้อเท็จจริงกับแหล่งข้อมูลแล้ว"],
+              ["sourcesTraceable", "ย้อนกลับไปยังแหล่งข้อมูลได้"],
+              ["aiScopeReviewed", "ตรวจขอบเขตคำตอบ AI แล้ว"],
+              [
+                "adminOnlyTopicsReviewed",
+                "ตรวจหัวข้อที่ต้องส่งแอดมินแล้ว",
+              ],
+            ].map(([key, label]) => (
+              <label
+                key={key}
+                className="flex items-start gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700 dark:border-white/10 dark:text-slate-300"
+              >
+                <input
+                  type="checkbox"
+                  checked={
+                    governance.checklist?.[
+                      key as keyof NonNullable<typeof governance.checklist>
+                    ] ?? false
+                  }
+                  onChange={(event) =>
+                    setGovernance((current) => ({
+                      ...current,
+                      checklist: {
+                        factsChecked:
+                          current.checklist?.factsChecked ?? false,
+                        sourcesTraceable:
+                          current.checklist?.sourcesTraceable ?? false,
+                        aiScopeReviewed:
+                          current.checklist?.aiScopeReviewed ?? false,
+                        adminOnlyTopicsReviewed:
+                          current.checklist?.adminOnlyTopicsReviewed ?? false,
+                        [key]: event.target.checked,
+                      },
+                    }))
+                  }
+                  className="mt-0.5"
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            บันทึกร่างได้แม้ข้อมูลยังไม่ครบ แต่ระบบจะไม่ให้ส่งอนุมัติจนกว่าจะผ่านทุกข้อ
+          </p>
         </div>
       </AdminSectionCard>
 

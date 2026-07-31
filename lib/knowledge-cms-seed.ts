@@ -3,6 +3,10 @@ import { knowledgeArticles } from "@/lib/knowledge-content";
 import { APPROVED_KNOWLEDGE_ARTICLE_SLUGS } from "@/lib/knowledge-corpus";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 import type { KnowledgeContent } from "@/lib/knowledge-cms-types";
+import {
+  addDaysToDateString,
+  KNOWLEDGE_FRESHNESS_DAYS,
+} from "@/lib/knowledge-cms-quality";
 
 export type KnowledgeSeedEntry = {
   sourceKey: string;
@@ -21,7 +25,39 @@ export type KnowledgeSeedEntry = {
 const approvedArticleSlugs = new Set<string>(APPROVED_KNOWLEDGE_ARTICLE_SLUGS);
 // Shipping, shipping fees, warranty and returns are always admin-owned in chat.
 // They may remain public storefront content, but must not enter the RAG corpus.
-const approvedFaqIndexes = new Set([0, 1, 2, 4, 10]);
+const approvedFaqIndexes = new Set([0, 1, 2, 4, 12, 13, 14]);
+const reviewedOn = "2026-07-31";
+const approvedChecklist = {
+  factsChecked: true,
+  sourcesTraceable: true,
+  aiScopeReviewed: true,
+  adminOnlyTopicsReviewed: true,
+};
+const articleExternalSources: Partial<Record<string, string[]>> = {
+  "how-to-choose-the-right-ac-compressor": [
+    "https://www.hella.com/techworld/en/car-parts/thermal-management/a-c-compressors/",
+  ],
+  "how-to-check-oem-part-number-before-ordering": [
+    "https://www.denso-am.eu/de/news/201604-neue-kompressor-labels",
+  ],
+  "can-one-ac-part-fit-multiple-car-models": [
+    "https://www.hella.com/techworld/ae/technical/car-air-conditioning/car-air-conditioning/",
+    "https://www.mahle-aftermarket.com/media/homepage/facelift/media-center/klima/kompaktwissen-ac-fahrzeugklimatisierung-en-screen.pdf",
+  ],
+  "how-to-check-compressor-plug-pulley-and-mounting-points": [
+    "https://www.hella.com/techworld/ae/technical/car-air-conditioning/car-air-conditioning/",
+  ],
+};
+const faqEvidenceSources: Partial<Record<number, string[]>> = {
+  12: [absoluteUrl("/knowledge/how-to-compare-old-part-before-chatting-with-the-shop")],
+  13: [absoluteUrl("/knowledge/how-to-check-oem-part-number-before-ordering")],
+  14: [
+    absoluteUrl(
+      "/knowledge/how-to-check-compressor-plug-pulley-and-mounting-points",
+    ),
+    "https://www.hella.com/techworld/ae/technical/car-air-conditioning/car-air-conditioning/",
+  ],
+};
 
 const articleEntries: KnowledgeSeedEntry[] = knowledgeArticles.map((article) => {
   const ragEnabled = approvedArticleSlugs.has(article.slug);
@@ -45,11 +81,29 @@ const articleEntries: KnowledgeSeedEntry[] = knowledgeArticles.map((article) => 
       internalLinks: article.internalLinks ?? [],
       readingMinutes: article.readingMinutes,
       publishedAt: article.publishedAt,
+      governance: {
+        ownerUserId: undefined,
+        reviewedOn,
+        validUntil: addDaysToDateString(
+          reviewedOn,
+          KNOWLEDGE_FRESHNESS_DAYS.ARTICLE,
+        ),
+        evidenceLevel: articleExternalSources[article.slug]
+          ? "MULTIPLE_SOURCES"
+          : "INTERNAL_REVIEWED",
+        evidenceNotes: articleExternalSources[article.slug]
+          ? "ตรวจเทียบกับเอกสารทางเทคนิคของผู้ผลิต/ผู้ให้บริการอะไหล่ และข้อกำหนดภายในร้าน"
+          : "ตรวจทานจากขั้นตอนการให้ข้อมูลลูกค้าและเนื้อหาที่อนุมัติภายในร้าน",
+        checklist: approvedChecklist,
+      },
     },
     answerScope: "ใช้ช่วยลูกค้าเตรียมข้อมูลและคัดกรองเบื้องต้นเท่านั้น ห้ามยืนยันสินค้า ราคา สต็อก ความตรงรุ่น ผลวินิจฉัย หรือผลเคลม",
     riskLevel: "LOW",
     ragEnabled,
-    sourceUrls: [absoluteUrl(`/knowledge/${article.slug}`)],
+    sourceUrls: [
+      absoluteUrl(`/knowledge/${article.slug}`),
+      ...(articleExternalSources[article.slug] ?? []),
+    ],
   };
 });
 
@@ -67,11 +121,27 @@ const faqEntries: KnowledgeSeedEntry[] = storefrontFaqItems.map((faq, index) => 
     relatedSearches: [],
     internalLinks: [],
     readingMinutes: 1,
+    governance: {
+      ownerUserId: undefined,
+      reviewedOn,
+      validUntil: addDaysToDateString(
+        reviewedOn,
+        KNOWLEDGE_FRESHNESS_DAYS.FAQ,
+      ),
+      evidenceLevel: faqEvidenceSources[index]
+        ? "MULTIPLE_SOURCES"
+        : "INTERNAL_REVIEWED",
+      evidenceNotes: "ตรวจทานกับข้อมูลหน้าร้านและบทความที่อนุมัติแล้ว",
+      checklist: approvedChecklist,
+    },
   },
   answerScope: "ตอบได้เฉพาะข้อมูลทั่วไปตามข้อความนี้ ห้ามยืนยันราคา สต็อก ความตรงรุ่น การชำระเงิน หรือสถานะออเดอร์",
   riskLevel: index === 4 ? "MEDIUM" : "LOW",
   ragEnabled: approvedFaqIndexes.has(index),
-  sourceUrls: [absoluteUrl("/faq")],
+  sourceUrls: [
+    absoluteUrl("/faq"),
+    ...(faqEvidenceSources[index] ?? []),
+  ],
 }));
 
 const policyEntry: KnowledgeSeedEntry = {
@@ -159,6 +229,18 @@ const policyEntry: KnowledgeSeedEntry = {
     relatedSearches: ["เงื่อนไขรับประกันอะไหล่รถยนต์", "คืนสินค้า", "สินค้าเสียหายจากขนส่ง", "ขั้นตอนเคลม"],
     internalLinks: [],
     readingMinutes: 5,
+    governance: {
+      ownerUserId: undefined,
+      reviewedOn,
+      validUntil: addDaysToDateString(
+        reviewedOn,
+        KNOWLEDGE_FRESHNESS_DAYS.POLICY,
+      ),
+      evidenceLevel: "INTERNAL_REVIEWED",
+      evidenceNotes:
+        "นโยบายให้แอดมินตอบเท่านั้น ต้องตรวจทานกับเจ้าของร้านทุก 30 วัน",
+      checklist: approvedChecklist,
+    },
   },
   answerScope: "อธิบายเงื่อนไขและขั้นตอนทั่วไปได้ แต่ห้ามยืนยันผลเคลมของเคสจริงหรือรับรองว่าสินค้ารายการใดอยู่ในการรับประกัน",
   riskLevel: "MEDIUM",

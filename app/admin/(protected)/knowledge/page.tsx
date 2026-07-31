@@ -3,10 +3,12 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import {
   BookOpenCheck,
+  CalendarClock,
   CircleAlert,
   Clock3,
   Plus,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
@@ -20,6 +22,13 @@ import type {
   KnowledgeSourceType,
 } from "@/lib/generated/prisma";
 import { formatKnowledgeTimestamp } from "@/lib/knowledge-cms-format";
+import { parseKnowledgeContent } from "@/lib/knowledge-cms-types";
+import {
+  assessKnowledgeQuality,
+  expiryUrgency,
+  findKnowledgeDuplicateIssues,
+  knowledgeEvidenceLevelLabel,
+} from "@/lib/knowledge-cms-quality";
 import { requirePermission } from "@/lib/require-auth";
 import KnowledgeTabs from "./KnowledgeTabs";
 
@@ -67,7 +76,15 @@ export default async function KnowledgeAdminPage({
   ].includes(params.status ?? "")
     ? (params.status as KnowledgeRevisionStatus)
     : undefined;
-  const [sources, activeCount, pendingCount, failedCount, syncState] =
+  const [
+    sources,
+    activeCount,
+    pendingCount,
+    failedCount,
+    syncState,
+    activeInventory,
+    activeUsers,
+  ] =
     await Promise.all([
       listKnowledgeAdmin({ query: params.q?.trim(), type, status }),
       db.knowledgeSource.count({
@@ -80,7 +97,76 @@ export default async function KnowledgeAdminPage({
         orderBy: { finishedAt: "desc" },
         select: { finishedAt: true },
       }),
+      db.knowledgeSource.findMany({
+        where: { isArchived: false, activeRevisionId: { not: null } },
+        select: {
+          id: true,
+          type: true,
+          activeRevision: {
+            select: {
+              title: true,
+              content: true,
+              ragEnabled: true,
+              sourceUrls: true,
+            },
+          },
+        },
+      }),
+      db.user.findMany({
+        select: { id: true, name: true, isActive: true },
+      }),
     ]);
+  const ownerNames = new Map(activeUsers.map((user) => [user.id, user.name]));
+  const inventoryRows = activeInventory.flatMap((source) => {
+    if (!source.activeRevision) return [];
+    const content = parseKnowledgeContent(source.activeRevision.content);
+    const sourceUrls = Array.isArray(source.activeRevision.sourceUrls)
+      ? source.activeRevision.sourceUrls.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [];
+    return [
+      {
+        sourceId: source.id,
+        type: source.type,
+        title: source.activeRevision.title,
+        intro: content.intro,
+        content,
+        ragEnabled: source.activeRevision.ragEnabled,
+        sourceUrls,
+      },
+    ];
+  });
+  const qualityBySourceId = new Map(
+    inventoryRows.map((row) => {
+      const qualityIssues = assessKnowledgeQuality(row);
+      const duplicateIssues = findKnowledgeDuplicateIssues({
+        sourceId: row.sourceId,
+        title: row.title,
+        intro: row.intro,
+        others: inventoryRows,
+      });
+      return [row.sourceId, [...qualityIssues, ...duplicateIssues]] as const;
+    }),
+  );
+  const needsReviewCount = inventoryRows.filter(
+    (row) => (qualityBySourceId.get(row.sourceId)?.length ?? 0) > 0,
+  ).length;
+  const expiredCount = inventoryRows.filter(
+    (row) => expiryUrgency(row.content.governance?.validUntil) === "EXPIRED",
+  ).length;
+  const dueSoonCount = inventoryRows.filter(
+    (row) => expiryUrgency(row.content.governance?.validUntil) === "DUE_SOON",
+  ).length;
+  const duplicateCount = inventoryRows.filter((row) =>
+    qualityBySourceId
+      .get(row.sourceId)
+      ?.some(
+        (issue) =>
+          issue.code === "DUPLICATE_TITLE" ||
+          issue.code === "CONFLICTING_ANSWER",
+      ),
+  ).length;
   const cards = [
     {
       label: "ใช้งานอยู่",
@@ -109,6 +195,33 @@ export default async function KnowledgeAdminPage({
       tone: "text-sky-600",
     },
   ];
+  const qualityCards = [
+    {
+      label: "ต้องปรับข้อมูลกำกับ",
+      value: needsReviewCount,
+      icon: ShieldCheck,
+      tone:
+        needsReviewCount > 0 ? "text-amber-600" : "text-emerald-600",
+    },
+    {
+      label: "เกินกำหนดทบทวน",
+      value: expiredCount,
+      icon: CalendarClock,
+      tone: expiredCount > 0 ? "text-rose-600" : "text-emerald-600",
+    },
+    {
+      label: "ครบกำหนดใน 30 วัน",
+      value: dueSoonCount,
+      icon: Clock3,
+      tone: dueSoonCount > 0 ? "text-amber-600" : "text-emerald-600",
+    },
+    {
+      label: "ซ้ำหรือขัดแย้ง",
+      value: duplicateCount,
+      icon: CircleAlert,
+      tone: duplicateCount > 0 ? "text-rose-600" : "text-emerald-600",
+    },
+  ];
   return (
     <div className="space-y-5">
       <AdminPageHeader
@@ -128,6 +241,24 @@ export default async function KnowledgeAdminPage({
       <KnowledgeTabs active="library" />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
+          <div
+            key={card.label}
+            className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80"
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {card.label}
+              </p>
+              <card.icon className={`h-5 w-5 ${card.tone}`} />
+            </div>
+            <p className="mt-2 text-xl font-semibold text-slate-950 dark:text-white">
+              {card.value}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {qualityCards.map((card) => (
           <div
             key={card.label}
             className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80"
@@ -207,6 +338,8 @@ export default async function KnowledgeAdminPage({
                 <th className="px-4 py-3">ประเภท</th>
                 <th className="px-4 py-3">สถานะ</th>
                 <th className="px-4 py-3">AI</th>
+                <th className="px-4 py-3">คุณภาพ</th>
+                <th className="px-4 py-3">ผู้รับผิดชอบ / ทบทวน</th>
                 <th className="px-4 py-3">อัปเดต</th>
               </tr>
             </thead>
@@ -214,6 +347,35 @@ export default async function KnowledgeAdminPage({
               {sources.map((source) => {
                 const revision = source.revisions[0] ?? source.activeRevision;
                 const currentStatus = revision?.status ?? "ARCHIVED";
+                const content = revision
+                  ? parseKnowledgeContent(revision.content)
+                  : null;
+                const revisionUrls =
+                  revision && Array.isArray(revision.sourceUrls)
+                    ? revision.sourceUrls.filter(
+                        (item): item is string => typeof item === "string",
+                      )
+                    : [];
+                const qualityIssues = revision
+                  ? [
+                      ...assessKnowledgeQuality({
+                        type: source.type,
+                        content: content!,
+                        ragEnabled: revision.ragEnabled,
+                        sourceUrls: revisionUrls,
+                      }),
+                      ...(qualityBySourceId
+                        .get(source.id)
+                        ?.filter(
+                          (issue) =>
+                            issue.code === "DUPLICATE_TITLE" ||
+                            issue.code === "CONFLICTING_ANSWER",
+                        ) ?? []),
+                    ]
+                  : [];
+                const ownerName = content?.governance?.ownerUserId
+                  ? ownerNames.get(content.governance.ownerUserId)
+                  : source.revisions[0]?.createdByUser.name;
                 return (
                   <tr
                     key={source.id}
@@ -229,6 +391,39 @@ export default async function KnowledgeAdminPage({
                       <p className="mt-1 text-xs text-slate-500">
                         {source.slug ?? source.sourceKey}
                       </p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {qualityIssues.length === 0 ? (
+                        <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200">
+                          พร้อมใช้งาน
+                        </span>
+                      ) : (
+                        <span
+                          title={qualityIssues
+                            .map((issue) => issue.message)
+                            .join("\n")}
+                          className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-200"
+                        >
+                          ต้องตรวจ {qualityIssues.length} จุด
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
+                      <p>{ownerName ?? "ยังไม่กำหนด"}</p>
+                      <p className="mt-1 text-slate-500">
+                        {content?.governance?.validUntil
+                          ? `ครบกำหนด ${content.governance.validUntil}`
+                          : "ยังไม่กำหนดวันทบทวน"}
+                      </p>
+                      {content?.governance?.evidenceLevel && (
+                        <p className="mt-1 text-slate-500">
+                          {
+                            knowledgeEvidenceLevelLabel[
+                              content.governance.evidenceLevel
+                            ]
+                          }
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       {source.type}
@@ -258,7 +453,7 @@ export default async function KnowledgeAdminPage({
               {sources.length === 0 && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={7}
                     className="px-4 py-10 text-center text-slate-500"
                   >
                     ไม่พบรายการ

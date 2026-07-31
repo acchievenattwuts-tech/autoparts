@@ -44,7 +44,14 @@ async function main() {
       skipped += 1;
       continue;
     }
-    const checksum = buildKnowledgeRevisionChecksum(entry);
+    const content = {
+      ...entry.content,
+      governance: {
+        ...entry.content.governance,
+        ownerUserId: entry.content.governance?.ownerUserId || actor.id,
+      },
+    };
+    const checksum = buildKnowledgeRevisionChecksum({ ...entry, content });
     const source = await db.knowledgeSource.create({
       data: {
         sourceKey: entry.sourceKey,
@@ -57,7 +64,7 @@ async function main() {
             title: entry.title,
             description: entry.description,
             category: entry.category,
-            content: entry.content,
+            content,
             answerScope: entry.answerScope,
             riskLevel: entry.riskLevel,
             ragEnabled: entry.ragEnabled,

@@ -6,6 +6,34 @@ export const knowledgeSectionSchema = z.object({
   body: z.array(z.string().trim().min(1).max(4_000)).max(50),
   format: z.enum(["PARAGRAPHS", "BULLETS", "STEPS", "TABLE"]).default("PARAGRAPHS"),
   aiEnabled: z.boolean().default(true),
+  evidenceUrls: z
+    .array(z.string().url("URL หลักฐานระดับหัวข้อไม่ถูกต้อง"))
+    .max(10)
+    .optional(),
+  evidenceNote: z.string().trim().max(1_000).optional(),
+});
+
+export const knowledgeEvidenceLevelSchema = z.enum([
+  "UNVERIFIED",
+  "INTERNAL_REVIEWED",
+  "PRIMARY_SOURCE",
+  "MULTIPLE_SOURCES",
+]);
+
+export const knowledgeGovernanceSchema = z.object({
+  ownerUserId: z.string().trim().max(100).optional(),
+  reviewedOn: z.string().date().optional(),
+  validUntil: z.string().date().optional(),
+  evidenceLevel: knowledgeEvidenceLevelSchema.optional(),
+  evidenceNotes: z.string().trim().max(2_000).optional(),
+  checklist: z
+    .object({
+      factsChecked: z.boolean(),
+      sourcesTraceable: z.boolean(),
+      aiScopeReviewed: z.boolean(),
+      adminOnlyTopicsReviewed: z.boolean(),
+    })
+    .optional(),
 });
 
 export const knowledgeContentSchema = z.object({
@@ -20,10 +48,13 @@ export const knowledgeContentSchema = z.object({
   })).max(20).default([]),
   readingMinutes: z.number().int().min(1).max(60).default(3),
   publishedAt: z.string().date().optional(),
+  governance: knowledgeGovernanceSchema.optional(),
 });
 
 export type KnowledgeContent = z.infer<typeof knowledgeContentSchema>;
 export type KnowledgeSection = z.infer<typeof knowledgeSectionSchema>;
+export type KnowledgeGovernance = z.infer<typeof knowledgeGovernanceSchema>;
+export type KnowledgeEvidenceLevel = z.infer<typeof knowledgeEvidenceLevelSchema>;
 
 export function parseKnowledgeContent(value: unknown): KnowledgeContent {
   return knowledgeContentSchema.parse(value);

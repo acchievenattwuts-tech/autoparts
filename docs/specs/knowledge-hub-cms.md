@@ -1,6 +1,6 @@
 # Knowledge Hub CMS
 
-> สถานะล่าสุด 2026-07-30: Knowledge CMS ใช้งานจริงแล้ว และเพิ่ม safety baseline สำหรับ RAG ตาม [Knowledge RAG Roadmap](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md) เรื่องประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งยังแสดงบน storefront ได้ แต่ถูกบล็อกจาก AI ที่ชั้น editor, server validation, approval และ publisher ส่วน Product Search ยังคงแยก logic และ embedding model เดิม
+> สถานะล่าสุด 2026-07-31: Knowledge CMS ใช้งานจริงและผ่าน Round A–D ตาม [Knowledge RAG Roadmap](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md) มี owner/review/expiry/evidence ต่อ revision, หลักฐานระดับหัวข้อ, quality gate ก่อนอนุมัติและ publish, production inventory 38 แหล่ง, retrieval quality gate และ operations dashboard/feedback/gap workflow แบบไม่เก็บข้อความลูกค้า เรื่องประกัน/คืนสินค้า/ค่าจัดส่ง/การจัดส่งยังแสดงบน storefront ได้ แต่ถูกบล็อกจาก AI ส่วน Product Search ยังคงแยก logic และ embedding model เดิม
 
 ## Goal
 

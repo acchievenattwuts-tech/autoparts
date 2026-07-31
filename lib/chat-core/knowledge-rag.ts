@@ -1,4 +1,3 @@
-import { createHash } from "crypto";
 import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { generateGeminiContent } from "@/lib/google-ai-client";
@@ -10,6 +9,21 @@ import {
 } from "@/lib/knowledge-embeddings";
 import { CHAT_CALL_TIMEOUT_MS, CHAT_MAX_KEY_ATTEMPTS } from "@/lib/chat-core/ai-service";
 import { detectAdminOnlyKnowledgeTopic } from "@/lib/chat-core/admin-only-knowledge";
+import {
+  getProductionKnowledgeRetrievalPolicy,
+  KNOWLEDGE_RAG_BLOCKED_SOURCE_REFS,
+  type KnowledgeRetrievalPolicy,
+} from "@/lib/knowledge-rag-retrieval-policy";
+import {
+  buildKnowledgeRagTelemetryEvent,
+  hashKnowledgeRagQuery,
+  type KnowledgeRagTelemetryEvent,
+  type KnowledgeRagTelemetryOutcome,
+} from "@/lib/knowledge-rag-telemetry";
+import {
+  isKnowledgeRagOperationsPersistenceEnabled,
+  recordKnowledgeRagOperationalEvent,
+} from "@/lib/knowledge-rag-operations";
 
 export type KnowledgeChatChannel = "line" | "messenger";
 export type KnowledgeCitation = { id: string; title: string; url: string | null };
@@ -28,56 +42,74 @@ type KnowledgeRow = {
   source_urls: unknown;
   semantic_score: number;
   lexical_score: number;
+  title_score: number;
+  section_score: number;
   hybrid_score: number;
 };
 
 const NOT_ANSWERED: KnowledgeRagAnswer = { answered: false, reply: "", citations: [] };
-const TOP_K = 5;
 const HUMAN_ONLY_QUESTION_RE =
-  /(ราคา|กี่บาท|เท่าไหร่|เท่าไร|สต็อก|มีของ|มีสินค้า|พร้อมส่ง|เก็บเงินปลายทาง|\bcod\b|ใบเสนอราคา|เลขบัญชี|โอนเงิน|ตรวจสลิป|สถานะออเดอร์|เลขพัสดุ|อนุมัติเคลม|ตรงรุ่น|ใส่ได้ไหม|ใช้ได้ไหม)/i;
+  /(ราคา|กี่บาท|เท่าไหร่|เท่าไร|สต็อก|มีของ|มีสินค้า|พร้อมส่ง|เก็บเงินปลายทาง|\bcod\b|ใบเสนอราคา|เลขบัญชี|โอนเงิน|ตรวจสลิป|สถานะออเดอร์|เลขพัสดุ|อนุมัติเคลม|ตรงรุ่น|ตรงกับ|ใส่ได้ไหม|ใส่.{0,24}(?:รถ|รุ่น|คัน).{0,24}ได้ไหม|ใช้ได้ไหม|ใช้กับ.{0,24}ได้ไหม)/i;
 
-type KnowledgeRagOutcome =
-  | "DISABLED"
-  | "HUMAN_ONLY"
-  | "NO_RETRIEVAL"
-  | "ANSWERED"
-  | "UNSUPPORTED"
-  | "GENERATION_ERROR";
+export function isKnowledgeRagHumanOnlyQuestion(question: string): boolean {
+  return (
+    HUMAN_ONLY_QUESTION_RE.test(question) ||
+    Boolean(detectAdminOnlyKnowledgeTopic(question))
+  );
+}
 
-function queryHash(question: string): string {
-  return createHash("sha256")
-    .update(question.trim().toLocaleLowerCase("th-TH"))
-    .digest("hex")
-    .slice(0, 16);
+export async function recordKnowledgeRagHumanOnlySignal(input: {
+  question: string;
+  channel: KnowledgeChatChannel;
+}): Promise<void> {
+  if (!isKnowledgeRagOperationsPersistenceEnabled()) return;
+  const policy = getProductionKnowledgeRetrievalPolicy();
+  const event = buildKnowledgeRagTelemetryEvent({
+    question: input.question,
+    channel: input.channel,
+    outcome: "HUMAN_ONLY",
+    latencyMs: 0,
+    retrievedCount: 0,
+    topHybridScore: null,
+    embeddingModel: getKnowledgeEmbeddingModelId(),
+    policy,
+  });
+  console.info("[knowledge-rag]", JSON.stringify(event));
+  try {
+    await recordKnowledgeRagOperationalEvent(event);
+  } catch (error) {
+    console.warn("[knowledge-rag] human-only metric write failed", {
+      event: "KNOWLEDGE_RAG_METRIC_WRITE_FAILED",
+      channel: input.channel,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
 }
 
 function emitKnowledgeRagTelemetry(input: {
   question: string;
   channel: KnowledgeChatChannel;
-  outcome: KnowledgeRagOutcome;
+  outcome: KnowledgeRagTelemetryOutcome;
   startedAt: number;
+  policy: KnowledgeRetrievalPolicy;
   rows?: KnowledgeRow[];
-}): void {
+}): KnowledgeRagTelemetryEvent {
   const topScore = input.rows?.[0]?.hybrid_score;
+  const event = buildKnowledgeRagTelemetryEvent({
+    question: input.question,
+    channel: input.channel,
+    outcome: input.outcome,
+    latencyMs: Date.now() - input.startedAt,
+    retrievedCount: input.rows?.length ?? 0,
+    topHybridScore: topScore === undefined ? null : Number(topScore),
+    embeddingModel: getKnowledgeEmbeddingModelId(),
+    policy: input.policy,
+  });
   console.info(
     "[knowledge-rag]",
-    JSON.stringify({
-      event: "KNOWLEDGE_RAG_QUERY",
-      channel: input.channel,
-      queryHash: queryHash(input.question),
-      outcome: input.outcome,
-      latencyMs: Date.now() - input.startedAt,
-      retrievedCount: input.rows?.length ?? 0,
-      topHybridScore:
-        topScore === undefined ? null : Number(Number(topScore).toFixed(4)),
-      embeddingModel: getKnowledgeEmbeddingModelId(),
-    }),
+    JSON.stringify(event),
   );
-}
-
-function threshold(name: string, fallback: number): number {
-  const parsed = Number(process.env[name]);
-  return Number.isFinite(parsed) ? Math.min(1, Math.max(0, parsed)) : fallback;
+  return event;
 }
 
 function firstUrl(value: unknown): string | null {
@@ -115,7 +147,10 @@ export function parseGroundedKnowledgeAnswer(
   }
 }
 
-export async function retrieveKnowledgeDocuments(question: string): Promise<KnowledgeRow[]> {
+export async function retrieveKnowledgeDocuments(
+  question: string,
+  policy: KnowledgeRetrievalPolicy = getProductionKnowledgeRetrievalPolicy(),
+): Promise<KnowledgeRow[]> {
   const vector = await embedKnowledgeQuery(question);
   if (!vector) return [];
   const vectorLiteral = toKnowledgePgVectorLiteral(vector);
@@ -130,7 +165,9 @@ export async function retrieveKnowledgeDocuments(question: string): Promise<Know
           GREATEST(
             similarity(f_unaccent(lower(search_text)), f_unaccent(lower(${question}))),
             ts_rank_cd(search_document, plainto_tsquery('simple', f_unaccent(${question})))
-          )::double precision AS lexical_score
+          )::double precision AS lexical_score,
+          similarity(f_unaccent(lower(title)), f_unaccent(lower(${question})))::double precision AS title_score,
+          similarity(f_unaccent(lower(section_heading)), f_unaccent(lower(${question})))::double precision AS section_score
         FROM knowledge_documents
         WHERE status = 'APPROVED'
           AND embedding IS NOT NULL
@@ -138,28 +175,29 @@ export async function retrieveKnowledgeDocuments(question: string): Promise<Know
           -- These sources stay public on the storefront, but chat policy makes
           -- warranty/returns and shipping admin-only even if older approved
           -- chunks still exist in production before the next CMS revision.
-          AND source_ref NOT IN (
-            'policy:return-warranty',
-            'return-warranty-policy',
-            'faq:storefront:6',
-            'faq:storefront:7'
-          )
+          AND source_ref NOT IN (${Prisma.join(
+            KNOWLEDGE_RAG_BLOCKED_SOURCE_REFS.map((sourceRef) => Prisma.sql`${sourceRef}`),
+          )})
           AND (valid_until IS NULL OR valid_until > now())
       )
-      SELECT *, (semantic_score * 0.8 + LEAST(lexical_score, 1) * 0.2)::double precision AS hybrid_score
+      SELECT *, (
+        semantic_score * ${policy.semanticWeight} +
+        LEAST(lexical_score, 1) * ${policy.lexicalWeight} +
+        LEAST(title_score, 1) * ${policy.titleWeight} +
+        LEAST(section_score, 1) * ${policy.sectionWeight}
+      )::double precision AS hybrid_score
       FROM scored
-      WHERE semantic_score >= ${threshold("KNOWLEDGE_RAG_MIN_SEMANTIC", 0.55)}
+      WHERE semantic_score >= ${policy.minSemantic}
       ORDER BY hybrid_score DESC
-      LIMIT ${TOP_K}
+      LIMIT ${policy.topK}
     `);
-    const minHybrid = threshold("KNOWLEDGE_RAG_MIN_HYBRID", 0.52);
-    return rows.filter((row) => Number(row.hybrid_score) >= minHybrid);
+    return rows.filter((row) => Number(row.hybrid_score) >= policy.minHybrid);
   } catch (error) {
     console.warn(
       "[knowledge-rag]",
       JSON.stringify({
         event: "KNOWLEDGE_RAG_RETRIEVAL_ERROR",
-        queryHash: queryHash(question),
+        queryHash: hashKnowledgeRagQuery(question),
         embeddingModel: modelId,
         errorName: error instanceof Error ? error.name : "UnknownError",
       }),
@@ -171,33 +209,52 @@ export async function retrieveKnowledgeDocuments(question: string): Promise<Know
 export async function answerFromKnowledgeRag(input: {
   text?: string | null;
   channel: KnowledgeChatChannel;
+  recordOperations?: boolean;
 }): Promise<KnowledgeRagAnswer> {
   const question = input.text?.trim();
   if (!question) return NOT_ANSWERED;
   const startedAt = Date.now();
-  const finish = (
-    outcome: KnowledgeRagOutcome,
+  const policy = getProductionKnowledgeRetrievalPolicy();
+  const finish = async (
+    outcome: KnowledgeRagTelemetryOutcome,
     answer: KnowledgeRagAnswer,
     rows?: KnowledgeRow[],
   ) => {
-    emitKnowledgeRagTelemetry({
+    const event = emitKnowledgeRagTelemetry({
       question,
       channel: input.channel,
       outcome,
       startedAt,
+      policy,
       rows,
     });
+    if (
+      outcome !== "DISABLED" &&
+      input.recordOperations !== false &&
+      isKnowledgeRagOperationsPersistenceEnabled()
+    ) {
+      try {
+        await recordKnowledgeRagOperationalEvent(event);
+      } catch (error) {
+        console.warn("[knowledge-rag] operations metric write failed", {
+          event: "KNOWLEDGE_RAG_METRIC_WRITE_FAILED",
+          channel: input.channel,
+          outcome,
+          errorName: error instanceof Error ? error.name : "UnknownError",
+        });
+      }
+    }
     return answer;
   };
   if (!isKnowledgeRagEnabled()) return finish("DISABLED", NOT_ANSWERED);
   // Operational/high-stakes questions are routed to the existing human/product
   // flows before retrieval. This guard is defense in depth if intent classification
   // ever misfiles such a turn as general_faq/other.
-  if (HUMAN_ONLY_QUESTION_RE.test(question) || detectAdminOnlyKnowledgeTopic(question)) {
+  if (isKnowledgeRagHumanOnlyQuestion(question)) {
     return finish("HUMAN_ONLY", NOT_ANSWERED);
   }
 
-  const rows = await retrieveKnowledgeDocuments(question);
+  const rows = await retrieveKnowledgeDocuments(question, policy);
   if (rows.length === 0) return finish("NO_RETRIEVAL", NOT_ANSWERED);
 
   const context = rows

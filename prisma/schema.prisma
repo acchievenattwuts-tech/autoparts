@@ -67,6 +67,8 @@ model User {
   knowledgeApprovalsActed        KnowledgeApproval[]        @relation("KnowledgeApprovalActedBy")
   knowledgeSyncJobsTriggered     KnowledgeSyncJob[]         @relation("KnowledgeSyncJobTriggeredBy")
   knowledgeAuditLogs             KnowledgeAuditLog[]        @relation("KnowledgeAuditActor")
+  knowledgeRagFeedbackCreated    KnowledgeRagFeedback[]      @relation("KnowledgeRagFeedbackCreatedBy")
+  knowledgeGapsReviewed          KnowledgeRagGapSignal[]     @relation("KnowledgeGapReviewedBy")
   lineRecipientLinks             UserLineRecipient?
 
   @@index([username])
@@ -683,6 +685,7 @@ model KnowledgeSource {
   activeRevision   KnowledgeRevision?  @relation("KnowledgeActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
   revisions        KnowledgeRevision[] @relation("KnowledgeSourceRevisions")
   auditLogs        KnowledgeAuditLog[]
+  gapSignals       KnowledgeRagGapSignal[]
 
   @@index([type, isArchived])
   @@index([createdByUserId, createdAt])
@@ -821,6 +824,77 @@ model KnowledgeSyncState {
   runCount       Int       @default(0) @map("run_count")
 
   @@map("knowledge_sync_state")
+}
+
+// PII-safe aggregate operations data for Knowledge RAG. No customer text,
+// answer text, user id, conversation id, or individual event row is stored.
+model KnowledgeRagDailyMetric {
+  bucketStart          DateTime @db.Timestamptz(3) @map("bucket_start")
+  channel              String
+  policyId             String   @map("policy_id")
+  totalCount           Int      @default(0) @map("total_count")
+  answeredCount        Int      @default(0) @map("answered_count")
+  humanOnlyCount       Int      @default(0) @map("human_only_count")
+  noRetrievalCount     Int      @default(0) @map("no_retrieval_count")
+  unsupportedCount     Int      @default(0) @map("unsupported_count")
+  generationErrorCount Int      @default(0) @map("generation_error_count")
+  disabledCount        Int      @default(0) @map("disabled_count")
+  totalLatencyMs       BigInt   @default(0) @map("total_latency_ms")
+  maxLatencyMs         Int      @default(0) @map("max_latency_ms")
+  latencyLe500Count    Int      @default(0) @map("latency_le_500_count")
+  latencyLe1000Count   Int      @default(0) @map("latency_le_1000_count")
+  latencyLe3000Count   Int      @default(0) @map("latency_le_3000_count")
+  latencyGt3000Count   Int      @default(0) @map("latency_gt_3000_count")
+  retrievedTotal       Int      @default(0) @map("retrieved_total")
+  topScoreTotal        Float    @default(0) @map("top_score_total")
+  topScoreCount        Int      @default(0) @map("top_score_count")
+  createdAt            DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt            DateTime @updatedAt @db.Timestamptz(3) @map("updated_at")
+
+  @@id([bucketStart, channel, policyId])
+  @@index([bucketStart, channel], map: "idx_knowledge_rag_daily_metrics_bucket")
+  @@map("knowledge_rag_daily_metrics")
+}
+
+model KnowledgeRagFeedback {
+  id              String   @id @default(cuid())
+  queryHash       String   @db.VarChar(16) @map("query_hash")
+  channel         String
+  outcome         String
+  rating          String
+  reasonCode      String   @map("reason_code")
+  citationIds     Json     @default("[]") @db.JsonB @map("citation_ids")
+  createdByUserId String   @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  createdByUser   User     @relation("KnowledgeRagFeedbackCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt, channel], map: "idx_knowledge_rag_feedback_created")
+  @@index([queryHash, createdAt], map: "idx_knowledge_rag_feedback_hash")
+  @@map("knowledge_rag_feedback")
+}
+
+model KnowledgeRagGapSignal {
+  id               String           @id @default(cuid())
+  queryHash        String           @db.VarChar(16) @map("query_hash")
+  channel          String
+  outcome          String
+  occurrences      Int              @default(1)
+  status           String           @default("NEW")
+  internalTitle    String?          @map("internal_title")
+  reasonCode       String?          @map("reason_code")
+  reviewedByUserId String?          @map("reviewed_by_user_id")
+  reviewedAt       DateTime?        @db.Timestamptz(3) @map("reviewed_at")
+  sourceId         String?          @map("source_id")
+  firstSeenAt      DateTime         @default(now()) @db.Timestamptz(3) @map("first_seen_at")
+  lastSeenAt       DateTime         @default(now()) @db.Timestamptz(3) @map("last_seen_at")
+  createdAt        DateTime         @default(now()) @db.Timestamptz(3) @map("created_at")
+  updatedAt        DateTime         @updatedAt @db.Timestamptz(3) @map("updated_at")
+  reviewedByUser   User?            @relation("KnowledgeGapReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  source           KnowledgeSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@unique([queryHash, channel, outcome], map: "uq_knowledge_rag_gap_signal")
+  @@index([status, occurrences, lastSeenAt], map: "idx_knowledge_rag_gap_status")
+  @@map("knowledge_rag_gap_signals")
 }
 
 model CarBrand {

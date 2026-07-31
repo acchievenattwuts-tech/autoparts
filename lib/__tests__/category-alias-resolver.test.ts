@@ -6,6 +6,11 @@ import {
   type CategoryAliasResolverRow,
 } from "@/lib/category-alias-resolver";
 
+const matchedCategoryName = (
+  result: ReturnType<typeof matchCategoryAliasRows>,
+): string | undefined =>
+  result?.kind === "MATCH" ? result.categoryName : undefined;
+
 test("matches active DB category aliases before hardcoded fallbacks", () => {
   const rows: CategoryAliasResolverRow[] = [
     {
@@ -166,19 +171,22 @@ test("a compound alias suppresses a higher-priority alias nested inside it (long
   // The customer typed the COMPOUND word — the nested short alias must not
   // hijack the category on priority alone.
   assert.equal(
-    matchCategoryAliasRows(["พัดลมคอนเดนเซอร์ d-max"], rows)?.categoryName,
+    matchedCategoryName(matchCategoryAliasRows(["พัดลมคอนเดนเซอร์ d-max"], rows)),
     "มอเตอร์พัดลมหน้าเครื่อง (Condenser Fan Motor)",
   );
   assert.equal(
-    matchCategoryAliasRows(["มอเตอร์ตู้แอร์ vigo"], rows)?.categoryName,
+    matchedCategoryName(matchCategoryAliasRows(["มอเตอร์ตู้แอร์ vigo"], rows)),
     "โบเวอร์ พัดลมแอร์ (Blower Motor)",
   );
   // The short alias standing ALONE still resolves exactly as before.
   assert.equal(
-    matchCategoryAliasRows(["คอนเดนเซอร์ d-max"], rows)?.categoryName,
+    matchedCategoryName(matchCategoryAliasRows(["คอนเดนเซอร์ d-max"], rows)),
     "คอยล์ร้อน (Condenser)",
   );
-  assert.equal(matchCategoryAliasRows(["ตู้แอร์ vigo"], rows)?.categoryName, "คอยล์เย็น (Evaporator)");
+  assert.equal(
+    matchedCategoryName(matchCategoryAliasRows(["ตู้แอร์ vigo"], rows)),
+    "คอยล์เย็น (Evaporator)",
+  );
 });
 
 test("non-overlapping matches in one text keep the priority ordering", () => {
@@ -204,7 +212,9 @@ test("non-overlapping matches in one text keep the priority ordering", () => {
   // Two separate part words side by side (multi-subject territory): the single
   // resolver still picks by priority, unchanged from before.
   assert.equal(
-    matchCategoryAliasRows(["กรองแอร์กับกรองอากาศ d-max"], rows)?.categoryName,
+    matchedCategoryName(
+      matchCategoryAliasRows(["กรองแอร์กับกรองอากาศ d-max"], rows),
+    ),
     "กรองอากาศ (Air Filter)",
   );
 });
