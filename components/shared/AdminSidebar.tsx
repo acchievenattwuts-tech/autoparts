@@ -60,16 +60,18 @@ const AdminSidebar = ({ permissions, favoriteMenus, onClose }: AdminSidebarProps
 
   const linkClassName = (href: string) =>
     cn(
-      "mt-1 flex min-h-10 flex-1 items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 text-[15px] transition-colors",
+      // min-w-0 จำเป็น เพื่อให้ลิงก์ย่อได้เมื่อชื่อเมนูยาว — ไม่ดันปุ่มดาว/ปุ่มเลื่อนตกขอบ
+      "mt-1 flex min-h-10 min-w-0 flex-1 items-center justify-between gap-2 rounded-xl px-2.5 py-2.5 text-[15px] transition-colors",
       isActive(href)
         ? "bg-white font-semibold text-[#17365d] shadow-[0_8px_20px_rgba(15,23,42,0.15)] dark:bg-sky-500 dark:text-white dark:shadow-[0_4px_14px_rgba(14,165,233,0.35)]"
         : "text-sky-50/95 hover:bg-white/10 hover:text-white dark:text-slate-200 dark:hover:bg-white/10 dark:hover:text-slate-50",
     );
 
-  const iconButtonClassName = (disabled: boolean) =>
+  /** ปุ่มเลื่อนลำดับ — วางเป็นคอลัมน์ซ้ายแคบ แทนตำแหน่งเลขลำดับของเมนูปกติ */
+  const reorderButtonClassName = (disabled: boolean) =>
     cn(
-      "mt-1 inline-flex h-9 w-7 shrink-0 items-center justify-center rounded-lg text-sky-100/80 transition-colors hover:bg-white/10 hover:text-white dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-50",
-      disabled && "cursor-not-allowed opacity-30 hover:bg-transparent hover:text-sky-100/80",
+      "inline-flex h-[18px] w-5 items-center justify-center rounded text-sky-100/70 transition-colors hover:bg-white/10 hover:text-white dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-50",
+      disabled && "cursor-not-allowed opacity-25 hover:bg-transparent hover:text-sky-100/70",
     );
 
   const renderStarButton = (item: AdminNavItem) => {
@@ -129,7 +131,27 @@ const AdminSidebar = ({ permissions, favoriteMenus, onClose }: AdminSidebarProps
             </button>
             {favoritesExpanded &&
               favoriteItems.map((item, index) => (
-                <div key={`favorite-${item.href}`} className="flex items-start gap-1">
+                <div key={`favorite-${item.href}`} className="flex items-start">
+                  <span className="mt-1 flex h-10 w-5 shrink-0 flex-col items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => favoriteMenus.move(item.href, "up")}
+                      disabled={index === 0 || favoriteMenus.isPending}
+                      aria-label={`เลื่อน ${item.label} ขึ้น`}
+                      className={reorderButtonClassName(index === 0 || favoriteMenus.isPending)}
+                    >
+                      <ChevronUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => favoriteMenus.move(item.href, "down")}
+                      disabled={index === favoriteItems.length - 1 || favoriteMenus.isPending}
+                      aria-label={`เลื่อน ${item.label} ลง`}
+                      className={reorderButtonClassName(index === favoriteItems.length - 1 || favoriteMenus.isPending)}
+                    >
+                      <ChevronDown size={14} />
+                    </button>
+                  </span>
                   <Link href={item.href} onClick={onClose} className={linkClassName(item.href)}>
                     <span className="flex min-w-0 items-center gap-2.5">
                       <item.icon size={18} className="shrink-0 opacity-90" />
@@ -137,24 +159,6 @@ const AdminSidebar = ({ permissions, favoriteMenus, onClose }: AdminSidebarProps
                     </span>
                     <LinkPendingIndicator />
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => favoriteMenus.move(item.href, "up")}
-                    disabled={index === 0 || favoriteMenus.isPending}
-                    aria-label={`เลื่อน ${item.label} ขึ้น`}
-                    className={iconButtonClassName(index === 0 || favoriteMenus.isPending)}
-                  >
-                    <ChevronUp size={16} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => favoriteMenus.move(item.href, "down")}
-                    disabled={index === favoriteItems.length - 1 || favoriteMenus.isPending}
-                    aria-label={`เลื่อน ${item.label} ลง`}
-                    className={iconButtonClassName(index === favoriteItems.length - 1 || favoriteMenus.isPending)}
-                  >
-                    <ChevronDown size={16} />
-                  </button>
                   {renderStarButton(item)}
                 </div>
               ))}
@@ -188,12 +192,13 @@ const AdminSidebar = ({ permissions, favoriteMenus, onClose }: AdminSidebarProps
               </button>
               {showSectionItems &&
                 item.items.map((sub, subIdx) => (
-                  <div key={sub.href} className="flex items-start gap-1">
+                  <div key={sub.href} className="flex items-start">
+                    {/* เลขลำดับอยู่คอลัมน์ซ้ายกว้างเท่าปุ่มเลื่อนของรายการโปรด — ชื่อเมนูจึงตรงกันทุก section */}
+                    <span className="mt-1 flex h-10 w-5 shrink-0 items-center justify-center text-xs tabular-nums opacity-60">
+                      {subIdx + 1}
+                    </span>
                     <Link href={sub.href} onClick={onClose} className={linkClassName(sub.href)}>
                       <span className="flex min-w-0 items-center gap-2.5">
-                        <span className="w-4 shrink-0 text-right text-xs tabular-nums opacity-60">
-                          {subIdx + 1}
-                        </span>
                         <sub.icon size={18} className="shrink-0 opacity-90" />
                         <span className="truncate">{sub.label}</span>
                       </span>
