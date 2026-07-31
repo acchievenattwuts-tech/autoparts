@@ -133,6 +133,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           },
         },
         user: { select: { name: true, signatureUrl: true } },
+        deliveryStaff: { select: { name: true, phone: true } },
         customer: { select: { id: true, name: true, phone: true, address: true } },
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
         deliveryProofs: {
@@ -359,6 +360,19 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                 <div>
                   <p className="mb-1 text-gray-500 dark:text-slate-400">ขนส่ง</p>
                   <p className="font-medium text-gray-900 dark:text-slate-100">{SHIPPING_METHOD_LABEL[sale.shippingMethod ?? "NONE"]}</p>
+                </div>
+                <div>
+                  <p className="mb-1 text-gray-500 dark:text-slate-400">พนักงานส่ง</p>
+                  {sale.deliveryStaff?.name ? (
+                    <>
+                      <p className="font-medium text-gray-900 dark:text-slate-100">{sale.deliveryStaff.name}</p>
+                      {sale.deliveryStaff.phone ? (
+                        <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">{sale.deliveryStaff.phone}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <p className="font-medium text-gray-400 dark:text-slate-500">ยังไม่ระบุ</p>
+                  )}
                 </div>
                 {sale.trackingNo ? (
                   <div>
