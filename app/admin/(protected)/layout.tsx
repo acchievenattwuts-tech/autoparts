@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AdminShell from "@/components/shared/AdminShell";
 import { getAdminThemeCookieName, parseAdminTheme } from "@/lib/admin-theme";
+import { getFavoriteMenuHrefs } from "@/lib/user-favorite-menu";
 
 const AdminLayout = async ({ children }: { children: ReactNode }) => {
   const session = await auth();
@@ -12,8 +13,12 @@ const AdminLayout = async ({ children }: { children: ReactNode }) => {
   }
 
   const permissions = session.user.permissions ?? [];
+  const [cookieStore, favoriteHrefs] = await Promise.all([
+    cookies(),
+    getFavoriteMenuHrefs(session.user.id).catch(() => [] as string[]),
+  ]);
   const initialTheme = parseAdminTheme(
-    (await cookies()).get(getAdminThemeCookieName(session.user.id))?.value,
+    cookieStore.get(getAdminThemeCookieName(session.user.id))?.value,
   );
   const mustChangePassword = session.user.mustChangePassword ?? false;
   const username = session.user.name ?? session.user.email ?? "";
@@ -21,6 +26,7 @@ const AdminLayout = async ({ children }: { children: ReactNode }) => {
   return (
     <AdminShell
       initialTheme={initialTheme}
+      initialFavoriteHrefs={favoriteHrefs}
       mustChangePassword={mustChangePassword}
       permissions={permissions}
       userId={session.user.id}

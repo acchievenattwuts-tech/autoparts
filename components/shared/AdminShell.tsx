@@ -10,6 +10,7 @@ import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThem
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
 import AdminUserMenu from "@/components/shared/AdminUserMenu";
 import QuickSearchLauncher from "@/components/shared/QuickSearchLauncher";
+import { useAdminFavoriteMenus } from "@/components/shared/use-admin-favorite-menus";
 import TabsBar from "@/components/shared/TabsBar";
 import type { AdminTheme } from "@/lib/admin-theme";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils";
 type AdminShellProps = {
   children: ReactNode;
   initialTheme: AdminTheme;
+  initialFavoriteHrefs: string[];
   permissions: string[];
   mustChangePassword: boolean;
   userId: string;
@@ -29,9 +31,18 @@ type AdminShellContentProps = Omit<AdminShellProps, "initialTheme">;
 const hasPermission = (role: string, permissions: readonly string[], permission: string) =>
   role === "ADMIN" || permissions.includes(permission);
 
-const AdminShellContent = ({ children, permissions, mustChangePassword, username, userId, role }: AdminShellContentProps) => {
+const AdminShellContent = ({
+  children,
+  permissions,
+  mustChangePassword,
+  username,
+  userId,
+  role,
+  initialFavoriteHrefs,
+}: AdminShellContentProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { theme } = useAdminTheme();
+  const favoriteMenus = useAdminFavoriteMenus(initialFavoriteHrefs);
   const canViewCustomerNotifications = hasPermission(role, permissions, "customers.view");
   const canUpdateCustomer = hasPermission(role, permissions, "customers.update");
 
@@ -48,14 +59,18 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
           sidebarOpen ? "w-72" : "w-0"
         }`}
       >
-        <AdminSidebar permissions={permissions} />
+        <AdminSidebar permissions={permissions} favoriteMenus={favoriteMenus} />
       </div>
 
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
           <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-[2px]" onClick={() => setSidebarOpen(false)} />
           <div className="relative z-50 shadow-2xl shadow-slate-950/30">
-            <AdminSidebar permissions={permissions} onClose={() => setSidebarOpen(false)} />
+            <AdminSidebar
+              permissions={permissions}
+              favoriteMenus={favoriteMenus}
+              onClose={() => setSidebarOpen(false)}
+            />
           </div>
         </div>
       )}
@@ -103,11 +118,21 @@ const AdminShellContent = ({ children, permissions, mustChangePassword, username
   );
 };
 
-const AdminShell = ({ children, initialTheme, permissions, mustChangePassword, userId, username, role }: AdminShellProps) => {
+const AdminShell = ({
+  children,
+  initialTheme,
+  initialFavoriteHrefs,
+  permissions,
+  mustChangePassword,
+  userId,
+  username,
+  role,
+}: AdminShellProps) => {
   return (
     <AdminThemeProvider initialTheme={initialTheme} userId={userId}>
       <AdminShellContent
         permissions={permissions}
+        initialFavoriteHrefs={initialFavoriteHrefs}
         mustChangePassword={mustChangePassword}
         username={username}
         userId={userId}

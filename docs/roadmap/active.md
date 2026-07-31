@@ -5,6 +5,18 @@
 - งานที่เสร็จแล้วแบบสรุปอยู่ที่ [completed.md](/D:/autoparts/docs/roadmap/completed.md)
 
 ## Active Now
+### เมนูโปรดต่อผู้ใช้ (Sidebar Favorites) — เสร็จแล้ว
+- สถานะ: **DONE** — เก็บใน DB ต่อ `userId`, sidebar อย่างเดียว
+- สิ่งที่ทำเสร็จ:
+  - [x] model `UserFavoriteMenu` (`@@unique([userId, href])`, `@@index([userId, sortOrder])`) + relation `User.favoriteMenus` — `prisma db push` แล้ว
+  - [x] helper `lib/user-favorite-menu.ts` — `getFavoriteMenuHrefs()` + `isKnownAdminHref()` + `MAX_FAVORITE_MENUS = 20`
+  - [x] Server Actions `app/admin/(protected)/favorite-menu-actions.ts` — `toggleFavoriteMenu()` / `reorderFavoriteMenus()`, ยึด `userId` จาก session เท่านั้น, Zod validate href กับ `ADMIN_NAVIGATION`, เขียน AuditLog (`UPDATE` / entityType `UserFavoriteMenu`)
+  - [x] hook `components/shared/use-admin-favorite-menus.tsx` — optimistic update + `useTransition` + rollback
+  - [x] `AdminSidebar` — section "รายการโปรด" บนสุด, ปุ่มดาวทุกเมนู, จัดลำดับด้วยปุ่มขึ้น/ลง, เลขรันนิ่งต่อ section, light + dark mode
+  - [x] favorites กรองสิทธิ์ซ้ำอีกชั้น + ตัด href ที่ไม่มีในเมนูแล้ว โดยไม่ลบแถวใน DB
+- ไม่เพิ่ม permission key ใหม่ (เป็น personal preference — ป้องกันด้วย session)
+- ยังไม่ทำ (out of scope): drag-and-drop, favorites ใน Quick Search / Command Palette
+
 ### Knowledge RAG Quality — Round A–D เสร็จ
 
 - สเปก: [docs/specs/knowledge-rag-roadmap.md](/D:/autoparts/docs/specs/knowledge-rag-roadmap.md)

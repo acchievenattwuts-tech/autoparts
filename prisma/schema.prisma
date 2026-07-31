@@ -70,9 +70,23 @@ model User {
   knowledgeRagFeedbackCreated    KnowledgeRagFeedback[]      @relation("KnowledgeRagFeedbackCreatedBy")
   knowledgeGapsReviewed          KnowledgeRagGapSignal[]     @relation("KnowledgeGapReviewedBy")
   lineRecipientLinks             UserLineRecipient?
+  favoriteMenus                  UserFavoriteMenu[]
 
   @@index([username])
   @@index([appRoleId])
+}
+
+/// เมนูโปรดของผู้ใช้แต่ละคน — เก็บเฉพาะ href ที่มีอยู่จริงใน ADMIN_NAVIGATION
+model UserFavoriteMenu {
+  id        String   @id @default(cuid())
+  userId    String
+  href      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, href])
+  @@index([userId, sortOrder])
 }
 
 model LineRecipient {
