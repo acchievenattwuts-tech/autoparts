@@ -828,6 +828,8 @@ model KnowledgeSyncState {
 
 // PII-safe aggregate operations data for Knowledge RAG. No customer text,
 // answer text, user id, conversation id, or individual event row is stored.
+// Prisma model names stay in PascalCase and map to the existing PostgreSQL
+// snake_case tables through @@map.
 model KnowledgeRagDailyMetric {
   bucketStart          DateTime @db.Timestamptz(3) @map("bucket_start")
   channel              String
@@ -849,7 +851,7 @@ model KnowledgeRagDailyMetric {
   topScoreTotal        Float    @default(0) @map("top_score_total")
   topScoreCount        Int      @default(0) @map("top_score_count")
   createdAt            DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt            DateTime @updatedAt @db.Timestamptz(3) @map("updated_at")
+  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3) @map("updated_at")
 
   @@id([bucketStart, channel, policyId])
   @@index([bucketStart, channel], map: "idx_knowledge_rag_daily_metrics_bucket")
@@ -866,7 +868,7 @@ model KnowledgeRagFeedback {
   citationIds     Json     @default("[]") @db.JsonB @map("citation_ids")
   createdByUserId String   @map("created_by_user_id")
   createdAt       DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
-  createdByUser   User     @relation("KnowledgeRagFeedbackCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  createdByUser   User     @relation("KnowledgeRagFeedbackCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([createdAt, channel], map: "idx_knowledge_rag_feedback_created")
   @@index([queryHash, createdAt], map: "idx_knowledge_rag_feedback_hash")
@@ -888,12 +890,12 @@ model KnowledgeRagGapSignal {
   firstSeenAt      DateTime         @default(now()) @db.Timestamptz(3) @map("first_seen_at")
   lastSeenAt       DateTime         @default(now()) @db.Timestamptz(3) @map("last_seen_at")
   createdAt        DateTime         @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt        DateTime         @updatedAt @db.Timestamptz(3) @map("updated_at")
-  reviewedByUser   User?            @relation("KnowledgeGapReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
-  source           KnowledgeSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  updatedAt        DateTime         @default(now()) @updatedAt @db.Timestamptz(3) @map("updated_at")
+  reviewedByUser   User?            @relation("KnowledgeGapReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  source           KnowledgeSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@unique([queryHash, channel, outcome], map: "uq_knowledge_rag_gap_signal")
-  @@index([status, occurrences, lastSeenAt], map: "idx_knowledge_rag_gap_status")
+  @@index([status, occurrences(sort: Desc), lastSeenAt(sort: Desc)], map: "idx_knowledge_rag_gap_status")
   @@map("knowledge_rag_gap_signals")
 }
 
