@@ -21,6 +21,8 @@ export function getCashBankSourceHref(
       return `/admin/supplier-advances/${sourceId}`;
     case "SUPPLIER_PAYMENT":
       return `/admin/supplier-payments/${sourceId}`;
+    case "PARTNER_PAYOUT":
+      return `/admin/profit-distributions/${sourceId}`;
     case "TRANSFER":
       return "/admin/cash-bank/transfers";
     case "ADJUSTMENT":
@@ -48,6 +50,8 @@ export function getCashBankSourceLabel(sourceType: CashBankSourceType): string {
       return "จ่ายมัดจำซัพพลายเออร์";
     case "SUPPLIER_PAYMENT":
       return "จ่ายชำระซัพพลายเออร์";
+    case "PARTNER_PAYOUT":
+      return "แบ่งกำไรผู้ร่วมทุน";
     case "TRANSFER":
       return "โอนเงิน";
     case "ADJUSTMENT":

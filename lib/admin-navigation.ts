@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Package,
   PackageSearch,
+  PieChart,
   Receipt,
   RefreshCw,
   RotateCcw,
@@ -105,6 +106,7 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ปรับยอดเงิน", href: "/admin/cash-bank/adjustments", icon: Receipt, permission: "cash_bank.adjustments.view", keywords: "cash adjustment ปรับยอดเงิน" },
       { label: "ค่าใช้จ่าย", href: "/admin/expenses", icon: Receipt, permission: "expenses.view", keywords: "expenses ค่าใช้จ่าย" },
       { label: "ทำจ่ายค่าส่งพนักงาน", href: "/admin/delivery-commissions", icon: Truck, permission: "delivery_commissions.view", keywords: "delivery commission payout ค่าส่ง พนักงานส่ง" },
+      { label: "แบ่งกำไรผู้ร่วมทุน", href: "/admin/profit-distributions", icon: PieChart, permission: "profit_distributions.view", keywords: "profit distribution partner แบ่งกำไร ผู้ร่วมทุน หุ้นส่วน ปันผล" },
     ],
   },
   {

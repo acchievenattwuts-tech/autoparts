@@ -13,9 +13,11 @@ import {
   getAuditEntityLabel,
   getAuditSourceHref,
   parseAuditLogSearchParams,
+  PROFIT_SENSITIVE_AUDIT_ENTITY_TYPES,
 } from "@/lib/audit-log-view";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminTableSection from "@/components/shared/AdminTableSection";
@@ -39,6 +41,18 @@ export default async function AuditLogDetailPage({
   });
 
   if (!row) {
+    notFound();
+  }
+
+  // Per-partner profit amounts must not leak through the audit trail.
+  const { role, permissions } = await getSessionPermissionContext();
+  const isProfitSensitive = (PROFIT_SENSITIVE_AUDIT_ENTITY_TYPES as readonly string[]).includes(
+    row.entityType,
+  );
+  if (
+    isProfitSensitive &&
+    !hasPermissionAccess(role, permissions, "profit_distributions.view_all")
+  ) {
     notFound();
   }
 

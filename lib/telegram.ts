@@ -29,6 +29,8 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   MESSENGER_HANDOFF: "ลูกค้า Messenger รอแอดมินตอบ",
   STOCK_OUT_DAILY: "สินค้าหมดสต๊อก (แจ้งเตือนประจำวัน)",
   STOCK_OUT_REALTIME: "สินค้าหมดสต๊อก (เรียลไทม์จากการขาย)",
+  PROFIT_DISTRIBUTION_DECLARED: "ประกาศแบ่งกำไรผู้ร่วมทุน",
+  PROFIT_DISTRIBUTION_CANCELLED: "ยกเลิกเอกสารแบ่งกำไรผู้ร่วมทุน",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -101,6 +103,8 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   MESSENGER_HANDOFF: "🙋",
   STOCK_OUT_DAILY: "🔴",
   STOCK_OUT_REALTIME: "🔴",
+  PROFIT_DISTRIBUTION_DECLARED: "🥧",
+  PROFIT_DISTRIBUTION_CANCELLED: "🥧",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

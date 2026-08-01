@@ -28,7 +28,9 @@ const ENTITY_LABELS: Record<string, string> = {
   ExpenseCode: "รหัสค่าใช้จ่าย",
   FactProfit: "กำไรกิจกรรม",
   LineDailySummarySettings: "ตั้งค่า LINE Daily Summary",
+  PartnerProfile: "ข้อมูลผู้ร่วมทุน",
   Product: "สินค้า",
+  ProfitDistribution: "แบ่งกำไรผู้ร่วมทุน",
   Purchase: "ใบซื้อ",
   PurchaseReturn: "ใบคืนซื้อ",
   Receipt: "ใบรับชำระ",
@@ -63,7 +65,9 @@ const SOURCE_ROUTE_BUILDERS: Record<string, (entityId: string) => string> = {
   Expense: (entityId) => `/admin/expenses/${entityId}`,
   ExpenseCode: staticAuditSourceHref("/admin/master/expense-codes"),
   LineDailySummarySettings: staticAuditSourceHref("/admin/reports/line-daily-summary"),
+  PartnerProfile: staticAuditSourceHref("/admin/profit-distributions/partners"),
   Product: (entityId) => `/admin/products/${entityId}/edit`,
+  ProfitDistribution: (entityId) => `/admin/profit-distributions/${entityId}`,
   Purchase: (entityId) => `/admin/purchases/${entityId}`,
   PurchaseReturn: (entityId) => `/admin/purchase-returns/${entityId}`,
   Receipt: (entityId) => `/admin/receipts/${entityId}`,
@@ -184,9 +188,30 @@ export function buildAuditLogListHref(filters: AuditLogFilters, page = filters.p
   return `/admin/audit-log?${nextParams.toString()}`;
 }
 
-export function buildAuditLogWhere(filters: AuditLogFilters): Prisma.AuditLogWhereInput | undefined {
+/**
+ * Entity types whose audit payload contains per-partner profit amounts.
+ * Hidden from anyone without `profit_distributions.view_all` so the audit trail
+ * never becomes a side channel for reading other partners' figures.
+ */
+export const PROFIT_SENSITIVE_AUDIT_ENTITY_TYPES = [
+  "ProfitDistribution",
+  "PartnerProfile",
+] as const;
+
+export type BuildAuditLogWhereOptions = {
+  excludeEntityTypes?: readonly string[];
+};
+
+export function buildAuditLogWhere(
+  filters: AuditLogFilters,
+  options?: BuildAuditLogWhereOptions,
+): Prisma.AuditLogWhereInput | undefined {
+  const excludeEntityTypes = options?.excludeEntityTypes ?? [];
+
   if (!filters.ready) {
-    return undefined;
+    return excludeEntityTypes.length > 0
+      ? { entityType: { notIn: [...excludeEntityTypes] } }
+      : undefined;
   }
 
   const createdAt: Prisma.DateTimeFilter = {};

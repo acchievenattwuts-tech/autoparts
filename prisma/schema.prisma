@@ -67,13 +67,17 @@ model User {
   knowledgeApprovalsActed        KnowledgeApproval[]        @relation("KnowledgeApprovalActedBy")
   knowledgeSyncJobsTriggered     KnowledgeSyncJob[]         @relation("KnowledgeSyncJobTriggeredBy")
   knowledgeAuditLogs             KnowledgeAuditLog[]        @relation("KnowledgeAuditActor")
-  knowledgeRagFeedbackCreated    KnowledgeRagFeedback[]      @relation("KnowledgeRagFeedbackCreatedBy")
-  knowledgeGapsReviewed          KnowledgeRagGapSignal[]     @relation("KnowledgeGapReviewedBy")
+  knowledgeRagFeedbackCreated    KnowledgeRagFeedback[]     @relation("KnowledgeRagFeedbackCreatedBy")
+  knowledgeGapsReviewed          KnowledgeRagGapSignal[]    @relation("KnowledgeGapReviewedBy")
   lineRecipientLinks             UserLineRecipient?
   favoriteMenus                  UserFavoriteMenu[]
+  userType                       UserType                   @default(EMPLOYEE)
+  partnerProfile                 PartnerProfile?
+  profitDistributions            ProfitDistribution[]       @relation("ProfitDistributionCreatedBy")
 
   @@index([username])
   @@index([appRoleId])
+  @@index([userType])
 }
 
 /// เมนูโปรดของผู้ใช้แต่ละคน — เก็บเฉพาะ href ที่มีอยู่จริงใน ADMIN_NAVIGATION
@@ -686,18 +690,18 @@ model UserPermissionGrant {
 }
 
 model KnowledgeSource {
-  id               String              @id @default(cuid())
-  sourceKey        String              @unique
+  id               String                  @id @default(cuid())
+  sourceKey        String                  @unique
   type             KnowledgeSourceType
-  slug             String?             @unique
-  isArchived       Boolean             @default(false)
-  activeRevisionId String?             @unique
+  slug             String?                 @unique
+  isArchived       Boolean                 @default(false)
+  activeRevisionId String?                 @unique
   createdByUserId  String
-  createdAt        DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt        DateTime            @updatedAt @db.Timestamptz(3)
-  createdByUser    User                @relation("KnowledgeSourceCreatedBy", fields: [createdByUserId], references: [id])
-  activeRevision   KnowledgeRevision?  @relation("KnowledgeActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
-  revisions        KnowledgeRevision[] @relation("KnowledgeSourceRevisions")
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                @updatedAt @db.Timestamptz(3)
+  createdByUser    User                    @relation("KnowledgeSourceCreatedBy", fields: [createdByUserId], references: [id])
+  activeRevision   KnowledgeRevision?      @relation("KnowledgeActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
+  revisions        KnowledgeRevision[]     @relation("KnowledgeSourceRevisions")
   auditLogs        KnowledgeAuditLog[]
   gapSignals       KnowledgeRagGapSignal[]
 
@@ -845,7 +849,7 @@ model KnowledgeSyncState {
 // Prisma model names stay in PascalCase and map to the existing PostgreSQL
 // snake_case tables through @@map.
 model KnowledgeRagDailyMetric {
-  bucketStart          DateTime @db.Timestamptz(3) @map("bucket_start")
+  bucketStart          DateTime @map("bucket_start") @db.Timestamptz(3)
   channel              String
   policyId             String   @map("policy_id")
   totalCount           Int      @default(0) @map("total_count")
@@ -864,8 +868,8 @@ model KnowledgeRagDailyMetric {
   retrievedTotal       Int      @default(0) @map("retrieved_total")
   topScoreTotal        Float    @default(0) @map("top_score_total")
   topScoreCount        Int      @default(0) @map("top_score_count")
-  createdAt            DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt            DateTime @default(now()) @updatedAt @db.Timestamptz(3) @map("updated_at")
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@id([bucketStart, channel, policyId])
   @@index([bucketStart, channel], map: "idx_knowledge_rag_daily_metrics_bucket")
@@ -874,14 +878,14 @@ model KnowledgeRagDailyMetric {
 
 model KnowledgeRagFeedback {
   id              String   @id @default(cuid())
-  queryHash       String   @db.VarChar(16) @map("query_hash")
+  queryHash       String   @map("query_hash") @db.VarChar(16)
   channel         String
   outcome         String
   rating          String
   reasonCode      String   @map("reason_code")
-  citationIds     Json     @default("[]") @db.JsonB @map("citation_ids")
+  citationIds     Json     @default("[]") @map("citation_ids") @db.JsonB
   createdByUserId String   @map("created_by_user_id")
-  createdAt       DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   createdByUser   User     @relation("KnowledgeRagFeedbackCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([createdAt, channel], map: "idx_knowledge_rag_feedback_created")
@@ -891,7 +895,7 @@ model KnowledgeRagFeedback {
 
 model KnowledgeRagGapSignal {
   id               String           @id @default(cuid())
-  queryHash        String           @db.VarChar(16) @map("query_hash")
+  queryHash        String           @map("query_hash") @db.VarChar(16)
   channel          String
   outcome          String
   occurrences      Int              @default(1)
@@ -899,12 +903,12 @@ model KnowledgeRagGapSignal {
   internalTitle    String?          @map("internal_title")
   reasonCode       String?          @map("reason_code")
   reviewedByUserId String?          @map("reviewed_by_user_id")
-  reviewedAt       DateTime?        @db.Timestamptz(3) @map("reviewed_at")
+  reviewedAt       DateTime?        @map("reviewed_at") @db.Timestamptz(3)
   sourceId         String?          @map("source_id")
-  firstSeenAt      DateTime         @default(now()) @db.Timestamptz(3) @map("first_seen_at")
-  lastSeenAt       DateTime         @default(now()) @db.Timestamptz(3) @map("last_seen_at")
-  createdAt        DateTime         @default(now()) @db.Timestamptz(3) @map("created_at")
-  updatedAt        DateTime         @default(now()) @updatedAt @db.Timestamptz(3) @map("updated_at")
+  firstSeenAt      DateTime         @default(now()) @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt       DateTime         @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   reviewedByUser   User?            @relation("KnowledgeGapReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull, onUpdate: NoAction)
   source           KnowledgeSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
@@ -2072,6 +2076,7 @@ model CashBankAccount {
   creditNotes              CreditNote[]
   deliveryCommissionRuns   DeliveryCommissionRun[]
   expenses                 Expense[]
+  profitDistributions      ProfitDistribution[]
   purchases                Purchase[]
   purchaseReturns          PurchaseReturn[]
   receipts                 Receipt[]
@@ -2150,6 +2155,118 @@ model CashBankAdjustment {
   @@index([adjustDate])
   @@index([accountId, status])
   @@index([userId])
+}
+
+/// ข้อมูลผู้ร่วมทุน — ผูก 1-1 กับ User ที่ userType = PARTNER
+/// แยกออกจาก User เพราะ User ถูก select ในเกือบทุกหน้า จึงไม่ควรพ่วงคอลัมน์ที่
+/// เป็น null สำหรับพนักงานทั่วไปทั้งหมด
+model PartnerProfile {
+  id                  String                   @id @default(cuid())
+  userId              String                   @unique
+  /// สัดส่วนตั้งต้น (%) ใช้เป็นค่าเริ่มต้นตอนประกาศแบ่งกำไร และเป็นฐานวัดความเป็นธรรมสะสม
+  defaultSharePercent Decimal                  @default(0) @db.Decimal(5, 2)
+  bankName            String?
+  bankAccountNo       String?
+  joinedAt            DateTime                 @db.Timestamptz(3)
+  note                String?
+  isActive            Boolean                  @default(true)
+  createdAt           DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                 @updatedAt @db.Timestamptz(3)
+  user                User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries       PartnerLedger[]
+  distributionItems   ProfitDistributionItem[]
+
+  @@index([isActive])
+}
+
+/// เอกสารประกาศแบ่งกำไรรายเดือน — PD{YYMM}{4}
+///
+/// สำคัญ: เอกสารนี้ตั้งใจ *ไม่* สร้าง Expense เพราะการแบ่งกำไรให้ผู้ร่วมทุนเป็นการ
+/// แบ่งผลกำไร ไม่ใช่ค่าใช้จ่ายของกิจการ จึงต้องไม่แตะ FactProfit เด็ดขาด
+/// ผลคือคีย์ย้อนหลังเดือนไหนก็ไม่กระทบกำไรสุทธิของเดือนที่คีย์
+/// เงินสดจะถูกตัดตาม payDate (วันโอนจริง) ผ่าน CashBankSourceType.PARTNER_PAYOUT
+model ProfitDistribution {
+  id                    String                   @id @default(cuid())
+  distributionNo        String                   @unique
+  periodYear            Int
+  periodMonth           Int
+  /// "YYYY-MM" ของงวด — เซ็ตค่าเมื่อ ACTIVE และเคลียร์เป็น null เมื่อยกเลิก
+  /// เพื่อบังคับว่า 1 งวดมีเอกสาร ACTIVE ได้ใบเดียว (Prisma ไม่รองรับ partial unique index)
+  activePeriodKey       String?                  @unique
+  periodStart           DateTime                 @db.Timestamptz(3)
+  periodEnd             DateTime                 @db.Timestamptz(3)
+  payDate               DateTime                 @db.Timestamptz(3)
+  declaredAt            DateTime                 @default(now()) @db.Timestamptz(3)
+  cashBankAccountId     String
+  userId                String
+  /// snapshot ตัวเลขกำไร ณ เวลาที่กดประกาศ — ห้าม query ใหม่ตอนแสดงผล
+  snapshotSalesAmount   Decimal                  @default(0) @db.Decimal(10, 2)
+  snapshotCostAmount    Decimal                  @default(0) @db.Decimal(10, 2)
+  snapshotExpenseAmount Decimal                  @default(0) @db.Decimal(10, 2)
+  snapshotGrossProfit   Decimal                  @default(0) @db.Decimal(10, 2)
+  snapshotNetProfit     Decimal                  @default(0) @db.Decimal(10, 2)
+  /// ยอดยกมาจากเดือนก่อน (ขาดทุนสะสม + ผลต่างจากกำไรที่ถูกคำนวณใหม่ย้อนหลัง)
+  carryForwardAmount    Decimal                  @default(0) @db.Decimal(10, 2)
+  /// ฐานที่แบ่งได้ = snapshotNetProfit + carryForwardAmount
+  distributableBase     Decimal                  @default(0) @db.Decimal(10, 2)
+  distributedAmount     Decimal                  @default(0) @db.Decimal(10, 2)
+  retainedAmount        Decimal                  @default(0) @db.Decimal(10, 2)
+  note                  String?
+  status                DocStatus                @default(ACTIVE)
+  cancelNote            String?
+  cancelledAt           DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+  cashBankAccount       CashBankAccount          @relation(fields: [cashBankAccountId], references: [id])
+  user                  User                     @relation("ProfitDistributionCreatedBy", fields: [userId], references: [id])
+  items                 ProfitDistributionItem[]
+
+  @@index([periodYear, periodMonth, status])
+  @@index([payDate(sort: Desc), status])
+  @@index([cashBankAccountId])
+  @@index([userId])
+}
+
+/// ส่วนแบ่งรายคนในเอกสารแบ่งกำไร — snapshot ชื่อและ % ไว้ในบรรทัด
+model ProfitDistributionItem {
+  id               String             @id @default(cuid())
+  distributionId   String
+  lineNo           Int                @default(0)
+  partnerProfileId String
+  partnerUserId    String
+  partnerName      String
+  sharePercent     Decimal            @db.Decimal(5, 2)
+  shareAmount      Decimal            @db.Decimal(10, 2)
+  note             String?
+  createdAt        DateTime           @default(now()) @db.Timestamptz(3)
+  distribution     ProfitDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  partnerProfile   PartnerProfile     @relation(fields: [partnerProfileId], references: [id])
+
+  @@unique([distributionId, partnerProfileId])
+  @@index([distributionId, lineNo])
+  @@index([partnerUserId])
+}
+
+/// บัญชีเดินสะพัดทุนผู้ร่วมทุน — running balance แบบเดียวกับ CashBankMovement
+/// amount เป็นค่าที่มีเครื่องหมาย: บวก = ทุนเพิ่ม, ลบ = ทุนลด
+model PartnerLedger {
+  id               String            @id @default(cuid())
+  partnerProfileId String
+  entryDate        DateTime          @db.Timestamptz(3)
+  sorder           Int               @default(0)
+  type             PartnerLedgerType
+  amount           Decimal           @db.Decimal(10, 2)
+  balanceAfter     Decimal           @default(0) @db.Decimal(10, 2)
+  sourceType       String
+  sourceId         String
+  referenceNo      String
+  note             String?
+  createdAt        DateTime          @default(now()) @db.Timestamptz(3)
+  partnerProfile   PartnerProfile    @relation(fields: [partnerProfileId], references: [id], onDelete: Cascade)
+
+  @@index([partnerProfileId, entryDate, sorder])
+  @@index([sourceType, sourceId])
+  @@index([referenceNo])
 }
 
 /// Split-payment lines for money documents (multi-channel receive/pay).
@@ -2408,6 +2525,23 @@ enum ProductSearchReviewStatus {
 enum Role {
   ADMIN
   STAFF
+}
+
+/// แยกผู้ร่วมทุน (หุ้นส่วนที่รับส่วนแบ่งกำไร) ออกจากพนักงานทั่วไป
+/// ไม่เกี่ยวกับสิทธิ์เข้าถึง — สิทธิ์ยังคุมด้วย Role + AppRole เหมือนเดิม
+enum UserType {
+  EMPLOYEE
+  PARTNER
+}
+
+/// ประเภทรายการในบัญชีทุนผู้ร่วมทุน
+/// CONTRIBUTION = ลงทุนเพิ่ม, PROFIT_SHARE = รับส่วนแบ่งกำไร,
+/// PAYOUT = ถอน/รับเงินจริง, ADJUSTMENT = ปรับปรุงรายการ
+enum PartnerLedgerType {
+  CONTRIBUTION
+  PROFIT_SHARE
+  PAYOUT
+  ADJUSTMENT
 }
 
 enum KnowledgeSourceType {
@@ -2757,6 +2891,7 @@ enum CashBankSourceType {
   CN_PURCHASE
   SUPPLIER_ADVANCE
   SUPPLIER_PAYMENT
+  PARTNER_PAYOUT
 }
 
 enum CashBankDirection {
@@ -3071,6 +3206,8 @@ enum NotificationType {
   MESSENGER_HANDOFF
   STOCK_OUT_DAILY
   STOCK_OUT_REALTIME
+  PROFIT_DISTRIBUTION_DECLARED
+  PROFIT_DISTRIBUTION_CANCELLED
 }
 
 enum NotificationSeverity {

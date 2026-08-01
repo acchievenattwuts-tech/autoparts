@@ -19,8 +19,10 @@ import {
   getAuditEntityLabel,
   getAuditSourceHref,
   parseAuditLogSearchParams,
+  PROFIT_SENSITIVE_AUDIT_ENTITY_TYPES,
 } from "@/lib/audit-log-view";
-import { requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
@@ -34,7 +36,18 @@ export default async function AuditLogPage({ searchParams }: PageProps) {
 
   const params = await searchParams;
   const filters = parseAuditLogSearchParams(params);
-  const where = buildAuditLogWhere(filters);
+
+  // Audit payloads for profit distribution contain per-partner amounts, so they
+  // stay hidden unless the viewer may see every partner's figures anyway.
+  const { role, permissions } = await getSessionPermissionContext();
+  const canSeeAllPartnerAmounts = hasPermissionAccess(
+    role,
+    permissions,
+    "profit_distributions.view_all",
+  );
+  const where = buildAuditLogWhere(filters, {
+    excludeEntityTypes: canSeeAllPartnerAmounts ? [] : PROFIT_SENSITIVE_AUDIT_ENTITY_TYPES,
+  });
   const skip = (filters.page - 1) * AUDIT_PAGE_SIZE;
 
   const [rows, total] = filters.ready

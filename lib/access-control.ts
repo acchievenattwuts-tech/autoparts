@@ -114,6 +114,14 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "delivery_commissions.create", group: "การเงิน", label: "สร้างทำจ่ายค่าส่งพนักงาน" },
   { key: "delivery_commissions.cancel", group: "การเงิน", label: "ยกเลิกทำจ่ายค่าส่งพนักงาน" },
 
+  // แบ่งกำไรผู้ร่วมทุน — ข้อมูลอ่อนไหว จงใจไม่ผูกกับ STAFF_OPERATIONS/STAFF_VIEWER
+  // ต้อง grant รายคนเท่านั้น
+  { key: "profit_distributions.view", group: "แบ่งกำไรผู้ร่วมทุน", label: "ดูการแบ่งกำไร (เฉพาะส่วนของตัวเอง)" },
+  { key: "profit_distributions.view_all", group: "แบ่งกำไรผู้ร่วมทุน", label: "ดูส่วนแบ่งของผู้ร่วมทุนทุกคน" },
+  { key: "profit_distributions.create", group: "แบ่งกำไรผู้ร่วมทุน", label: "ประกาศแบ่งกำไร" },
+  { key: "profit_distributions.cancel", group: "แบ่งกำไรผู้ร่วมทุน", label: "ยกเลิกเอกสารแบ่งกำไร" },
+  { key: "profit_distributions.partners.manage", group: "แบ่งกำไรผู้ร่วมทุน", label: "จัดการข้อมูลผู้ร่วมทุน" },
+
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
   { key: "product_search_report.view", group: "รายงานค้นหา", label: "ดู Product Search No Result" },
   { key: "search_coverage.view", group: "รายงานค้นหา", label: "ดู Search Coverage Audit" },
@@ -312,6 +320,11 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/purchases", permission: "purchases.view" },
   { prefix: "/admin/purchase-returns", permission: "purchase_returns.view" },
   { prefix: "/admin/delivery-commissions", permission: "delivery_commissions.view" },
+  {
+    prefix: "/admin/profit-distributions/partners",
+    permission: "profit_distributions.partners.manage",
+  },
+  { prefix: "/admin/profit-distributions", permission: "profit_distributions.view" },
   { prefix: "/admin/delivery/update", permission: "delivery.view" },
   { prefix: "/admin/delivery", permission: "delivery.view" },
   { prefix: "/admin/content/approval-queue", permission: "content.view" },
@@ -510,6 +523,10 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";
   if (/^\/admin\/supplier-payments\/[^/]+\/edit$/.test(pathname)) return "supplier_payments.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";
+  if (pathname === "/admin/profit-distributions/new") return "profit_distributions.create";
+  if (pathname === "/admin/profit-distributions/partners") {
+    return "profit_distributions.partners.manage";
+  }
   if (/^\/admin\/expenses\/[^/]+\/edit$/.test(pathname)) return "expenses.update";
   if (pathname === "/admin/cash-bank") return "cash_bank.view";
   if (pathname === "/admin/cash-bank/ledger") return "cash_bank.view";

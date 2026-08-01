@@ -21,6 +21,7 @@ const DEFAULT_SOURCE_ORDER: Record<CashBankSourceType, number> = {
   EXPENSE: 40,
   CN_SALE: 50,
   CN_PURCHASE: 55,
+  PARTNER_PAYOUT: 58,
   TRANSFER: 60,
   ADJUSTMENT: 70,
 };

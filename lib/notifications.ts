@@ -286,6 +286,46 @@ export async function notifyKnowledgeRagFailure(input: {
   });
 }
 
+/**
+ * Partner profit distribution alerts.
+ *
+ * PRIVACY: the bell row and the Telegram message deliberately carry no amounts.
+ * Telegram groups are read by more people than may see partner figures, so the
+ * message only names the document and period — details stay behind the
+ * permission-checked admin page.
+ */
+export async function notifyProfitDistributionDeclared(input: {
+  distributionId: string;
+  distributionNo: string;
+  periodLabel: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.PROFIT_DISTRIBUTION_DECLARED,
+    severity: NotificationSeverity.INFO,
+    title: `ประกาศแบ่งกำไรงวด ${input.periodLabel}`,
+    body: `เอกสาร ${input.distributionNo} — เปิดดูรายละเอียดในระบบ`,
+    link: `/admin/profit-distributions/${input.distributionId}`,
+    entityType: "ProfitDistribution",
+    entityId: input.distributionId,
+  });
+}
+
+export async function notifyProfitDistributionCancelled(input: {
+  distributionId: string;
+  distributionNo: string;
+  periodLabel: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.PROFIT_DISTRIBUTION_CANCELLED,
+    severity: NotificationSeverity.WARNING,
+    title: `ยกเลิกเอกสารแบ่งกำไรงวด ${input.periodLabel}`,
+    body: `เอกสาร ${input.distributionNo} ถูกยกเลิก — เปิดดูรายละเอียดในระบบ`,
+    link: `/admin/profit-distributions/${input.distributionId}`,
+    entityType: "ProfitDistribution",
+    entityId: input.distributionId,
+  });
+}
+
 export type NotificationListItem = {
   id: string;
   type: NotificationType;

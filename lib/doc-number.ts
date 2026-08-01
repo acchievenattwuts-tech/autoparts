@@ -279,6 +279,27 @@ export async function generateCashBankAdjustmentNo(date?: Date): Promise<string>
 }
 
 /**
+ * Generate profit distribution number using ProfitDistribution table
+ * Format: PD{YYMM}{4-digit}
+ *
+ * NOTE: the running number follows the *declaration* date (today), not the
+ * distributed period — back-keying July on 1 August yields PD2608xxxx.
+ */
+export async function generateProfitDistributionNo(date?: Date): Promise<string> {
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const yy = year.slice(-2);
+  const mm = month;
+  const pattern = `PD${yy}${mm}`;
+  const last = await db.profitDistribution.findFirst({
+    where: { distributionNo: { startsWith: pattern } },
+    orderBy: { distributionNo: "desc" },
+    select: { distributionNo: true },
+  });
+  const seq = last ? parseInt(last.distributionNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Document prefix reference:
  * BF   — ยอดยกมา (Beginning Balance)
  * RR   — ซื้อสินค้าเข้า (Purchase Order)
@@ -290,4 +311,5 @@ export async function generateCashBankAdjustmentNo(date?: Date): Promise<string>
  * REC  — ใบเสร็จรับเงิน (Receipt)
  * OE   — ค่าใช้จ่าย (Operating Expense)
  * WC   — ใบเคลมสินค้า (Warranty Claim)
+ * PD   — แบ่งกำไรผู้ร่วมทุน (Profit Distribution)
  */
