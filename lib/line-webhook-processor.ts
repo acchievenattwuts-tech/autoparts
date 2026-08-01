@@ -2282,6 +2282,10 @@ export async function processLineAiReply(
               // a query (null = normal search) — feeds the decision on tuning
               // DID_YOU_MEAN_MAX_RETRIES further.
               didYouMean: productSearch.didYouMean?.suggestion ?? null,
+              // The customer gave a car year, the catalog had nothing for it, and the
+              // rows shown are other model years. Measures how often we have to answer
+              // with different-year alternatives — a direct signal of catalog gaps.
+              yearMismatchYear: productSearch.yearMismatch?.requestedYear ?? null,
               // The engine fell back to broad OR recall: every row matched only
               // PART of the query (right car / wrong part, or the reverse), so the
               // customer was shown near-matches carrying BROAD_FALLBACK_NEAR_MATCH_NOTE.
@@ -3153,7 +3157,7 @@ export async function processLineAiReply(
     // (their hand-off flow is a separate concern).
     const didYouMeanNote =
       productSearch.searched && productSearch.didYouMean
-        ? buildDidYouMeanNote(productSearch.didYouMean)
+        ? buildDidYouMeanNote(productSearch.didYouMean, productSearch.yearMismatch)
         : null;
     // Transparency note (audit item D): results came from the engine's broad OR
     // recall — every row matched only PART of the query (right car / wrong part,

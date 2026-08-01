@@ -113,6 +113,13 @@ export type ChatProductSearchBridgeResult =
        *  dropped — so a corrected/year-stripped match never reads as an exact hit.
        *  Null on a normal (non-recovered) search. */
       didYouMean: { suggestion: string; droppedYear: boolean } | null;
+      /** Set ONLY when the customer supplied a car year, the year hard-filter found
+       *  nothing, and the recovery search could offer rows from OTHER model years
+       *  only. The caller MUST say plainly that the requested year was not found and
+       *  that these are different-year alternatives — never restate the customer's
+       *  year over these rows (see the 1996 City incident, 2026-08-01). Null when the
+       *  shown rows do cover the requested year (or no year was given). */
+      yearMismatch?: { requestedYear: number } | null;
       /** True when an accessory/universal search only succeeded after the carried
        *  vehicle filters were dropped (see the rescue in the search body). Surfaced
        *  for the audit trail so the rescue rate is measurable. */
@@ -304,6 +311,50 @@ function buildSearchQuery(input: ChatProductSearchBridgeInput): string | null {
 
 type SuggestFn = (query: string) => Promise<string[]>;
 
+/** Catalog fitment year windows per product id, used to re-check a recovery result
+ *  against the year the customer actually asked for. Injectable for tests. */
+export type FitmentYearWindow = { yearStart: number | null; yearEnd: number | null };
+export type ResolveFitmentYearsFn = (
+  productIds: string[],
+) => Promise<Map<string, FitmentYearWindow[]>>;
+
+const defaultResolveFitmentYears: ResolveFitmentYearsFn = async (productIds) => {
+  const byProduct = new Map<string, FitmentYearWindow[]>();
+  if (productIds.length === 0) return byProduct;
+  const { db } = await import("@/lib/db");
+  const rows = await db.productFitment.findMany({
+    where: { productId: { in: productIds } },
+    select: { productId: true, yearStart: true, yearEnd: true },
+  });
+  for (const row of rows) {
+    const windows = byProduct.get(row.productId);
+    const window = { yearStart: row.yearStart, yearEnd: row.yearEnd };
+    if (windows) windows.push(window);
+    else byProduct.set(row.productId, [window]);
+  }
+  return byProduct;
+};
+
+/**
+ * True when a product's catalog fitment can plausibly cover `year`.
+ *
+ * Deliberately permissive in the two "no evidence" directions, because the goal is
+ * to drop rows that are provably a DIFFERENT generation — not to invent a hard
+ * compatibility verdict (the shop's rule is "ห้ามตัดสินแทนลูกค้า"):
+ *  - a product with NO fitment rows at all is universal → always covers.
+ *  - an open-ended window (yearStart with no yearEnd, e.g. "2006–") covers anything
+ *    from yearStart on; a row with neither bound covers everything.
+ */
+const fitmentCoversYear = (windows: FitmentYearWindow[] | undefined, year: number): boolean => {
+  if (!windows || windows.length === 0) return true;
+  return windows.some(({ yearStart, yearEnd }) => {
+    if (yearStart === null && yearEnd === null) return true;
+    if (yearStart !== null && year < yearStart) return false;
+    if (yearEnd !== null && year > yearEnd) return false;
+    return true;
+  });
+};
+
 /** Resolves which code-like tokens actually exist in the catalog (product code /
  *  OEM / alias / name). Used to validate OCR-read part numbers from images before
  *  they shape the search. Injectable for tests. */
@@ -349,11 +400,44 @@ export const resolveCatalogCodes: ResolveCatalogCodesFn = defaultResolveCatalogC
 const isCodeLikeToken = (token: string): boolean =>
   extractProductSearchRequiredTokens(token).length > 0;
 
+/**
+ * Re-applies the customer's car year to a recovery result that had to run without
+ * the year hard-filter. Returns the year-covering subset when one exists (the year
+ * is then genuinely honoured), otherwise the untouched result plus a mismatch flag
+ * so the reply can present the rows as other-year alternatives instead of silently
+ * answering the wrong year.
+ */
+async function applyRecoveryYearCheck(input: {
+  result: ProductSearchOutput;
+  requestedYear: number | null;
+  resolveFitmentYearsFn: ResolveFitmentYearsFn;
+}): Promise<{ result: ProductSearchOutput; yearMismatch: { requestedYear: number } | null }> {
+  const { result, requestedYear, resolveFitmentYearsFn } = input;
+  if (requestedYear === null || result.ids.length === 0) {
+    return { result, yearMismatch: null };
+  }
+
+  // A lookup failure must never turn a usable recovery into a wrong-year claim:
+  // treat "we could not verify the years" as a mismatch (the honest, cautious side).
+  const fitmentYears = await resolveFitmentYearsFn(result.ids).catch(() => null);
+  if (!fitmentYears) return { result, yearMismatch: { requestedYear } };
+
+  const covering = result.ids.filter((id) => fitmentCoversYear(fitmentYears.get(id), requestedYear));
+  if (covering.length === 0) return { result, yearMismatch: { requestedYear } };
+  if (covering.length === result.ids.length) return { result, yearMismatch: null };
+
+  return {
+    result: { ...result, ids: covering, total: covering.length },
+    yearMismatch: null,
+  };
+}
+
 export async function searchChatProductInquiry(
   input: ChatProductSearchBridgeInput,
   searchFn?: ProductSearchFn,
   suggestFn?: SuggestFn,
   resolveCatalogCodesFn: ResolveCatalogCodesFn = defaultResolveCatalogCodes,
+  resolveFitmentYearsFn: ResolveFitmentYearsFn = defaultResolveFitmentYears,
 ): Promise<ChatProductSearchBridgeResult> {
   const searchableIntent =
     input.route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
@@ -561,21 +645,34 @@ export async function searchChatProductInquiry(
       });
 
       if (retry.total > 0) {
+        // The retry ran WITHOUT the year hard-filter, so its rows may belong to a
+        // different generation than the customer asked for. Re-apply the year here
+        // (option C): keep the year-covering rows when there are any — that is a
+        // real answer, not a recovery caveat — and only fall back to the other-year
+        // rows when nothing covers the year, flagged so the reply says so plainly.
+        const { result: yearCheckedResult, yearMismatch } = await applyRecoveryYearCheck({
+          result: retry,
+          requestedYear: baseFilters.fitmentYear,
+          resolveFitmentYearsFn,
+        });
+
         return {
           searched: true,
-          reason: `DID_YOU_MEAN:${normalizedSuggestion}`,
+          reason: `DID_YOU_MEAN:${normalizedSuggestion}${yearMismatch ? ":YEAR_MISMATCH" : ""}`,
           query: normalizedSuggestion,
-          result: retry,
+          result: yearCheckedResult,
           needsMoreInfo: false,
-          appliedFilters: retryFilters,
+          appliedFilters: yearMismatch ? retryFilters : { ...retryFilters, fitmentYear: baseFilters.fitmentYear },
           droppedImageCodes,
           didYouMean: {
             suggestion: normalizedSuggestion,
             // The retry always strips the year hard-filter (retryFilters.fitmentYear
-            // = null); flag it when the customer actually supplied one, so the caller
-            // can add a "year not confirmed" note + re-ask for the year.
-            droppedYear: baseFilters.fitmentYear !== null,
+            // = null); flag it when the customer supplied one AND the rows we ended up
+            // showing do not cover it, so the caller re-asks for the year. When the
+            // year-covering subset survived, the year IS honoured — no caveat needed.
+            droppedYear: yearMismatch !== null,
           },
+          yearMismatch,
         };
       }
     }
@@ -610,6 +707,10 @@ export async function searchChatProductInquiry(
     appliedFilters: effectiveFilters,
     droppedImageCodes,
     didYouMean: null,
+    // Every path reaching here kept the year hard-filter, so the rows already cover
+    // it. The one exception — the accessory rescue — drops the vehicle for UNIVERSAL
+    // SKUs that carry no fitment rows at all, which no year can contradict.
+    yearMismatch: null,
     accessoryVehicleDropped,
   };
 }

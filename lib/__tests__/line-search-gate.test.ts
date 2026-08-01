@@ -90,13 +90,28 @@ test("generic uncertain fallback never assumes the customer has a truck", () => 
 });
 
 test("did-you-mean note names the corrected term", () => {
-  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza", droppedYear: false });
+  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza" });
   assert.ok(note.includes("คอยเย็น avanza"));
   assert.ok(!note.includes("ปีรถ"));
 });
 
-test("did-you-mean note re-asks for the year when the year filter was dropped", () => {
-  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza", droppedYear: true });
+test("did-you-mean note never asks for a car year the customer already typed", () => {
+  // droppedYear is only ever set when the customer DID supply a year, so re-asking
+  // for it ("ซิตี้96" → "ถ้าแจ้งปีมา") is always wrong.
+  const note = buildDidYouMeanNote({ suggestion: "คอยเย็น avanza" });
   assert.ok(note.includes("คอยเย็น avanza"));
-  assert.ok(note.includes("ปีรถ"));
+  assert.ok(!note.includes("ถ้าแจ้งปีมา"));
+  assert.ok(!note.includes("ยังไม่ได้กรองตามปีรถ"));
+});
+
+test("year-mismatch note says the asked year is NOT in stock, not merely unfiltered", () => {
+  const note = buildDidYouMeanNote(
+    { suggestion: "มูเล่ย์หน้าคลัช" },
+    { requestedYear: 1996 },
+  );
+  assert.ok(note.includes("มูเล่ย์หน้าคลัช"));
+  assert.ok(note.includes("ยังไม่มีของปี 1996"));
+  assert.ok(note.includes("รุ่นปีอื่น"));
+  // Must not fall back to the softer "we just didn't filter by year" wording.
+  assert.ok(!note.includes("ยังไม่ได้กรองตามปีรถ"));
 });

@@ -116,14 +116,31 @@ export function buildChatSearchFollowUp(followUp: "ask_year" | "ask_part"): stri
 /**
  * Note shown AFTER the product cards when the results came from a "did you mean"
  * spelling/synonym recovery — so a corrected (and year-stripped) match never reads
- * as an exact hit. Transparent about the guess and re-asks for the year when the
- * customer's year filter was dropped to find these.
+ * as an exact hit.
+ *
+ * The note NEVER asks for the car year. The year filter is only ever dropped when the
+ * customer already supplied a year — so the old "ถ้าแจ้งปีมา จูนจะช่วยกรองให้" line
+ * asked for a detail they had just typed ("ซิตี้96" → asked for the year anyway).
+ * When `yearMismatch` is set the catalog was checked against that year and genuinely
+ * has nothing for it, so the note says so outright; "ยังไม่ได้กรองตามปีรถ" would read
+ * as "we just didn't filter", which is the wrong-year answer the 1996 City incident
+ * produced.
  */
-export function buildDidYouMeanNote(didYouMean: { suggestion: string; droppedYear: boolean }): string {
-  const base = `จูนไม่เจอตรงคำที่พิมพ์พอดี เลยลองค้นจาก "${didYouMean.suggestion}" ให้ก่อนนะคะ 🙏 ถ้าไม่ตรงที่ต้องการ รบกวนพิมพ์ใหม่อีกครั้งได้เลยค่ะ`;
-  return didYouMean.droppedYear
-    ? `${base}\n(รายการนี้ยังไม่ได้กรองตามปีรถนะคะ ถ้าแจ้งปีมา จูนจะช่วยกรองให้ตรงรุ่นยิ่งขึ้นค่ะ 🚗)`
-    : base;
+export function buildDidYouMeanNote(
+  didYouMean: { suggestion: string },
+  yearMismatch?: { requestedYear: number } | null,
+): string {
+  const base = `จูนค้นจากคำว่า "${didYouMean.suggestion}" ให้นะคะ 🙏 ถ้าไม่ตรง พิมพ์ใหม่ได้เลยค่ะ`;
+  return yearMismatch ? `${base}\n${buildYearMismatchNote(yearMismatch.requestedYear)}` : base;
+}
+
+/**
+ * Note for rows shown after the catalog turned out to have NOTHING for the year the
+ * customer gave. States the miss first, then frames the rows as other-year options —
+ * never a verdict on whether they fit (the shop's "ห้ามตัดสินแทนลูกค้า" rule).
+ */
+export function buildYearMismatchNote(requestedYear: number): string {
+  return `(ในระบบยังไม่มีของปี ${requestedYear} นะคะ รายการด้านบนเป็นรุ่นปีอื่นให้ดูเทียบเคียง ยังไม่ยืนยันว่าใส่ได้ — ส่งรูปอะไหล่ตัวเดิมมาให้จูนเทียบ หรือให้แอดมินเช็กต่อได้ค่ะ 🚗)`;
 }
 
 /**

@@ -486,6 +486,21 @@ function buildLineReplyPrompt(input: {
     lines.push(
       "ห้ามตัดสิน/สรุปแทนลูกค้าว่ารายการที่พบ \"ใช้ได้\" หรือ \"ใช้ไม่ได้\" กับรถของลูกค้า แม้ปีในชื่อสินค้าจะดูไม่ตรง ให้เสนอเป็นตัวเลือกใกล้เคียงและชวนเทียบกับอะไหล่ตัวเดิมเสมอ",
     );
+    // The catalog was checked against the customer's year and has nothing for it —
+    // the rows below are other model years. Without this the model opens with
+    // "สำหรับ ... ปี 96 รายการที่มีให้..." over 2003–2019 stock (incident 2026-08-01).
+    const requestedYear =
+      input.productSearch?.searched === true ? input.productSearch.yearMismatch?.requestedYear ?? null : null;
+    if (requestedYear !== null) {
+      lines.push(
+        [
+          `สำคัญมาก: ในระบบ "ไม่มี" รายการที่ระบุว่าตรงกับปี ${requestedYear} ที่ลูกค้าถาม รายการข้างบนทั้งหมดเป็นรุ่นปีอื่น`,
+          `- ต้องขึ้นต้นข้อความด้วยการบอกตรง ๆ ว่ายังไม่พบรายการของปี ${requestedYear} ในระบบ`,
+          `- ห้ามเขียนทำนองว่า "สำหรับ...ปี ${requestedYear}" หรือ "รายการที่มีให้" คร่อมรายการเหล่านี้เด็ดขาด เพราะจะทำให้ลูกค้าเข้าใจผิดว่าเป็นของปีที่ถาม`,
+          "- ให้เรียกรายการเหล่านี้ว่า \"รุ่นปีอื่นที่พอเทียบเคียงได้\" และชวนลูกค้าส่งรูปอะไหล่ตัวเดิมมาเทียบ หรือแจ้งว่าจะให้แอดมินช่วยเช็กต่อ",
+        ].join("\n"),
+      );
+    }
   } else if (input.productSearch?.searched) {
     if (input.productSearch.needsMoreInfo) {
       lines.push(

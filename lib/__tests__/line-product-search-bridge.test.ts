@@ -429,28 +429,116 @@ test("fitment part head noun anchors the search when no category resolves", asyn
   if (result.searched) assert.equal(result.reason, "SEARCHED_FITMENT_PART_ANCHORED");
 });
 
-test("did-you-mean recovery flags the correction + dropped year (transparency)", async () => {
+/** Two-step search stub: the original query finds nothing, the did-you-mean retry hits. */
+const recoverySearchFn = (retryIds: string[]) => {
   let call = 0;
+  return async () => {
+    call += 1;
+    return call === 1
+      ? { ids: [], total: 0, mode: "v2" as const, matchReasons: {} }
+      : { ids: retryIds, total: retryIds.length, mode: "v2" as const, matchReasons: {} };
+  };
+};
+
+const fitmentYearsStub =
+  (windows: Record<string, Array<{ yearStart: number | null; yearEnd: number | null }>>) =>
+  async (ids: string[]) =>
+    new Map(ids.filter((id) => id in windows).map((id) => [id, windows[id]]));
+
+test("did-you-mean recovery flags the correction + dropped year (transparency)", async () => {
   const result = await searchChatProductInquiry(
     {
       route: searchableRoute,
       text: "คอยเย้น avanza",
       fitmentHints: { carModelName: "Avanza", fitmentYear: 2013 },
     },
-    async () => {
-      call += 1;
-      // First (original) search finds nothing; the did-you-mean retry hits.
-      return call === 1
-        ? { ids: [], total: 0, mode: "v2", matchReasons: {} }
-        : { ids: ["p1"], total: 2, mode: "v2", matchReasons: {} };
-    },
+    recoverySearchFn(["p1"]),
     async () => ["คอยเย็น avanza"],
+    undefined,
+    // No fitment rows for p1 → universal, so the year cannot be contradicted.
+    fitmentYearsStub({}),
   );
 
   assert.equal(result.searched, true);
   if (result.searched) {
-    assert.deepEqual(result.didYouMean, { suggestion: "คอยเย็น avanza", droppedYear: true });
+    assert.deepEqual(result.didYouMean, { suggestion: "คอยเย็น avanza", droppedYear: false });
+    assert.equal(result.yearMismatch, null);
   }
+});
+
+test("did-you-mean recovery keeps ONLY the rows covering the customer's year", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "คอยเย้น avanza",
+      fitmentHints: { carModelName: "Avanza", fitmentYear: 2013 },
+    },
+    recoverySearchFn(["p-old", "p-fit", "p-new"]),
+    async () => ["คอยเย็น avanza"],
+    undefined,
+    fitmentYearsStub({
+      "p-old": [{ yearStart: 2003, yearEnd: 2006 }],
+      "p-fit": [{ yearStart: 2012, yearEnd: 2015 }],
+      "p-new": [{ yearStart: 2019, yearEnd: null }],
+    }),
+  );
+
+  assert.equal(result.searched, true);
+  if (result.searched) {
+    assert.deepEqual(result.result.ids, ["p-fit"]);
+    assert.equal(result.result.total, 1);
+    // The year was honoured after all → no caveat, and the storefront link keeps it.
+    assert.equal(result.yearMismatch, null);
+    assert.equal(result.didYouMean?.droppedYear, false);
+    assert.equal(result.appliedFilters.fitmentYear, 2013);
+  }
+});
+
+test("did-you-mean recovery flags a year mismatch when NOTHING covers the asked year", async () => {
+  // The live 1996 City incident: catalog has 2003–2019 only, customer asked ปี 96.
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "มูเล่หน้าครัชซิตี้ 1996",
+      fitmentHints: { carModelName: "City", fitmentYear: 1996 },
+    },
+    recoverySearchFn(["p0198", "p0201"]),
+    async () => ["มูเล่ย์หน้าคลัช"],
+    undefined,
+    fitmentYearsStub({
+      p0198: [{ yearStart: 2003, yearEnd: 2006 }],
+      p0201: [{ yearStart: 2014, yearEnd: 2019 }],
+    }),
+  );
+
+  assert.equal(result.searched, true);
+  if (result.searched) {
+    // Rows are still offered (option C) — but flagged as other-year alternatives.
+    assert.deepEqual(result.result.ids, ["p0198", "p0201"]);
+    assert.deepEqual(result.yearMismatch, { requestedYear: 1996 });
+    assert.equal(result.didYouMean?.droppedYear, true);
+    assert.equal(result.appliedFilters.fitmentYear, null);
+    assert.ok(result.reason.endsWith(":YEAR_MISMATCH"));
+  }
+});
+
+test("a fitment-year lookup failure is treated as a mismatch, never a wrong-year claim", async () => {
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "มูเล่หน้าครัชซิตี้ 1996",
+      fitmentHints: { carModelName: "City", fitmentYear: 1996 },
+    },
+    recoverySearchFn(["p0198"]),
+    async () => ["มูเล่ย์หน้าคลัช"],
+    undefined,
+    async () => {
+      throw new Error("db down");
+    },
+  );
+
+  assert.equal(result.searched, true);
+  if (result.searched) assert.deepEqual(result.yearMismatch, { requestedYear: 1996 });
 });
 
 test("a normal (non-recovered) search reports no did-you-mean", async () => {

@@ -1271,7 +1271,7 @@ async function replyWithProductSearch(params: {
   // original query found nothing; best-guess spelling/synonym match with the year
   // filter dropped) so a corrected match never reads as an exact hit.
   if (products.length > 0 && productSearch.didYouMean) {
-    const note = buildDidYouMeanNote(productSearch.didYouMean);
+    const note = buildDidYouMeanNote(productSearch.didYouMean, productSearch.yearMismatch);
     await sendMessengerText({ pageAccessToken: params.pageAccessToken, psid: params.psid, text: note });
     await persistOutbound(params.conversationId, params.psid, note, { intent: params.route.intent });
   } else if (products.length > 0 && productSearch.result.usedBroadFallback === true) {
