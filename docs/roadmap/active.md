@@ -5,6 +5,20 @@
 - งานที่เสร็จแล้วแบบสรุปอยู่ที่ [completed.md](/D:/autoparts/docs/roadmap/completed.md)
 
 ## Active Now
+### ตัวกรองหมวดหมู่แบบเลือกหลายหมวด (Multi-select Category Filter) — เสร็จแล้ว
+- สถานะ: **DONE** — หน้าแรก + `/admin/products` + `/admin/products/search` เลือกหมวดหมู่ได้มากกว่า 1
+- สิ่งที่ทำเสร็จ:
+  - [x] คอมโพเนนต์ใหม่ `components/shared/MultiSelectFilter.tsx` — dropdown + ช่องค้นหา + checkbox, portal ไป `document.body` และพก class `dark` จาก `AdminThemeProvider` (แพตเทิร์นเดียวกับ `SearchableSelect`), รองรับ light + dark
+  - [x] หน้าแรก `HeroFitmentFinder` — ช่อง "หมวดอะไหล่" เป็น multi-select, ส่ง `?categories=` ซ้ำหลายค่าไป `/products` (ฝั่ง `/products` รองรับหลายหมวดอยู่แล้ว ไม่ต้องแก้)
+  - [x] `lib/product-search.ts` — เพิ่ม `categoryIds?: string[]` ใน `ProductSearchInput`, รวมกับ `categoryId` เดิมเป็นชุดเดียว (`where.categoryId = { in }` / raw SQL `IN (${Prisma.join(...)})`) และใส่ใน cache key
+  - [x] `lib/admin-product-filter-params.ts` — `categoryId` เป็น param ซ้ำได้ (`?categoryId=a&categoryId=b`), parse เป็น `categoryIds: string[]`, เพิ่ม `buildAdminProductFilterQueryString()`; `buildAdminProductFilterSearchParams()` คืนคู่ `[key, value][]` เพื่อรองรับ key ซ้ำ
+  - [x] `components/shared/Pagination.tsx` — prop `searchParams` รับได้ทั้ง object และคู่ `[key, value][]`
+  - [x] `/admin/products` — `ProductFilterForm` ใช้ `MultiSelectFilter` + hidden input `categoryId` หลายตัว, pill "หมวดหมู่" แยกลบทีละหมวด
+  - [x] `/admin/products/search` — `MobileProductSearchForm` filter sheet ติ๊กหมวดหมู่ได้หลายหมวด (badge นับตามจำนวนหมวดจริง), chip สรุปแสดงครบทุกหมวด
+  - [x] export CSV/Excel (`lib/product-report-queries.ts` + 2 routes) รับหลายหมวดตาม filter เดิมของหน้าจอ, audit meta เก็บเป็น query string
+- ลิงก์/bookmark เดิมที่ส่ง `categoryId` ค่าเดียวยังใช้ได้ตามปกติ (ไม่ต้อง migrate URL)
+- `npm run build` ผ่าน ไม่มี TypeScript error
+
 ### เมนูโปรดต่อผู้ใช้ (Sidebar Favorites) — เสร็จแล้ว
 - สถานะ: **DONE** — เก็บใน DB ต่อ `userId`, sidebar อย่างเดียว
 - สิ่งที่ทำเสร็จ:

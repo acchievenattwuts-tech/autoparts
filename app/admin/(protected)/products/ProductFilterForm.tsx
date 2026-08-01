@@ -8,6 +8,7 @@ import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import MultiSelectFilter, { type MultiSelectOption } from "@/components/shared/MultiSelectFilter";
 import NavLink from "@/components/shared/NavLink";
 
 type Option = { id: string; name: string };
@@ -15,7 +16,7 @@ type CarBrandOption = Option & { models: Option[] };
 
 type Props = {
   search?: string;
-  categoryId?: string;
+  categoryIds?: string[];
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
@@ -31,7 +32,7 @@ type Props = {
 
 export default function ProductFilterForm(props: Props) {
   const syncKey = [
-    props.categoryId ?? "",
+    (props.categoryIds ?? []).join(","),
     props.brandId ?? "",
     props.carBrandId ?? "",
     props.carModelId ?? "",
@@ -47,7 +48,7 @@ export default function ProductFilterForm(props: Props) {
 
 function ProductFilterFormContent({
   search,
-  categoryId,
+  categoryIds,
   brandId,
   carBrandId,
   carModelId,
@@ -60,7 +61,7 @@ function ProductFilterFormContent({
   partsBrands,
   carBrands,
 }: Props) {
-  const [categoryValue, setCategoryValue] = useState(categoryId ?? "");
+  const [categoryValues, setCategoryValues] = useState<string[]>(categoryIds ?? []);
   const [brandValue, setBrandValue] = useState(brandId ?? "");
   const [carBrandValue, setCarBrandValue] = useState(carBrandId ?? "");
   const [selectedCarBrandId, setSelectedCarBrandId] = useState(carBrandId ?? "");
@@ -81,7 +82,7 @@ function ProductFilterFormContent({
   );
 
   const hasFilters = Boolean(
-    search || categoryId || brandId || carBrandId || carModelId ||
+    search || (categoryIds?.length ?? 0) > 0 || brandId || carBrandId || carModelId ||
     yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
   );
 
@@ -109,13 +110,15 @@ function ProductFilterFormContent({
             />
           </div>
 
-          {/* Category */}
-          <div className="w-[160px] shrink-0">
-            <input type="hidden" name="categoryId" value={categoryValue} />
-            <SearchableSelect
-              options={categories.map((c): SelectOption => ({ id: c.id, label: c.name }))}
-              value={categoryValue}
-              onChange={setCategoryValue}
+          {/* Category — เลือกได้หลายหมวด (ส่งเป็น categoryId ซ้ำหลายตัว) */}
+          <div className="w-[180px] shrink-0">
+            {categoryValues.map((id) => (
+              <input key={id} type="hidden" name="categoryId" value={id} />
+            ))}
+            <MultiSelectFilter
+              options={categories.map((c): MultiSelectOption => ({ id: c.id, label: c.name }))}
+              values={categoryValues}
+              onChange={setCategoryValues}
               placeholder="ทุกหมวดหมู่"
             />
           </div>

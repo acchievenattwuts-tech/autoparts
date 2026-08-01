@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MessageCircleMore, RotateCcw, Search, Wrench } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import MultiSelectFilter, { type MultiSelectOption } from "@/components/shared/MultiSelectFilter";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 export interface FinderBrand {
@@ -43,18 +44,22 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
   const [year, setYear] = useState("");
-  const [category, setCategory] = useState("");
+  // หมวดอะไหล่เลือกได้มากกว่า 1 — /products รองรับ `categories` ซ้ำหลายค่าอยู่แล้ว
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
 
   const brandOptions = useMemo(() => toOptions(brands.map((b) => b.name)), [brands]);
   const yearOptions = useMemo(() => buildYearOptions(), []);
-  const categoryOptions = useMemo(() => toOptions(categories), [categories]);
+  const categoryOptions = useMemo<MultiSelectOption[]>(
+    () => categories.map((name) => ({ id: name, label: name })),
+    [categories],
+  );
 
   const modelOptions = useMemo(() => {
     const selected = brands.find((b) => b.name === brand);
     return toOptions(selected?.models ?? []);
   }, [brands, brand]);
 
-  const hasAnyFilter = Boolean(brand || model || year || category);
+  const hasAnyFilter = Boolean(brand || model || year || selectedCategories.length > 0);
 
   const handleBrandChange = (nextBrand: string) => {
     setBrand(nextBrand);
@@ -65,7 +70,7 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
     setBrand("");
     setModel("");
     setYear("");
-    setCategory("");
+    setSelectedCategories([]);
   };
 
   const handleSearch = () => {
@@ -79,7 +84,8 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
     if (brand) params.set("carBrand", brand);
     if (model) params.set("model", model);
     if (year) params.set("yearMin", year);
-    if (category) params.set("categories", category);
+    // ส่ง `categories` ซ้ำได้หลายค่า — panel ซ้ายของ /products จะติ๊กครบทุกหมวดที่เลือก
+    for (const name of selectedCategories) params.append("categories", name);
 
     startTransition(() => {
       router.push(`/products?${params.toString()}`);
@@ -140,13 +146,14 @@ const HeroFitmentFinder = ({ brands, categories, lineUrl = "" }: HeroFitmentFind
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">หมวดอะไหล่</label>
-          <SearchableSelect
+          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">
+            หมวดอะไหล่ <span className="font-normal text-slate-400">(เลือกได้หลายหมวด)</span>
+          </label>
+          <MultiSelectFilter
             options={categoryOptions}
-            value={category}
-            onChange={setCategory}
+            values={selectedCategories}
+            onChange={setSelectedCategories}
             placeholder="เลือกหมวด"
-            autoFocusSearch={false}
           />
         </div>
       </div>

@@ -263,6 +263,8 @@ type ProductSearchInput = {
   isStorefrontVisible?: boolean;
   categoryName?: string | null;
   categoryId?: string | null;
+  /** Multi-select category filter (admin product list/search) — OR between ids */
+  categoryIds?: string[] | null;
   brandId?: string | null;
   carBrandId?: string | null;
   carModelId?: string | null;
@@ -606,6 +608,7 @@ const buildProductFilterWhere = (
     | "isStorefrontVisible"
     | "categoryName"
     | "categoryId"
+    | "categoryIds"
     | "brandId"
     | "carBrandId"
     | "carModelId"
@@ -642,6 +645,7 @@ const buildProductFilterWhere = (
   const requiredTokens = normalizeRequiredTokens(input.requiredTokens);
   const requiredNameAliasTokenGroups = normalizeRequiredTokenGroups(input.requiredNameAliasTokenGroups);
   const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
+  const normalizedCategoryIds = normalizeStringArray(input.categoryIds);
   const normalizedBrandIds = normalizeStringArray(input.brandIds);
   const normalizedCarBrandNames = normalizeStringArray(input.carBrandNames);
   const priceMin = normalizePriceBound(input.priceMin);
@@ -660,8 +664,15 @@ const buildProductFilterWhere = (
     where.category = { name: { in: normalizedCategoryNames } };
   }
 
-  if (categoryId) {
-    where.categoryId = categoryId;
+  // categoryId (single, legacy) และ categoryIds (หลายหมวด) รวมกันเป็น OR ชุดเดียว
+  const effectiveCategoryIds = normalizeStringArray([
+    ...(categoryId ? [categoryId] : []),
+    ...normalizedCategoryIds,
+  ]);
+  if (effectiveCategoryIds.length === 1) {
+    where.categoryId = effectiveCategoryIds[0];
+  } else if (effectiveCategoryIds.length > 1) {
+    where.categoryId = { in: effectiveCategoryIds };
   }
 
   if (brandId) {
@@ -1178,13 +1189,18 @@ export async function searchProductIdsV2(
     ? Prisma.sql`AND psd.category_name = ${input.categoryName}`
     : Prisma.empty;
 
-  const categoryIdClause = input.categoryId
+  // categoryId (เดิม, ค่าเดียว) + categoryIds (หลายหมวด) → เงื่อนไข IN ชุดเดียว
+  const effectiveCategoryIds = normalizeStringArray([
+    ...(input.categoryId ? [input.categoryId] : []),
+    ...normalizeStringArray(input.categoryIds),
+  ]);
+  const categoryIdClause = effectiveCategoryIds.length > 0
     ? Prisma.sql`
         AND EXISTS (
           SELECT 1
           FROM "Product" p
           WHERE p.id = psd.product_id
-            AND p."categoryId" = ${input.categoryId}
+            AND p."categoryId" IN (${Prisma.join(effectiveCategoryIds)})
         )
       `
     : Prisma.empty;
@@ -1903,6 +1919,7 @@ export async function searchProductIds(
     isStorefrontVisible: input.isStorefrontVisible ?? null,
     categoryName: input.categoryName ?? "",
     categoryId: input.categoryId ?? "",
+    categoryIds: normalizeStringArray(input.categoryIds),
     brandId: input.brandId ?? "",
     carBrandId: input.carBrandId ?? "",
     carModelId: input.carModelId ?? "",

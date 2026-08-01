@@ -13,14 +13,18 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Loader2, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
 
-import { buildAdminProductFilterSearchParams } from "@/lib/admin-product-filter-params";
+import {
+  buildAdminProductFilterQueryString,
+  type AdminProductFilterParams,
+} from "@/lib/admin-product-filter-params";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 type Option = { id: string; name: string };
 type CarBrandOption = Option & { models: Option[] };
 type FilterDraft = {
-  categoryId: string;
+  /** หมวดหมู่เลือกได้หลายค่า — ค่าอื่นยังคงเลือกได้ค่าเดียว */
+  categoryIds: string[];
   brandId: string;
   carBrandId: string;
   carModelId: string;
@@ -34,7 +38,7 @@ type PendingAction = "search" | "clear";
 
 type Props = {
   search?: string;
-  categoryId?: string;
+  categoryIds?: string[];
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
@@ -53,7 +57,7 @@ type Props = {
 const PREVIEW_COUNT = 6;
 
 const EMPTY_FILTERS: FilterDraft = {
-  categoryId: "",
+  categoryIds: [],
   brandId: "",
   carBrandId: "",
   carModelId: "",
@@ -80,15 +84,18 @@ const trackingOptions = [
   { id: "non_tracked", name: "ไม่คำนวณสต็อก" },
 ];
 
-const buildUrl = (params: Record<string, string | undefined>) => {
-  const query = new URLSearchParams(buildAdminProductFilterSearchParams(params)).toString();
+const buildUrl = (params: AdminProductFilterParams & { search?: string }) => {
+  const query = buildAdminProductFilterQueryString(params);
   return `/admin/products/search${query ? `?${query}` : ""}`;
 };
 
-/** ช่วงปีนับเป็นตัวกรองเดียว ไม่ใช่สองตัว เพื่อให้ตัวเลขบน badge ตรงกับที่ผู้ใช้เห็น */
+/**
+ * ช่วงปีนับเป็นตัวกรองเดียว ไม่ใช่สองตัว เพื่อให้ตัวเลขบน badge ตรงกับที่ผู้ใช้เห็น
+ * หมวดหมู่นับตามจำนวนหมวดที่เลือกจริง
+ */
 const countFilters = (filters: FilterDraft): number =>
+  filters.categoryIds.length +
   [
-    filters.categoryId,
     filters.brandId,
     filters.carBrandId,
     filters.carModelId,
@@ -98,12 +105,21 @@ const countFilters = (filters: FilterDraft): number =>
     filters.trackingFilter,
   ].filter(Boolean).length;
 
+const sameStringSet = (a: string[], b: string[]): boolean => {
+  if (a.length !== b.length) return false;
+  const sortedB = [...b].sort();
+  return [...a].sort().every((value, index) => value === sortedB[index]);
+};
+
 const filtersAreEqual = (a: FilterDraft, b: FilterDraft): boolean =>
-  (Object.keys(EMPTY_FILTERS) as (keyof FilterDraft)[]).every((key) => a[key] === b[key]);
+  sameStringSet(a.categoryIds, b.categoryIds) &&
+  (Object.keys(EMPTY_FILTERS) as (keyof FilterDraft)[])
+    .filter((key): key is Exclude<keyof FilterDraft, "categoryIds"> => key !== "categoryIds")
+    .every((key) => a[key] === b[key]);
 
 export default function MobileProductSearchForm({
   search,
-  categoryId,
+  categoryIds,
   brandId,
   carBrandId,
   carModelId,
@@ -124,10 +140,13 @@ export default function MobileProductSearchForm({
   const [filterOpen, setFilterOpen] = useState(false);
   const [searchText, setSearchText] = useState(search ?? "");
 
+  // join เป็นสตริงก่อน เพื่อให้ dependency ของ useMemo เทียบด้วยค่า ไม่ใช่ reference ของ array
+  const categoryIdsKey = (categoryIds ?? []).join(",");
+
   // ชั้นที่ 3 — ตัวกรองที่ "ใช้จริง" อยู่ใน URL และตรงกับผลลัพธ์ที่แสดงอยู่
   const urlFilters = useMemo<FilterDraft>(
     () => ({
-      categoryId: categoryId ?? "",
+      categoryIds: categoryIdsKey ? categoryIdsKey.split(",") : [],
       brandId: brandId ?? "",
       carBrandId: carBrandId ?? "",
       carModelId: carModelId ?? "",
@@ -137,7 +156,7 @@ export default function MobileProductSearchForm({
       statusFilter: statusFilter ?? "",
       trackingFilter: trackingFilter ?? "",
     }),
-    [categoryId, brandId, carBrandId, carModelId, yearMin, yearMax, stockStatus, statusFilter, trackingFilter],
+    [categoryIdsKey, brandId, carBrandId, carModelId, yearMin, yearMax, stockStatus, statusFilter, trackingFilter],
   );
 
   // ชั้นที่ 2 — ตัวกรองที่ "จำไว้" หลังกดตกลง ยังไม่ถูกใช้จนกว่าจะกดปุ่มค้นหา
@@ -210,7 +229,9 @@ export default function MobileProductSearchForm({
   /** ล้าง = เคลียร์เฉพาะสิ่งที่ติ๊กอยู่ในชีต ไม่ปิดชีต ไม่ค้นหา */
   const clearDraft = () => setDraft(EMPTY_FILTERS);
 
-  const setSingle = (key: keyof FilterDraft, value: string) => {
+  type SingleFilterKey = Exclude<keyof FilterDraft, "categoryIds">;
+
+  const setSingle = (key: SingleFilterKey, value: string) => {
     setDraft((prev) => {
       const nextValue = prev[key] === value ? "" : value;
       if (key === "carBrandId") {
@@ -218,6 +239,16 @@ export default function MobileProductSearchForm({
       }
       return { ...prev, [key]: nextValue };
     });
+  };
+
+  /** หมวดหมู่เลือกได้หลายค่า — ติ๊กซ้ำคือเอาออก */
+  const toggleCategory = (id: string) => {
+    setDraft((prev) => ({
+      ...prev,
+      categoryIds: prev.categoryIds.includes(id)
+        ? prev.categoryIds.filter((value) => value !== id)
+        : [...prev.categoryIds, id],
+    }));
   };
 
   return (
@@ -305,6 +336,7 @@ export default function MobileProductSearchForm({
         carBrands={carBrands}
         selectedCarBrand={selectedCarBrand}
         setSingle={setSingle}
+        toggleCategory={toggleCategory}
         clearDraft={clearDraft}
         confirmFilters={confirmFilters}
       />
@@ -321,7 +353,8 @@ type FilterSheetProps = {
   partsBrands: Option[];
   carBrands: CarBrandOption[];
   selectedCarBrand?: CarBrandOption;
-  setSingle: (key: keyof FilterDraft, value: string) => void;
+  setSingle: (key: Exclude<keyof FilterDraft, "categoryIds">, value: string) => void;
+  toggleCategory: (id: string) => void;
   clearDraft: () => void;
   confirmFilters: () => void;
 };
@@ -341,6 +374,7 @@ function FilterSheetContent({
   carBrands,
   selectedCarBrand,
   setSingle,
+  toggleCategory,
   clearDraft,
   confirmFilters,
 }: FilterSheetProps) {
@@ -392,9 +426,10 @@ function FilterSheetContent({
           <div className="space-y-6">
             <CheckboxList
               title="หมวดหมู่สินค้า"
+              subtitle="เลือกได้มากกว่า 1 หมวด"
               items={categories}
-              selected={draft.categoryId}
-              onSelect={(id) => setSingle("categoryId", id)}
+              selected={draft.categoryIds}
+              onSelect={toggleCategory}
             />
             <Divider />
             <CheckboxList
@@ -481,22 +516,30 @@ function Divider() {
 
 function CheckboxList({
   title,
+  subtitle,
   items,
   selected,
   onSelect,
 }: {
   title: string;
+  subtitle?: string;
   items: Option[];
-  selected: string;
+  /** string = เลือกได้ค่าเดียว, string[] = เลือกได้หลายค่า */
+  selected: string | string[];
   onSelect: (id: string) => void;
 }) {
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? items : items.slice(0, PREVIEW_COUNT);
+  const isChecked = (id: string) =>
+    Array.isArray(selected) ? selected.includes(id) : selected === id;
 
   return (
     <section>
-      <h3 className="mb-3 font-kanit text-base font-semibold text-slate-950 dark:text-white">{title}</h3>
-      <div className="space-y-2">
+      <h3 className="mb-1 font-kanit text-base font-semibold text-slate-950 dark:text-white">{title}</h3>
+      {subtitle ? (
+        <p className="mb-2 text-xs text-slate-500 dark:text-slate-300">{subtitle}</p>
+      ) : null}
+      <div className="mt-2 space-y-2">
         {visible.length === 0 ? (
           <p className="text-sm text-slate-400 dark:text-slate-300">ยังไม่มีข้อมูล</p>
         ) : (
@@ -507,7 +550,7 @@ function CheckboxList({
             >
               <input
                 type="checkbox"
-                checked={selected === item.id}
+                checked={isChecked(item.id)}
                 onChange={() => onSelect(item.id)}
                 className="h-4 w-4 rounded border-slate-300 text-[#f97316] focus:ring-[#f97316] dark:border-slate-400 dark:bg-slate-800 dark:checked:border-[#f97316]"
               />

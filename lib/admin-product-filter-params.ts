@@ -1,6 +1,17 @@
+/**
+ * ตัวกรองสินค้าฝั่งแอดมิน (/admin/products และ /admin/products/search)
+ *
+ * `categoryId` เป็น param แบบ "ซ้ำได้" — เลือกได้หลายหมวดพร้อมกัน
+ * (`?categoryId=a&categoryId=b`) โดยยังคงชื่อ param เดิมไว้ ลิงก์/bookmark
+ * ที่ส่งมาแค่ค่าเดียวจึงยังใช้งานได้ตามปกติ
+ */
+
+/** ค่าที่ Next.js ส่งมาใน searchParams — ซ้ำ key ได้จึงอาจเป็น array */
+export type AdminProductFilterRawValue = string | string[] | undefined;
+
 export type AdminProductFilterParams = {
   search?: string;
-  categoryId?: string;
+  categoryIds?: string[];
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
@@ -11,17 +22,31 @@ export type AdminProductFilterParams = {
   trackingFilter?: string;
 };
 
-const normalizeParam = (value?: string): string | undefined => {
-  const trimmed = value?.trim();
+/** คู่ [key, value] สำหรับสร้าง URLSearchParams — รองรับ key ซ้ำ */
+export type AdminProductFilterQueryEntries = [string, string][];
+
+const normalizeParam = (value?: AdminProductFilterRawValue): string | undefined => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const trimmed = raw?.trim();
   return trimmed ? trimmed : undefined;
 };
 
+/** แปลงค่าที่ซ้ำ key ได้ให้เป็น array ที่ตัดค่าว่างและค่าซ้ำออกแล้ว */
+export const normalizeMultiParam = (value?: AdminProductFilterRawValue): string[] => {
+  const raw = value === undefined ? [] : Array.isArray(value) ? value : [value];
+  return Array.from(
+    new Set(raw.flatMap((item) => item.split(",")).map((item) => item.trim()).filter(Boolean)),
+  );
+};
+
 export function parseAdminProductFilterParams(
-  params: Record<string, string | undefined>,
+  params: Record<string, AdminProductFilterRawValue>,
 ): AdminProductFilterParams {
+  const categoryIds = normalizeMultiParam(params.categoryId);
+
   const parsed: AdminProductFilterParams = {
     search: normalizeParam(params.search),
-    categoryId: normalizeParam(params.categoryId),
+    ...(categoryIds.length > 0 ? { categoryIds } : {}),
     brandId: normalizeParam(params.brandId),
     carBrandId: normalizeParam(params.carBrandId),
     carModelId: normalizeParam(params.carModelId),
@@ -33,31 +58,46 @@ export function parseAdminProductFilterParams(
   };
 
   return Object.fromEntries(
-    Object.entries(parsed).flatMap(([key, value]) => (value ? [[key, value]] : [])),
+    Object.entries(parsed).flatMap(([key, value]) =>
+      value === undefined || (Array.isArray(value) && value.length === 0) ? [] : [[key, value]],
+    ),
   ) as AdminProductFilterParams;
 }
 
 export function buildAdminProductFilterSearchParams(
   params: AdminProductFilterParams & { page?: string },
-): Record<string, string> {
-  const entries = Object.entries({
-    search: params.search,
-    page: params.page,
-    categoryId: params.categoryId,
-    brandId: params.brandId,
-    carBrandId: params.carBrandId,
-    carModelId: params.carModelId,
-    yearMin: params.yearMin,
-    yearMax: params.yearMax,
-    stockStatus: params.stockStatus,
-    statusFilter: params.statusFilter,
-    trackingFilter: params.trackingFilter,
-  });
+): AdminProductFilterQueryEntries {
+  const singles: [string, string | undefined][] = [
+    ["search", params.search],
+    ["page", params.page],
+    ["brandId", params.brandId],
+    ["carBrandId", params.carBrandId],
+    ["carModelId", params.carModelId],
+    ["yearMin", params.yearMin],
+    ["yearMax", params.yearMax],
+    ["stockStatus", params.stockStatus],
+    ["statusFilter", params.statusFilter],
+    ["trackingFilter", params.trackingFilter],
+  ];
 
-  return Object.fromEntries(
-    entries.flatMap(([key, value]) => {
-      const normalized = normalizeParam(value);
-      return normalized ? [[key, normalized]] : [];
-    }),
-  );
+  const entries: AdminProductFilterQueryEntries = [];
+  for (const [key, value] of singles) {
+    const normalized = normalizeParam(value);
+    if (normalized) entries.push([key, normalized]);
+    // แทรกหมวดหมู่ต่อจาก search เพื่อให้ลำดับ param ใน URL คงที่และอ่านง่าย
+    if (key === "page") {
+      for (const categoryId of params.categoryIds ?? []) {
+        entries.push(["categoryId", categoryId]);
+      }
+    }
+  }
+
+  return entries;
+}
+
+/** query string พร้อมใช้ (ไม่มี `?` นำหน้า) */
+export function buildAdminProductFilterQueryString(
+  params: AdminProductFilterParams & { page?: string },
+): string {
+  return new URLSearchParams(buildAdminProductFilterSearchParams(params)).toString();
 }

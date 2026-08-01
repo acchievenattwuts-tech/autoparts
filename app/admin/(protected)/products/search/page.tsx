@@ -7,6 +7,7 @@ import Pagination from "@/components/shared/Pagination";
 import ProductMatchChips from "@/components/shared/ProductMatchChips";
 import ProductFitmentSummary from "@/app/admin/(protected)/products/ProductFitmentSummary";
 import {
+  buildAdminProductFilterQueryString,
   buildAdminProductFilterSearchParams,
   parseAdminProductFilterParams,
   type AdminProductFilterParams,
@@ -30,7 +31,8 @@ type ProductsSearchPageProps = {
   searchParams: Promise<{
     search?: string;
     page?: string;
-    categoryId?: string;
+    /** ซ้ำได้ — เลือกหลายหมวดพร้อมกัน */
+    categoryId?: string | string[];
     brandId?: string;
     carBrandId?: string;
     carModelId?: string;
@@ -57,8 +59,8 @@ const stockStatusLabel: Record<string, string> = {
   out_of_stock: "หมด",
 };
 
-const buildProductSearchUrl = (params: Record<string, string>) => {
-  const qs = new URLSearchParams(params).toString();
+const buildProductSearchUrl = (params: AdminProductFilterParams & { page?: string }) => {
+  const qs = buildAdminProductFilterQueryString(params);
   return `/admin/products/search${qs ? `?${qs}` : ""}`;
 };
 
@@ -72,7 +74,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
   const { page } = rawParams;
   const {
     search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -102,7 +104,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
 
   const productSearchInput = {
     query: search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -204,12 +206,12 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const didYouMean = search && total < 3 ? await suggestDidYouMean(search, 3) : [];
   const hasFilters = Boolean(
-    search || categoryId || brandId || carBrandId || carModelId || yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
+    search || (categoryIds?.length ?? 0) > 0 || brandId || carBrandId || carModelId || yearMin || yearMax || stockStatus || statusFilter || trackingFilter,
   );
 
   const paginationParams: AdminProductFilterParams = {
     search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -219,19 +221,17 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     statusFilter,
     trackingFilter,
   };
-  const currentSearchHref = buildProductSearchUrl(
-    buildAdminProductFilterSearchParams({
-      ...paginationParams,
-      ...(pageNum > 1 ? { page: String(pageNum) } : {}),
-    }),
-  );
+  const currentSearchHref = buildProductSearchUrl({
+    ...paginationParams,
+    ...(pageNum > 1 ? { page: String(pageNum) } : {}),
+  });
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-slate-50 via-white to-slate-50 text-gray-900 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 dark:text-slate-100">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 pb-8 sm:px-6 lg:py-4">
         <MobileProductSearchForm
           search={search}
-          categoryId={categoryId}
+          categoryIds={categoryIds}
           brandId={brandId}
           carBrandId={carBrandId}
           carModelId={carModelId}
@@ -251,7 +251,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
           <ActiveFilterSummary
             search={search}
             stockStatus={stockStatus}
-            categoryName={categories.find((category) => category.id === categoryId)?.name}
+            categoryNames={(categoryIds ?? []).map(
+              (id) => categories.find((category) => category.id === id)?.name ?? id,
+            )}
             brandName={partsBrands.find((brand) => brand.id === brandId)?.name}
             carBrandName={carBrands.find((brand) => brand.id === carBrandId)?.name}
             carModelName={carBrands.flatMap((brand) => brand.carModels).find((model) => model.id === carModelId)?.name}
@@ -473,7 +475,7 @@ function TinyBadge({
 function ActiveFilterSummary({
   search,
   stockStatus,
-  categoryName,
+  categoryNames,
   brandName,
   carBrandName,
   carModelName,
@@ -482,7 +484,7 @@ function ActiveFilterSummary({
 }: {
   search?: string;
   stockStatus?: string;
-  categoryName?: string;
+  categoryNames?: string[];
   brandName?: string;
   carBrandName?: string;
   carModelName?: string;
@@ -499,7 +501,7 @@ function ActiveFilterSummary({
           : null;
   const chips = [
     search ? `ค้นหา: ${search}` : null,
-    categoryName ? `หมวด: ${categoryName}` : null,
+    ...(categoryNames ?? []).map((name) => `หมวด: ${name}`),
     brandName ? `แบรนด์: ${brandName}` : null,
     carBrandName ? `รถ: ${carBrandName}` : null,
     carModelName ? `รุ่น: ${carModelName}` : null,

@@ -5,7 +5,7 @@ import {
   getRequestContextFromHeaders,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { buildAdminProductFilterSearchParams, parseAdminProductFilterParams } from "@/lib/admin-product-filter-params";
+import { buildAdminProductFilterQueryString, parseAdminProductFilterParams } from "@/lib/admin-product-filter-params";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
 
   const params = parseAdminProductFilterParams({
     search: searchParams.get("search") ?? undefined,
-    categoryId: searchParams.get("categoryId") ?? undefined,
+    categoryId: searchParams.getAll("categoryId"),
     brandId: searchParams.get("brandId") ?? undefined,
     carBrandId: searchParams.get("carBrandId") ?? undefined,
     carModelId: searchParams.get("carModelId") ?? undefined,
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       format: "xlsx",
       fileName,
       rowCount: rows.length,
-      filters: buildAdminProductFilterSearchParams(params),
+      filters: buildAdminProductFilterQueryString(params),
     },
   });
 

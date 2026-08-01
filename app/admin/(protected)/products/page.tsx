@@ -3,6 +3,7 @@
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import {
+  buildAdminProductFilterQueryString,
   buildAdminProductFilterSearchParams,
   parseAdminProductFilterParams,
   type AdminProductFilterParams,
@@ -45,7 +46,8 @@ interface ProductsPageProps {
   searchParams: Promise<{
     search?: string;
     page?: string;
-    categoryId?: string;
+    /** ซ้ำได้ — เลือกหลายหมวดพร้อมกัน */
+    categoryId?: string | string[];
     brandId?: string;
     carBrandId?: string;
     carModelId?: string;
@@ -57,15 +59,23 @@ interface ProductsPageProps {
   }>;
 }
 
+/**
+ * สร้าง URL ของ pill "ลบฟิลเตอร์" โดยตัด key ที่ระบุออก
+ * `removeCategoryId` ใช้ตัดหมวดหมู่ทีละหมวด (หมวดที่เหลือยังคงอยู่)
+ */
 function buildRemoveParamUrl(
-  params: Record<string, string | undefined>,
-  removeKeys: string[],
+  params: AdminProductFilterParams,
+  removeKeys: (keyof AdminProductFilterParams)[],
+  removeCategoryId?: string,
 ): string {
-  const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v && !removeKeys.includes(k)) p.set(k, v);
+  const next: AdminProductFilterParams = { ...params };
+  for (const key of removeKeys) delete next[key];
+  if (removeCategoryId) {
+    const remaining = (next.categoryIds ?? []).filter((id) => id !== removeCategoryId);
+    if (remaining.length > 0) next.categoryIds = remaining;
+    else delete next.categoryIds;
   }
-  const qs = p.toString();
+  const qs = buildAdminProductFilterQueryString(next);
   return `/admin/products${qs ? `?${qs}` : ""}`;
 }
 
@@ -89,7 +99,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const { page } = rawParams;
   const {
     search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -119,7 +129,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
   const productSearchInput = {
     query: search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -225,7 +235,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const filters: AdminProductFilterParams = {
     search,
-    categoryId,
+    categoryIds,
     brandId,
     carBrandId,
     carModelId,
@@ -235,7 +245,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     statusFilter,
     trackingFilter,
   };
-  const exportQuery = new URLSearchParams(buildAdminProductFilterSearchParams(filters)).toString();
+  const exportQuery = buildAdminProductFilterQueryString(filters);
 
   // Phase Q4 — "Did you mean" suggestions when admin search returns no/few hits
   const didYouMean = search && total < 3
@@ -278,7 +288,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
 
       <ProductFilterForm
         search={search}
-        categoryId={categoryId}
+        categoryIds={categoryIds}
         brandId={brandId}
         carBrandId={carBrandId}
         carModelId={carModelId}
@@ -301,38 +311,38 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
           const allParams = filters;
           type Pill = { label: string; removeUrl: string };
           const pills: Pill[] = [];
-          if (search) pills.push({ label: `ค้นหา: "${search}"`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["search"]) });
-          if (categoryId) {
-            const cat = categories.find((c) => c.id === categoryId);
-            pills.push({ label: `หมวดหมู่: ${cat?.name ?? categoryId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["categoryId"]) });
+          if (search) pills.push({ label: `ค้นหา: "${search}"`, removeUrl: buildRemoveParamUrl(allParams, ["search"]) });
+          for (const id of categoryIds ?? []) {
+            const cat = categories.find((c) => c.id === id);
+            pills.push({ label: `หมวดหมู่: ${cat?.name ?? id}`, removeUrl: buildRemoveParamUrl(allParams, [], id) });
           }
           if (brandId) {
             const br = partsBrands.find((b) => b.id === brandId);
-            pills.push({ label: `แบรนด์: ${br?.name ?? brandId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["brandId"]) });
+            pills.push({ label: `แบรนด์: ${br?.name ?? brandId}`, removeUrl: buildRemoveParamUrl(allParams, ["brandId"]) });
           }
           if (carBrandId) {
             const cb = carBrands.find((b) => b.id === carBrandId);
-            pills.push({ label: `ยี่ห้อรถ: ${cb?.name ?? carBrandId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["carBrandId", "carModelId"]) });
+            pills.push({ label: `ยี่ห้อรถ: ${cb?.name ?? carBrandId}`, removeUrl: buildRemoveParamUrl(allParams, ["carBrandId", "carModelId"]) });
           }
           if (carModelId) {
             const cm = carBrands.flatMap((b) => b.carModels).find((m) => m.id === carModelId);
-            pills.push({ label: `รุ่นรถ: ${cm?.name ?? carModelId}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["carModelId"]) });
+            pills.push({ label: `รุ่นรถ: ${cm?.name ?? carModelId}`, removeUrl: buildRemoveParamUrl(allParams, ["carModelId"]) });
           }
           if (yearMin || yearMax) {
             const label = yearMin && yearMax
               ? `ปีรถ: ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`
               : yearMin ? `ปีรถ ≥ ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}` : `ปีรถ ≤ ${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`;
-            pills.push({ label, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["yearMin", "yearMax"]) });
+            pills.push({ label, removeUrl: buildRemoveParamUrl(allParams, ["yearMin", "yearMax"]) });
           }
           if (stockStatus) {
             const map: Record<string, string> = { in_stock: "มีสต็อก", low_stock: "สต็อกต่ำ", out_of_stock: "หมดสต็อก" };
-            pills.push({ label: `สต็อก: ${map[stockStatus] ?? stockStatus}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["stockStatus"]) });
+            pills.push({ label: `สต็อก: ${map[stockStatus] ?? stockStatus}`, removeUrl: buildRemoveParamUrl(allParams, ["stockStatus"]) });
           }
           if (statusFilter) {
-            pills.push({ label: `สถานะ: ${statusFilter === "active" ? "ใช้งาน" : "ปิดใช้งาน"}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["statusFilter"]) });
+            pills.push({ label: `สถานะ: ${statusFilter === "active" ? "ใช้งาน" : "ปิดใช้งาน"}`, removeUrl: buildRemoveParamUrl(allParams, ["statusFilter"]) });
           }
           if (trackingFilter) {
-            pills.push({ label: `การคำนวณ: ${trackingFilter === "tracked" ? "คำนวณสต็อก" : "ไม่คำนวณ"}`, removeUrl: buildRemoveParamUrl({ ...allParams, page: undefined }, ["trackingFilter"]) });
+            pills.push({ label: `การคำนวณ: ${trackingFilter === "tracked" ? "คำนวณสต็อก" : "ไม่คำนวณ"}`, removeUrl: buildRemoveParamUrl(allParams, ["trackingFilter"]) });
           }
           if (pills.length === 0) return null;
           return (

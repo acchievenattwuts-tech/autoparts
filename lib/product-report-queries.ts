@@ -1,6 +1,9 @@
 import ExcelJS from "exceljs";
 
-import { parseAdminProductFilterParams } from "@/lib/admin-product-filter-params";
+import {
+  parseAdminProductFilterParams,
+  type AdminProductFilterRawValue,
+} from "@/lib/admin-product-filter-params";
 import { db } from "@/lib/db";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
 import { getLatestStockBalances } from "@/lib/stock-card-latest-balance";
@@ -16,7 +19,7 @@ const numberOrNull = (value?: string): number | null => {
 
 export type ProductReportFilters = {
   search?: string;
-  categoryId?: string;
+  categoryIds?: string[];
   brandId?: string;
   carBrandId?: string;
   carModelId?: string;
@@ -73,7 +76,7 @@ function getProductReportHeaders(): string[] {
 }
 
 export function parseProductReportFilters(
-  params: Record<string, string | undefined>,
+  params: Record<string, AdminProductFilterRawValue>,
 ): ProductReportFilters {
   return parseAdminProductFilterParams(params);
 }
@@ -94,7 +97,7 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
 
   const searchResult = await searchProductIds({
     query: filters.search,
-    categoryId: filters.categoryId,
+    categoryIds: filters.categoryIds,
     brandId: filters.brandId,
     carBrandId: filters.carBrandId,
     carModelId: filters.carModelId,

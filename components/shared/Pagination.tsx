@@ -1,10 +1,13 @@
 import PaginationClient, { type PaginationItem } from "./PaginationClient";
 
+/** รองรับทั้ง object ปกติ และคู่ [key, value] สำหรับ filter ที่มี key ซ้ำได้ */
+export type PaginationSearchParams = Record<string, string> | [string, string][];
+
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
   basePath?: string;
-  searchParams?: Record<string, string>;
+  searchParams?: PaginationSearchParams;
   buildHref?: (page: number) => string;
   /** When provided, click handler calls this instead of router.push (keeps href for SEO/right-click) */
   onNavigate?: (page: number) => void;
@@ -15,9 +18,9 @@ interface PaginationProps {
 const buildUrl = (
   basePath: string,
   page: number,
-  searchParams?: Record<string, string>,
+  searchParams?: PaginationSearchParams,
 ): string => {
-  const params = new URLSearchParams(searchParams ?? {});
+  const params = new URLSearchParams(searchParams ?? []);
   params.set("page", String(page));
   return `${basePath}?${params.toString()}`;
 };
