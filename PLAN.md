@@ -334,7 +334,7 @@
 - [x] Test: `buildUnlinkedPriceNote` 4 เคส + e2e "unlinked ได้ข้อความ + ไม่ freeze" / "linked ไม่ได้ข้อความ"
 
 ### 12. แบ่งกำไรผู้ร่วมทุน — Profit Distribution (2026-08-01)
-- สถานะ: **โค้ดเสร็จครบ `npm run build` ผ่าน 0 error — รอ `npx prisma db push` บน production**
+- สถานะ: **เสร็จครบ + db push แล้ว (2026-08-01) — รอตั้งค่าผู้ร่วมทุนและมอบสิทธิ์**
 - บริบท: ร้านจดทะเบียนพาณิชย์ (ไม่ใช่นิติบุคคล) ทำกันในครอบครัว 4 คน สิ้นเดือนนำกำไรสุทธิมาแบ่ง สัดส่วนตั้งต้นคงที่แต่ปรับได้รายเดือน · ไม่มีใครกินเงินเดือนประจำ → **ไม่ทำโมดูล Payroll**
 - ตัดสินใจเชิงบัญชี (สำคัญที่สุดของงานนี้): การแบ่งกำไรให้เจ้าของ **ไม่ใช่ค่าใช้จ่าย** จึง **ห้ามสร้าง `Expense` และห้ามแตะ `FactProfit`** เด็ดขาด — ผลพลอยได้คือคีย์ย้อนหลังงวดไหนก็ไม่กระทบกำไรสุทธิของเดือนที่คีย์ (เช่น คีย์งวด ก.ค. ในวันที่ 01/08 กำไรเดือน ส.ค. ไม่ขยับแม้แต่บาทเดียว) เงินสดตัดตาม `payDate` จริงเท่านั้น
 - [x] Schema: `enum UserType {EMPLOYEE|PARTNER}` + `User.userType` (+`@@index`) — ใช้ตาราง `User` เดิมตามที่เจ้าของสั่ง, `enum PartnerLedgerType`, `PartnerProfile` (1-1 กับ User, แยกตารางเพราะ `User` ถูก select เกือบทุกหน้า), `ProfitDistribution`, `ProfitDistributionItem`, `PartnerLedger`
@@ -356,7 +356,7 @@
 - [x] UI `/admin/profit-distributions/[id]`: ที่มาของยอด (snapshot ทั้งหมด), ส่วนแบ่งรายคน, ปุ่มยกเลิกพร้อมช่องเหตุผล · `/partners`: ตั้งผู้ใช้เป็นผู้ร่วมทุน + สัดส่วนตั้งต้น + บัญชีรับเงิน (แสดงแบบ mask 4 ตัวท้ายตาม PDPA, แก้ต้องกรอกใหม่)
 - [x] ครบตามกฎ repo: `loading.tsx` ทุก segment (4 ไฟล์) · `force-dynamic` ทุกหน้า · light + dark mode พร้อมกัน · ตารางมี `overflow-x-auto` + สลับเป็นการ์ดบนมือถือ · `SearchableSelect` สำหรับบัญชี/งวด/ผู้ใช้ · วันที่ผ่าน `lib/th-date.ts` ทั้งหมด (ค.ศ.)
 - [x] Test: `npm run test:profit-distribution` → [lib/__tests__/profit-distribution-carry-forward.test.ts](lib/__tests__/profit-distribution-carry-forward.test.ts) 9 เคสผ่านทั้งหมด — ไม่ยกยอดก่อนเอกสารใบแรก / ยกขาดทุน / ยกเฉพาะผลต่างเมื่อกำไรถูกคำนวณใหม่ / รวม 2 แหล่งโดยไม่นับซ้ำ / เดือนที่ถูกยกเลิกถือเป็นยังไม่ประกาศ / จำกัด lookback 36 เดือน / ข้ามปีถูกต้อง / ปัดเศษต่ำกว่า 1 สตางค์ทิ้ง / `getPeriodBounds` ครอบคลุมทั้งเดือนตามเวลาไทย (รวมปีอธิกสุรทิน)
-- [ ] **ต้องทำก่อนใช้งานจริง**: `npx prisma db push` บน production
+- [x] `npm run db:push` บน production (2026-08-01) — ตรวจยืนยันแล้วว่าตาราง `PartnerProfile` / `ProfitDistribution` / `ProfitDistributionItem` / `PartnerLedger`, คอลัมน์ `User.userType` และค่า enum ใหม่ทั้ง 9 ค่าอยู่ครบ, ทุกตารางใหม่ยังว่าง (0 แถว) · ใช้ `npm run db:push` ไม่ใช่ `prisma db push` เปล่า ๆ เพราะต้อง re-apply `setup-search-v2` + `setup-knowledge-rag` ต่อท้าย
 - [ ] ตั้งค่าเริ่มต้นหลัง db push: เข้า `/admin/profit-distributions/partners` เพิ่มผู้ร่วมทุน 4 คน + สัดส่วนตั้งต้นให้รวมได้ 100%
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront
