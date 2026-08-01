@@ -37,7 +37,9 @@ import {
   getPeriodBounds,
   getPeriodKey,
   getPeriodProfitSummary,
+  isBeforeStartPeriod,
   isClosedPeriod,
+  PROFIT_DISTRIBUTION_START_LABEL,
   roundMoney,
   SHARE_PERCENT_TOLERANCE,
 } from "@/lib/profit-distribution";
@@ -170,6 +172,11 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
   const periodLabel = formatPeriodLabel(periodYear, periodMonth);
 
   if (periodMonth < 1 || periodMonth > 12) return { error: "งวดไม่ถูกต้อง" };
+  if (isBeforeStartPeriod(periodYear, periodMonth)) {
+    return {
+      error: `ระบบแบ่งกำไรเริ่มใช้ตั้งแต่งวด ${PROFIT_DISTRIBUTION_START_LABEL} เดือนก่อนหน้านั้นประกาศไม่ได้`,
+    };
+  }
   if (!isClosedPeriod(periodYear, periodMonth)) {
     return { error: "ประกาศแบ่งกำไรได้เฉพาะเดือนที่จบไปแล้ว เพราะกำไรของเดือนที่ยังไม่จบยังไม่นิ่ง" };
   }

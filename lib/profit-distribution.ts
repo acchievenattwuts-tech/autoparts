@@ -109,6 +109,26 @@ export function isClosedPeriod(year: number, month: number): boolean {
   return comparePeriods({ year, month }, getCurrentPeriod()) < 0;
 }
 
+/**
+ * The partners only started sharing profit from July 2026. Anything before that
+ * period is out of scope everywhere: it cannot be declared, it is not counted in
+ * the yearly totals, and it never carries forward. The ~131k of losses booked in
+ * May–June 2026 predate the arrangement and are deliberately written off.
+ *
+ * Months before this period are still *displayed* (greyed out) so the history
+ * stays visible — they are simply excluded from every calculation.
+ */
+export const PROFIT_DISTRIBUTION_START_PERIOD = { year: 2026, month: 7 } as const;
+
+export const PROFIT_DISTRIBUTION_START_LABEL = formatPeriodLabel(
+  PROFIT_DISTRIBUTION_START_PERIOD.year,
+  PROFIT_DISTRIBUTION_START_PERIOD.month,
+);
+
+export function isBeforeStartPeriod(year: number, month: number): boolean {
+  return comparePeriods({ year, month }, PROFIT_DISTRIBUTION_START_PERIOD) < 0;
+}
+
 export type PeriodOption = {
   year: number;
   month: number;
@@ -126,7 +146,9 @@ export async function listSelectablePeriods(): Promise<PeriodOption[]> {
   const current = getCurrentPeriod();
   const periods: Array<{ year: number; month: number }> = [];
   for (let offset = 1; offset <= SELECTABLE_PERIOD_MONTHS; offset += 1) {
-    periods.push(shiftPeriod(current.year, current.month, -offset));
+    const period = shiftPeriod(current.year, current.month, -offset);
+    if (isBeforeStartPeriod(period.year, period.month)) break;
+    periods.push(period);
   }
 
   const activeKeys = new Set(
@@ -194,6 +216,7 @@ export async function computeCarryForward(
   month: number,
 ): Promise<CarryForwardResult> {
   const target = { year, month };
+  if (isBeforeStartPeriod(target.year, target.month)) return { amount: 0, rows: [] };
 
   const earliest = await db.profitDistribution.findFirst({
     where: { status: DocStatus.ACTIVE },
@@ -207,10 +230,16 @@ export async function computeCarryForward(
     target.month,
     -CARRY_FORWARD_MAX_LOOKBACK_MONTHS,
   );
+  // Hard floor: never look before the month the arrangement started, whatever
+  // the lookback window or the first document would otherwise allow.
+  const lookbackFloor =
+    comparePeriods(oldestAllowed, PROFIT_DISTRIBUTION_START_PERIOD) > 0
+      ? oldestAllowed
+      : PROFIT_DISTRIBUTION_START_PERIOD;
   const startPeriod =
-    comparePeriods({ year: earliest.periodYear, month: earliest.periodMonth }, oldestAllowed) > 0
+    comparePeriods({ year: earliest.periodYear, month: earliest.periodMonth }, lookbackFloor) > 0
       ? { year: earliest.periodYear, month: earliest.periodMonth }
-      : oldestAllowed;
+      : lookbackFloor;
 
   const periods: Array<{ year: number; month: number }> = [];
   let cursor = startPeriod;
@@ -282,14 +311,6 @@ export type PartnerOption = {
   bankLabel: string | null;
 };
 
-/** Mask an account number down to its last 4 digits (PDPA-friendly display). */
-export function maskBankAccountNo(accountNo: string | null | undefined): string | null {
-  if (!accountNo) return null;
-  const trimmed = accountNo.trim();
-  if (trimmed.length <= 4) return trimmed;
-  return `${"x".repeat(Math.min(trimmed.length - 4, 12))}${trimmed.slice(-4)}`;
-}
-
 export async function listActivePartners(): Promise<PartnerOption[]> {
   const partners = await db.partnerProfile.findMany({
     where: { isActive: true, user: { isActive: true } },
@@ -305,10 +326,11 @@ export async function listActivePartners(): Promise<PartnerOption[]> {
   });
 
   return partners.map((partner) => {
-    const maskedAccountNo = maskBankAccountNo(partner.bankAccountNo);
-    const bankLabel = partner.bankName
-      ? [partner.bankName, maskedAccountNo].filter(Boolean).join(" ")
-      : maskedAccountNo;
+    // Shown in full — the account numbers belong to the four owners themselves,
+    // and they need to read them when transferring money.
+    const bankLabel = [partner.bankName, partner.bankAccountNo]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .join(" ");
 
     return {
       partnerProfileId: partner.id,
@@ -441,6 +463,8 @@ export type YearOverviewMonth = {
   /** Net profit as the system computes it *today* (may differ from a snapshot). */
   currentNetProfit: number;
   isClosed: boolean;
+  /** Predates the profit-sharing arrangement — shown, but never counted. */
+  isBeforeStart: boolean;
   distribution: {
     id: string;
     distributionNo: string;
@@ -512,6 +536,7 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
       shortLabel: formatPeriodShortLabel(month),
       currentNetProfit: roundMoney(summaries[index].netProfitAmount),
       isClosed: isClosedPeriod(year, month),
+      isBeforeStart: isBeforeStartPeriod(year, month),
       distribution: distribution
         ? {
             id: distribution.id,
@@ -537,8 +562,12 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
     year,
     months: rows,
     totals: {
+      // Months before the arrangement started never enter any total.
       currentNetProfit: roundMoney(
-        rows.reduce((sum, row) => sum + (row.isClosed ? row.currentNetProfit : 0), 0),
+        rows.reduce(
+          (sum, row) => sum + (row.isClosed && !row.isBeforeStart ? row.currentNetProfit : 0),
+          0,
+        ),
       ),
       distributedAmount: roundMoney(
         rows.reduce((sum, row) => sum + (row.distribution?.distributedAmount ?? 0), 0),
@@ -547,7 +576,11 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
         rows.reduce((sum, row) => sum + (row.distribution?.retainedAmount ?? 0), 0),
       ),
     },
-    pendingClosedMonths: rows.filter((row) => row.isClosed && !row.distribution).length,
+    // Only a closed, in-scope month that actually made a profit needs declaring.
+    pendingClosedMonths: rows.filter(
+      (row) =>
+        row.isClosed && !row.isBeforeStart && !row.distribution && row.currentNetProfit > 0,
+    ).length,
   };
 }
 

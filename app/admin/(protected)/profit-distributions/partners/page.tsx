@@ -5,7 +5,6 @@ import { UserCog } from "lucide-react";
 import NavLink from "@/components/shared/NavLink";
 import type { SelectOption } from "@/components/shared/SearchableSelect";
 import { db } from "@/lib/db";
-import { maskBankAccountNo } from "@/lib/profit-distribution";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateOnlyForInput, getThailandDateKey } from "@/lib/th-date";
 
@@ -41,7 +40,7 @@ export default async function PartnerSettingsPage() {
     email: profile.user.email,
     defaultSharePercent: Number(profile.defaultSharePercent),
     bankName: profile.bankName ?? "",
-    maskedAccountNo: maskBankAccountNo(profile.bankAccountNo),
+    bankAccountNo: profile.bankAccountNo ?? "",
     joinedAt: formatDateOnlyForInput(profile.joinedAt),
     note: profile.note ?? "",
     isActive: profile.isActive,

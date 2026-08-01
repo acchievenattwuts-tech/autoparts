@@ -357,6 +357,15 @@
 - [x] ครบตามกฎ repo: `loading.tsx` ทุก segment (4 ไฟล์) · `force-dynamic` ทุกหน้า · light + dark mode พร้อมกัน · ตารางมี `overflow-x-auto` + สลับเป็นการ์ดบนมือถือ · `SearchableSelect` สำหรับบัญชี/งวด/ผู้ใช้ · วันที่ผ่าน `lib/th-date.ts` ทั้งหมด (ค.ศ.)
 - [x] Test: `npm run test:profit-distribution` → [lib/__tests__/profit-distribution-carry-forward.test.ts](lib/__tests__/profit-distribution-carry-forward.test.ts) 9 เคสผ่านทั้งหมด — ไม่ยกยอดก่อนเอกสารใบแรก / ยกขาดทุน / ยกเฉพาะผลต่างเมื่อกำไรถูกคำนวณใหม่ / รวม 2 แหล่งโดยไม่นับซ้ำ / เดือนที่ถูกยกเลิกถือเป็นยังไม่ประกาศ / จำกัด lookback 36 เดือน / ข้ามปีถูกต้อง / ปัดเศษต่ำกว่า 1 สตางค์ทิ้ง / `getPeriodBounds` ครอบคลุมทั้งเดือนตามเวลาไทย (รวมปีอธิกสุรทิน)
 - [x] `npm run db:push` บน production (2026-08-01) — ตรวจยืนยันแล้วว่าตาราง `PartnerProfile` / `ProfitDistribution` / `ProfitDistributionItem` / `PartnerLedger`, คอลัมน์ `User.userType` และค่า enum ใหม่ทั้ง 9 ค่าอยู่ครบ, ทุกตารางใหม่ยังว่าง (0 แถว) · ใช้ `npm run db:push` ไม่ใช่ `prisma db push` เปล่า ๆ เพราะต้อง re-apply `setup-search-v2` + `setup-knowledge-rag` ต่อท้าย
+- [x] **กำหนดเดือนเริ่มต้น = ก.ค. 2026 (2026-08-01)** — `PROFIT_DISTRIBUTION_START_PERIOD` hardcode ใน `lib/profit-distribution.ts` (ยืนยันโดยเจ้าของร้าน: ขาดทุน พ.ค. −110,383.10 + มิ.ย. −21,445.25 รวม 131,828.35 บาท เกิดก่อนตกลงแบ่งกำไร → **ทิ้งไปเลย ไม่ยกมาหัก**)
+  - `computeCarryForward()` มี hard floor: ไม่ย้อนก่อนงวดเริ่มต้นไม่ว่ากรณีใด + คืน 0 ทันทีถ้า target อยู่ก่อนงวดเริ่มต้น
+  - `listSelectablePeriods()` ไม่เสนอเดือนก่อนเริ่ม · `createProfitDistribution()` ปฏิเสธพร้อมข้อความบอกงวดเริ่มต้น
+  - `getYearOverview()` เพิ่ม `isBeforeStart` — KPI "กำไรสุทธิสะสม" และ `pendingClosedMonths` ไม่นับเดือนก่อนเริ่ม, สเกลกราฟก็ไม่นับ (ไม่งั้นขาดทุน 110k จะกดแท่งเดือนอื่นจนแบน)
+  - ตารางรายเดือน + การ์ดมือถือ: เดือนก่อนเริ่มแสดงเป็นสีเทา (`opacity-60`) ป้าย "ก่อนเริ่มใช้ระบบ" — ยังเห็นตัวเลขจริงแต่ประกาศไม่ได้และไม่ถูกนับ
+- [x] แก้บั๊กป้ายสถานะ: เดือนที่กำไร ฿0.00 เคยติดป้าย "ขาดทุน · ไม่แบ่ง" (เงื่อนไขเป็น `<= 0`) → แยกเป็น `NO_PROFIT` = "ไม่มีกำไร · ไม่แบ่ง" กับ `LOSS` = "ขาดทุน · ไม่แบ่ง" พร้อม epsilon 0.005 กันปัญหา floating point
+- [x] `TabsBar.ROUTE_LABELS` เพิ่ม `/admin/profit-distributions` + `/admin/profit-distributions/partners` — ก่อนหน้านี้แท็บด้านบนขึ้นเป็นช่องว่างเพราะไม่ได้ลงทะเบียนชื่อไว้
+- [x] เลิก mask เลขบัญชีผู้ร่วมทุน (ยืนยันโดยเจ้าของร้าน) — แสดงเต็มด้วย `font-mono` ทั้งหน้าผู้ร่วมทุนและหน้าประกาศ, ฟอร์มแก้ไข prefill เลขเดิมได้แล้ว (เดิมต้องพิมพ์ใหม่เพราะค่าที่แสดงถูก mask) · ลบ `maskBankAccountNo()` ทิ้ง
+- [x] หน้าผู้ร่วมทุนเพิ่มคอลัมน์ "หมายเหตุ"
 - [ ] ตั้งค่าเริ่มต้นหลัง db push: เข้า `/admin/profit-distributions/partners` เพิ่มผู้ร่วมทุน 4 คน + สัดส่วนตั้งต้นให้รวมได้ 100%
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront

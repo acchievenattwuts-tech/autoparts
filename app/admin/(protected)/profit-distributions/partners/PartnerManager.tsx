@@ -13,7 +13,7 @@ export type PartnerRow = {
   email: string;
   defaultSharePercent: number;
   bankName: string;
-  maskedAccountNo: string | null;
+  bankAccountNo: string;
   joinedAt: string;
   note: string;
   isActive: boolean;
@@ -74,10 +74,7 @@ const PartnerManager = ({ partners, candidateOptions, today }: Props) => {
       userId: partner.userId,
       defaultSharePercent: String(partner.defaultSharePercent),
       bankName: partner.bankName,
-      // Never prefill the real account number from a masked value — leaving it
-      // blank means "unchanged is not possible", so the owner retypes it only
-      // when they actually want to change it.
-      bankAccountNo: "",
+      bankAccountNo: partner.bankAccountNo,
       joinedAt: partner.joinedAt,
       note: partner.note,
       isActive: partner.isActive,
@@ -136,6 +133,7 @@ const PartnerManager = ({ partners, candidateOptions, today }: Props) => {
                   <th className="py-2 pr-3">ชื่อ</th>
                   <th className="py-2 pr-3 text-right">สัดส่วนตั้งต้น</th>
                   <th className="py-2 pr-3">บัญชีรับเงิน</th>
+                  <th className="py-2 pr-3">หมายเหตุ</th>
                   <th className="py-2 pr-3">สถานะ</th>
                   <th className="py-2" />
                 </tr>
@@ -154,8 +152,20 @@ const PartnerManager = ({ partners, candidateOptions, today }: Props) => {
                     <td className="py-2.5 pr-3 text-right text-gray-700 dark:text-slate-200">
                       {money(partner.defaultSharePercent)}%
                     </td>
+                    <td className="py-2.5 pr-3 whitespace-nowrap text-gray-600 dark:text-slate-300">
+                      {partner.bankName || partner.bankAccountNo ? (
+                        <>
+                          {partner.bankName ? <span>{partner.bankName} </span> : null}
+                          {partner.bankAccountNo ? (
+                            <span className="font-mono">{partner.bankAccountNo}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
                     <td className="py-2.5 pr-3 text-gray-600 dark:text-slate-300">
-                      {[partner.bankName, partner.maskedAccountNo].filter(Boolean).join(" ") || "-"}
+                      {partner.note || "-"}
                     </td>
                     <td className="py-2.5 pr-3">
                       <span
@@ -249,8 +259,7 @@ const PartnerManager = ({ partners, candidateOptions, today }: Props) => {
               onChange={(event) =>
                 setForm((previous) => ({ ...previous, bankAccountNo: event.target.value }))
               }
-              className={INPUT_CLASS}
-              placeholder={editingUserId ? "กรอกใหม่เมื่อต้องการเปลี่ยน" : ""}
+              className={`${INPUT_CLASS} font-mono`}
             />
           </div>
           <div>
@@ -281,6 +290,7 @@ const PartnerManager = ({ partners, candidateOptions, today }: Props) => {
                 setForm((previous) => ({ ...previous, note: event.target.value }))
               }
               className={INPUT_CLASS}
+              placeholder="เช่น ดูแลงานหน้าร้าน / ผู้ลงทุนหลัก"
             />
           </div>
         </div>

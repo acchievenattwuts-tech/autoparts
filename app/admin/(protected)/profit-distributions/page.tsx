@@ -9,6 +9,7 @@ import {
   getPartnerYearSummaries,
   getYearOverview,
   listDistributionYears,
+  PROFIT_DISTRIBUTION_START_LABEL,
   type PartnerYearSummary,
   type YearOverviewMonth,
 } from "@/lib/profit-distribution";
@@ -29,12 +30,18 @@ const CARD_CLASS =
   "rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-900";
 
 /** Row status drives both the badge and whether a shortcut to declare appears. */
-type MonthStatus = "OPEN" | "DECLARED" | "PENDING" | "LOSS";
+type MonthStatus = "BEFORE_START" | "OPEN" | "DECLARED" | "PENDING" | "NO_PROFIT" | "LOSS";
+
+/** Below this, a net profit is treated as exactly zero rather than a loss. */
+const ZERO_PROFIT_EPSILON = 0.005;
 
 function getMonthStatus(row: YearOverviewMonth): MonthStatus {
+  if (row.isBeforeStart) return "BEFORE_START";
   if (!row.isClosed) return "OPEN";
   if (row.distribution) return "DECLARED";
-  return row.currentNetProfit > 0 ? "PENDING" : "LOSS";
+  if (row.currentNetProfit < -ZERO_PROFIT_EPSILON) return "LOSS";
+  if (row.currentNetProfit <= ZERO_PROFIT_EPSILON) return "NO_PROFIT";
+  return "PENDING";
 }
 
 export default async function ProfitDistributionsPage({ searchParams }: PageProps) {
@@ -70,11 +77,15 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
 
   const visiblePartnerIds = new Set(visiblePartners.map((partner) => partner.partnerProfileId));
 
+  // Pre-start months are excluded from the scale — a large legacy loss would
+  // otherwise flatten every in-scope bar to nothing.
   const chartScale = Math.max(
     1,
-    ...overview.months.map((row) =>
-      Math.max(Math.abs(row.currentNetProfit), row.distribution?.distributedAmount ?? 0),
-    ),
+    ...overview.months
+      .filter((row) => !row.isBeforeStart)
+      .map((row) =>
+        Math.max(Math.abs(row.currentNetProfit), row.distribution?.distributedAmount ?? 0),
+      ),
   );
 
   const pendingMonths = overview.months.filter((row) => getMonthStatus(row) === "PENDING");
@@ -114,7 +125,11 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
       <p className="text-sm text-gray-500 dark:text-slate-400">
         แบ่งกำไรสุทธิรายเดือนให้ผู้ร่วมทุน — เอกสารนี้ตัดเงินสดตามวันที่โอนจริง แต่
         <span className="font-medium text-gray-700 dark:text-slate-200">ไม่กระทบกำไรสุทธิของเดือนใดทั้งสิ้น</span>{" "}
-        จึงคีย์ย้อนหลังได้อย่างปลอดภัย
+        จึงคีย์ย้อนหลังได้อย่างปลอดภัย · เริ่มนับตั้งแต่งวด{" "}
+        <span className="font-medium text-gray-700 dark:text-slate-200">
+          {PROFIT_DISTRIBUTION_START_LABEL}
+        </span>{" "}
+        เดือนก่อนหน้านั้นไม่นำมาคำนวณ
       </p>
 
       {canCreate && pendingMonths.length > 0 ? (
@@ -143,7 +158,9 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className={CARD_CLASS}>
-          <p className="text-xs text-gray-500 dark:text-slate-400">กำไรสุทธิสะสม (เดือนที่จบแล้ว)</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            กำไรสุทธิสะสม (ตั้งแต่ {PROFIT_DISTRIBUTION_START_LABEL})
+          </p>
           <p className="mt-1 text-2xl font-semibold text-gray-900 dark:text-slate-100">
             ฿{money(overview.totals.currentNetProfit)}
           </p>
@@ -252,18 +269,35 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
               return (
                 <div key={row.month} className="flex flex-1 flex-col items-center gap-1">
                   <div className="flex h-32 w-full items-end justify-center gap-1">
-                    <div
-                      className={`w-1/2 rounded-t ${isLoss ? "bg-rose-400 dark:bg-rose-500/70" : "bg-sky-400 dark:bg-sky-500/70"}`}
-                      style={{ height: `${isLoss ? 6 : Math.max(profitHeight, 2)}%` }}
-                      title={`กำไรสุทธิ ${money(row.currentNetProfit)}`}
-                    />
-                    <div
-                      className="w-1/2 rounded-t bg-emerald-400 dark:bg-emerald-500/70"
-                      style={{ height: `${Math.max(distributedHeight, 2)}%` }}
-                      title={`แบ่งไป ${money(row.distribution?.distributedAmount ?? 0)}`}
-                    />
+                    {row.isBeforeStart ? (
+                      // Out of scope: draw a flat baseline instead of real bars.
+                      <div
+                        className="w-full rounded-t bg-gray-200 dark:bg-white/10"
+                        style={{ height: "2%" }}
+                        title="ก่อนเริ่มใช้ระบบแบ่งกำไร"
+                      />
+                    ) : (
+                      <>
+                        <div
+                          className={`w-1/2 rounded-t ${isLoss ? "bg-rose-400 dark:bg-rose-500/70" : "bg-sky-400 dark:bg-sky-500/70"}`}
+                          style={{ height: `${isLoss ? 6 : Math.max(profitHeight, 2)}%` }}
+                          title={`กำไรสุทธิ ${money(row.currentNetProfit)}`}
+                        />
+                        <div
+                          className="w-1/2 rounded-t bg-emerald-400 dark:bg-emerald-500/70"
+                          style={{ height: `${Math.max(distributedHeight, 2)}%` }}
+                          title={`แบ่งไป ${money(row.distribution?.distributedAmount ?? 0)}`}
+                        />
+                      </>
+                    )}
                   </div>
-                  <span className="text-[10px] text-gray-500 dark:text-slate-400">
+                  <span
+                    className={`text-[10px] ${
+                      row.isBeforeStart
+                        ? "text-gray-300 dark:text-slate-600"
+                        : "text-gray-500 dark:text-slate-400"
+                    }`}
+                  >
                     {row.shortLabel}
                   </span>
                 </div>
@@ -305,6 +339,10 @@ type MonthlyTableProps = {
 };
 
 const STATUS_BADGE: Record<MonthStatus, { label: string; className: string }> = {
+  BEFORE_START: {
+    label: "ก่อนเริ่มใช้ระบบ",
+    className: "bg-gray-100 text-gray-400 dark:bg-white/5 dark:text-slate-500",
+  },
   OPEN: {
     label: "ยังไม่จบเดือน",
     className: "bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-slate-400",
@@ -316,6 +354,10 @@ const STATUS_BADGE: Record<MonthStatus, { label: string; className: string }> = 
   PENDING: {
     label: "ยังไม่ประกาศ",
     className: "bg-amber-100 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200",
+  },
+  NO_PROFIT: {
+    label: "ไม่มีกำไร · ไม่แบ่ง",
+    className: "bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-slate-400",
   },
   LOSS: {
     label: "ขาดทุน · ไม่แบ่ง",
@@ -365,23 +407,29 @@ const MonthlyTable = ({
               {overview.map((row) => {
                 const status = getMonthStatus(row);
                 const isPending = status === "PENDING";
+                const rowClass = isPending
+                  ? "bg-amber-50/70 dark:bg-amber-400/5"
+                  : row.isBeforeStart
+                    ? "opacity-60"
+                    : "hover:bg-gray-50 dark:hover:bg-white/5";
                 return (
-                  <tr
-                    key={row.month}
-                    className={
-                      isPending
-                        ? "bg-amber-50/70 dark:bg-amber-400/5"
-                        : "hover:bg-gray-50 dark:hover:bg-white/5"
-                    }
-                  >
-                    <td className="px-3 py-3 whitespace-nowrap font-medium text-gray-800 dark:text-slate-100">
+                  <tr key={row.month} className={rowClass}>
+                    <td
+                      className={`px-3 py-3 whitespace-nowrap font-medium ${
+                        row.isBeforeStart
+                          ? "text-gray-400 dark:text-slate-500"
+                          : "text-gray-800 dark:text-slate-100"
+                      }`}
+                    >
                       {row.shortLabel}
                     </td>
                     <td
                       className={`px-3 py-3 whitespace-nowrap text-right ${
-                        row.currentNetProfit < 0
-                          ? "text-rose-600 dark:text-rose-300"
-                          : "text-gray-700 dark:text-slate-200"
+                        row.isBeforeStart
+                          ? "text-gray-400 dark:text-slate-500"
+                          : row.currentNetProfit < 0
+                            ? "text-rose-600 dark:text-rose-300"
+                            : "text-gray-700 dark:text-slate-200"
                       }`}
                     >
                       {status === "OPEN" ? "-" : `฿${money(row.currentNetProfit)}`}
@@ -451,11 +499,19 @@ const MonthlyTable = ({
               className={`rounded-2xl border p-4 shadow-sm ${
                 status === "PENDING"
                   ? "border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5"
-                  : "border-gray-100 bg-white dark:border-white/10 dark:bg-slate-900"
+                  : row.isBeforeStart
+                    ? "border-gray-100 bg-white opacity-60 dark:border-white/10 dark:bg-slate-900"
+                    : "border-gray-100 bg-white dark:border-white/10 dark:bg-slate-900"
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="font-kanit font-semibold text-gray-900 dark:text-slate-100">
+                <span
+                  className={`font-kanit font-semibold ${
+                    row.isBeforeStart
+                      ? "text-gray-400 dark:text-slate-500"
+                      : "text-gray-900 dark:text-slate-100"
+                  }`}
+                >
                   {row.label}
                 </span>
                 <span
@@ -469,9 +525,11 @@ const MonthlyTable = ({
                   <dt className="text-xs text-gray-500 dark:text-slate-400">กำไรสุทธิ</dt>
                   <dd
                     className={
-                      row.currentNetProfit < 0
-                        ? "text-rose-600 dark:text-rose-300"
-                        : "text-gray-800 dark:text-slate-100"
+                      row.isBeforeStart
+                        ? "text-gray-400 dark:text-slate-500"
+                        : row.currentNetProfit < 0
+                          ? "text-rose-600 dark:text-rose-300"
+                          : "text-gray-800 dark:text-slate-100"
                     }
                   >
                     {status === "OPEN" ? "-" : `฿${money(row.currentNetProfit)}`}

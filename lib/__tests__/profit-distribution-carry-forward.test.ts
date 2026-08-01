@@ -22,8 +22,10 @@ const moduleMocksUnavailable =
  *                since been rebuilt: only the delta against the stored snapshot
  *                rolls on, so closed documents are never rewritten.
  *
- * Nothing rolls forward before the very first distribution, because the shop
- * starts with no opening balances.
+ * Two hard floors apply: nothing rolls forward from before the very first
+ * distribution (the shop starts with no opening balances), and nothing ever
+ * rolls forward from before PROFIT_DISTRIBUTION_START_PERIOD (July 2026) —
+ * the losses booked before the partners started sharing profit are written off.
  *
  * The mocks are registered ONCE (mock.module cannot re-mock a module within a
  * run) and read from mutable state so each test can vary the fixtures.
@@ -49,11 +51,12 @@ function periodKeyOf(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-type ComputeCarryForward = typeof import("@/lib/profit-distribution").computeCarryForward;
-type GetPeriodBounds = typeof import("@/lib/profit-distribution").getPeriodBounds;
+type ProfitDistributionModule = typeof import("@/lib/profit-distribution");
 
-let computeCarryForward: ComputeCarryForward;
-let getPeriodBounds: GetPeriodBounds;
+let computeCarryForward: ProfitDistributionModule["computeCarryForward"];
+let getPeriodBounds: ProfitDistributionModule["getPeriodBounds"];
+let isBeforeStartPeriod: ProfitDistributionModule["isBeforeStartPeriod"];
+let startPeriod: ProfitDistributionModule["PROFIT_DISTRIBUTION_START_PERIOD"];
 
 before(async () => {
   if (moduleMocksUnavailable) return;
@@ -103,6 +106,8 @@ before(async () => {
   const profitDistribution = await import("@/lib/profit-distribution");
   computeCarryForward = profitDistribution.computeCarryForward;
   getPeriodBounds = profitDistribution.getPeriodBounds;
+  isBeforeStartPeriod = profitDistribution.isBeforeStartPeriod;
+  startPeriod = profitDistribution.PROFIT_DISTRIBUTION_START_PERIOD;
 });
 
 function resetFixtures(): void {
@@ -113,14 +118,26 @@ function resetFixtures(): void {
 }
 
 test(
+  "the start period is July 2026 and earlier months are out of scope",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    assert.deepEqual({ year: startPeriod.year, month: startPeriod.month }, { year: 2026, month: 7 });
+    assert.equal(isBeforeStartPeriod(2026, 6), true);
+    assert.equal(isBeforeStartPeriod(2025, 12), true);
+    assert.equal(isBeforeStartPeriod(2026, 7), false);
+    assert.equal(isBeforeStartPeriod(2026, 8), false);
+  },
+);
+
+test(
   "carries nothing forward until the first distribution exists",
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    // A full year of profit sits in FactProfit, but none of it was ever declared.
-    netProfitByMonth = { "2026-05": 120_000, "2026-06": 90_000, "2026-07": 80_000 };
+    // Profit sits in FactProfit, but none of it was ever declared.
+    netProfitByMonth = { "2026-07": 120_000, "2026-08": 90_000, "2026-09": 80_000 };
 
-    const result = await computeCarryForward(2026, 8);
+    const result = await computeCarryForward(2026, 10);
 
     assert.equal(result.amount, 0, "no opening balances means history is ignored");
     assert.deepEqual(result.rows, []);
@@ -129,30 +146,77 @@ test(
 );
 
 test(
+  "carries nothing for a period that predates the start month",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    earliestActive = { periodYear: 2026, periodMonth: 7 };
+    netProfitByMonth = { "2026-05": -110_383.1, "2026-06": -21_445.25 };
+
+    const result = await computeCarryForward(2026, 6);
+
+    assert.equal(result.amount, 0);
+    assert.deepEqual(result.rows, []);
+    assert.deepEqual(aggregateCalls, [], "an out-of-scope period must not even be computed");
+  },
+);
+
+test(
+  "never looks back past the start month, even if an older document exists",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    // Defensive: a document dated before the arrangement must not widen the window.
+    earliestActive = { periodYear: 2026, periodMonth: 3 };
+    activeRows = [];
+    netProfitByMonth = {
+      "2026-04": -50_000, // out of scope — must never be scanned
+      "2026-05": -110_383.1, // out of scope
+      "2026-06": -21_445.25, // out of scope
+      "2026-07": 10_000,
+      "2026-08": 0,
+    };
+
+    const result = await computeCarryForward(2026, 9);
+
+    assert.deepEqual(
+      aggregateCalls,
+      ["2026-07", "2026-08"],
+      "the pre-arrangement losses are written off and never read",
+    );
+    assert.equal(result.amount, 10_000);
+    assert.deepEqual(
+      result.rows.map((row) => [row.month, row.kind, row.amount]),
+      [[7, "UNDECLARED", 10_000]],
+    );
+  },
+);
+
+test(
   "rolls a loss month forward so the next month may distribute less",
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    earliestActive = { periodYear: 2026, periodMonth: 5 };
-    // May was declared and its snapshot still matches — it contributes nothing.
-    activeRows = [{ periodYear: 2026, periodMonth: 5, snapshotNetProfit: 120_000 }];
+    earliestActive = { periodYear: 2026, periodMonth: 8 };
+    // August was declared and its snapshot still matches — it contributes nothing.
+    activeRows = [{ periodYear: 2026, periodMonth: 8, snapshotNetProfit: 120_000 }];
     netProfitByMonth = {
-      "2026-05": 120_000,
-      "2026-06": -20_000, // loss, never declared
-      "2026-07": 0,
+      "2026-08": 120_000,
+      "2026-09": -20_000, // loss, never declared
+      "2026-10": 0,
     };
 
-    const result = await computeCarryForward(2026, 8);
+    const result = await computeCarryForward(2026, 11);
 
     assert.equal(result.amount, -20_000);
     assert.equal(result.rows.length, 1, "a zero-profit month must not create a row");
     assert.deepEqual(
       result.rows.map((row) => [row.year, row.month, row.kind, row.amount]),
-      [[2026, 6, "UNDECLARED", -20_000]],
+      [[2026, 9, "UNDECLARED", -20_000]],
     );
     assert.deepEqual(
       aggregateCalls,
-      ["2026-05", "2026-06", "2026-07"],
+      ["2026-08", "2026-09", "2026-10"],
       "the target month itself is never included",
     );
   },
@@ -183,27 +247,27 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    earliestActive = { periodYear: 2026, periodMonth: 4 };
+    earliestActive = { periodYear: 2026, periodMonth: 8 };
     activeRows = [
-      { periodYear: 2026, periodMonth: 4, snapshotNetProfit: 100_000 },
-      { periodYear: 2026, periodMonth: 6, snapshotNetProfit: 50_000 },
+      { periodYear: 2026, periodMonth: 8, snapshotNetProfit: 100_000 },
+      { periodYear: 2026, periodMonth: 10, snapshotNetProfit: 50_000 },
     ];
     netProfitByMonth = {
-      "2026-04": 95_000, // restated  → -5,000
-      "2026-05": -8_000, // undeclared loss → -8,000
-      "2026-06": 50_000, // declared, unchanged → 0
-      "2026-07": 30_000, // undeclared profit (skipped month) → +30,000
+      "2026-08": 95_000, // restated  → -5,000
+      "2026-09": -8_000, // undeclared loss → -8,000
+      "2026-10": 50_000, // declared, unchanged → 0
+      "2026-11": 30_000, // undeclared profit (skipped month) → +30,000
     };
 
-    const result = await computeCarryForward(2026, 8);
+    const result = await computeCarryForward(2026, 12);
 
     assert.equal(result.amount, 17_000);
     assert.deepEqual(
       result.rows.map((row) => [row.month, row.kind, row.amount]),
       [
-        [4, "RESTATED", -5_000],
-        [5, "UNDECLARED", -8_000],
-        [7, "UNDECLARED", 30_000],
+        [8, "RESTATED", -5_000],
+        [9, "UNDECLARED", -8_000],
+        [11, "UNDECLARED", 30_000],
       ],
       "a declared month that has not moved contributes no row at all",
     );
@@ -215,17 +279,17 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    earliestActive = { periodYear: 2026, periodMonth: 6 };
-    // July's document was cancelled, so it is absent from the ACTIVE rows.
-    activeRows = [{ periodYear: 2026, periodMonth: 6, snapshotNetProfit: 40_000 }];
-    netProfitByMonth = { "2026-06": 40_000, "2026-07": 75_000 };
+    earliestActive = { periodYear: 2026, periodMonth: 8 };
+    // September's document was cancelled, so it is absent from the ACTIVE rows.
+    activeRows = [{ periodYear: 2026, periodMonth: 8, snapshotNetProfit: 40_000 }];
+    netProfitByMonth = { "2026-08": 40_000, "2026-09": 75_000 };
 
-    const result = await computeCarryForward(2026, 8);
+    const result = await computeCarryForward(2026, 10);
 
     assert.equal(result.amount, 75_000);
     assert.deepEqual(
       result.rows.map((row) => [row.month, row.kind]),
-      [[7, "UNDECLARED"]],
+      [[9, "UNDECLARED"]],
     );
   },
 );
@@ -235,16 +299,17 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    // First document 40 months before the target period.
-    earliestActive = { periodYear: 2023, periodMonth: 4 };
+    // First document far enough back that the 36-month window binds before the
+    // July 2026 start floor does.
+    earliestActive = { periodYear: 2026, periodMonth: 8 };
     activeRows = [];
     netProfitByMonth = {};
 
-    const result = await computeCarryForward(2026, 8);
+    const result = await computeCarryForward(2031, 1);
 
     assert.equal(aggregateCalls.length, 36, "lookback window must stay bounded");
-    assert.equal(aggregateCalls[0], "2023-08", "oldest month scanned is target − 36 months");
-    assert.equal(aggregateCalls.at(-1), "2026-07", "newest month scanned is the month before target");
+    assert.equal(aggregateCalls[0], "2028-01", "oldest month scanned is target − 36 months");
+    assert.equal(aggregateCalls.at(-1), "2030-12", "newest month scanned is the month before target");
     assert.equal(result.amount, 0);
   },
 );
@@ -254,13 +319,13 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
     resetFixtures();
-    earliestActive = { periodYear: 2025, periodMonth: 11 };
+    earliestActive = { periodYear: 2026, periodMonth: 11 };
     activeRows = [];
-    netProfitByMonth = { "2025-11": 10_000, "2025-12": -4_000 };
+    netProfitByMonth = { "2026-11": 10_000, "2026-12": -4_000 };
 
-    const result = await computeCarryForward(2026, 1);
+    const result = await computeCarryForward(2027, 1);
 
-    assert.deepEqual(aggregateCalls, ["2025-11", "2025-12"]);
+    assert.deepEqual(aggregateCalls, ["2026-11", "2026-12"]);
     assert.equal(result.amount, 6_000);
   },
 );
