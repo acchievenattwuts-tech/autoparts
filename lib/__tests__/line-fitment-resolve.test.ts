@@ -213,3 +213,198 @@ test("skips the part-category hint for accessory / chemical intents", async () =
   assert.equal(isAccessoryOrChemicalIntent("น้ำยาล้างคอยเย็น"), true);
   assert.equal(isAccessoryOrChemicalIntent("คอยเย็น"), false);
 });
+
+// ── Golden suite: letter-led chassis/generation codes ────────────────────────
+// Thai buyers name a Honda by its generation ("Jazz GE", "Civic FD") the way they
+// name a Toyota by its year. Before these codes were accepted as qualifiers the
+// model never resolved to a hard fitment filter, so the vehicle-unresolved guard
+// suppressed perfectly good matches and handed the customer to an admin — the
+// 2026-08-01 "โบลเวอร์พัดลมแอร์ jazz ge" turn, where the shop stocked the part.
+// Every code below is mined from this shop's own product names or inbound chat.
+
+const GENERATION_LOOKUP_ROWS = [
+  { term: "Jazz", synonyms: ["แจ๊ส", "fit"] },
+  { term: "City", synonyms: ["ซิตี้"] },
+  { term: "Civic", synonyms: ["ซีวิค"] },
+  { term: "CRV", synonyms: ["CR-V"] },
+  { term: "Accord", synonyms: ["แอคคอร์ด"] },
+  { term: "Freed", synonyms: [] },
+  { term: "HRV", synonyms: ["HR-V"] },
+  { term: "BRV", synonyms: ["BR-V"] },
+  { term: "Mobilio", synonyms: [] },
+  { term: "Navara", synonyms: ["นาวาร่า"] },
+  { term: "NP300", synonyms: [] },
+  { term: "Frontier", synonyms: [] },
+  { term: "Teana", synonyms: [] },
+  { term: "X-Trail", synonyms: ["Xtrail"] },
+  { term: "Almera", synonyms: [] },
+  { term: "March", synonyms: [] },
+  { term: "Note", synonyms: [] },
+  { term: "Urvan", synonyms: [] },
+  { term: "Sylphy", synonyms: [] },
+  { term: "Triton", synonyms: ["ไทรทัน"] },
+  { term: "Pajero Sport", synonyms: [] },
+  { term: "Lancer", synonyms: [] },
+  { term: "Ranger", synonyms: [] },
+  { term: "Everest", synonyms: [] },
+  { term: "D-Max", synonyms: ["DMax"] },
+  { term: "TFR", synonyms: [] },
+  { term: "Mazda2", synonyms: ["Mazda 2"] },
+  { term: "Mazda3", synonyms: ["Mazda 3"] },
+  { term: "BT-50", synonyms: ["BT50"] },
+  { term: "CX-5", synonyms: ["CX5"] },
+  { term: "Colorado", synonyms: [] },
+  { term: "Swift", synonyms: [] },
+  { term: "H-1", synonyms: [] },
+  // Real models whose NAMES look like generation codes — the guard must never
+  // let a code swallow one of these.
+  { term: "MG", synonyms: [] },
+  { term: "MG HS", synonyms: [] },
+  { term: "MG GT", synonyms: [] },
+  { term: "MG ZS", synonyms: [] },
+  { term: "IS", synonyms: [] },
+  { term: "GS", synonyms: [] },
+];
+
+test("accepts the chassis/generation codes Thai buyers actually say", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup(GENERATION_LOOKUP_ROWS);
+
+  const cases: ReadonlyArray<readonly [string, string, string]> = [
+    // Honda — the generation IS the common name here
+    ["Jazz GD", "jazz", "gd"],
+    ["jazz ge", "jazz", "ge"],
+    ["Jazz GK", "jazz", "gk"],
+    ["Jazz GR", "jazz", "gr"],
+    ["City ZX", "city", "zx"],
+    ["City GM", "city", "gm"],
+    ["City GM6", "city", "gm6"],
+    ["City GN", "city", "gn"],
+    ["Civic ES", "civic", "es"],
+    ["Civic FD", "civic", "fd"],
+    ["Civic FB", "civic", "fb"],
+    ["Civic FC", "civic", "fc"],
+    ["Civic FE", "civic", "fe"],
+    ["CR-V RD", "crv", "rd"],
+    ["CR-V RE", "crv", "re"],
+    ["CR-V RM", "crv", "rm"],
+    ["Freed GB3", "freed", "gb3"],
+    ["HR-V RU", "hrv", "ru"],
+    ["BR-V DG", "brv", "dg"],
+    ["Mobilio DD", "mobilio", "dd"],
+    // Nissan
+    ["Navara D40", "navara", "d40"],
+    ["Navara D23", "navara", "d23"],
+    ["NP300 D23", "np300", "d23"],
+    ["Frontier D22", "frontier", "d22"],
+    ["Teana J31", "teana", "j31"],
+    ["Teana J32", "teana", "j32"],
+    ["Teana L33", "teana", "l33"],
+    ["X-Trail T30", "x-trail", "t30"],
+    ["X-Trail T31", "x-trail", "t31"],
+    ["X-Trail T32", "x-trail", "t32"],
+    ["Almera N17", "almera", "n17"],
+    ["March K13", "march", "k13"],
+    ["Note E12", "note", "e12"],
+    ["Urvan E25", "urvan", "e25"],
+    ["Urvan E26", "urvan", "e26"],
+    ["Sylphy B17", "sylphy", "b17"],
+    // Mitsubishi
+    ["Triton KA4", "triton", "ka4"],
+    ["Triton KB4", "triton", "kb4"],
+    ["Triton KL", "triton", "kl"],
+    ["Pajero Sport KH4", "pajero sport", "kh4"],
+    ["Pajero Sport KS", "pajero sport", "ks"],
+    ["Lancer EX", "lancer", "ex"],
+    ["Lancer CK", "lancer", "ck"],
+    ["Lancer CS", "lancer", "cs"],
+    // Ford / Isuzu
+    ["Ranger T6", "ranger", "t6"],
+    ["Ranger T8", "ranger", "t8"],
+    ["Everest UA", "everest", "ua"],
+    ["D-Max RT50", "d-max", "rt50"],
+    ["D-Max RG", "d-max", "rg"],
+    ["TFR M16", "tfr", "m16"],
+    // Mazda / Chevrolet / Suzuki / Hyundai
+    ["Mazda2 DE", "mazda2", "de"],
+    ["Mazda2 DJ", "mazda2", "dj"],
+    ["Mazda3 BK", "mazda3", "bk"],
+    ["Mazda3 BL", "mazda3", "bl"],
+    ["Mazda3 BM", "mazda3", "bm"],
+    ["Mazda3 BP", "mazda3", "bp"],
+    ["BT-50 UN", "bt-50", "un"],
+    ["BT-50 UP", "bt-50", "up"],
+    ["CX-5 KE", "cx-5", "ke"],
+    ["CX-5 KF", "cx-5", "kf"],
+    ["Colorado RC", "colorado", "rc"],
+    ["Swift ZC", "swift", "zc"],
+    ["H-1 A1", "h-1", "a1"],
+  ];
+
+  for (const [input, canonicalModel, qualifier] of cases) {
+    assert.deepEqual(
+      resolveCanonicalCarModelHint(input, lookup),
+      { canonicalModel, qualifier },
+      input,
+    );
+  }
+});
+
+test("a code that is itself a real model is a second model, not a qualifier", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup(GENERATION_LOOKUP_ROWS);
+
+  // TFR is a real Isuzu model, so "D-Max TFR" names two models and must not
+  // collapse to D-Max. This guard reads master data, so a model added later is
+  // protected without touching MODEL_GENERATION_CODES.
+  assert.equal(resolveCanonicalCarModelHint("D-Max TFR", lookup), null);
+});
+
+test("a real model whose NAME looks like a generation code still wins", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup(GENERATION_LOOKUP_ROWS);
+
+  // Direct match runs first, so these resolve to themselves rather than being
+  // read as "MG" + a qualifier.
+  for (const name of ["MG HS", "MG GT", "MG ZS"]) {
+    assert.deepEqual(
+      resolveCanonicalCarModelHint(name, lookup),
+      { canonicalModel: name.toLowerCase(), qualifier: null },
+      name,
+    );
+  }
+});
+
+test("Toyota chassis codes are deliberately NOT accepted", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup([
+    ...GENERATION_LOOKUP_ROWS,
+    { term: "Vios", synonyms: [] },
+    { term: "Camry", synonyms: [] },
+    { term: "Altis", synonyms: [] },
+  ]);
+
+  // Thai customers date a Toyota by year ("อัลติสปี 12"), never by chassis code,
+  // and this shop writes zero Toyota codes in its product names — so these stay
+  // out of the vocabulary rather than being added speculatively.
+  for (const input of ["Vios NCP93", "Camry ACV40", "Altis ZRE142"]) {
+    assert.equal(resolveCanonicalCarModelHint(input, lookup), null, input);
+  }
+});
+
+test("arbitrary words after a model are still rejected", async () => {
+  const { resolveCanonicalCarModelHint } = await import("@/lib/chat-core/fitment-resolve");
+  const lookup = buildCarModelVariantLookup(GENERATION_LOOKUP_ROWS);
+
+  // Trim levels, transmissions and engine layouts are not generations. They must
+  // not become qualifiers — the shop reviews those case by case.
+  for (const input of [
+    "Ranger XL",
+    "Accord V6",
+    "Jazz hatchback",
+    "Civic turbo diesel",
+    "City sedan 4 ประตู",
+  ]) {
+    assert.equal(resolveCanonicalCarModelHint(input, lookup), null, input);
+  }
+});

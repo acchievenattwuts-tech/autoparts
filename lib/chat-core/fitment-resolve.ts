@@ -75,15 +75,61 @@ const normalizeModelSpelling = (value?: string | null): string =>
 const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
+ * Chassis/generation codes that Thai buyers say out loud, as a CLOSED vocabulary.
+ * Only these letter-led codes may act as a model qualifier — a generic pattern
+ * like /[a-z]{2}\d?/ would swallow real model names ("MG HS", "Lexus IS").
+ *
+ * Every entry is grounded in what this shop and its customers actually write:
+ * mined from product names + inbound chat, then cross-checked against the Thai
+ * market. Honda leads because its generations ARE the common name here — "Jazz
+ * GE", "Civic FD" — the same is true of Nissan (D40, T32) and Mitsubishi (KA4).
+ * TOYOTA IS DELIBERATELY ABSENT: Thai customers date a Toyota by year ("อัลติส
+ * ปี 12"), never by chassis code, and the shop writes zero Toyota codes.
+ *
+ * A trailing 1-2 digits is allowed so "GM2"/"GM6"/"GN2" work from the "gm"/"gn"
+ * stems. "TFR" is intentionally NOT here — it is a real Isuzu model, and the
+ * known-model guard in resolveCanonicalCarModelHint would reject it anyway.
+ */
+const MODEL_GENERATION_CODES = [
+  // Honda — Jazz GD/GE/GK/GR, City GD/GM/GN/ZX, Civic ES/FD/FB/FC/FE,
+  // CR-V RD/RE/RM, Freed GB3, HR-V RU, BR-V DG, Mobilio DD
+  "gd", "ge", "gk", "gr", "gm", "gn", "zx", "es", "fd", "fb", "fc", "fe",
+  "rd", "re", "rm", "gb", "ru", "dg", "dd",
+  // Nissan — Navara D40/D23, Frontier D22, Teana J31/J32/L33, X-Trail T30/T31/T32,
+  // Almera N17, March K13, Note E12, Urvan E25/E26, Sylphy B17
+  "d22", "d23", "d40", "j31", "j32", "l33", "t30", "t31", "t32",
+  "n17", "k13", "e12", "e25", "e26", "b17",
+  // Mitsubishi — Triton KA4/KB4/KL, Pajero Sport KH4/KS, Lancer EX/CK/CS
+  "ka4", "kb4", "kl", "kh4", "ks", "ex", "ck", "cs",
+  // Ford — Ranger T6/T8, Everest UA
+  "t6", "t8", "ua",
+  // Isuzu — D-Max RT50/RG, TFR M16
+  "rt50", "rg", "m16",
+  // Mazda — Mazda2 DE/DJ, Mazda3 BK/BL/BM/BP, BT-50 UN/UP, CX-5 KE/KF
+  "de", "dj", "bk", "bl", "bm", "bp", "un", "up", "ke", "kf",
+  // Chevrolet Colorado RC, Suzuki Swift ZC, Hyundai H-1 A1
+  "rc", "zc", "a1",
+] as const;
+
+const GENERATION_CODE_PATTERN = `(?:${MODEL_GENERATION_CODES.join("|")})\\d{0,2}`;
+// Numeric generation ("G3", "Gen 3", "เจน3") or an engine size ("2.0", "1500cc").
+const NUMERIC_QUALIFIER_PATTERN =
+  "(?:g|gen(?:eration)?|เจน)\\s*-?\\s*\\d+[a-z]?|\\d+(?:\\.\\d+)?(?:\\s*(?:l|liter|litre|ลิตร|cc))?";
+const QUALIFIER_ATOM = `(?:${NUMERIC_QUALIFIER_PATTERN}|${GENERATION_CODE_PATTERN})`;
+
+/**
  * Only these suffixes may be stripped from a synonym spelling before it becomes
  * a hard model filter. Keeping the grammar deliberately narrow prevents a short
  * synonym from swallowing arbitrary words or another real model name.
  *
- * Examples accepted: "CR-V G3", "CRV Gen 3", "CR-V G3 2.0".
+ * Examples accepted: "CR-V G3", "CRV Gen 3", "CR-V G3 2.0", "Jazz GE", "City GM6".
  * A direct synonym match (for example the real model "MG3") is checked first and
  * therefore never gets mistaken for a G3 qualifier.
  */
-const SAFE_MODEL_QUALIFIER_RE = /^(?:(?:g|gen(?:eration)?|เจน)\s*-?\s*\d+[a-z]?|\d+(?:\.\d+)?(?:\s*(?:l|liter|litre|ลิตร|cc))?)(?:[\s,/+-]+(?:(?:g|gen(?:eration)?|เจน)\s*-?\s*\d+[a-z]?|\d+(?:\.\d+)?(?:\s*(?:l|liter|litre|ลิตร|cc))?))*$/i;
+const SAFE_MODEL_QUALIFIER_RE = new RegExp(
+  `^${QUALIFIER_ATOM}(?:[\\s,/+-]+${QUALIFIER_ATOM})*$`,
+  "i",
+);
 
 export type CanonicalCarModelHint = {
   canonicalModel: string;
@@ -122,6 +168,11 @@ export function resolveCanonicalCarModelHint(
     );
     const qualifier = match?.[1]?.trim();
     if (!qualifier || !SAFE_MODEL_QUALIFIER_RE.test(qualifier)) continue;
+    // A suffix that is ITSELF a known model spelling is a second model, not a
+    // qualifier — "D-Max TFR" must not resolve to D-Max by swallowing the real
+    // Isuzu TFR. Self-maintaining: a model added to master data later is
+    // protected automatically, with no edit to MODEL_GENERATION_CODES.
+    if (lookup.has(normalizeModelSpelling(qualifier))) continue;
     // Prefer the most-specific spelling. The live master data legitimately has
     // generic models named "Mazda" / "MG" as well as "Mazda 3" / "MG 3".
     // Without maximal matching, "Mazda 3 2.0" yields two valid prefixes
