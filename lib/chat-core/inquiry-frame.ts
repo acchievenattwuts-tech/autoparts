@@ -190,6 +190,21 @@ export const hasFollowUpConnective = (text: string | null | undefined): boolean 
   return value ? FOLLOWUP_CONNECTIVE_RE.test(value) : false;
 };
 
+/**
+ * True when two part words name the SAME subject. Compared on normalized text with
+ * containment in either direction, so the customer's short word and the catalog's
+ * canonical name count as one subject ("มูเล่หน้าคลัช" vs "หน้าคลัช (Compressor
+ * Clutch)"), while genuinely different parts ("มูเล่หน้าคลัช" vs "มอเตอร์ปรับอากาศ")
+ * do not. Used to tell a photo that CONTINUES the current inquiry from one that
+ * changes the subject. Pure + exported for unit testing.
+ */
+export function isSamePartSubject(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = normalizeSearchText(a?.trim() ?? "");
+  const right = normalizeSearchText(b?.trim() ?? "");
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
 /** Clean search query rebuilt from the frame's subject (part + car). The model
  *  year is applied as a fitment filter, not a query token, so it never becomes a
  *  required token that zeroes out the search. Returns null when there's nothing. */

@@ -137,6 +137,7 @@ import {
   buildFrameQuery,
   hasFollowUpConnective,
   isFrameStale,
+  isSamePartSubject,
   namesVehicleClassTerm,
   reconcileInquiryFrame,
   type InquiryFrame,
@@ -1614,6 +1615,10 @@ export async function processLineAiReply(
     // query is built from the same reading, so it carries the same wrong part
     // word — the frame query must drive the search instead.
     let droppedUngroundedClassifierPartType = false;
+    // Set when the contradiction guard below replaced the carried part with the one
+    // read off THIS turn's photo. Carried out of the frame block so the post-search
+    // promotion step can decide whether the catalog corroborated that read.
+    let imageSubjectOverride: { carriedPartType: string; imagePartType: string } | null = null;
     if (!isNonProductTurn) {
       const loadFrame = dependencies.getLineInquiryFrame ?? getLineInquiryFrame;
       const saveFrame = dependencies.updateLineInquiryFrame ?? updateLineInquiryFrame;
@@ -1864,6 +1869,48 @@ export async function processLineAiReply(
           namedUnreadableVehicle,
         },
       });
+
+      // ── Image subject contradicts the carried frame (Option C) ──────────────
+      // An image-only turn has no text classifier, so the frame keeps the part
+      // word from the PREVIOUS text turn. Only a HIGH vision read is allowed to
+      // rewrite the frame (see imageFields above), so a MEDIUM read of a clearly
+      // DIFFERENT part left the old subject in place — the 2026-08-01 case where a
+      // photo of a blend-door actuator, sent 74 min after "มูเล่หน้าครัชซิตี้96",
+      // was searched as "มูเล่หน้าครัช Honda City มอเตอร์ปรับอากาศ …" (a
+      // self-contradictory query that can only return zero) and then acknowledged
+      // as "รูปมูเล่หน้าครัช".
+      //
+      // The photo is the customer's newest evidence about the SUBJECT, so for THIS
+      // turn it replaces the carried part. The vehicle slots stay (same customer,
+      // same car). Deliberately NOT persisted: the frame was already saved above
+      // and a MEDIUM read is still not trusted enough to become the session's
+      // standing subject — it only steers the turn that actually contains the photo.
+      const imagePartTypeThisTurn =
+        !isTextTurn &&
+        input.imageClassification?.kind === "part_image" &&
+        input.imageClassification.confidence !== "LOW"
+          ? input.imageClassification.partType?.trim() || null
+          : null;
+      if (
+        imagePartTypeThisTurn &&
+        inquiryFrame.partType &&
+        !isSamePartSubject(imagePartTypeThisTurn, inquiryFrame.partType)
+      ) {
+        const carriedPartType = inquiryFrame.partType;
+        inquiryFrame = { ...inquiryFrame, partType: imagePartTypeThisTurn };
+        frameTopicShift = true;
+        imageSubjectOverride = { carriedPartType, imagePartType: imagePartTypeThisTurn };
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action: "IMAGE_SUBJECT_OVERRIDES_FRAME",
+          payload: {
+            lineEventId: input.lineEventId,
+            carriedPartType,
+            imagePartType: imagePartTypeThisTurn,
+            confidence: input.imageClassification?.confidence ?? null,
+          },
+        });
+      }
     }
 
     const frameQuery = inquiryFrame ? buildFrameQuery(inquiryFrame) : null;
@@ -2470,6 +2517,62 @@ export async function processLineAiReply(
       !isAccessoryAnchored &&
       (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
 
+    // ── Evidence-based promotion of an image subject (Option B) ───────────────
+    // The contradiction guard above lets a MEDIUM photo steer its own turn, but the
+    // frame on disk still holds the part word from the previous TEXT turn — so the
+    // next sparse follow-up ("ปี 12", "ราคาเท่าไหร่") resumes the old subject and the
+    // conversation snaps back to the wrong part.
+    //
+    // Promote the photo's part to the standing subject only when the CATALOG
+    // corroborates the read, never on the vision confidence alone ("ห้ามเดา"):
+    //   - the part word resolved to a real category (categoryName), so the rows came
+    //     from the part and not from the car alone — a vehicle-only match would
+    //     otherwise persist a misread part far beyond this turn, which is strictly
+    //     worse than today's one-turn contamination;
+    //   - rows survived every relevance guard and will actually be shown;
+    //   - the part is specific (a broad word is never a standing subject — same rule
+    //     as the frame save above).
+    // Any condition missing → no write, and the stored frame stays exactly as the
+    // pre-existing code left it. This is the ONLY second frame write in a turn and
+    // it is reachable only when the guard above fired.
+    if (
+      imageSubjectOverride &&
+      inquiryFrame &&
+      fitmentFilters.categoryName &&
+      // Both halves of "the catalog answered": the engine matched rows AND rows
+      // survived to be shown. Checked separately so neither an empty match set nor
+      // a fully-suppressed one can be read as corroboration.
+      productSearch.searched &&
+      productSearch.result.total > 0 &&
+      products.length > 0 &&
+      !vehicleUnresolvedGuard &&
+      // Implied by categoryName being resolved (the weak gate only fires on a
+      // category-less result set) — kept explicit so the promotion stays tied to
+      // "rows we are willing to show" if that gate is ever widened.
+      !weakCategoryMatchGuard &&
+      !isBroadChatPartType(imageSubjectOverride.imagePartType)
+    ) {
+      const promoted = inquiryFrame;
+      await (dependencies.updateLineInquiryFrame ?? updateLineInquiryFrame)({
+        conversationId: input.conversation.id,
+        partType: promoted.partType,
+        carBrand: promoted.carBrand,
+        carModel: promoted.carModel,
+        year: promoted.year,
+      }).catch(() => undefined);
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "IMAGE_SUBJECT_PROMOTED_TO_FRAME",
+        payload: {
+          lineEventId: input.lineEventId,
+          carriedPartType: imageSubjectOverride.carriedPartType,
+          imagePartType: imageSubjectOverride.imagePartType,
+          categoryName: fitmentFilters.categoryName,
+          shownCount: products.length,
+        },
+      });
+    }
+
     // ลูกค้าถามราคา/ขอส่วนลด → ส่งเรื่องให้แอดมินแจ้ง/ยืนยันราคา "ทุกกรณี" (ทุกประเภทลูกค้า)
     // ใช้ regex ราคา/ส่วนลด + intent ต่อราคา เป็นตัวจับ — ตั้งใจไม่รวม PURCHASE_INTENT
     // ล้วน ("เอาตัวนี้/สั่งเลย") ซึ่งเป็นการตัดสินใจซื้อ ไม่ใช่การถามราคา
@@ -2761,27 +2864,24 @@ export async function processLineAiReply(
           }
         : liveMode && partImageNoMatch
         ? {
-            message: buildJunePartImageNoMatchReply(
-              inquiryFrame
-                ? {
-                    partType: inquiryFrame.partType,
-                    carBrand: inquiryFrame.carBrand,
-                    carModel: inquiryFrame.carModel,
-                    year: frameYear,
-                  }
-                : {
-                    partType: input.imageClassification?.partType ?? null,
-                    carBrand: input.imageClassification?.carBrand ?? null,
-                    carModel: input.imageClassification?.carModel ?? null,
-                    year: input.imageClassification?.year ?? null,
-                  },
-            ),
+            // The line reads "จูนเห็นรูป<subject>ที่ส่งมา", so <subject> must
+            // describe THIS photo. The vision partType therefore wins over the
+            // carried frame part — reading the frame first named the PREVIOUS
+            // turn's part back at a customer who had just sent a photo of a
+            // different one. The vehicle still comes from the frame (the photo
+            // rarely shows a plate, and within a session it is the same car).
+            message: buildJunePartImageNoMatchReply({
+              partType: input.imageClassification?.partType ?? inquiryFrame?.partType ?? null,
+              carBrand: inquiryFrame?.carBrand ?? input.imageClassification?.carBrand ?? null,
+              carModel: inquiryFrame?.carModel ?? input.imageClassification?.carModel ?? null,
+              year: inquiryFrame ? frameYear : (input.imageClassification?.year ?? null),
+            }),
             reason: "PART_IMAGE_NO_MATCH",
             handoff: true,
             audit: "AI_PART_IMAGE_NO_MATCH",
             auditPayload: {
               lineEventId: input.lineEventId,
-              partType: inquiryFrame?.partType ?? input.imageClassification?.partType ?? null,
+              partType: input.imageClassification?.partType ?? inquiryFrame?.partType ?? null,
             },
           }
         : liveMode && directNoMatchHandoff

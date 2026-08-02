@@ -673,7 +673,11 @@ export function buildJunePartImageNoMatchReply(known?: ChatKnownFitment | null):
   const part = known?.partType?.trim();
   const car = [known?.carBrand?.trim(), known?.carModel?.trim()].filter(Boolean).join(" ") || null;
   const subject = part ? (car ? `${part}สำหรับ ${car}` : part) : "อะไหล่ในรูป";
-  return `จูนเห็นรูป${subject}ที่ส่งมาแล้วนะคะ 🙏 ขอส่งให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้ชัวร์ก่อนนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 😊`;
+  // A subject ending in a Latin car name ("… สำหรับ Honda City") needs a space
+  // before the following Thai word, otherwise it renders as "Cityที่ส่งมา".
+  // A subject ending in Thai must NOT get one — Thai does not space its words.
+  const gap = /[A-Za-z0-9)]$/.test(subject) ? " " : "";
+  return `จูนเห็นรูป${subject}${gap}ที่ส่งมาแล้วนะคะ 🙏 ขอส่งให้แอดมินช่วยเช็กสต็อกและความเข้ากันให้ชัวร์ก่อนนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 😊`;
 }
 
 /**

@@ -3475,3 +3475,353 @@ test("admin-owned conversation: draft is stored without spending Gemini generate
   assert.equal(calls.suggestions.length, 1, "draft suggestion still stored for the admin console");
   assert.equal(calls.suggestions[0]?.deliveryMode, LineDeliveryMode.NONE);
 });
+
+// Regression (production 2026-08-01, conversation "sunantha"): the customer asked
+// "มูเล่หน้าครัชซิตี้96" by text, then 74 min later sent photos of a blend-door
+// actuator. Vision read the photos correctly ("มอเตอร์ปรับอากาศ") but only at
+// MEDIUM confidence, so the frame kept the earlier part — the search ran the
+// self-contradictory "มูเล่หน้าครัช Honda City มอเตอร์ปรับอากาศ …" (zero results)
+// and จูน replied "จูนเห็นรูปมูเล่หน้าครัชสำหรับ Honda Cityที่ส่งมา", naming a part
+// that was not in the photo at all.
+test("part image whose subject contradicts the carried frame drives the turn (not the stale part)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "มูเล่หน้าครัช", carBrand: "Honda", carModel: "City", year: 1996 },
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "มอเตอร์ปรับอากาศ",
+    imagePartKind: "fitment",
+    imageHints: ["มอเตอร์ปรับอากาศ", "มอเตอร์ผสมอากาศ", "blend door actuator"],
+    searchTotal: 0,
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-subject-contradicts-frame"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.ok(
+    calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
+    "the contradiction between the photo and the carried part is audited",
+  );
+  assert.match(
+    calls.searches.at(-1) ?? "",
+    /มอเตอร์ปรับอากาศ/,
+    "the search runs on the part actually shown in the photo",
+  );
+  assert.doesNotMatch(
+    calls.searches.at(-1) ?? "",
+    /มูเล่/,
+    "the carried part is not merged into the query",
+  );
+
+  const reply = calls.replies[0]?.text ?? "";
+  assert.match(reply, /มอเตอร์ปรับอากาศ/, "จูน acknowledges the part in the photo");
+  assert.doesNotMatch(reply, /มูเล่/, "จูน never names the previous turn's part back");
+  assert.doesNotMatch(reply, /Cityที่ส่งมา/, "a Latin car name is spaced off the following Thai word");
+
+  assert.equal(
+    calls.savedFrames.at(-1)?.partType,
+    "มูเล่หน้าครัช",
+    "a MEDIUM read steers only this turn — it never becomes the session's standing subject",
+  );
+});
+
+test("part image whose subject matches the carried frame leaves the frame alone", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หน้าครัช (Compressor Clutch)", carBrand: "Honda", carModel: "City" },
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "หน้าครัช",
+    imagePartKind: "fitment",
+    imageHints: ["หน้าครัช", "compressor clutch"],
+    searchTotal: 0,
+  });
+
+  await processLineWebhookPayload(
+    imagePayload("event-img-subject-matches-frame"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    dependencies,
+  );
+
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
+    false,
+    "a photo of the SAME part (short word vs canonical name) is a continuation, not a new subject",
+  );
+});
+
+// ── Golden suite: evidence-based promotion of an image subject (Option B) ─────
+// The contradiction guard (Option C) lets a MEDIUM photo steer its OWN turn. B is
+// the follow-up question: may that photo also become the session's standing
+// subject? Only when the catalog corroborates the read — never on vision
+// confidence alone. These cases pin every branch of that decision, so a future
+// change cannot quietly widen (or silence) the promotion.
+
+/** A MEDIUM photo showing a DIFFERENT part from the one carried in the frame. */
+const contradictingImageTurn = {
+  storedFrame: { partType: "มูเล่หน้าครัช", carBrand: "Honda", carModel: "City", year: 1996 },
+  imageKind: "part_image" as const,
+  imageConfidence: "MEDIUM" as const,
+  imagePartType: "มอเตอร์ปรับอากาศ",
+  imagePartKind: "fitment" as const,
+  imageHints: ["มอเตอร์ปรับอากาศ", "blend door actuator"],
+};
+
+const runImageTurn = async (
+  deps: LineWebhookProcessorDependencies,
+  lineEventId: string,
+): Promise<void> => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  await processLineWebhookPayload(
+    imagePayload(lineEventId),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+      receivedAt: new Date(),
+    },
+    deps,
+  );
+};
+
+test("B promotes the image subject when the catalog corroborates it (category + shown rows)", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: {
+      categoryName: "มอเตอร์ปรับอากาศ (Blend Door Actuator)",
+      carBrandName: "Honda",
+      carModelName: "City",
+    },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-promote");
+
+  assert.ok(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), "guard C still fires");
+  assert.ok(
+    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
+    "corroborated read is promoted",
+  );
+  assert.deepEqual(
+    calls.savedFrames.at(-1),
+    { partType: "มอเตอร์ปรับอากาศ", carBrand: "Honda", carModel: "City", year: 1996 },
+    "the photo's part becomes the standing subject; the vehicle slots are untouched",
+  );
+  assert.equal(calls.savedFrames.length, 2, "exactly one extra frame write, never more");
+});
+
+test("B does not promote when the search found nothing (the real 2026-08-01 turn)", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    searchTotal: 0,
+    fitmentFilters: { categoryName: "มอเตอร์ปรับอากาศ (Blend Door Actuator)" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-no-match");
+
+  assert.ok(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), "guard C still fires");
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
+    false,
+    "an uncorroborated read never becomes the standing subject",
+  );
+  assert.equal(calls.savedFrames.at(-1)?.partType, "มูเล่หน้าครัช", "stored frame is left as-is");
+  assert.equal(calls.savedFrames.length, 1, "no second frame write");
+});
+
+test("B does not promote on a vehicle-only match (no category resolved)", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    searchTotal: 3,
+    searchIds: ["prod-1", "prod-2", "prod-3"],
+    // Rows came back, but the part word mapped to NO category — they are Honda City
+    // parts matched on the car alone, which must never persist a misread part.
+    fitmentFilters: { carBrandName: "Honda", carModelName: "City" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-vehicle-only");
+
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
+    false,
+    "rows matched on the car alone are not evidence about the part",
+  );
+  assert.equal(calls.savedFrames.at(-1)?.partType, "มูเล่หน้าครัช");
+});
+
+test("B does not promote when the relevance gate suppresses the rows", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    // Category-less result set with no strong match reason → weakCategoryMatchGuard.
+    searchMatchReasons: { "prod-1": [], "prod-2": [] },
+    fitmentFilters: { carBrandName: "Honda", carModelName: "City" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-weak-match");
+
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
+    false,
+    "rows too weak to show are too weak to rewrite the standing subject",
+  );
+  assert.equal(calls.savedFrames.at(-1)?.partType, "มูเล่หน้าครัช");
+});
+
+test("B does not promote a broad part word even when rows are shown", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    imagePartType: "อะไหล่แอร์",
+    imageHints: ["อะไหล่แอร์"],
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: { categoryName: "อะไหล่อื่นๆ", carBrandName: "Honda", carModelName: "City" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-broad");
+
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
+    false,
+    "a broad word is never a standing subject (same rule as the normal frame save)",
+  );
+});
+
+test("B never fires without the contradiction guard: photo agrees with the frame", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หน้าครัช (Compressor Clutch)", carBrand: "Honda", carModel: "City" },
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "หน้าครัช",
+    imagePartKind: "fitment",
+    imageHints: ["หน้าครัช"],
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: {
+      categoryName: "หน้าครัช (Compressor Clutch)",
+      carBrandName: "Honda",
+      carModelName: "City",
+    },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-agrees");
+
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.equal(calls.savedFrames.length, 1, "a continuation writes the frame exactly once");
+});
+
+test("B never fires on a HIGH read: the existing imageFields path still owns the frame", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    imageConfidence: "HIGH",
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: {
+      categoryName: "มอเตอร์ปรับอากาศ (Blend Door Actuator)",
+      carBrandName: "Honda",
+      carModelName: "City",
+    },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-high");
+
+  assert.equal(
+    calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
+    false,
+    "a HIGH read reaches the frame through reconcileInquiryFrame, not the guard",
+  );
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.equal(
+    calls.savedFrames.at(-1)?.partType,
+    "มอเตอร์ปรับอากาศ",
+    "the pre-existing HIGH path is untouched by B",
+  );
+  assert.equal(calls.savedFrames.length, 1, "HIGH still writes the frame exactly once");
+});
+
+test("B never fires on a LOW read: the turn asks for confirmation instead", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    imageConfidence: "LOW",
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: { categoryName: "มอเตอร์ปรับอากาศ (Blend Door Actuator)" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-low");
+
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.deepEqual(calls.searches, [], "a LOW image-only turn still never searches");
+});
+
+test("B never fires on a payment slip", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "มูเล่หน้าครัช", carBrand: "Honda", carModel: "City" },
+    imageKind: "payment_slip",
+    imageConfidence: "HIGH",
+  });
+
+  await runImageTurn(dependencies, "event-img-b-slip");
+
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.deepEqual(calls.savedFrames, [], "a non-product turn never touches the frame");
+});
+
+test("B never fires when vision read no part type at all", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...contradictingImageTurn,
+    imagePartType: null,
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: {
+      categoryName: "หน้าครัช (Compressor Clutch)",
+      carBrandName: "Honda",
+      carModelName: "City",
+    },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-no-parttype");
+
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.equal(calls.savedFrames.at(-1)?.partType, "มูเล่หน้าครัช", "carried subject survives");
+});
+
+test("B never fires on a first-contact photo (no carried part to contradict)", async () => {
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "มอเตอร์ปรับอากาศ",
+    imagePartKind: "fitment",
+    imageHints: ["มอเตอร์ปรับอากาศ"],
+    searchTotal: 2,
+    searchIds: ["prod-1", "prod-2"],
+    fitmentFilters: { categoryName: "มอเตอร์ปรับอากาศ (Blend Door Actuator)" },
+  });
+
+  await runImageTurn(dependencies, "event-img-b-first-contact");
+
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+});

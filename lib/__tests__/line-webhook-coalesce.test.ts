@@ -36,6 +36,7 @@ type InboundRow = {
 /** In-memory model of the conversation coalescing counters + message log. */
 function createCoalesceHarness(options?: {
   imageKind?: "part_image" | "payment_slip" | "unknown_image";
+  imageConfidence?: "LOW" | "MEDIUM" | "HIGH";
   imageHints?: string[];
   imagePartKind?: "fitment" | "universal" | null;
   imagePartType?: string | null;
@@ -168,7 +169,7 @@ function createCoalesceHarness(options?: {
               : LineIntent.UNKNOWN,
         searchHints:
           override?.searchHints ?? options?.imageHints ?? (kind === "part_image" ? ["หม้อน้ำ"] : []),
-        confidence: "HIGH" as const,
+        confidence: options?.imageConfidence ?? ("HIGH" as const),
         reason: "TEST",
         partType: override?.partType ?? options?.imagePartType ?? null,
         carModel: override?.carModel ?? options?.imageCarModel ?? null,
@@ -840,4 +841,96 @@ test("B2c: mixed found/not-found → answers what it found, then notifies + free
   // answered. The customer still gets the คอมแอร์ result — asserted above — but the AI
   // stops so a human resolves the คอยเย็น the shop could not match.
   assert.ok(calls.statePatches.includes("waiting_admin"), "room frozen for the unresolved category");
+});
+
+// Golden (Option B/C): a burst that mixes a photo WITH text must be driven by the
+// text. The image-subject guard is deliberately image-only — when the customer
+// typed the part word, that word (not a MEDIUM vision read) is the subject, and
+// neither the per-turn override nor the promotion may fire. Lives in the coalesce
+// suite because only this harness merges a text+image burst into one turn.
+test("coalesce: a text+image burst never lets the photo's subject override the frame", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { state, dependencies } = createCoalesceHarness({
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "มอเตอร์ปรับอากาศ",
+    imagePartKind: "fitment",
+    imageHints: ["มอเตอร์ปรับอากาศ"],
+    textIntent: productIntent({
+      query: "มูเล่หน้าครัช ซิตี้",
+      partType: "มูเล่หน้าครัช",
+      carBrand: "Honda",
+      carModel: "City",
+      partKind: "fitment",
+    }),
+  });
+  state.frame = {
+    partType: "มูเล่หน้าครัช",
+    carBrand: "Honda",
+    carModel: "City",
+    year: 1996,
+    updatedAt: new Date(),
+  };
+
+  const auditActions: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  dependencies.resolveChatFitmentFilters = async () => ({
+    categoryName: "หน้าครัช (Compressor Clutch)",
+    carBrandName: "Honda",
+    carModelName: "City",
+  });
+
+  await processLineWebhookPayload(
+    { events: [imageEvent("e1"), textEvent("e2", "มูเล่หน้าครัชอันนี้มีไหมคะ")] },
+    baseConfig,
+    dependencies,
+  );
+
+  assert.equal(
+    auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
+    false,
+    "a turn that HAS text is driven by the text, never by the photo's subject",
+  );
+  assert.equal(auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.equal(state.frame?.partType, "มูเล่หน้าครัช", "the typed subject stands");
+});
+
+// The same burst WITHOUT text: the photos are the only evidence, so the guard is
+// allowed to steer the turn — the mirror image of the case above.
+test("coalesce: an image-only burst does let the photo's subject override the frame", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { state, dependencies } = createCoalesceHarness({
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imagePartType: "มอเตอร์ปรับอากาศ",
+    imagePartKind: "fitment",
+    imageHints: ["มอเตอร์ปรับอากาศ"],
+  });
+  state.frame = {
+    partType: "มูเล่หน้าครัช",
+    carBrand: "Honda",
+    carModel: "City",
+    year: 1996,
+    updatedAt: new Date(),
+  };
+
+  const auditActions: string[] = [];
+  dependencies.storeLineAiAudit = async (input) => {
+    auditActions.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+
+  await processLineWebhookPayload(
+    { events: [imageEvent("e1"), imageEvent("e2")] },
+    baseConfig,
+    dependencies,
+  );
+
+  assert.ok(
+    auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
+    "an image-only burst is steered by what the photos show",
+  );
 });
