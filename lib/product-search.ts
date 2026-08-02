@@ -859,6 +859,35 @@ const applyYearFilter = (
   return { ...where, AND: [...existingAnd, yearCondition] };
 };
 
+/**
+ * Option A for the ID-based (dropdown) vehicle scope. `carModelId` / `carBrandId`
+ * are applied as their own `carModels: { some }`, and the year filter as ANOTHER
+ * one — two independent EXISTS, so a product passes when one fitment row matches
+ * the vehicle and a DIFFERENT row covers the year. Returns a single predicate that
+ * requires BOTH on the same row, or null when there is no id scope or no year.
+ */
+export const buildCorrelatedIdVehicleYearSome = (
+  input: ProductSearchInput,
+  targetYear: number | null,
+  yearMin: number | null,
+  yearMax: number | null,
+): PrismaTypes.ProductFitmentWhereInput | null => {
+  if (targetYear === null && yearMin === null && yearMax === null) return null;
+
+  const vehicle: PrismaTypes.ProductFitmentWhereInput = input.carModelId
+    ? { carModelId: input.carModelId }
+    : input.carBrandId
+      ? { carModel: { carBrandId: input.carBrandId } }
+      : {};
+  if (Object.keys(vehicle).length === 0) return null;
+
+  const yearConditions: PrismaTypes.ProductFitmentWhereInput[] = [];
+  if (targetYear !== null) yearConditions.push({ OR: buildYearOrConditions(targetYear) });
+  if (yearMin !== null || yearMax !== null) yearConditions.push(buildYearRangeOverlap(yearMin, yearMax));
+
+  return { ...vehicle, AND: yearConditions };
+};
+
 /** Appends an extra condition to a where's top-level AND without mutating it. */
 const mergeAndCondition = (
   where: PrismaTypes.ProductWhereInput,
@@ -932,7 +961,7 @@ async function searchProductIdsFallback(
   // SAME fitment row as the vehicle (correlated). The range filter (yearMin/yearMax,
   // storefront UI) stays uncorrelated as before.
   const correlatedVehicleYear = buildCorrelatedVehicleYearSome(input, targetYear);
-  const where = correlatedVehicleYear
+  const whereWithNameCorrelation = correlatedVehicleYear
     ? applyYearFilter(
         mergeAndCondition(baseWhere, { carModels: { some: correlatedVehicleYear } }),
         null,
@@ -940,6 +969,14 @@ async function searchProductIdsFallback(
         yearMax,
       )
     : applyYearFilter(baseWhere, targetYear, yearMin, yearMax);
+  // (Option A, id-based scope) Same correlation for the dropdown filters, which
+  // pass carModelId / carBrandId rather than names. Added as an EXTRA predicate on
+  // top of the uncorrelated ones above — it is strictly narrower, so it can only
+  // remove rows that matched the vehicle and the year on DIFFERENT fitment rows.
+  const correlatedIdVehicleYear = buildCorrelatedIdVehicleYearSome(input, targetYear, yearMin, yearMax);
+  const where = correlatedIdVehicleYear
+    ? mergeAndCondition(whereWithNameCorrelation, { carModels: { some: correlatedIdVehicleYear } })
+    : whereWithNameCorrelation;
 
   if (input.stockStatus === "in_stock" || input.stockStatus === "low_stock") {
     const stockRows = await db.$queryRaw<{ id: string }[]>(
@@ -1216,6 +1253,42 @@ export async function searchProductIdsV2(
       `
     : Prisma.empty;
 
+  const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
+  const normalizedBrandIds = normalizeStringArray(input.brandIds);
+  // normalizedCarBrandNames / effectiveCarBrandNames are computed once near the top
+  // of this function (needed early for the Option A vehicle+year correlation).
+  const yearMinRange = normalizeYearBound(input.yearMin);
+  const yearMaxRange = normalizeYearBound(input.yearMax);
+
+  // (Option A, id-based scope) The year must sit on the SAME fitment row as the
+  // requested vehicle. Without this the model filter and the year filter are two
+  // independent EXISTS, so a product can pass the model on one row and the year on
+  // ANOTHER — the 2026-08-02 case where filtering Blower + Honda Jazz + 2010 listed
+  // a Toyota Vigo blower whose Jazz row starts at 2014, because its own Vigo
+  // (2005-2014) and Altis (2008-2017) rows covered the year instead. Name-based
+  // scopes are already correlated via buildVehicleYearExists; this closes the same
+  // hole for the dropdown filters, which pass ids.
+  const idScopeYearCondition =
+    targetYear !== null || yearMinRange !== null || yearMaxRange !== null
+      ? Prisma.sql`
+          ${targetYear !== null
+            ? Prisma.sql`
+              AND (
+                (pcm."yearStart" IS NULL AND pcm."yearEnd" IS NULL)
+                OR (pcm."yearStart" IS NULL AND ${targetYear} <= pcm."yearEnd")
+                OR (pcm."yearEnd" IS NULL AND ${targetYear} >= pcm."yearStart")
+                OR (${targetYear} BETWEEN pcm."yearStart" AND pcm."yearEnd")
+              )`
+            : Prisma.empty}
+          ${yearMaxRange !== null
+            ? Prisma.sql`AND (pcm."yearStart" IS NULL OR pcm."yearStart" <= ${yearMaxRange})`
+            : Prisma.empty}
+          ${yearMinRange !== null
+            ? Prisma.sql`AND (pcm."yearEnd" IS NULL OR pcm."yearEnd" >= ${yearMinRange})`
+            : Prisma.empty}
+        `
+      : Prisma.empty;
+
   const carBrandIdClause = input.carBrandId
     ? Prisma.sql`
         AND EXISTS (
@@ -1224,6 +1297,7 @@ export async function searchProductIdsV2(
           INNER JOIN "CarModel" cm ON cm.id = pcm."carModelId"
           WHERE pcm."productId" = psd.product_id
             AND cm."carBrandId" = ${input.carBrandId}
+            ${input.carModelId ? Prisma.empty : idScopeYearCondition}
         )
       `
     : Prisma.empty;
@@ -1235,16 +1309,10 @@ export async function searchProductIdsV2(
           FROM "ProductCarModel" pcm
           WHERE pcm."productId" = psd.product_id
             AND pcm."carModelId" = ${input.carModelId}
+            ${idScopeYearCondition}
         )
       `
     : Prisma.empty;
-
-  const normalizedCategoryNames = normalizeStringArray(input.categoryNames);
-  const normalizedBrandIds = normalizeStringArray(input.brandIds);
-  // normalizedCarBrandNames / effectiveCarBrandNames are computed once near the top
-  // of this function (needed early for the Option A vehicle+year correlation).
-  const yearMinRange = normalizeYearBound(input.yearMin);
-  const yearMaxRange = normalizeYearBound(input.yearMax);
   const priceMin = normalizePriceBound(input.priceMin);
   const priceMax = normalizePriceBound(input.priceMax);
 

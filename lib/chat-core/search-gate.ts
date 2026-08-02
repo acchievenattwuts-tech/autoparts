@@ -30,6 +30,22 @@ export const CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY =
   "จูนขอส่งเรื่องให้แอดมินช่วยเช็กสินค้าและรายละเอียดรถให้ชัดเจนก่อนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊";
 
 /**
+ * Sent when the customer opens with a BROAD parts inquiry — "สอบถามอะไหล่รถครับ",
+ * "หาอะไหล่แอร์" — that names no part and no vehicle. This is the start of a
+ * conversation, not a dead end: the customer simply has not said what they need
+ * yet, so จูน asks for the three things a search actually requires and STAYS
+ * ACTIVE. Handing off here (as it did until 2026-08-02) froze the room and made a
+ * human answer a question the customer was already about to answer themselves.
+ */
+export const CHAT_BROAD_PART_INQUIRY_ASK_REPLY = [
+  "ถ้าต้องการให้จูนช่วยค้นหาอะไหล่แอร์หรือหม้อน้ำรถยนต์ รบกวนแจ้ง 3 อย่างนี้",
+  "เดี๋ยวจูนค้นให้ทันทีเลยค่ะ 👇",
+  "1️⃣ ยี่ห้อ / รุ่นรถ (เช่น Toyota Vios 2020)",
+  "2️⃣ อะไหล่ที่ต้องการ (เช่น คอมเพรสเซอร์, แผงร้อน, ตู้แอร์, หม้อน้ำ)",
+  "3️⃣ รูปอะไหล่เก่า (ถ้ามี จะช่วยให้ระบุรุ่นแม่นขึ้น)",
+].join("\n");
+
+/**
  * Sent when the customer named a car model the system could NOT lock to a fitment
  * filter (Option A vehicle-unresolved guard). Rather than show other vehicles'
  * parts as "close matches", \u0e08\u0e39\u0e19 asks the customer to confirm the make/model and

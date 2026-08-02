@@ -155,6 +155,18 @@ export async function generateChatSuggestion(input: {
       return fallback;
     }
 
+    // The Flex carousel is built deterministically from the SAME `products`, while
+    // the prose is not — nothing in a prompt can guarantee the model lists them
+    // all. When any product is missing from the text, fall back to the จูน-voiced
+    // template, which always lists every row: a slightly plainer sentence beats a
+    // card the customer was never told about.
+    if (!chatReplyListsEveryProduct(suggestedReply, input.products)) {
+      return {
+        ...fallback,
+        reasoningSummary: `Gemini reply omitted matched products; used deterministic list (intent=${input.intent}).`,
+      };
+    }
+
     return {
       suggestedReply,
       // Confidence is derived from the deterministic policy, not from the model,
@@ -425,6 +437,11 @@ export async function extractChatSearchIntent(input: {
   }
 }
 
+/** Test seam: the prompt is pure, so its rules can be asserted without a model call. */
+export function buildLineReplyPromptForTest(input: Parameters<typeof buildLineReplyPrompt>[0]): string {
+  return buildLineReplyPrompt(input);
+}
+
 function buildLineReplyPrompt(input: {
   intent: LineIntent;
   originalText?: string | null;
@@ -461,6 +478,13 @@ function buildLineReplyPrompt(input: {
     );
     lines.push(
       "สำคัญ: เรียงรายการในคำตอบ 'ตามลำดับที่ให้มาเป๊ะ' ห้ามสลับ/จัดลำดับใหม่ เพราะต้องตรงกับการ์ดสินค้าที่ส่งคู่กัน",
+    );
+    lines.push(
+      // The card carousel is generated from this SAME list, so dropping an item
+      // leaves a card the prose never mentions (2026-08-01: 4 cards, 2 listed —
+      // the model quietly cut two rows whose names read "Toyota" on a Jazz
+      // question). Judging fit is the shop's call, not the model's.
+      "สำคัญ: ต้องแสดง 'ครบทุกรายการ' ที่ให้มาข้างบน ห้ามคัดออกหรือข้ามรายการใดเอง แม้จะดูไม่ตรงรุ่นรถที่ลูกค้าถาม เพราะการ์ดสินค้าที่ส่งคู่กันจะแสดงครบทุกรายการเสมอ ถ้าข้อความไม่ครบลูกค้าจะเห็นการ์ดที่ไม่มีในข้อความ",
     );
     lines.push(
       [
@@ -548,6 +572,26 @@ export function formatProductListBlock(products: ChatProductSummary[]): string {
       return `${number} ${product.name}\n${metaLine}`;
     })
     .join(`\n${PRODUCT_LIST_DIVIDER}\n`);
+}
+
+/**
+ * True when every matched product appears in the generated reply — the invariant
+ * that keeps the prose and the Flex card carousel describing the same set. Matched
+ * on the product CODE (what the reply format prints, and unambiguous); a product
+ * with no code falls back to its name. Pure + exported for unit testing.
+ */
+export function chatReplyListsEveryProduct(
+  reply: string,
+  products?: ChatProductSummary[] | null,
+): boolean {
+  if (!products || products.length === 0) return true;
+  const haystack = reply.toLowerCase();
+  return products.every((product) => {
+    const code = product.code?.trim().toLowerCase();
+    if (code) return haystack.includes(code);
+    const name = product.name?.trim().toLowerCase();
+    return !name || haystack.includes(name);
+  });
 }
 
 export function buildConservativeChatSuggestion(input: {

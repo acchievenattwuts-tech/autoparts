@@ -25,6 +25,7 @@
     "diagnose:semantic-query": "tsx --env-file=.env.local scripts/diagnose-semantic-query.ts",
     "experiment:semantic-embedding-text": "tsx --env-file=.env.local scripts/experiment-semantic-embedding-text.ts",
     "experiment:semantic-or-merge": "tsx --env-file=.env.local scripts/experiment-semantic-or-merge.ts",
+    "test:live-broad-part-inquiry": "tsx --env-file=.env.local scripts/test-live-broad-part-inquiry.ts",
     "test:messenger-webhook": "node --experimental-test-module-mocks --import tsx --test lib/messenger/__tests__/messenger-webhook-processor.test.ts lib/messenger/__tests__/messenger-image-gate.test.ts lib/messenger/__tests__/messenger-vehicle-unresolved.test.ts",
     "test:profit-distribution": "node --experimental-test-module-mocks --import tsx --test lib/__tests__/profit-distribution-carry-forward.test.ts",
     "db:backup": "tsx --env-file=.env prisma/scripts/db-backup.ts",

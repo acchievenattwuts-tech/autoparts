@@ -3825,3 +3825,165 @@ test("B never fires on a first-contact photo (no carried part to contradict)", a
   assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), false);
   assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
 });
+
+// ── Golden suite: a broad OPENER asks for details instead of freezing the room ──
+// Production 2026-08-02 (conv cmsbfjzlo): a first-time customer wrote "สวัสดีครับ"
+// then "สอบถามอะไหล่รถครับ". The phrase matches the broad pattern /อะไหล่\s*รถ/, so
+// the turn forced BROAD_PART_TYPE_HANDOFF — จูน answered "ขอส่งเรื่องให้แอดมิน",
+// froze the room and notified a human, for a customer who had simply not said what
+// they wanted yet. It must ask for the three things a search needs and stay active.
+// The freeze is still correct MID-conversation, where the same broad wording is a
+// follow-up on a subject the customer already gave.
+
+const BROAD_OPENER = "สอบถามอะไหล่รถครับ";
+
+test("broad OPENER with no carried subject asks for the 3 details and keeps the AI active", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "สอบถามอะไหล่รถ",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload(BROAD_OPENER, "event-broad-opener"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  const reply = calls.replies[0]?.text ?? "";
+  assert.match(reply, /ยี่ห้อ \/ รุ่นรถ/, "asks for the vehicle");
+  assert.match(reply, /อะไหล่ที่ต้องการ/, "asks for the part");
+  assert.match(reply, /รูปอะไหล่เก่า/, "asks for a photo");
+  assert.doesNotMatch(reply, /แอดมิน/, "จูน handles it herself — no hand-off wording");
+
+  assert.equal(
+    calls.statePatchTypes.includes("waiting_admin"),
+    false,
+    "the room must NOT be frozen — the customer is about to answer",
+  );
+  assert.equal(calls.notifyHandoffs.length, 0, "no admin is pulled in for an unanswered opener");
+  assert.ok(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"));
+  assert.equal(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"), false);
+  assert.equal(calls.searches.length, 0, "still must not search on broad text");
+});
+
+test("the same broad wording MID-conversation still hands off (carried subject is not thrown away)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    // The customer already gave part + car + year on an earlier turn.
+    storedFrame: { partType: "คอยล์เย็น", carBrand: "Toyota", carModel: "Vios", year: 2018 },
+    consolidatedQuery: "สอบถามอะไหล่รถ",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload(BROAD_OPENER, "event-broad-followup"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.ok(
+    calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"),
+    "an established inquiry keeps the previous hand-off behaviour",
+  );
+  assert.equal(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"), false);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.doesNotMatch(
+    calls.replies[0]?.text ?? "",
+    /ยี่ห้อ \/ รุ่นรถ/,
+    "never re-ask for details the customer already gave",
+  );
+});
+
+test("a carried YEAR alone is enough context to keep the hand-off", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { year: 2018 },
+    consolidatedQuery: "สอบถามอะไหล่รถ",
+  });
+
+  await processLineWebhookPayload(
+    textPayload(BROAD_OPENER, "event-broad-year-only"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(
+    calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"),
+    false,
+    "any established slot (part / brand / model / year) counts as an ongoing inquiry",
+  );
+});
+
+test("a broad opener phrased with อะไหล่แอร์ is treated the same way", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หาอะไหล่แอร์",
+  });
+
+  await processLineWebhookPayload(
+    textPayload("หาอะไหล่แอร์ครับ", "event-broad-aircon-opener"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.ok(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"));
+  assert.equal(calls.statePatchTypes.includes("waiting_admin"), false);
+});
+
+test("a broad opener that reads as an availability question also asks instead of freezing", async () => {
+  // The live classifier files "มีอะไหล่แอร์ไหมครับ" as `stock_availability`, which
+  // reaches the stock hand-off — a different door to the same frozen room. A broad
+  // parts word with nothing named must take the ask on BOTH doors.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ consolidatedQuery: "อะไหล่แอร์" });
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "stock_availability",
+    query: "อะไหล่แอร์",
+    isProductQuery: false,
+    partType: null,
+    carBrand: null,
+    carModel: null,
+    year: null,
+    partKind: null,
+    tooBroad: true,
+  });
+
+  await processLineWebhookPayload(
+    textPayload("มีอะไหล่แอร์ไหมครับ", "event-broad-stock-opener"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.ok(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"));
+  assert.equal(calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"), false);
+  assert.equal(calls.statePatchTypes.includes("waiting_admin"), false, "must not freeze");
+  assert.match(calls.replies[0]?.text ?? "", /ยี่ห้อ \/ รุ่นรถ/);
+});
+
+test("a bare availability ask with NO parts word keeps its stock hand-off", async () => {
+  // "ที่ร้านมีของใช้ไหมคัฟ" names no part at all, so it is not a broad parts
+  // opener — confirming stock stays a human job, exactly as before.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ consolidatedQuery: "มีของไหม" });
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "stock_availability",
+    query: "มีของไหม",
+    isProductQuery: false,
+    partType: null,
+    carBrand: null,
+    carModel: null,
+    year: null,
+    partKind: null,
+    tooBroad: false,
+  });
+
+  await processLineWebhookPayload(
+    textPayload("ที่ร้านมีของใช้ไหมคัฟ", "event-bare-stock-ask"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.ok(calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"), "unchanged behaviour");
+  assert.equal(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"), false);
+});

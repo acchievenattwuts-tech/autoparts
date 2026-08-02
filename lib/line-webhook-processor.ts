@@ -126,6 +126,7 @@ import {
   buildChatSearchAskReply,
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
+  CHAT_BROAD_PART_INQUIRY_ASK_REPLY,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
   CHAT_WEAK_MATCH_HANDOFF_REPLY,
@@ -1915,6 +1916,14 @@ export async function processLineAiReply(
 
     const frameQuery = inquiryFrame ? buildFrameQuery(inquiryFrame) : null;
     const frameYear = inquiryFrame?.year ?? null;
+    // Does this conversation already have a product subject? The frame is the
+    // single source of carried fitment context and it is reset when the session
+    // goes idle, so an empty frame means "nothing established yet" — which is what
+    // separates a fresh broad opener from a broad follow-up on an existing inquiry.
+    const hasCarriedInquiryContext = Boolean(
+      inquiryFrame &&
+        (inquiryFrame.partType || inquiryFrame.carBrand || inquiryFrame.carModel || inquiryFrame.year),
+    );
     // Effective search query: on a topic shift rebuild from the new subject (drop
     // the classifier's history-merged query); otherwise prefer the classifier's
     // consolidated query, falling back to the frame for context the 10-message
@@ -2682,6 +2691,30 @@ export async function processLineAiReply(
       productSearch.searched &&
       productSearch.result.total === 0;
 
+    // ── Broad parts OPENER ────────────────────────────────────────────────────
+    // "สอบถามอะไหล่รถครับ" / "มีอะไหล่แอร์ไหมครับ": a broad parts word, nothing
+    // searchable named, and no subject carried from earlier turns. Until
+    // 2026-08-02 this froze the room and notified an admin — for a customer who
+    // had simply not said yet what they wanted. It is the START of an inquiry, so
+    // จูน asks for the three things a search needs and stays active.
+    //
+    // Two doors lead here and both must be covered: the LLM files a broad opener
+    // as `product` (→ the BROAD_PART_TYPE gate) or, when it reads as an
+    // availability question, as `stock_availability` (→ stockAvailabilityDirect).
+    // Live classifier runs show the same phrasing landing on either, so keying off
+    // only one of them would leave half the customers frozen.
+    //
+    // Gated on an EMPTY frame: mid-conversation the same wording is a follow-up on
+    // a part/car/year the customer already gave, and re-asking all three would
+    // throw that away. A bare "มีของไหม" with no parts word at all is NOT broad
+    // and keeps its existing stock hand-off — the shop confirms stock, not the AI.
+    const broadPartInquiryOpener =
+      liveMode &&
+      isTextTurn &&
+      !hasCarriedInquiryContext &&
+      (isBroadChatPartType(consolidatedQuery) || isBroadChatPartType(processText)) &&
+      (gateDecision?.reason === "BROAD_PART_TYPE" || stockAvailabilityDirect);
+
     if (
       liveMode &&
       route.requiresAdmin &&
@@ -2789,13 +2822,20 @@ export async function processLineAiReply(
             audit: "AI_GENERAL_INQUIRY_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, group },
           }
-      : liveMode && gateBlocksSearch && gateDecision?.reason === "BROAD_PART_TYPE"
+      // A broad OPENER is the start of an inquiry, not a dead end — the customer
+      // just hasn't said what they need yet. Ask for the three things a search
+      // needs and STAY ACTIVE. Placed above the stock-availability hand-off
+      // because "มีอะไหล่แอร์ไหมครับ" arrives there, not on the product gate.
+      : broadPartInquiryOpener
         ? {
-            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
-            reason: "BROAD_PART_TYPE_HANDOFF",
-            handoff: true,
-            audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
-            auditPayload: { lineEventId: input.lineEventId, reason: gateDecision.reason },
+            message: CHAT_BROAD_PART_INQUIRY_ASK_REPLY,
+            reason: "BROAD_PART_TYPE_ASK",
+            handoff: false,
+            audit: "AI_BROAD_PART_TYPE_ASK",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              reason: gateDecision?.reason ?? "STOCK_AVAILABILITY_BROAD",
+            },
           }
       // "มีของไหม" ล้วนโดยไม่ระบุอะไหล่/รถ/ปีในข้อความนี้ → สต็อกให้แอดมินยืนยันเสมอ
       // ห้ามถามรุ่นรถกลับ (เคส "ที่ร้านมีของใช้ไหมคัฟ") ต้องมาก่อน gate-ask ด้านล่าง
@@ -2811,6 +2851,18 @@ export async function processLineAiReply(
               lineEventId: input.lineEventId,
               source: stockAvailabilityClassified ? "llm_group" : "regex",
             },
+          }
+      // Same broad wording MID-conversation: the customer already established a
+      // part / car / year, so re-asking all three would throw that away and the
+      // ask below would land as a vague "which part?" on an inquiry that already
+      // has one. The pre-existing hand-off stands.
+      : liveMode && gateBlocksSearch && gateDecision?.reason === "BROAD_PART_TYPE"
+        ? {
+            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
+            reason: "BROAD_PART_TYPE_HANDOFF",
+            handoff: true,
+            audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, reason: gateDecision.reason },
           }
       : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {
