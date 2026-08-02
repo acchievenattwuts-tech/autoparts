@@ -160,11 +160,15 @@ const YearRange = ({ yearMin, yearMax, onChange }: YearRangeProps) => {
   }, [yearMax]);
 
   const commit = (nextMinRaw: string, nextMaxRaw: string) => {
-    // กรอกช่องเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts) — แปลงตั้งแต่ตรงนี้เพื่อให้
-    // ช่องที่ลูกค้าเห็น สรุปตัวกรอง และผลค้นหา ตรงกันทั้งหมด
-    onChange(
-      resolveCarYearRangeFilter(inputValueToYear(nextMinRaw), inputValueToYear(nextMaxRaw)),
+    // กรอกช่องเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts) — เติมค่าลงในช่องที่ว่าง
+    // ให้ลูกค้าเห็นทันทีที่ออกจากช่อง ไม่ใช่ไปรู้ทีหลังตอนผลลัพธ์ออก
+    const resolved = resolveCarYearRangeFilter(
+      inputValueToYear(nextMinRaw),
+      inputValueToYear(nextMaxRaw),
     );
+    setMinRaw(numberToInputValue(resolved.yearMin));
+    setMaxRaw(numberToInputValue(resolved.yearMax));
+    onChange(resolved);
   };
 
   return (

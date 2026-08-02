@@ -223,6 +223,13 @@ function ProductFilterFormContent({
                     name="yearMin"
                     value={yearMinValue}
                     onChange={(e) => setYearMinValue(e.target.value)}
+                    // กรอกช่องเดียว = ปีนั้นปีเดียว — เติมอีกช่องให้เห็นกับตาตั้งแต่ตอนกรอก
+                    // ไม่ใช่ไปเซอร์ไพรส์ตอนกดค้นหา (ดู lib/car-year-range.ts)
+                    onBlur={() => {
+                      if (yearMinValue.trim() && !yearMaxValue.trim()) {
+                        setYearMaxValue(yearMinValue.trim());
+                      }
+                    }}
                     placeholder="ปีเริ่ม"
                     min={1900}
                     max={2200}
@@ -234,6 +241,11 @@ function ProductFilterFormContent({
                     name="yearMax"
                     value={yearMaxValue}
                     onChange={(e) => setYearMaxValue(e.target.value)}
+                    onBlur={() => {
+                      if (yearMaxValue.trim() && !yearMinValue.trim()) {
+                        setYearMinValue(yearMaxValue.trim());
+                      }
+                    }}
                     placeholder="ปีสิ้นสุด"
                     min={1900}
                     max={2200}
