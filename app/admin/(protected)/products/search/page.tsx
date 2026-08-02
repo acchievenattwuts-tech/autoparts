@@ -491,13 +491,17 @@ function ActiveFilterSummary({
   yearMin?: string;
   yearMax?: string;
 }) {
+  // A half-filled range is mirrored at parse time, so both ends arrive set; a
+  // single year reads better as "ปีรถ: 2010" than "ปีรถ: 2010-2010".
   const yearLabel =
     yearMin && yearMax
-      ? `ปีรถ: ${yearMin}-${yearMax}`
+      ? yearMin === yearMax
+        ? `ปีรถ: ${yearMin}`
+        : `ปีรถ: ${yearMin}-${yearMax}`
       : yearMin
-        ? `ปีรถ: ตั้งแต่ ${yearMin}`
+        ? `ปีรถ: ${yearMin}`
         : yearMax
-          ? `ปีรถ: ถึง ${yearMax}`
+          ? `ปีรถ: ${yearMax}`
           : null;
   const chips = [
     search ? `ค้นหา: ${search}` : null,

@@ -211,7 +211,12 @@ function ProductFilterFormContent({
 
               {/* Year Range */}
               <div className="space-y-1">
-                <p className="text-xs font-medium text-gray-500 dark:text-slate-400">ช่วงปีรถ (ค.ศ.)</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-slate-400">
+                  ช่วงปีรถ (ค.ศ.)
+                  <span className="ml-1 font-normal text-gray-400 dark:text-slate-500">
+                    — กรอกช่องเดียว = ปีนั้นปีเดียว
+                  </span>
+                </p>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"

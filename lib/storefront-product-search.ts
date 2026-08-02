@@ -13,6 +13,7 @@ import {
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import { segmentThaiQueryTokens } from "@/lib/thai-segment";
 import { resolveStorefrontSearchIntent } from "@/lib/storefront-search-intent";
+import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
 
 export const STOREFRONT_PRODUCTS_PER_PAGE = 24;
 
@@ -150,8 +151,9 @@ const normalizeSearchInput = (
   categories: normalizeModelsInput(input.categories),
   partsBrands: normalizeModelsInput(input.partsBrands),
   carBrands: normalizeModelsInput(input.carBrands),
-  yearMin: normalizeYearInput(input.yearMin),
-  yearMax: normalizeYearInput(input.yearMax),
+  // ปีรถ: กรอกด้านเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts). ทำซ้ำที่ชั้นนี้
+  // ด้วยเพื่อให้ server action ที่ถูกเรียกตรงจากฝั่ง client ได้กติกาเดียวกับหน้าเพจ
+  ...resolveCarYearRangeFilter(normalizeYearInput(input.yearMin), normalizeYearInput(input.yearMax)),
   priceMin: normalizePriceInput(input.priceMin),
   priceMax: normalizePriceInput(input.priceMax),
 });

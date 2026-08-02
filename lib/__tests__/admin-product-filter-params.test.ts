@@ -24,7 +24,8 @@ test("parseAdminProductFilterParams keeps year range params and drops legacy pri
 
   assert.deepEqual(result, {
     search: "คอยล์เย็น",
-    categoryId: "cat-1",
+    // `categoryId` is a repeatable param — the parser returns the collected list.
+    categoryIds: ["cat-1"],
     brandId: "brand-1",
     carBrandId: "car-brand-1",
     carModelId: "car-model-1",
@@ -46,14 +47,17 @@ test("buildAdminProductFilterSearchParams serializes year range params and omits
     trackingFilter: "tracked",
   });
 
-  assert.deepEqual(result, {
-    search: "denso",
-    yearMin: "2010",
-    yearMax: "2015",
-    trackingFilter: "tracked",
-  });
-  assert.equal("priceMin" in result, false);
-  assert.equal("priceMax" in result, false);
+  // Returns [key, value] pairs (not an object) so repeatable params like
+  // `categoryId` can appear more than once in the query string.
+  assert.deepEqual(result, [
+    ["search", "denso"],
+    ["yearMin", "2010"],
+    ["yearMax", "2015"],
+    ["trackingFilter", "tracked"],
+  ]);
+  const keys = result.map(([key]) => key);
+  assert.equal(keys.includes("priceMin"), false);
+  assert.equal(keys.includes("priceMax"), false);
 });
 
 test("parseProductReportFilters reads year range params for export filters", async () => {

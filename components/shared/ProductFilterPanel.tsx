@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { HIDE_STOREFRONT_PRICE } from "@/lib/storefront-pricing";
+import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
 
 export type CarModel = { id: string; name: string };
 export type CarBrand = { id: string; name: string; carModels: CarModel[] };
@@ -159,15 +160,17 @@ const YearRange = ({ yearMin, yearMax, onChange }: YearRangeProps) => {
   }, [yearMax]);
 
   const commit = (nextMinRaw: string, nextMaxRaw: string) => {
-    onChange({
-      yearMin: inputValueToYear(nextMinRaw),
-      yearMax: inputValueToYear(nextMaxRaw),
-    });
+    // กรอกช่องเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts) — แปลงตั้งแต่ตรงนี้เพื่อให้
+    // ช่องที่ลูกค้าเห็น สรุปตัวกรอง และผลค้นหา ตรงกันทั้งหมด
+    onChange(
+      resolveCarYearRangeFilter(inputValueToYear(nextMinRaw), inputValueToYear(nextMaxRaw)),
+    );
   };
 
   return (
     <section className="space-y-2">
       <h3 className={sectionTitleClass}>ปีรถ</h3>
+      <p className="text-xs text-slate-400">กรอกช่องเดียว = ค้นปีนั้นปีเดียว</p>
       <div className="flex items-center gap-2">
         <input
           type="number"

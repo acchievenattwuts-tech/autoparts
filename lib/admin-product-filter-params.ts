@@ -6,6 +6,8 @@
  * ที่ส่งมาแค่ค่าเดียวจึงยังใช้งานได้ตามปกติ
  */
 
+import { resolveCarYearRangeFilterStrings } from "@/lib/car-year-range";
+
 /** ค่าที่ Next.js ส่งมาใน searchParams — ซ้ำ key ได้จึงอาจเป็น array */
 export type AdminProductFilterRawValue = string | string[] | undefined;
 
@@ -43,6 +45,12 @@ export function parseAdminProductFilterParams(
   params: Record<string, AdminProductFilterRawValue>,
 ): AdminProductFilterParams {
   const categoryIds = normalizeMultiParam(params.categoryId);
+  // ปีรถ: กรอกด้านเดียว = ปีนั้นปีเดียว (ต้องกรอกครบ 2 ช่องถึงจะเป็นช่วง) — ดู
+  // lib/car-year-range.ts; ทำที่ชั้น parse เพื่อให้ chip ที่แสดงกับ query ที่รันตรงกัน
+  const yearRange = resolveCarYearRangeFilterStrings(
+    normalizeParam(params.yearMin),
+    normalizeParam(params.yearMax),
+  );
 
   const parsed: AdminProductFilterParams = {
     search: normalizeParam(params.search),
@@ -50,8 +58,8 @@ export function parseAdminProductFilterParams(
     brandId: normalizeParam(params.brandId),
     carBrandId: normalizeParam(params.carBrandId),
     carModelId: normalizeParam(params.carModelId),
-    yearMin: normalizeParam(params.yearMin),
-    yearMax: normalizeParam(params.yearMax),
+    yearMin: yearRange.yearMin,
+    yearMax: yearRange.yearMax,
     stockStatus: normalizeParam(params.stockStatus),
     statusFilter: normalizeParam(params.statusFilter),
     trackingFilter: normalizeParam(params.trackingFilter),

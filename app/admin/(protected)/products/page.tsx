@@ -329,9 +329,12 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
             pills.push({ label: `รุ่นรถ: ${cm?.name ?? carModelId}`, removeUrl: buildRemoveParamUrl(allParams, ["carModelId"]) });
           }
           if (yearMin || yearMax) {
-            const label = yearMin && yearMax
-              ? `ปีรถ: ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`
-              : yearMin ? `ปีรถ ≥ ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}` : `ปีรถ ≤ ${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`;
+            // The parser mirrors a half-filled range, so both ends are always set
+            // here; show a single year plainly instead of "2010–2010".
+            const label =
+              yearMin === yearMax
+                ? `ปีรถ: ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}`
+                : `ปีรถ: ${Number(yearMin).toLocaleString("th-TH-u-ca-gregory")}–${Number(yearMax).toLocaleString("th-TH-u-ca-gregory")}`;
             pills.push({ label, removeUrl: buildRemoveParamUrl(allParams, ["yearMin", "yearMax"]) });
           }
           if (stockStatus) {

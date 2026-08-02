@@ -25,6 +25,7 @@ import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
 import { headers } from "next/headers";
 import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
+import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
 
 type QueryValue = string | string[] | undefined;
 
@@ -179,8 +180,12 @@ const ProductsPage = async ({ searchParams }: Props) => {
   const categories = normalizeQueryValues(categoriesParam);
   const partsBrands = normalizeQueryValues(partsBrandParam);
   const carBrands = normalizeQueryValues(carBrandParam);
-  const yearMin = parseYearParam(yearMinParam);
-  const yearMax = parseYearParam(yearMaxParam);
+  // ปีรถ: กรอกด้านเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts) — แปลงตั้งแต่ตอน
+  // อ่าน param เพื่อให้ชิปตัวกรองที่ลูกค้าเห็นตรงกับช่วงที่ใช้ค้นจริง
+  const { yearMin, yearMax } = resolveCarYearRangeFilter(
+    parseYearParam(yearMinParam),
+    parseYearParam(yearMaxParam),
+  );
   const priceMin = parsePriceParam(priceMinParam);
   const priceMax = parsePriceParam(priceMaxParam);
   const hasFilter = Boolean(
