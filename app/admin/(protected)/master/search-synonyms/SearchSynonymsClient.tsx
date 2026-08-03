@@ -32,8 +32,10 @@ interface Props {
 }
 
 // Mirror of lib/search-synonyms.ts MAX_SYNONYMS_PER_TERM (kept here so the
-// client bundle does not pull in server-only db imports).
-const MAX_SYNONYMS_PER_TERM = 10;
+// client bundle does not pull in server-only db imports). Keep the two in sync —
+// the Server Action validates against the lib value, so a stale copy here only
+// blocks the admin from typing words the backend would have accepted.
+const MAX_SYNONYMS_PER_TERM = 18;
 
 const inputCls =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] " +

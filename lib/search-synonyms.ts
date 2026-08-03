@@ -18,8 +18,28 @@ const SYNONYM_CACHE_TAG = "search-synonyms";
 const SYNONYM_CACHE_KEY = ["search-synonyms:active"];
 const SYNONYM_CACHE_REVALIDATE = 300; // 5 minutes
 
-/** Hard cap to prevent runaway expansion (Phase D Q2 = 10). Enforced at write time too. */
-export const MAX_SYNONYMS_PER_TERM = 10;
+/**
+ * Hard cap to prevent runaway expansion. Enforced at write time too (the admin
+ * Server Action's Zod schema and the chip input mirror this value).
+ *
+ * Raised 10 → 15 → 18 on 2026-08-03. A LINE customer asked for "บล็อควาล์ว revo"
+ * and saw only 1 of the 2 matching SKUs: the block-valve spellings Thai buyers
+ * actually type were missing from the "วาล์วแอร์" cluster, which was already full
+ * at 10/10 — so covering them would have meant deleting working synonyms. Auditing
+ * two months of inbound LINE messages then turned up a second family the cluster
+ * had to hold ("วาว์ล", the most-typed valve misspelling in the data), which is
+ * what took it past 15.
+ *
+ * The cost of a wider cluster was measured against production before changing
+ * this: the FTS clause is a GIN index scan, so growing a concept from 11 to 16
+ * lexemes costs +0.03ms server-side (0.499 → 0.532ms), and +0.05ms in the worst
+ * case of three max-size concepts at once — roughly 1/1000 of the network
+ * round-trip to the database. Several clusters seeded by
+ * scripts/import-car-search-synonyms.ts already hold 12-30 synonyms, so this
+ * mostly unlocks data that was being truncated at read time rather than adding
+ * new work.
+ */
+export const MAX_SYNONYMS_PER_TERM = 18;
 /** Hard cap on tokens produced after expansion, so a single query never explodes. */
 const MAX_EXPANDED_TOKENS = 32;
 

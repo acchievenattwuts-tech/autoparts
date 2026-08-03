@@ -15,6 +15,7 @@
     "check:mojibake": "node scripts/check-mojibake.mjs",
     "seed": "npx tsx --env-file=.env.local prisma/seed.ts",
     "seed:car-model-generation-aliases": "tsx --env-file=.env.local scripts/seed-car-model-generation-aliases.ts",
+    "seed:expansion-valve-block-synonyms": "tsx --env-file=.env.local scripts/seed-expansion-valve-block-synonyms.ts",
     "test:admin-theme-regression": "tsx scripts/test-admin-theme-regression.ts",
     "test:security-hardening": "node scripts/test-security-hardening.mjs",
     "test:primary-transfer-roadmap": "tsx scripts/test-primary-transfer-roadmap.ts",
