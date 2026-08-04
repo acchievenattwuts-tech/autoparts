@@ -23,6 +23,7 @@
     "test:stock-card-sequence": "tsx scripts/test-stock-card-sequence.ts",
     "test:roadmap-2026-04-27": "tsx scripts/test-roadmap-2026-04-27.ts",
     "test:semantic-golden": "tsx --env-file=.env.local scripts/test-semantic-search-golden.ts",
+    "test:search-recall-golden": "tsx --env-file=.env.local scripts/test-search-recall-golden.ts",
     "evaluate:semantic-retrieval": "tsx --env-file=.env.local scripts/evaluate-semantic-retrieval.ts",
     "diagnose:semantic-query": "tsx --env-file=.env.local scripts/diagnose-semantic-query.ts",
     "experiment:semantic-embedding-text": "tsx --env-file=.env.local scripts/experiment-semantic-embedding-text.ts",

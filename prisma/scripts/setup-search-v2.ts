@@ -69,6 +69,88 @@ ALTER TABLE product_search_documents
 ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS embedded_at timestamptz(3);
 
+-- Compact trigram probe target (2026-08-03). The candidate clause's fuzzy arm
+-- used to run "search_text % query AND similarity(search_text, query) >= 0.12",
+-- but at that floor a short Thai query trigram-overlaps nearly every ~3KB
+-- search_text document, so the GIN bitmap admitted the whole table and Postgres
+-- recomputed full-text similarity per row on recheck: ~585ms of pure CPU per
+-- broad-mode search, paid by 64% of chat turns (every semantic rerun + the
+-- zero-result OR fallback), and growing linearly with catalog size.
+--
+-- trgm_text carries only the short identity fields — description (the bulk of
+-- search_text) is deliberately excluded. Measured against the full production
+-- query corpus before the switch: no row that passed the 0.12 floor on the full
+-- search_text depended on description-only text (0 of 60 weak-path queries lost
+-- a candidate), so probing this column instead keeps results identical while the
+-- per-row similarity gets ~3.5x cheaper and the GIN bitmap gets far narrower.
+-- GENERATED ALWAYS keeps it in sync with the refresh pipeline for free — the
+-- build/refresh functions never need to know it exists, and every INSERT/UPDATE
+-- the refresh triggers perform recomputes it inside the SAME transaction as the
+-- product edit (verified against production: editing Product.name or adding a
+-- KEYWORD ProductAlias both land in trgm_text immediately).
+--
+-- Self-healing: a bare ADD COLUMN IF NOT EXISTS would see the existing column
+-- and skip silently, so editing the field list below would have NO effect on an
+-- already-migrated database (the same reason the trigram indexes further down
+-- DROP before CREATE). The version tag in the column comment — not the SQL text —
+-- is what decides whether to rebuild, because Postgres rewrites the stored
+-- generation_expression into its own normalised form (it adds parentheses and
+-- ::text casts), so comparing source text would either need a brittle
+-- byte-exact literal or would rebuild on every run.
+--
+--   >>> BUMP TRGM_TEXT_VERSION BELOW WHENEVER THE FIELD LIST CHANGES <<<
+--
+-- Rebuild cost is one table rewrite (~950 rows today) plus the GIN index — fast,
+-- and it happens inside this script's transaction, so searches never see a
+-- half-built column.
+DO $trgm$
+DECLARE
+  -- Bump on every change to the expression. Format: v<n>:<field list>
+  wanted_version text := 'v1:code+name+alias+keyword+oem+car_model';
+  current_version text;
+  column_exists boolean;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'product_search_documents' AND column_name = 'trgm_text'
+  ) INTO column_exists;
+
+  IF column_exists THEN
+    SELECT col_description('product_search_documents'::regclass, attnum)
+      INTO current_version
+    FROM pg_attribute
+    WHERE attrelid = 'product_search_documents'::regclass AND attname = 'trgm_text';
+  END IF;
+
+  IF column_exists AND current_version IS NOT DISTINCT FROM wanted_version THEN
+    RAISE NOTICE 'trgm_text: up to date (%)', wanted_version;
+    RETURN;
+  END IF;
+
+  IF column_exists THEN
+    -- Recreated by the CREATE INDEX statement further down.
+    DROP INDEX IF EXISTS idx_psd_trgm_text_unaccent_trgm;
+    ALTER TABLE product_search_documents DROP COLUMN trgm_text;
+    RAISE NOTICE 'trgm_text: version % -> % — rebuilding', coalesce(current_version, '(untagged)'), wanted_version;
+  ELSE
+    RAISE NOTICE 'trgm_text: creating (%)', wanted_version;
+  END IF;
+
+  ALTER TABLE product_search_documents
+    ADD COLUMN trgm_text text
+    GENERATED ALWAYS AS (
+      coalesce(product_code, '') || ' ' || coalesce(product_name, '') || ' ' ||
+      coalesce(alias_text, '') || ' ' || coalesce(keyword_text, '') || ' ' ||
+      coalesce(oem_text, '') || ' ' || coalesce(car_model_text, '')
+    ) STORED;
+
+  EXECUTE format(
+    'COMMENT ON COLUMN product_search_documents.trgm_text IS %L',
+    wanted_version
+  );
+END
+$trgm$;
+
 CREATE INDEX IF NOT EXISTS idx_product_search_documents_is_active
   ON product_search_documents (is_active);
 
@@ -129,6 +211,12 @@ DROP INDEX IF EXISTS idx_psd_keyword_unaccent_trgm;
 CREATE INDEX IF NOT EXISTS idx_psd_keyword_unaccent_trgm
   ON product_search_documents
   USING GIN (f_unaccent(lower(keyword_text)) gin_trgm_ops);
+
+-- Candidate fuzzy arm probes trgm_text (see the column comment above). The
+-- expression must be exactly f_unaccent(lower(trgm_text)) to match the query.
+CREATE INDEX IF NOT EXISTS idx_psd_trgm_text_unaccent_trgm
+  ON product_search_documents
+  USING GIN (f_unaccent(lower(trgm_text)) gin_trgm_ops);
 
 -- Accent-insensitive trigram index on product_code, matching the
 -- f_unaccent(lower(product_code)) expression used by the ranked/candidate

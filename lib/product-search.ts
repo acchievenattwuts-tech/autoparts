@@ -157,8 +157,17 @@ export const buildCandidateTextMatchSql = (params: {
       AND similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_NAME_SIMILARITY}
     )
     OR (
-      f_unaccent(lower(psd.search_text)) % f_unaccent(lower(${normalizedQuery}))
-      AND similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
+      -- Fuzzy free-text arm probes trgm_text (code+name+alias+keyword+oem+car
+      -- models — no description) instead of the full search_text. At the 0.12
+      -- floor a short Thai query trigram-overlaps nearly every ~3KB search_text,
+      -- so this arm used to recheck-similarity the WHOLE table (~585ms of CPU on
+      -- 921 rows, paid by every broad-mode search and scaling with the catalog).
+      -- Replayed against the full production query corpus: no candidate ever
+      -- depended on description-only text, so the admitted rows are unchanged.
+      -- Ranking still scores similarity on the full search_text below — only
+      -- candidate ADMISSION moved to the compact column.
+      f_unaccent(lower(psd.trgm_text)) % f_unaccent(lower(${normalizedQuery}))
+      AND similarity(f_unaccent(lower(psd.trgm_text)), f_unaccent(lower(${normalizedQuery}))) >= ${SEARCH_V2_TEXT_SIMILARITY}
     )
   `;
 };
