@@ -39,7 +39,43 @@ const PAYMENT_RE = /(สลิป|โอน|โอนแล้ว|ชำระ|�
 // เช็กก่อน SHIPPING_ADDRESS_RE เพราะคำว่า "จัดส่ง/ส่งของ" ซ้อนกันอยู่.
 const SHIPPING_SERVICE_INQUIRY_RE =
   /(มีบริการ(จัด)?ส่ง|(จัด)?ส่ง(ของ)?(ได้|ทั่วประเทศ)?\s*(ไหม|มั้ย|หรือเปล่า|รึเปล่า)|ส่งต่างจังหวัด|ส่งทั่วประเทศ|ค่า(จัด)?ส่งคิด(ยังไง|อย่างไร)|(จัด)?ส่งยังไง|ส่งกี่วัน|ส่งนานไหม)/i;
-const SHIPPING_ADDRESS_RE = /(ที่อยู่|จัดส่ง|ส่งของ|ปลายทาง|ตำบล|อำเภอ|จังหวัด|รหัสไปรษณีย์|postcode|address)/i;
+const SHIPPING_ADDRESS_RE =
+  /(ที่อยู่|จัดส่ง|ส่งของ|ปลายทาง|ตำบล|อำเภอ|จังหวัด|แขวง|รหัสไปรษณีย์|postcode|address)/i;
+// ลูกค้าส่วนใหญ่พิมพ์ที่อยู่แบบย่อ ("55/2 ต.บางม่วง อ.เมือง จ.นครสวรรค์ 60000") ซึ่ง
+// ไม่มีคำเต็มให้ SHIPPING_ADDRESS_RE จับเลย ที่อยู่จึงเคยไหลไปเป็นคำค้นสินค้า.
+// ภาษาไทยปกติไม่ใช้จุดจบคำ รูปแบบ "อักษรย่อ + จุด + ข้อความ" จึงเป็นสัญญาณที่อยู่ที่
+// ค่อนข้างชัด แต่ยังบังคับให้มีสัญญาณอย่างน้อย 2 ตัวก่อนตัดสิน เพื่อไม่ให้รหัสอะไหล่
+// หรือข้อความสินค้าที่มีตัวเลข 5 หลักถูกเข้าใจผิดว่าเป็นที่อยู่
+const THAI_ADDRESS_ABBREV_RE = /(?:ต|อ|จ|ถ|ซ|ม)\.\s*[ก-๙\d]/g;
+const THAI_ADDRESS_WORD_RE = /(แขวง|เขต|หมู่ที่|หมู่บ้าน|ซอย|ถนน|หมู่\s*\d)/;
+const THAI_POSTCODE_RE = /(?:^|\D)\d{5}(?:\D|$)/;
+function looksLikeThaiPostalAddress(text: string): boolean {
+  const abbreviations = text.match(THAI_ADDRESS_ABBREV_RE)?.length ?? 0;
+  if (abbreviations >= 2) return true;
+  const hasPostcode = THAI_POSTCODE_RE.test(text);
+  if (abbreviations >= 1 && hasPostcode) return true;
+  return THAI_ADDRESS_WORD_RE.test(text) && (hasPostcode || abbreviations >= 1);
+}
+// "ขอที่อยู่ร้านหน่อย / ร้านอยู่จังหวัดอะไร" คือคำถามที่ตั้งร้าน ตอบเองได้จาก SiteConfig
+// ไม่ใช่การแจ้งที่อยู่จัดส่ง แต่ SHIPPING_ADDRESS_RE จับคำว่า "ที่อยู่/จังหวัด/ตำบล"
+// เหมือนกันและรันก่อน จึงเคยถูกเด้งแอดมินทั้งหมด. เงื่อนไขตั้งให้แคบที่สุด 4 ชั้น
+// เพื่อไม่ให้กลืนกฎ "เรื่องจัดส่งทุกกรณีต้องส่งแอดมิน":
+//   1) ต้องพูดถึง "ร้าน" (ที่อยู่ของร้าน ไม่ใช่ของลูกค้า)
+//   2) ต้องมีคำเชิงที่อยู่/เขตพื้นที่
+//   3) ต้องมีคำถาม/คำขอ — กันลูกค้าพิมพ์ที่อยู่จัดส่งของตัวเองที่บังเอิญมีคำว่า "ร้าน"
+//   4) ต้องไม่มีบริบทการส่งของหรือเอกสารภาษี
+const SHOP_ADDRESS_LOCALITY_RE = /(ที่อยู่|ตำบล|อำเภอ|จังหวัด|รหัสไปรษณีย์|address)/i;
+const SHOP_ADDRESS_ASK_RE = /(ไหน|อะไร|ยังไง|อย่างไร|ขอ|บอก|\?)/;
+const DELIVERY_OR_TAX_CONTEXT_RE =
+  /(จัดส่ง|ส่งของ|ส่งมา|ส่งไป|ส่งให้|ค่าส่ง|ปลายทาง|พัสดุ|ขนส่ง|เก็บเงินปลายทาง|\bcod\b|ใบกำกับ|ใบเสร็จ|ออกบิล|วางบิล|ภาษี|นิติบุคคล)/i;
+function isShopLocationQuestion(text: string): boolean {
+  return (
+    /ร้าน/.test(text) &&
+    SHOP_ADDRESS_LOCALITY_RE.test(text) &&
+    SHOP_ADDRESS_ASK_RE.test(text) &&
+    !DELIVERY_OR_TAX_CONTEXT_RE.test(text)
+  );
+}
 const ORDER_STATUS_RE = /(สถานะ|เลขพัสดุ|ติดตาม|tracking|ของถึง|ส่งหรือยัง|ออเดอร์|order)/i;
 const PRICE_NEGOTIATION_RE = /(ลดได้ไหม|ลดหน่อย|ต่อราคา|แพง|ราคาสุด|ขอราคา|ส่วนลด|discount)/i;
 // A quotation is an operational sales request, not a request to discover another
@@ -52,8 +88,21 @@ const QUOTATION_REQUEST_RE =
 const CLAIM_RE = /(เคลม|คืนของ|คืนสินค้า|เสีย|พัง|ชำรุด|เปลี่ยนสินค้า|รับประกัน|claim|return)/i;
 const PURCHASE_INTENT_RE =
   /(เอาตัวนี้|เอาอันนี้|เอาเลย|จะเอา|เอากี่|เอา\s*\d|สั่งซื้อ|สั่งเลย|สั่งของ|ขอสั่ง|ซื้อเลย|ขอซื้อ|จะซื้อ|กี่บาท|ราคาเท่าไ|รวมส่ง|ค่าส่งเท่าไ|เก็บปลายทาง|เก็บเงินปลายทาง|โอนเข้าไหน|โอนยังไง|เลขบัญชี|เลขที่บัญชี|รับของยังไง|order now|check ?out)/i;
-const SHOP_INFO_RE =
-  /(เวลาทำการ|เวลาเปิด|เปิดกี่โมง|กี่โมง|ปิดกี่โมง|เปิดไหม|ปิดไหม|หยุดไหม|วันหยุด|เปิดทุกวัน|ร้านเปิด|เปิดวัน(?:ไหน|อะไร|อาทิตย์|เสาร์|จันทร์|ธรรมดา)|ปิดวัน(?:ไหน|อะไร|อาทิตย์|เสาร์)|ติดต่อร้าน|ติดต่อสอบถาม|ช่องทางติดต่อ|ติดต่อ(?:ยัง)?(?:ไง|งัย|ไร)|ติดต่ออย่างไร|ติดต่อทางไหน|ขอสอบถามข้อมูล|ขอเบอร์|ขอแผนที่|เบอร์โทร|เบอร์ร้าน|ร้านอยู่ไหน|ร้านอยู่ที่ไหน|อยู่ที่ไหน|อยู่ตรงไหน|อยู่ไหน|ที่ตั้งร้าน|ที่ตั้ง|พิกัด|แผนที่|ไปร้าน|ไปยังไง|ไปไง|มีหน้าร้าน|มีสาขา|สาขา|location|map|opening\s*hours?|business\s*hours?|contact\s*us)/i;
+// ── ข้อมูลร้าน (SHOP_INFO) ────────────────────────────────────────────────────
+// คำถามกลุ่มนี้ตอบเองได้ทั้งหมดจากค่าใน SiteConfig (เวลาทำการ/เบอร์/ที่อยู่/แผนที่)
+// จึงต้องจับให้กว้างพอ ไม่งั้นข้อความจะไหลไป general_faq แล้วให้ Knowledge RAG
+// แต่งคำตอบจากบทความ ซึ่งอาจให้เวลาทำการหรือช่องทางติดต่อที่ไม่ตรงกับค่าจริงในระบบ
+// แยกเป็น 3 กลุ่มเพื่อให้อ่าน/ต่อเติมได้ง่าย แทนที่จะเป็น regex ยาวก้อนเดียว
+const SHOP_HOURS_RE =
+  /(เวลาทำการ|เวลาเปิด|เวลาปิด|กี่โมง|เปิดทุกวัน|ร้านเปิด|(?:เปิด|ปิด|หยุด)(?:หรือ|รึ|หรอ)?(?:เปล่า|ยัง|ไหม|มั้ย)|(?:เปิด|ปิด|หยุด)(?:วัน)?(?:ไหน|อะไร|เสาร์|อาทิตย์|จันทร์|ธรรมดา|นักขัตฤกษ์)|วันหยุด|opening\s*hours?|business\s*hours?)/i;
+const SHOP_LOCATION_RE =
+  /(ร้านอยู่ไหน|ร้านอยู่ที่ไหน|อยู่ที่ไหน|อยู่ตรงไหน|อยู่แถวไหน|อยู่ไหน|แถวไหน|ที่ตั้งร้าน|ที่ตั้ง|พิกัด|ปักหมุด|แผนที่|ไปร้าน|ไปยังไง|ไปไง|มีหน้าร้าน|มีสาขา|สาขา|location|map)/i;
+const SHOP_CONTACT_RE =
+  /(ติดต่อร้าน|ติดต่อสอบถาม|ช่องทางติดต่อ|ติดต่อ(?:ยัง)?(?:ไง|งัย|ไร)|ติดต่ออย่างไร|ติดต่อทางไหน|ติดต่อ(?:ได้)?(?:ที่)?ไหน|ขอสอบถามข้อมูล|ขอเบอร์|มีเบอร์|เบอร์โทร|เบอร์ร้าน|เบอร์ไหน|ขอแผนที่|ไลน์ไอดี|ไอดีไลน์|line\s*id|contact\s*us)/i;
+const SHOP_INFO_RE = new RegExp(
+  `(${SHOP_HOURS_RE.source}|${SHOP_LOCATION_RE.source}|${SHOP_CONTACT_RE.source})`,
+  "i",
+);
 function routeText(text: string): ChatIntentRouteResult {
   const normalized = text.trim();
   if (!normalized) {
@@ -123,7 +172,19 @@ function routeText(text: string): ChatIntentRouteResult {
     };
   }
 
-  if (SHIPPING_ADDRESS_RE.test(normalized)) {
+  // ถามที่ตั้งร้าน (ไม่ใช่ที่อยู่จัดส่ง) → ตอบเองด้วยข้อมูลร้าน ไม่เด้งแอดมิน
+  if (isShopLocationQuestion(normalized)) {
+    return {
+      intent: LineIntent.SHOP_INFO,
+      allowsSearch: false,
+      requiresAdmin: false,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: "SHOP_INFO_KEYWORD",
+    };
+  }
+
+  if (SHIPPING_ADDRESS_RE.test(normalized) || looksLikeThaiPostalAddress(normalized)) {
     return {
       intent: LineIntent.SHIPPING_ADDRESS,
       allowsSearch: false,
