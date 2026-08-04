@@ -451,6 +451,20 @@
 - [x] ทดสอบผ่าน: `test:search-recall-golden` **43/43** · `test:semantic-golden` **12/12** · `evaluate:search-v2` ผ่านทุกเคส · `npx eslint lib/product-search.ts` 0 error · `npm run build` ผ่าน
 - [ ] เฝ้าดูหลัง deploy 3–5 วัน: `pg_stat_statements` mean ของ ranked-search ควรต่ำกว่า 287 ms + นับ `timeout exceeded` ใน Vercel log ควรลดลง
 - [ ] ค้างไว้ (คนละเรื่อง): [product-search.ts:991](lib/product-search.ts:991) `db.$queryRaw` ตรง ๆ และ Prisma `contains` fallback (`Product` LEFT JOIN `Category`, mean 1.96 s / max 31 s) ยัง **ไม่มี statement_timeout 8 วิ** ครอบ — ต่างจาก `dbSearchRaw`/`dbSearchTx`
+
+## Prisma `contains` fallback — ตัด `count()` ที่ไม่จำเป็น (2026-08-04)
+- บริบท: ต่อจากข้อค้าง statement_timeout ด้านบน · `searchProductIdsFallback()` ([product-search.ts:964](lib/product-search.ts:964)) ถูกเรียก 2 ทาง — (1) ไม่มีคำค้น (กรอง/เรียกดูเฉย ๆ) ซึ่งถูกและเร็ว 7.3 ms และ (2) **เป็น error handler ตอน `searchProductIdsV2` โยน error** ([2042](lib/product-search.ts:2042)) ซึ่งยิง query หนักกว่าเดิมตอนที่ DB กำลังตึงพอดี
+- **ต้นทุนจริง** (`pg_stat_statements`): `findMany` 50 calls · mean 1,959 ms · **max 31,004 ms** · `count` คู่แฝด 48 calls · mean 1,426 ms · max 10,248 ms — เกิดน้อย (~100 ครั้งใน 2 เดือน) แต่เป็นความเสี่ยงหางยาว
+- **สาเหตุ** (EXPLAIN ANALYZE): `where` เป็น OR 12 เงื่อนไข `ILIKE '%q%'` + EXISTS 7 ตัว → **seq scan 8 ตาราง** รวม `ProductAlias` (38,778 แถว/19 MB) และ `ProductCarModel` ที่ถูกสแกน **4 รอบแยกกัน** · `ILIKE '%…%'` ใช้ index ไม่ได้เลย (btree ช่วยไม่ได้ · GIN trigram ที่มีอยู่สร้างบน `f_unaccent(lower())` ซึ่งไม่ตรงกับ `ILIKE` ที่ Prisma สร้าง)
+- [x] **D2 — ยิง `count()` เฉพาะเมื่อจำเป็น** ([product-search.ts:1005](lib/product-search.ts:1005)): `rows.length < take && (rows.length > 0 || skip === 0)` → `total = skip + rows.length` · เงื่อนไขต้องเข้มแบบนี้เพราะหน้าว่างที่ `skip > 0` อนุมานยอดรวมไม่ได้ · **แม่นยำ 100% ทุกกรณี ไม่แตะ `where`**
+    - วัดผล (best-of-3, production): คำค้นที่ผลไม่เต็มหน้า `P0104` 316→158 ms · คำที่ไม่มีผลเลย 415→212 ms (**~−50%**) · คำหมวดกว้างที่ผลเกิน 30 รายการยังยิง count เหมือนเดิม
+- **ทางเลือกที่ตรวจแล้วตัดทิ้ง**
+    - **ตัด predicate ทิ้ง 5 ตัว (`description`/`submodel`/`engineCode`/`engineSize`/`note`)** — replay คำค้นจริง 1,498 คำ: **78 คำ (5.2%) จะสูญสินค้า** และ **4 คำผลกลายเป็นศูนย์** (`ยจ` 23→0, `ผา` 3→0, `2063` 1→0) · แยกรายตัว: `description` ทำให้หาย 621 hit (ตัวการหลัก), `note` 59, `submodel` 6, **`engineCode`/`engineSize` = 0** · แต่พอตัดเฉพาะ 2 ตัวที่ปลอดภัยจริง **ประหยัดแค่ ~1%** → **ไม่คุ้ม ไม่ทำ**
+    - **`COUNT(*) OVER()` นัดเดียว (raw SQL)** — เร็วขึ้น ~50% ทุกเคส แต่ต้องเขียน `where` เป็น SQL คู่ขนานกับที่ Prisma ประกอบจากตัวกรอง 20+ ตัว → หนี้ทางเทคนิคสูง เพี้ยนแล้วผลค้นหาผิดเงียบ ๆ
+    - **ดึง id ทั้งหมดแล้วตัดหน้าใน JS** — เร็วเท่ากัน (วัดแล้ว) และเป็น Prisma ล้วน แต่ไม่มี cap จำนวนแถว = ระเบิดเวลาเชิงสเกล (ตอนนี้เพดาน 921 สินค้า active) · ถ้าจะทำต้องมี `FALLBACK_MAX_SCAN_IDS` กำกับ
+    - **`Promise.all` ยิงขนาน** — ใช้ 2 connection พร้อมกันตอนพูลกำลังตึง = สวนทางเป้าหมายทั้งหมด
+- [x] ทดสอบผ่าน: `test:search-recall-golden` 43/43 · `npx eslint lib/product-search.ts` 0 error · `tsc --noEmit` ผ่าน
+- [ ] ยังไม่ทำ: ครอบ `statement_timeout` ให้ fallback (ทางเลือก A เดิม) — เป็นตัวปิดความเสี่ยง 31 วินาทีจริง ๆ ส่วน D2 แค่ลดงานลง
 - ไม่แตะ: recall predicate, น้ำหนักคะแนนตัวอื่น, semantic/vector, สต็อก/ราคา/เอกสาร, schema, config พูล
 
 ## LINE chat ตอบสินค้าไม่ครบ — `บล็อควาล์ว revo` เจอ 1 จาก 2 ตัว (2026-08-03)

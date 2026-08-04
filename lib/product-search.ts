@@ -1009,7 +1009,20 @@ async function searchProductIdsFallback(
     skip,
     take,
   });
-  const total = await db.product.count({ where });
+  // `where` here is an OR of 12 ILIKE '%q%' branches (7 of them correlated
+  // EXISTS) that Postgres can serve only by sequentially scanning Product,
+  // ProductAlias (~39k rows) and ProductCarModel four times over — measured at
+  // ~1.9s mean and 31s worst case in production. count() re-evaluates that whole
+  // predicate a second time for the same page, on its own connection checkout,
+  // and it is the fallback for a search engine that already failed — i.e. it
+  // runs precisely when the pool is starved.
+  //
+  // A short page proves there is nothing left to count: `total` is then exactly
+  // what we already hold. Only ask the database when the page came back full
+  // (more rows may exist), or when an empty page at a non-zero offset leaves the
+  // true total genuinely unknown.
+  const isProvablyLastPage = rows.length < take && (rows.length > 0 || skip === 0);
+  const total = isProvablyLastPage ? skip + rows.length : await db.product.count({ where });
 
   return {
     ids: rows.map((row) => row.id),
