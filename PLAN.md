@@ -436,6 +436,23 @@
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront
 
+## ค้นหาช้า — ตัด `similarity(search_text)` ออกจากบล็อกให้คะแนน (2026-08-04)
+- บริบท: ตามรอยมาจาก error `timeout exceeded when trying to connect` ตอน revalidate cache (§ด้านล่าง 2026-07-31) ที่เกิดซ้ำเช้า 4 ส.ค. → เจาะจนพบว่าตัวกินเวลา connection จริงคือ query ค้นหาสินค้า ไม่ใช่ config ของพูล
+- **Metric ฐานข้อมูล (อ่านอย่างเดียว)**: `max_connections = 90` (ไม่ใช่ 200 ตามคอมเมนต์ใน [lib/db.ts](lib/db.ts)) · `product_search_documents` มีแค่ 949 แถว → ที่ช้าคือ **ต้นทุน CPU ต่อแถว** ไม่ใช่ข้อมูลเยอะ · `search_text` ยาวเฉลี่ย 2,389 ตัวอักษร (`trgm_text` 702)
+- **ยืนยันว่า `12060c1` (probe `trgm_text` ตอน recall) ได้ผลแล้ว** — แยกด้วย `pg_stat_statements.stats_since`: ranked-search mean ถ่วงน้ำหนัก **629 ms → 287 ms (−54%)**, worst case **83.3 วิ → 2.3 วิ** · query shape ที่ mean 2,376 ms เป็นของเก่าตั้งแต่ 11 มิ.ย. ไม่ถูกเรียกแล้ว
+- [x] ตัด `similarity(f_unaccent(lower(psd.search_text))) * 120` ออกจาก `GREATEST()` ในบล็อกให้คะแนน [lib/product-search.ts](lib/product-search.ts) และออกจาก `match_trigram_high` (chat relevance gate)
+- **หลักฐานก่อนแก้ — replay คำค้นจริงทั้งหมดจาก `ProductSearchLog` 1,496 คำ (ไม่ใช่บอท, 21 พ.ค.–4 ส.ค.)**
+    - สินค้าที่ได้: **หาย 0 คำ · เพิ่ม 0 คำ** (recall เหมือนเดิมทุกประการ)
+    - ลำดับเปลี่ยน 19 คำ (1.3%) · ใน 24 อันดับแรก 8 คำ (0.5%) · ใน 5 อันดับแรก 3 คำ (0.2%) — ตรวจรายตัวแล้ว **ทุกเคสเป็นการสลับแถวที่คะแนนเท่ากันเป๊ะ** (เช่น `frontier` อันดับ 3↔4 คะแนน 271.8 เท่ากันทั้งคู่) · 5 ใน 8 เป็นคำพิมพ์มั่ว 2 ตัวอักษร (`ยจ` `ผา` `สน` `ทท`)
+    - chat gate (`match_trigram_high >= 0.5`): **0 คำ** ที่มีสินค้าผ่านเกณฑ์ได้เพราะ `search_text` เพียงอย่างเดียว · ค่า `similarity(search_text)` สูงสุดทั้งคลังคำค้น = **0.24** (เกณฑ์ต้องการ 0.5) → คำตอบแชทไม่เปลี่ยน
+    - เหตุผลเชิงหลักการ: `search_text` รวมทุกฟิลด์ (~2.4KB) เทียบกับคำค้น 2–20 ตัวอักษร → ให้คะแนน 0–1.8 จากคะแนนรวม 240–2,642 (<0.07%) ในบล็อกที่คู่แข่งคือ `product_code × 420` / `product_name × 250` — **ไม่เคยชนะด้วยความเกี่ยวข้องจริง เป็นแค่ตัวตัดสินเสมอ แต่กิน CPU ~575 ms/คำค้น**
+- **ผลด้านความเร็ว (วัดบน production, best-of-3)**: `คอมแอร์` 673→444 ms (−34%) · `คอยล์ร้อน` 588→471 ms (−20%) · `วาล์วบล็อก` 257→197 ms (−23%) · `โบลเวอร์` 487→396 ms (−19%) · รวม 43 คำ −16% (ตัวเลขรวม network RTT ~120–150 ms จากเครื่อง dev → ของจริงฝั่งเซิร์ฟเวอร์ประหยัดมากกว่านี้)
+- **ทางเลือกที่ตรวจแล้วตัดทิ้ง**: แยก recall/scoring เป็น 2 เฟส (CTE candidate ก่อน) — วัด A/B 8 คำค้นได้ **+0 ถึง +1% (ช้าลง)** เพราะ Postgres ให้คะแนนเฉพาะแถวที่ผ่าน recall อยู่แล้ว · ขยาย `DB_POOL_MAX` 5→8 — **ไม่ทำ** เพราะเพดานจริงคือ 90 ไม่ใช่ 200 เสี่ยงกว่าปัญหาเดิม
+- [x] ทดสอบผ่าน: `test:search-recall-golden` **43/43** · `test:semantic-golden` **12/12** · `evaluate:search-v2` ผ่านทุกเคส · `npx eslint lib/product-search.ts` 0 error · `npm run build` ผ่าน
+- [ ] เฝ้าดูหลัง deploy 3–5 วัน: `pg_stat_statements` mean ของ ranked-search ควรต่ำกว่า 287 ms + นับ `timeout exceeded` ใน Vercel log ควรลดลง
+- [ ] ค้างไว้ (คนละเรื่อง): [product-search.ts:991](lib/product-search.ts:991) `db.$queryRaw` ตรง ๆ และ Prisma `contains` fallback (`Product` LEFT JOIN `Category`, mean 1.96 s / max 31 s) ยัง **ไม่มี statement_timeout 8 วิ** ครอบ — ต่างจาก `dbSearchRaw`/`dbSearchTx`
+- ไม่แตะ: recall predicate, น้ำหนักคะแนนตัวอื่น, semantic/vector, สต็อก/ราคา/เอกสาร, schema, config พูล
+
 ## LINE chat ตอบสินค้าไม่ครบ — `บล็อควาล์ว revo` เจอ 1 จาก 2 ตัว (2026-08-03)
 - บริบท: ลูกค้าถาม `บล็อควาล์ว revo` (conv `cmscwh8ie…`, 14:26 น.) จูนตอบแค่ P0093 ทั้งที่แคตตาล็อกมี P0362 (DENSO) ตรงรุ่นด้วย · เทิร์นถัดมาที่ระบบเขียนคำค้นเองเป็น `วาล์ว (Expansion Valve) Hilux Revo` ได้ครบ 2 ตัว → ตัวกรองและข้อมูลสินค้าไม่ได้ผิด ปัญหาอยู่ที่ "คำ"
 - **สาเหตุ**: lexeme `บล็อควาล์ว` (สะกดด้วย **ค**) มีอยู่ใน `keyword_text` ของสินค้าแค่ 5 จาก 47 ตัวในหมวดวาล์ว และไม่มีแถว `SearchSynonym` เชื่อมไปหา `วาล์วแอร์` (คำเดียวที่ครอบคลุมครบ 47/47) → precise AND query เจอแถวเดียว · ตัวช่วยทั้งสองชั้นไม่ทำงานเพราะออกแบบให้ยิงเฉพาะตอนได้ **0** แถว: broad OR fallback ([lib/product-search.ts](lib/product-search.ts) `rows.length === 0 && hasMultipleConcepts`) และ semantic recall (`allowVectorOnly = lexicalRows.length === 0`) → **ผลลัพธ์ "ถูกแต่ไม่ครบ" หลุดทุกด่านโดยไม่มีสัญญาณเตือน**

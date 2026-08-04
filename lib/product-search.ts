@@ -392,8 +392,10 @@ type RankedSearchRow = {
   match_keyword?: boolean | null;
   match_fitment?: boolean | null;
   match_year?: boolean | null;
-  /** Best lexical trigram similarity across code/oem/name/keyword/search_text
-   *  reached SEARCH_V2_CHAT_TRIGRAM_STRONG. Chat-gate signal only. */
+  /** Best lexical trigram similarity across code/oem/name/keyword reached
+   *  SEARCH_V2_CHAT_TRIGRAM_STRONG. Chat-gate signal only. (search_text is
+   *  excluded: its similarity peaked at 0.24 across the whole production query
+   *  corpus, never reaching the 0.5 gate, so no product's gate result changes.) */
   match_trigram_high?: boolean | null;
   semantic_similarity?: number | null;
   vector_only?: boolean | null;
@@ -1669,8 +1671,7 @@ export async function searchProductIdsV2(
           similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))),
           similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))),
           similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))),
-          similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))),
-          similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery})))
+          similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery})))
         ) >= ${SEARCH_V2_CHAT_TRIGRAM_STRONG}) AS match_trigram_high,
         (
           -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
@@ -1702,13 +1703,20 @@ export async function searchProductIdsV2(
           -- the query has no clear M/T or A/T intent, so ranking is unchanged.
           ${transmissionBoostExpr} +
 
-          -- Trigram fuzzy (accent-insensitive)
+          -- Trigram fuzzy (accent-insensitive). search_text is deliberately NOT
+          -- probed here: it concatenates every field (~2.4KB avg), so its
+          -- similarity to a 2–20 char query never exceeded 0.24 across the whole
+          -- production query corpus and contributed ≤1.8 of a 240–2,642 point
+          -- score — it never won this GREATEST on relevance, only acted as an
+          -- arbitrary tie-breaker, while costing ~575ms of CPU per query.
+          -- Replayed over all 1,496 distinct real queries in ProductSearchLog:
+          -- zero products gained or lost, ranking identical except 8 queries
+          -- whose equal-scoring rows swapped order.
           GREATEST(
             similarity(f_unaccent(lower(psd.product_code)), f_unaccent(lower(${normalizedQuery}))) * 420,
             similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))) * 380,
             similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))) * 250,
-            similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))) * 180,
-            similarity(f_unaccent(lower(psd.search_text)), f_unaccent(lower(${normalizedQuery}))) * 120
+            similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery}))) * 180
           ) +
 
           -- Phase Q7: popularity / availability tie-breakers. Kept far below the
