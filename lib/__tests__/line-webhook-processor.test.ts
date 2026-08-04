@@ -781,6 +781,44 @@ test("shop-info keyword is auto-answered with the canned reply, no handoff", asy
   assert.deepEqual(calls.searches, []);
 });
 
+// Regression: การกด "ติดต่อร้าน" เคยถูก Layer-2 classifier จัดใหม่เป็น other แล้วให้
+// Knowledge RAG แต่งคำตอบเองจนลูกค้าไม่ได้เวลาเปิด/เบอร์/แผนที่ที่ขอ. shop_info ต้องเป็น
+// hard guard — ตอบด้วยข้อมูลร้านจาก SiteConfig เสมอ และห้าม freeze ห้อง.
+test("'ติดต่อร้าน' answers with shop info even when the classifier says other", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    faqReply: "ลูกค้าสามารถสอบถามข้อมูลเพิ่มเติมกับแอดมินในแชตนี้ได้เลยค่ะ",
+  });
+  dependencies.extractChatSearchIntent = async () => ({
+    group: "other",
+    query: "",
+    isProductQuery: false,
+    partType: null,
+    carBrand: null,
+    carModel: null,
+    year: null,
+    partKind: null,
+    tooBroad: false,
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("ติดต่อร้าน"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  const reply = calls.replies[0]?.text ?? "";
+  assert.match(reply, /08:30 - 18:00/);
+  assert.match(reply, /065-751-7873/);
+  assert.match(reply, /maps\.example\.test/);
+  assert.match(reply, /1️⃣ ยี่ห้อ \/ รุ่นรถ/);
+  assert.doesNotMatch(reply, /สอบถามข้อมูลเพิ่มเติมกับแอดมิน/);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 0);
+  assert.deepEqual(calls.searches, []);
+});
+
 test("'เมนู' is ignored entirely — no reply, no handoff, AI stays active", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps();

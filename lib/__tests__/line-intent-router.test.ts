@@ -170,6 +170,30 @@ test("routes ติดต่อสอบถาม to the shop-info reply", () =>
   assert.equal(result.reason, "SHOP_INFO_KEYWORD");
 });
 
+// การกด/พิมพ์ "ติดต่อร้าน" และคำถามเรื่องเดียวกัน (เวลาเปิด/เบอร์/แผนที่) ต้องได้คำตอบ
+// ข้อมูลร้านอัตโนมัติเสมอ และต้องไม่ freeze ห้องรอแอดมิน (requiresAdmin = false)
+test("routes contact-shop near-equivalent phrases to the shop-info reply (never freezes)", () => {
+  for (const text of [
+    "ติดต่อร้าน",
+    "ติดต่อยังไง",
+    "ติดต่อทางไหน",
+    "ช่องทางติดต่อ",
+    "ขอเบอร์หน่อยครับ",
+    "ขอแผนที่ร้าน",
+    "ร้านเปิดทุกวันไหม",
+    "เปิดวันอาทิตย์ไหม",
+    "ปิดวันไหน",
+    "opening hours",
+  ]) {
+    const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });
+
+    assert.equal(result.intent, LineIntent.SHOP_INFO, `expected shop info for "${text}"`);
+    assert.equal(result.allowsSearch, false);
+    assert.equal(result.requiresAdmin, false, `must not freeze for "${text}"`);
+    assert.equal(result.reason, "SHOP_INFO_KEYWORD");
+  }
+});
+
 test("routes part-finding phrases to product inquiry (searchable)", () => {
   for (const text of ["หาอะไหล่", "สอบถามอะไหล่"]) {
     const result = routeChatIntent({ messageType: LineMessageType.TEXT, text });

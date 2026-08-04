@@ -1342,6 +1342,11 @@ export async function processLineAiReply(
     const hardGuard =
       layer1Group === "payment" ||
       layer1Group === "claim_or_return" ||
+      // "ติดต่อร้าน" และคำถามข้อมูลร้าน (เวลาเปิด/เบอร์/แผนที่/ที่ตั้ง) ต้องตอบด้วย
+      // ข้อความข้อมูลร้านที่ดึงจาก SiteConfig เสมอ ไม่ปล่อยให้ Layer-2 classifier
+      // จัดใหม่เป็น general_faq/other แล้วให้ Knowledge RAG แต่งคำตอบเองจนกลายเป็น
+      // ข้อความชวนคุยกับแอดมิน (ซึ่งลูกค้าไม่ได้ข้อมูลร้านที่ขอ).
+      layer1Group === "shop_info" ||
       input.route.reason === "SHIPPING_ADMIN_ONLY" ||
       input.route.reason === "SHIPPING_ADDRESS_KEYWORD" ||
       quotationRequest ||
