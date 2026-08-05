@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth-session";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import AdminShell from "@/components/shared/AdminShell";
@@ -7,7 +7,7 @@ import { getAdminThemeCookieName, parseAdminTheme } from "@/lib/admin-theme";
 import { getFavoriteMenuHrefs } from "@/lib/user-favorite-menu";
 
 const AdminLayout = async ({ children }: { children: ReactNode }) => {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user) {
     redirect("/admin/login");
   }

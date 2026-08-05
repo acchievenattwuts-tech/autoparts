@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LoaderCircle, X } from "lucide-react";
 
@@ -63,6 +64,28 @@ function normalizePath(path: string): string {
   return SORTED_ROUTES.find((route) => normalizedPath === route || normalizedPath.startsWith(`${route}/`)) ?? normalizedPath;
 }
 
+/**
+ * Spinner driven by the enclosing <Link>'s own navigation state. `forcePending`
+ * covers the one navigation that does not originate from a link click: closing
+ * the active tab pushes to its neighbour.
+ */
+function TabPendingIndicator({ forcePending }: { forcePending: boolean }) {
+  const { pending } = useLinkStatus();
+  const showPending = pending || forcePending;
+
+  return (
+    <span
+      aria-hidden={!showPending}
+      className={cn(
+        "inline-flex h-3.5 w-3.5 items-center justify-center transition-opacity",
+        showPending ? "opacity-100" : "opacity-0",
+      )}
+    >
+      <LoaderCircle size={12} className="animate-spin" />
+    </span>
+  );
+}
+
 const TabsBar = () => {
   const pathname = usePathname();
   const router = useRouter();
@@ -70,6 +93,18 @@ const TabsBar = () => {
   const { tabs, addTab, removeTab } = useTabStore();
   const [pendingPath, setPendingPath] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Tabs start unprefetched and are warmed on first pointer contact, so an admin
+  // with 8 tabs open never pays 8 server renders they did not ask for.
+  const [warmedPaths, setWarmedPaths] = useState<ReadonlySet<string>>(() => new Set());
+
+  const warmTab = useCallback((path: string) => {
+    setWarmedPaths((previous) => {
+      if (previous.has(path)) return previous;
+      const next = new Set(previous);
+      next.add(path);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const basePath = normalizePath(pathname);
@@ -103,13 +138,6 @@ const TabsBar = () => {
     }
   };
 
-  const handleNavigate = (path: string) => {
-    setPendingPath(path);
-    startTransition(() => {
-      router.push(path);
-    });
-  };
-
   return (
     <div className="flex-shrink-0 border-b border-slate-200 bg-slate-100/95 dark:border-white/10 dark:bg-[#0b1424]">
       <div
@@ -125,19 +153,27 @@ const TabsBar = () => {
             <div
               key={tab.path}
               data-path={tab.path}
-              onClick={() => handleNavigate(tab.path)}
               className={cn(
-                "group flex h-10 flex-shrink-0 cursor-pointer select-none items-center gap-1.5 whitespace-nowrap rounded-t-xl border border-b-0 px-3.5 text-sm transition-all",
+                "group flex h-10 flex-shrink-0 select-none items-center whitespace-nowrap rounded-t-xl border border-b-0 pl-3.5 pr-2 text-sm transition-all",
                 isActive
                   ? "border-slate-200 bg-white font-medium text-[#1e3a5f] shadow-[0_-1px_3px_rgba(15,23,42,0.05)] dark:border-white/10 dark:bg-[#101b2e] dark:text-sky-100 dark:shadow-none"
                   : "border-transparent bg-transparent text-slate-500 hover:bg-white/70 hover:text-slate-700 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-slate-100"
               )}
             >
-              <span>{tab.label}</span>
-              <span className={cn("inline-flex h-3.5 w-3.5 items-center justify-center transition-opacity", showPending ? "opacity-100" : "opacity-0")}>
-                <LoaderCircle size={12} className="animate-spin" />
-              </span>
+              <Link
+                href={tab.path}
+                prefetch={warmedPaths.has(tab.path)}
+                onPointerEnter={() => warmTab(tab.path)}
+                onPointerDown={() => warmTab(tab.path)}
+                onFocus={() => warmTab(tab.path)}
+                className="flex h-full items-center gap-1.5 text-inherit no-underline outline-none focus-visible:ring-2 focus-visible:ring-[#1e3a5f]/40 dark:focus-visible:ring-sky-300/40"
+              >
+                <span>{tab.label}</span>
+                <TabPendingIndicator forcePending={showPending} />
+              </Link>
               <button
+                type="button"
+                aria-label={`ปิดแท็บ ${tab.label}`}
                 onClick={(event) => handleClose(event, tab.path)}
                 className={cn(
                   "ml-0.5 rounded-full p-0.5 transition-all",

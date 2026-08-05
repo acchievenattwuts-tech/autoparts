@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import type { Prisma } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth-session";
 import { db } from "@/lib/db";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { resolveDeliveryDateRange } from "@/lib/delivery-date-filter";
@@ -43,7 +43,7 @@ const DeliveryUpdatePage = async ({
 
   const [{ role, permissions }, session] = await Promise.all([
     getSessionPermissionContext(),
-    auth(),
+    getSession(),
   ]);
   const canUpdate = hasPermissionAccess(role, permissions, "delivery.update");
   const canTrack = hasPermissionAccess(role, permissions, "delivery.update");

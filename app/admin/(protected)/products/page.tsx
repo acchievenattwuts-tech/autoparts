@@ -1,6 +1,6 @@
 ﻿export const dynamic = "force-dynamic";
 
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth-session";
 import { db } from "@/lib/db";
 import {
   buildAdminProductFilterQueryString,
@@ -80,7 +80,7 @@ function buildRemoveParamUrl(
 }
 
 const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user) {
     redirect("/admin/login");
   }

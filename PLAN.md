@@ -579,6 +579,24 @@
 - Decision log index: [docs/decisions/README.md](/D:/autoparts/docs/decisions/README.md)
 - Spec index: [docs/specs/README.md](/D:/autoparts/docs/specs/README.md)
 
+## Admin navigation performance — auth dedupe + tab prefetch (2026-08-05)
+- บริบท: เจ้าของแจ้งว่าสลับแท็บบนแถบ `TabsBar` (แท็บแบบเบราว์เซอร์ใต้ header) แล้ว "รีเฟรชทุกครั้ง ต้องรอ" — ตรวจแล้วพบ 2 สาเหตุหลัก, แก้รอบนี้ทั้งคู่ (ยืนยันแผน A + B1 กับเจ้าของก่อนลงมือ)
+- Baseline วัดจริงก่อนแก้ ([scripts/measure-admin-auth-baseline.ts](scripts/measure-admin-auth-baseline.ts), `npm run measure:admin-auth-baseline`, 12 รอบ): Q1 jwt() revocation+permission p50 **153.0ms** · Q2 `getUserPermissionKeys()` p50 **151.9ms** → ต่อการคลิก 1 ครั้ง **458ms** (2×Q1 + 1×Q2) หรือ **611ms** เมื่อ layout re-render — ทั้งหมดนี้เกิดก่อน query ข้อมูลของหน้าจะเริ่ม
+- [x] (A) Request-scoped session dedupe — เพิ่ม [lib/auth-session.ts](lib/auth-session.ts) `getSession = cache(() => auth())` แล้วให้ layout + 11 หน้า admin ที่เรียก `auth()` ตรง ๆ + `getRequiredSession()` ใช้ตัวเดียวกัน → `auth()` (และ jwt callback ที่ยิง DB) รันครั้งเดียวต่อ request แทน 2–3 ครั้ง
+- [x] (A) เลิกยิง `getUserPermissionKeys()` ใน `requirePermission()` / `requireAnyPermission()` — jwt callback เขียน `token.permissions` ใหม่จาก DB ทุก `auth()` อยู่แล้ว จึงอ่านจาก `session.user.permissions` ได้ **ความสดเท่าเดิม** (การถอนสิทธิ์/ปิดบัญชียังมีผลทันทีในคลิกถัดไป ไม่ throttle) · key ที่หลุดจาก catalog แล้วไม่มีทางตรงกับ `PermissionKey` จึงไม่ต้องกรองซ้ำ · `getUserPermissionKeys()` ยังคง export ไว้แต่ไม่มีผู้เรียกเหลือแล้ว
+- [x] (B1) [components/shared/TabsBar.tsx](components/shared/TabsBar.tsx) เปลี่ยนจาก `<div onClick={router.push}>` เป็น `<Link>` จริง — เดิม prefetch ไม่ทำงานเลยเพราะ Next prefetch เฉพาะ `<Link>` (คลิกแท็บจึงช้ากว่าคลิกเมนูเดียวกันจาก sidebar ที่ใช้ `<Link>` อยู่แล้ว)
+- [x] (B1) Prefetch เมื่อ pointer แตะแท็บครั้งแรกเท่านั้น (`onPointerEnter` / `onPointerDown` / `onFocus` → `warmedPaths` แล้วสลับ prop `prefetch` เป็น `true`) — ยืนยันจาก type ของ Next 16.2.1 ว่า `prefetch={true}` ดึง full route + data ของ dynamic route ส่วน `prefetch={false}` ปิดทั้ง viewport และ hover · จงใจไม่ prefetch ทุกแท็บพร้อมกัน เพื่อไม่ให้เปิดค้าง 8 แท็บ = server render 8 หน้าฟรี (ขัดกับงานลด Supabase egress)
+- [x] (B1) ปุ่มปิด (×) ย้ายออกมาเป็น sibling ของ `<Link>` (ห้าม `<button>` ซ้อนใน `<a>`) + เพิ่ม `aria-label` · spinner เปลี่ยนไปใช้ `useLinkStatus()` โดยคง `forcePending` ไว้สำหรับ navigation ตอนปิดแท็บที่ไม่ได้มาจากการคลิกลิงก์ · หน้าตา/ธีม light+dark เหมือนเดิม
+- ผลข้างเคียงที่ผู้ใช้จะเห็น: Ctrl+คลิก / คลิกกลาง / คลิกขวา "เปิดในแท็บใหม่" / Tab ด้วยคีย์บอร์ด บนแท็บ **ใช้งานได้แล้ว** (เดิมเป็น `<div>` จึงทำไม่ได้)
+- ข้อควรรู้ตอนทดสอบ: **prefetch ทำงานเฉพาะ production build** (`npm run build && npm start`) — รันด้วย `npm run dev` จะไม่เห็นผลของ B1
+- [x] (2026-08-05 รอบต่อเนื่อง) เติม `loading.tsx` ให้ครบตาม `.rules` §UI/UX — เดิมขาด 8 segment: `backup-center`, `knowledge/{approval,new,quality,sync,test,[id]}`, `products/search` · ตอนนี้ทุก route segment ใต้ `/app/admin/(protected)/` ที่มี `page.tsx` มี `loading.tsx` แล้ว (ตรวจด้วยสคริปต์ไล่ทุกโฟลเดอร์)
+  - [x] 6 หน้า knowledge ใช้ shell ร่วมกัน [KnowledgeLoadingSkeleton.tsx](app/admin/(protected)/knowledge/KnowledgeLoadingSkeleton.tsx) (DRY) — วาดทั้ง header **และแถบแท็บ 6 pill** เพราะหน้า knowledge เรนเดอร์ `KnowledgeTabs` ไว้ใน body ไม่ใช่ layout; ถ้า skeleton ไม่วาด แถบแท็บจะหายระหว่างโหลดแล้วเด้งกลับมา (CLS) · export `SkeletonStatCards` / `SkeletonTable` ให้หน้า quality + sync ใช้ตามโครงจริง · หน้า `new` / `[id]` ส่ง `showTabs={false}` เพราะไม่มีแท็บ
+  - [x] `products/search` skeleton เลียนโครงการ์ดสินค้าจริง (คอลัมน์รูป + คอลัมน์ข้อความ, 6 การ์ด, grid เดียวกับของจริง) เพื่อกัน CLS · `backup-center` skeleton = header + 2 การ์ด + ตารางประวัติ
+  - [x] ทุก skeleton รองรับ light + dark ครบ และใส่ `aria-busy` + `aria-label` ภาษาไทย
+  - ผลพลอยได้: `<Link>` บน dynamic route จะ prefetch ถึง `loading.tsx` boundary ที่ใกล้ที่สุด — 8 segment นี้เดิมไม่มีอะไรให้ prefetch เลย
+- ยังไม่ได้ทำ (เสนอไว้ รอเจ้าของตัดสินใจ): เก็บ URL เต็ม+query ในแท็บเพื่อคืนฟิลเตอร์เดิม · `experimental.staleTimes` (ข้อมูลอาจเก่าได้ N วินาที) · Suspense streaming หน้ารายงานหนัก
+- ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` ไฟล์ที่แก้ผ่าน · `npm run build` ผ่าน · `check:mojibake` ผ่าน
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

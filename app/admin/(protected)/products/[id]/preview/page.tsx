@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import { auth } from "@/auth";
+import { getSession } from "@/lib/auth-session";
 import { notFound } from "next/navigation";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil, Package, Tag, MapPin, ShieldCheck, Layers, BarChart2, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -29,7 +29,7 @@ const getSafeProductReturnTo = (returnTo?: string) => {
 const ProductPreviewPage = async ({ params, searchParams }: Props) => {
   await requirePermission("products.view");
 
-  const session = await auth();
+  const session = await getSession();
   const role = session?.user?.role;
   const permissions =
     role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);

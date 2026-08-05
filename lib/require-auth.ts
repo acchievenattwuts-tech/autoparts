@@ -1,5 +1,5 @@
-import { auth } from "@/auth";
-import { getUserPermissionKeys, type PermissionKey } from "@/lib/access-control";
+import { getSession } from "@/lib/auth-session";
+import type { PermissionKey } from "@/lib/access-control";
 import type { Session } from "next-auth";
 
 export type UserRole = "ADMIN" | "STAFF";
@@ -9,7 +9,7 @@ function hasRole(session: Session | null, role: UserRole): session is Session {
 }
 
 export const getRequiredSession = async (): Promise<Session> => {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user || session.user.sessionInvalid) {
     throw new Error("UNAUTHORIZED");
   }
@@ -51,11 +51,23 @@ export const getSessionPermissionContext = async (): Promise<{
   return { session, role, permissions };
 };
 
+/**
+ * Permission keys carried by the session.
+ *
+ * The jwt() callback in auth.config.ts re-reads appRole + direct grants from the
+ * DB on every `auth()` call and rewrites `token.permissions` before the session
+ * is handed back, so these keys are exactly as fresh as a separate
+ * `getUserPermissionKeys()` query would be — without the extra round-trip.
+ * Keys that are no longer in the catalog can never match a `PermissionKey`
+ * argument, so no filtering is needed for the membership check.
+ */
+const getSessionPermissionKeys = (session: Session): string[] =>
+  session.user.permissions ?? [];
+
 export const requirePermission = async (permission: PermissionKey): Promise<Session> => {
   const session = await getRequiredSession();
 
-  const permissionKeys = await getUserPermissionKeys(session.user.id);
-  if (!permissionKeys.includes(permission)) {
+  if (!getSessionPermissionKeys(session).includes(permission)) {
     throw new Error("FORBIDDEN");
   }
 
@@ -65,7 +77,7 @@ export const requirePermission = async (permission: PermissionKey): Promise<Sess
 export const requireAnyPermission = async (permissions: PermissionKey[]): Promise<Session> => {
   const session = await getRequiredSession();
 
-  const permissionKeys = await getUserPermissionKeys(session.user.id);
+  const permissionKeys = getSessionPermissionKeys(session);
   if (!permissions.some((permission) => permissionKeys.includes(permission))) {
     throw new Error("FORBIDDEN");
   }
