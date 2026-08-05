@@ -1,67 +1,35 @@
-import { getAdminReportRowClass } from "@/lib/admin-status-presentation";
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
-import ReportTableShell from "@/components/shared/ReportTableShell";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
-import {
-  parseReportQueryFilters,
-  queryDailyReceiptRows,
-  buildExportQuery,
-  statusLabel,
-  type DailyReceiptRow,
-} from "@/lib/report-queries";
-import { formatDateThai } from "@/lib/th-date";
+import { buildExportQuery, parseReportQueryFilters } from "@/lib/report-queries";
+
+import ReportResultsSkeleton from "../ReportResultsSkeleton";
+import ReceiptsReportResults, {
+  EMPTY_RECEIPT_TOTALS,
+  ReceiptSummaryCards,
+} from "./ReceiptsReportResults";
 
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
 
-function fmt(n: number) {
-  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtDate(d: Date) {
-  return formatDateThai(d);
-}
-
-const DOC_TYPE_COLORS: Record<string, string> = {
-  "ขายสด": "bg-green-100 text-green-700",
-  "รับชำระหนี้": "bg-blue-100 text-blue-700",
-};
-
-const PM_COLORS: Record<string, string> = {
-  "เงินสด": "bg-emerald-100 text-emerald-700",
-  "โอนเงิน": "bg-sky-100 text-sky-700",
-  "เครดิต": "bg-purple-100 text-purple-700",
-};
-
 export default async function DailyReceiptPage({ searchParams }: PageProps) {
-  await requirePermission("reports.view");
-  const params = await searchParams;
+  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams]);
   const filters = parseReportQueryFilters(params);
-  const [rows, accounts] = await Promise.all([
-    filters.hasFilter ? queryDailyReceiptRows(filters) : Promise.resolve([]),
-    db.cashBankAccount.findMany({
-      where: { isActive: true },
-      orderBy: [{ type: "asc" }, { code: "asc" }],
-      select: { id: true, code: true, name: true },
-    }),
-  ]);
-
-  const totalAmount = rows.filter((r) => r.status === "ACTIVE").reduce((s, r) => s + r.amount, 0);
-  const cashSaleTotal = rows
-    .filter((r) => r.docType === "ขายสด" && r.status === "ACTIVE")
-    .reduce((s, r) => s + r.amount, 0);
-  const receiptTotal = rows
-    .filter((r) => r.docType === "รับชำระหนี้" && r.status === "ACTIVE")
-    .reduce((s, r) => s + r.amount, 0);
   const exportQuery = buildExportQuery(filters);
+
+  const accounts = await db.cashBankAccount.findMany({
+    where: { isActive: true },
+    orderBy: [{ type: "asc" }, { code: "asc" }],
+    select: { id: true, code: true, name: true },
+  });
 
   return (
     <div className="space-y-4">
@@ -147,105 +115,25 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
         </div>
       </AdminSearchForm>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
-          <p className="text-xs text-gray-500">รวมรับเงิน (เฉพาะที่ใช้งาน)</p>
-          <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totalAmount)}</p>
-        </div>
-        <div className="rounded-lg border border-green-100 bg-green-50 p-3 shadow-sm">
-          <p className="text-xs text-green-700">ขายสด</p>
-          <p className="mt-0.5 text-xl font-bold text-green-700 tabular-nums">{fmt(cashSaleTotal)}</p>
-        </div>
-        <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 shadow-sm">
-          <p className="text-xs text-blue-700">รับชำระหนี้</p>
-          <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(receiptTotal)}</p>
-        </div>
-      </div>
-
       {!filters.hasFilter ? (
-        <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
-          <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
-        </div>
+        <>
+          <ReceiptSummaryCards totals={EMPTY_RECEIPT_TOTALS} />
+          <div className="rounded-xl border border-gray-100 bg-white p-12 text-center shadow-sm">
+            <p className="text-gray-400">เลือกช่วงวันที่แล้วกด &ldquo;แสดงรายการ&rdquo; เพื่อดูข้อมูล</p>
+          </div>
+        </>
       ) : (
-      <>
-      <p className="text-sm text-gray-500">
-        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
-        {rows.length >= 2000 && " (จำกัด 2,000 รายการ)"}
-      </p>
-
-      <ReportTableShell>
-          <thead className="bg-[#1e3a5f] text-white">
-            <tr>
-              <th className="w-10 px-3 py-2.5 text-center font-medium">#</th>
-              <th className="px-3 py-2.5 text-left font-medium">เลขที่เอกสาร</th>
-              <th className="px-3 py-2.5 text-left font-medium">วันที่</th>
-              <th className="px-3 py-2.5 text-left font-medium">ประเภท</th>
-              <th className="px-3 py-2.5 text-left font-medium">รหัสลูกค้า</th>
-              <th className="px-3 py-2.5 text-left font-medium">ชื่อลูกค้า</th>
-              <th className="px-3 py-2.5 text-left font-medium">ช่องทางชำระ</th>
-              <th className="px-3 py-2.5 text-left font-medium">Account</th>
-              <th className="px-3 py-2.5 text-left font-medium">หมายเหตุ</th>
-              <th className="px-3 py-2.5 text-center font-medium">สถานะ</th>
-              <th className="px-3 py-2.5 text-right font-medium">จำนวนเงิน</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
-                  ไม่พบข้อมูลในช่วงวันที่ที่เลือก
-                </td>
-              </tr>
-            )}
-            {rows.map((row: DailyReceiptRow) => (
-              <tr
-                key={`${row.docNo}-${row.rowNo}`}
-                className={`transition-colors ${getAdminReportRowClass(row.status === "CANCELLED")}`}
-              >
-                <td className="px-3 py-2 text-center text-gray-400 tabular-nums">{row.rowNo}</td>
-                <td className="px-3 py-2 font-mono text-xs font-medium text-[#1e3a5f]">{row.docNo}</td>
-                <td className="whitespace-nowrap px-3 py-2">{fmtDate(row.docDate)}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${DOC_TYPE_COLORS[row.docType] ?? "bg-gray-100 text-gray-600"}`}>
-                    {row.docType}
-                  </span>
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{row.customerCode}</td>
-                <td className="px-3 py-2">{row.customerName}</td>
-                <td className="px-3 py-2">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${PM_COLORS[row.paymentMethod] ?? "bg-gray-100 text-gray-600"}`}>
-                    {row.paymentMethod}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-gray-600">{row.accountName}</td>
-                <td className="max-w-[160px] truncate px-3 py-2 text-gray-500">{row.note}</td>
-                <td className="px-3 py-2 text-center">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      row.status === "ACTIVE" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-                    }`}
-                  >
-                    {statusLabel(row.status)}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right font-medium tabular-nums">{fmt(row.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          {rows.length > 0 && (
-            <tfoot className="border-t-2 border-gray-200 bg-gray-50">
-              <tr>
-                <td colSpan={10} className="px-3 py-2.5 text-right text-sm font-semibold text-gray-700">
-                  รวมทั้งสิ้น (รวมที่ยกเลิก)
-                </td>
-                <td className="px-3 py-2.5 text-right font-bold text-[#1e3a5f] tabular-nums">
-                  {fmt(rows.reduce((s, r) => s + r.amount, 0))}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-      </ReportTableShell>
-      </>
+        <Suspense
+          key={`${filters.fromStr}|${filters.toStr}|${exportQuery}`}
+          fallback={
+            <>
+              <ReceiptSummaryCards totals={EMPTY_RECEIPT_TOTALS} />
+              <ReportResultsSkeleton />
+            </>
+          }
+        >
+          <ReceiptsReportResults filters={filters} />
+        </Suspense>
       )}
     </div>
   );

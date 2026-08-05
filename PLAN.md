@@ -594,7 +594,14 @@
   - [x] `products/search` skeleton เลียนโครงการ์ดสินค้าจริง (คอลัมน์รูป + คอลัมน์ข้อความ, 6 การ์ด, grid เดียวกับของจริง) เพื่อกัน CLS · `backup-center` skeleton = header + 2 การ์ด + ตารางประวัติ
   - [x] ทุก skeleton รองรับ light + dark ครบ และใส่ `aria-busy` + `aria-label` ภาษาไทย
   - ผลพลอยได้: `<Link>` บน dynamic route จะ prefetch ถึง `loading.tsx` boundary ที่ใกล้ที่สุด — 8 segment นี้เดิมไม่มีอะไรให้ prefetch เลย
-- ยังไม่ได้ทำ (เสนอไว้ รอเจ้าของตัดสินใจ): เก็บ URL เต็ม+query ในแท็บเพื่อคืนฟิลเตอร์เดิม · `experimental.staleTimes` (ข้อมูลอาจเก่าได้ N วินาที) · Suspense streaming หน้ารายงานหนัก
+- [x] (2026-08-05 รอบต่อเนื่อง #2) Suspense streaming หน้ารายงานหนัก 5 หน้า — baseline ([scripts/measure-report-query-baseline.ts](scripts/measure-report-query-baseline.ts), `npm run measure:report-queries -- 90`, ช่วง 90 วัน, p50): `queryDailyPaymentRows` **482.8ms** · `queryPurchaseRows` **353.8ms** (903 แถว) · `querySalesRows` **197.5ms** · `queryDailyReceiptRows` **176.1ms** · `queryCreditNoteRows` **124.4ms** · ส่วน totals/count/dropdown อยู่ที่ 42–45ms
+  - หมายเหตุความถูกต้องของ baseline: รอบแรกวัด `queryReceiptRows`/`queryPaymentRows` ผิดตัว — หน้า receipts/payments เรนเดอร์ `queryDaily*Rows` ซึ่งหนักกว่า พอแก้แล้วอันดับเปลี่ยน (payments แซง purchases ขึ้นเป็นหนักที่สุด)
+  - [x] แยกครึ่งที่ต้อง await ออกเป็น async component แยกไฟล์: `SalesReportResults` / `PurchasesReportResults` / `PaymentsReportResults` / `ReceiptsReportResults` / `CreditNotesReportResults` — `page.tsx` เหลือ await แค่ `requirePermission()` + dropdown บัญชี (42ms) แล้วปล่อย header + ฟอร์มกรองออกไปก่อน
+  - [x] fallback ร่วม [ReportResultsSkeleton.tsx](app/admin/(protected)/reports/ReportResultsSkeleton.tsx) เลียนโครง summary line + ตาราง (light+dark) กัน CLS
+  - [x] `<Suspense key={from|to|filters|page}>` — เปลี่ยนตัวกรองแล้ว boundary ต้อง re-suspend ใหม่ ไม่ค้างผลเดิม
+  - [x] หน้า payments/receipts มีการ์ดสรุปที่คำนวณจาก rows ชุดเดียวกัน จึงย้ายเข้า boundary ด้วย และแยก `PaymentSummaryCards`/`ReceiptSummaryCards` + `EMPTY_*_TOTALS` ให้ทั้ง fallback และสถานะ "ยังไม่เลือกช่วงวันที่" ใช้ซ้ำ — การ์ดศูนย์ยังแสดงเหมือนเดิมทุกกรณี
+  - [x] ปุ่มแบ่งหน้าที่ปิดใช้งาน (หน้าแรก/หน้าสุดท้าย) เปลี่ยนจาก `onClick={e => e.preventDefault()}` (event handler บน Server Component) มาเป็น `pointer-events-none` + `aria-disabled` — กดไม่ได้จริงและไม่ต้องพึ่ง handler ฝั่ง client
+- ยังไม่ได้ทำ (เสนอไว้ รอเจ้าของตัดสินใจ): เก็บ URL เต็ม+query ในแท็บเพื่อคืนฟิลเตอร์เดิม · `experimental.staleTimes` (ข้อมูลอาจเก่าได้ N วินาที) · streaming หน้ารายงานที่เหลือ (ar / ap / stock / claim-stock / cash-bank-* / summary / line-daily-summary)
 - ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` ไฟล์ที่แก้ผ่าน · `npm run build` ผ่าน · `check:mojibake` ผ่าน
 
 ## How To Use This Repo As AI
