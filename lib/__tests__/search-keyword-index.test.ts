@@ -83,3 +83,85 @@ test("refresh runner upserts rows in batches and deletes stale rows once", async
   });
   assert.equal(executeCalls.length, 3);
 });
+
+test("coalescer keeps the follow-up rebuild inside the promise the caller awaits", async () => {
+  const { createSearchKeywordRefreshCoalescer } = await import("@/lib/search-keyword-index");
+
+  // A rerun started as a detached promise would be invisible to after()/waitUntil,
+  // letting Vercel freeze the instance mid-rebuild — the connection-error bug.
+  let runs = 0;
+  let releaseFirstRun: (() => void) | undefined;
+  const coalescer = createSearchKeywordRefreshCoalescer(async () => {
+    runs += 1;
+    if (runs === 1) await new Promise<void>((resolve) => (releaseFirstRun = resolve));
+  });
+
+  assert.equal(coalescer.isRunning(), false);
+  const chain = coalescer.run();
+  assert.equal(coalescer.isRunning(), true);
+
+  // Two more triggers land while the first rebuild is still in flight.
+  coalescer.markRerunPending();
+  coalescer.markRerunPending();
+  releaseFirstRun?.();
+
+  await chain;
+
+  assert.equal(runs, 2, "the pending rerun must finish before the awaited promise resolves");
+  assert.equal(coalescer.isRunning(), false);
+});
+
+test("coalescer swallows a failed rebuild and still runs the pending rerun", async () => {
+  const { createSearchKeywordRefreshCoalescer } = await import("@/lib/search-keyword-index");
+
+  const errors: unknown[] = [];
+  let runs = 0;
+  const coalescer = createSearchKeywordRefreshCoalescer(
+    async () => {
+      runs += 1;
+      if (runs === 1) {
+        coalescer.markRerunPending();
+        throw new Error("Client has encountered a connection error and is not queryable");
+      }
+    },
+    { error: (...args: unknown[]) => errors.push(args) },
+  );
+
+  await coalescer.run();
+
+  assert.equal(runs, 2);
+  assert.equal(errors.length, 1);
+});
+
+test("refresh retries once on a transient connection error, but not on a real SQL error", async () => {
+  const { runSearchKeywordRefreshWithRetry } = await import("@/lib/search-keyword-index");
+
+  let attempts = 0;
+  const rows = await runSearchKeywordRefreshWithRetry(
+    async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("Client has encountered a connection error and is not queryable");
+      }
+      return 42;
+    },
+    { sleep: async () => {}, log: { warn() {} } },
+  );
+
+  assert.equal(rows, 42);
+  assert.equal(attempts, 2);
+
+  let sqlAttempts = 0;
+  await assert.rejects(
+    () =>
+      runSearchKeywordRefreshWithRetry(
+        async () => {
+          sqlAttempts += 1;
+          throw new Error('relation "SearchKeyword" does not exist');
+        },
+        { sleep: async () => {}, log: { warn() {} } },
+      ),
+    /does not exist/,
+  );
+  assert.equal(sqlAttempts, 1, "a non-transient failure must not be replayed");
+});

@@ -110,8 +110,13 @@ globalForPrisma.prisma = db;
 // transient: the connection never carried a query, so a single retry after a
 // short backoff is safe (no risk of double-applying a write) and clears almost
 // all of the noise, including failed ISR cache revalidations.
+//
+// "is not queryable" is the Prisma driver-adapter wording for the same class of
+// failure: the pooled socket died (the pooler recycled it, or a serverless
+// instance was frozen while it sat idle) and the engine rejects the query before
+// it ever reaches Postgres. Nothing was sent, so retrying is safe.
 const TRANSIENT_DB_ERROR_PATTERN =
-  /connection terminated|connection timeout|timeout exceeded when trying to connect|ECONNRESET|Connection ended|too many connections|Closed the connection/i;
+  /connection terminated|connection timeout|timeout exceeded when trying to connect|ECONNRESET|Connection ended|too many connections|Closed the connection|is not queryable/i;
 
 // node-postgres throws exactly "timeout exceeded when trying to connect" when a
 // caller waits longer than `connectionTimeoutMillis` for a free pool slot — the
@@ -133,7 +138,12 @@ const collectErrorMessages = (error: unknown, depth = 0): string => {
   return `${error.message} ${causeMessage}`;
 };
 
-const isTransientDbError = (error: unknown): boolean =>
+/**
+ * True when the failure is a connection-level fault that never reached Postgres
+ * (dead pooled socket, refused/timed-out connect). Exported so idempotent
+ * background jobs can decide to retry themselves instead of logging a hard error.
+ */
+export const isTransientDbError = (error: unknown): boolean =>
   TRANSIENT_DB_ERROR_PATTERN.test(collectErrorMessages(error));
 
 const isPoolAcquireTimeoutError = (error: unknown): boolean =>

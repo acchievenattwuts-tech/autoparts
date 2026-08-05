@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { db } from "@/lib/db";
+import { db, isTransientDbError } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import { normalizeSearchText } from "@/lib/search-normalization";
 
@@ -47,6 +47,12 @@ const REFRESH_TX_MAX_WAIT_MS = 10_000;
 const REFRESH_TX_LOCK_TIMEOUT_MS = 8_000;
 const REFRESH_TX_IDLE_IN_TX_TIMEOUT_MS = 30_000;
 const REFRESH_STATEMENT_TIMEOUT_MS = 25_000;
+// One retry only. A whole rebuild is idempotent (upsert-every-row + delete-stale
+// under a fresh runStartedAt), so replaying it cannot corrupt the index — but it
+// re-runs the heavy row build against a 5-connection pool, so more attempts would
+// trade a cosmetic log line for real pool pressure.
+const REFRESH_TRANSIENT_RETRIES = 1;
+const REFRESH_RETRY_BASE_BACKOFF_MS = 500;
 
 type DraftRow = {
   term: string;
@@ -295,14 +301,50 @@ export async function runSearchKeywordRefreshWithDeps(
   return outcome;
 }
 
+/**
+ * Retries a whole rebuild once when it dies on a connection-level fault — a dead
+ * pooled socket (frozen instance, pooler recycle) fails before the query ever
+ * reaches Postgres, so replaying is safe and beats leaving the index stale until
+ * the nightly cron. Anything else (a real SQL error, a lock timeout) rethrows
+ * immediately.
+ */
+export async function runSearchKeywordRefreshWithRetry<T>(
+  run: () => Promise<T>,
+  deps: {
+    retries?: number;
+    isTransient?: (error: unknown) => boolean;
+    sleep?: (ms: number) => Promise<void>;
+    log?: Pick<typeof console, "warn">;
+  } = {},
+): Promise<T> {
+  const retries = deps.retries ?? REFRESH_TRANSIENT_RETRIES;
+  const isTransient = deps.isTransient ?? isTransientDbError;
+  const sleep =
+    deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= retries || !isTransient(error)) throw error;
+      (deps.log ?? console).warn(
+        `[search-keyword] refresh hit a transient DB connection error, retrying (attempt ${attempt + 2})`,
+      );
+      await sleep(REFRESH_RETRY_BASE_BACKOFF_MS * (1 + Math.random()));
+    }
+  }
+}
+
 export async function refreshSearchKeywordIndex(): Promise<number> {
-  const outcome = await runSearchKeywordRefreshWithDeps({
-    buildRows: buildSearchKeywordRows,
-    now: () => new Date(),
-    batchSize: SEARCH_KEYWORD_UPSERT_BATCH_SIZE,
-    log: console,
-    runTx: runRefreshTransaction,
-  });
+  const outcome = await runSearchKeywordRefreshWithRetry(() =>
+    runSearchKeywordRefreshWithDeps({
+      buildRows: buildSearchKeywordRows,
+      now: () => new Date(),
+      batchSize: SEARCH_KEYWORD_UPSERT_BATCH_SIZE,
+      log: console,
+      runTx: runRefreshTransaction,
+    }),
+  );
 
   return outcome.rowsWritten;
 }
@@ -323,29 +365,62 @@ export async function refreshSearchKeywordIndex(): Promise<number> {
 // don't start another; instead we mark "rerun pending" so exactly one more run
 // fires afterwards to capture the latest data. Cross-instance overlap is handled
 // separately by the transaction-scoped advisory lock inside refreshSearchKeywordIndex.
-let inFlightRefresh: Promise<void> | null = null;
-let rerunPending = false;
+export type SearchKeywordRefreshCoalescer = {
+  /** Runs rebuilds back-to-back until nothing is pending; resolves when all are done. */
+  run: () => Promise<void>;
+  isRunning: () => boolean;
+  markRerunPending: () => void;
+};
 
-function runRefreshCoalesced(): Promise<void> {
-  inFlightRefresh = refreshSearchKeywordIndex()
-    .then(() => undefined)
-    .catch((error) => {
-      console.error("[search-keyword] background refresh failed", error);
-    })
-    .finally(() => {
-      inFlightRefresh = null;
-      if (rerunPending) {
-        rerunPending = false;
-        void runRefreshCoalesced();
+/**
+ * Builds the coalescing guard. The follow-up run stays inside the SAME promise the
+ * caller awaits: a rerun started as a detached `void` promise is invisible to
+ * `after()`/waitUntil, so Vercel freezes the instance the moment the response is
+ * sent and the rebuild only resumes on some later request — by then its pooled
+ * socket is dead ("Client has encountered a connection error and is not
+ * queryable"). Looping inside one promise keeps every run within the request's
+ * keep-alive window.
+ */
+export function createSearchKeywordRefreshCoalescer(
+  runOnce: () => Promise<unknown>,
+  log: Pick<typeof console, "error"> = console,
+): SearchKeywordRefreshCoalescer {
+  let inFlight: Promise<void> | null = null;
+  let rerunPending = false;
+
+  const runChain = async (): Promise<void> => {
+    do {
+      // Clear before running so a trigger arriving mid-rebuild schedules another pass.
+      rerunPending = false;
+      try {
+        await runOnce();
+      } catch (error) {
+        log.error("[search-keyword] background refresh failed", error);
       }
-    });
-  return inFlightRefresh;
+    } while (rerunPending);
+  };
+
+  return {
+    isRunning: () => inFlight !== null,
+    markRerunPending: () => {
+      rerunPending = true;
+    },
+    run: () => {
+      const chain = runChain().finally(() => {
+        inFlight = null;
+      });
+      inFlight = chain;
+      return chain;
+    },
+  };
 }
 
+const refreshCoalescer = createSearchKeywordRefreshCoalescer(refreshSearchKeywordIndex);
+
 export function triggerSearchKeywordRefresh(): void {
-  if (inFlightRefresh) {
+  if (refreshCoalescer.isRunning()) {
     // A rebuild is already running — guarantee one more run picks up this change.
-    rerunPending = true;
+    refreshCoalescer.markRerunPending();
     return;
   }
   // Run the rebuild via `after()` so on Vercel the function stays alive (waitUntil)
@@ -355,9 +430,9 @@ export function triggerSearchKeywordRefresh(): void {
   // `after()` requires a request scope; if we're somehow outside one (e.g. a script),
   // fall back to a plain fire-and-forget.
   try {
-    after(() => runRefreshCoalesced());
+    after(() => refreshCoalescer.run());
   } catch {
-    void runRefreshCoalesced();
+    void refreshCoalescer.run();
   }
 }
 
