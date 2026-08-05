@@ -204,6 +204,14 @@ test("did-you-mean retry keeps category/brand/model, drops only the year", async
         : { ids: [], total: 0, mode: "v2", matchReasons: {} };
     },
     async () => ["แผงแอร์ Toyota Vios 2013"],
+    undefined,
+    // Pin the recovery year check instead of letting it fall through to the live
+    // catalog: the suggestion points at a 2013 generation, so the recovered row
+    // does NOT cover the customer's 2003 — the year stays dropped and the
+    // storefront link must not claim it. (The covered-year branch is asserted by
+    // "did-you-mean recovery keeps ONLY the rows covering the customer's year".)
+    async (ids: string[]) =>
+      new Map(ids.map((id) => [id, [{ yearStart: 2013, yearEnd: 2018 }]])),
   );
 
   assert.equal(result.searched, true);
@@ -895,6 +903,10 @@ test("accessory rescue leaves a non-accessory (fitment) turn untouched", async (
       calls += 1;
       return { ids: [], total: 0, mode: "v2" };
     },
+    // The empty result would otherwise fall through to the live did-you-mean
+    // lookup and spend its own retries on the counter. This test is about the
+    // accessory rescue, so keep spelling recovery out of it.
+    async () => [],
   );
 
   assert.equal(calls, 1, "no car-less retry without the accessory anchor");
