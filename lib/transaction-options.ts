@@ -3,6 +3,7 @@ import { revalidateTag, unstable_cache, updateTag } from "next/cache";
 import { db, withDbRetry } from "@/lib/db";
 import type { InventoryTracking, LotIssueMethod, Prisma } from "@/lib/generated/prisma";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getTransactionProductDetailRowsByIds } from "@/lib/transaction-product-search";
 import {
   compressJsonForCache,
   decompressJsonFromCache,
@@ -351,3 +352,47 @@ export const getPurchaseReturnProductOptions = async () => {
     isActive: product.isActive,
   }));
 };
+
+export const getSaleProductOptionsByIds = async (ids: readonly string[]) =>
+  (await getTransactionProductDetailRowsByIds(ids)).map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    salePrice: product.salePrice, retailPrice: product.retailPrice, memberPrice: product.memberPrice,
+    saleUnitName: product.saleUnitName, warrantyDays: product.warrantyDays,
+    categoryName: product.categoryName, brandName: product.brandName, units: product.units,
+    preferredSupplierId: product.preferredSupplierActive ? product.preferredSupplierId : null,
+    preferredSupplierName: product.preferredSupplierActive ? product.preferredSupplierName : null,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    lotIssueMethod: product.lotIssueMethod as string,
+    allowExpiredIssue: product.allowExpiredIssue,
+    isActive: product.isActive,
+  }));
+
+export const getPurchaseProductOptionsByIds = async (ids: readonly string[]) =>
+  (await getTransactionProductDetailRowsByIds(ids)).map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    purchaseUnitName: product.purchaseUnitName, costPrice: product.costPrice,
+    categoryName: product.categoryName, brandName: product.brandName, units: product.units,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    requireExpiryDate: product.requireExpiryDate,
+    isActive: product.isActive,
+  }));
+
+export const getCreditNoteProductOptionsByIds = async (ids: readonly string[]) =>
+  (await getTransactionProductDetailRowsByIds(ids)).map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    salePrice: product.salePrice, saleUnitName: product.saleUnitName ?? "",
+    inventoryTracking: product.inventoryTracking,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    categoryName: product.categoryName, brandName: product.brandName, units: product.units,
+    isActive: product.isActive,
+  }));
+
+export const getPurchaseReturnProductOptionsByIds = async (ids: readonly string[]) =>
+  (await getTransactionProductDetailRowsByIds(ids)).map((product) => ({
+    id: product.id, code: product.code, name: product.name, description: product.description,
+    avgCost: product.avgCost, costPrice: product.costPrice,
+    inventoryTracking: product.inventoryTracking,
+    isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+    categoryName: product.categoryName, brandName: product.brandName, units: product.units,
+    isActive: product.isActive,
+  }));

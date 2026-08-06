@@ -15,8 +15,7 @@ import {
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseForm from "../../new/PurchaseForm";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
-import { getTransactionSuppliers } from "@/lib/transaction-options";
+import { getPurchaseProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchases.update");
@@ -58,28 +57,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const suppliers = await getTransactionSuppliers([purchase.supplierId]);
-  const rawProducts = await db.product.findMany({
-        orderBy: { code: "asc" },
-        select: {
-          id: true, code: true, name: true, description: true, isActive: true,
-          purchaseUnitName: true, costPrice: true, inventoryTracking: true,
-          isLotControl: true, requireExpiryDate: true,
-          category: { select: { name: true } },
-          brand: { select: { name: true } },
-          aliases: { select: { alias: true } },
-          units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-        },
-      });
-
-  const products = rawProducts.map((p) => ({
-    id: p.id, code: p.code, name: p.name, description: p.description,
-    purchaseUnitName: p.purchaseUnitName, costPrice: Number(p.costPrice),
-    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl, requireExpiryDate: p.requireExpiryDate,
-    categoryName: p.category.name, brandName: p.brand?.name ?? null,
-    aliases: p.aliases.map((a) => a.alias),
-    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    isActive: p.isActive,
-  }));
+  const products = await getPurchaseProductOptionsByIds(purchase.items.map((item) => item.productId));
 
   const initialItems = purchase.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];

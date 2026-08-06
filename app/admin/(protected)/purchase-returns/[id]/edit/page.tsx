@@ -15,8 +15,7 @@ import {
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
-import { getTransactionSuppliers } from "@/lib/transaction-options";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getPurchaseReturnProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchase_returns.update");
@@ -64,17 +63,8 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
-  const [rawProducts, suppliers, config, cashBankAccounts] = await Promise.all([
-    db.product.findMany({
-          orderBy: { code: "asc" },
-          select: {
-            id: true, code: true, name: true, description: true, avgCost: true, costPrice: true, isActive: true,
-            inventoryTracking: true, isLotControl: true,
-            category: { select: { name: true } }, brand: { select: { name: true } },
-            aliases:  { select: { alias: true } },
-            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-          },
-        }),
+  const [products, suppliers, config, cashBankAccounts] = await Promise.all([
+    getPurchaseReturnProductOptionsByIds(ret.items.map((item) => item.productId)),
     getTransactionSuppliers([ret.supplierId]),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
@@ -88,16 +78,6 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         select:  { id: true, purchaseNo: true, purchaseDate: true },
       })
     : [];
-
-  const products = rawProducts.map((p) => ({
-    id: p.id, code: p.code, name: p.name, description: p.description, avgCost: Number(p.avgCost),
-    costPrice: Number(p.costPrice), inventoryTracking: p.inventoryTracking,
-    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
-    categoryName: p.category.name, brandName: p.brand?.name ?? null,
-    aliases: p.aliases.map((a) => a.alias),
-    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    isActive: p.isActive,
-  }));
 
   const initialItems = ret.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];

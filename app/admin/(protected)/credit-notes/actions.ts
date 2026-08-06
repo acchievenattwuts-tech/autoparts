@@ -24,7 +24,11 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
-import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import {
+  getTransactionProductDetailRowsByIds,
+  searchTransactionProductDetailRows,
+  type TransactionProductDetailRow,
+} from "@/lib/transaction-product-search";
 import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
@@ -39,25 +43,6 @@ import {
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
-
-const creditNoteProductOptionSelect = {
-  id: true,
-  code: true,
-  name: true,
-  description: true,
-  salePrice: true,
-  saleUnitName: true,
-  inventoryTracking: true,
-  isLotControl: true,
-  isActive: true,
-  category: { select: { name: true } },
-  brand: { select: { name: true } },
-  aliases: { select: { alias: true } },
-  units: {
-    select: { name: true, scale: true, isBase: true },
-    orderBy: { isBase: "desc" },
-  },
-} as const;
 
 type CreditNoteProductOption = {
   id: string;
@@ -111,6 +96,22 @@ function serializeCreditNoteProductOption(product: {
   };
 }
 
+const serializeCreditNoteDetailRow = (product: TransactionProductDetailRow): CreditNoteProductOption => ({
+  id: product.id,
+  code: product.code,
+  name: product.name,
+  description: product.description,
+  salePrice: product.salePrice,
+  saleUnitName: product.saleUnitName ?? "",
+  inventoryTracking: product.inventoryTracking,
+  isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+  isActive: product.isActive,
+  categoryName: product.categoryName,
+  brandName: product.brandName,
+  aliases: [],
+  units: product.units,
+});
+
 async function requireCreditNoteProductPermission() {
   const createSession = await requirePermission("credit_notes.create").catch(() => null);
   if (createSession?.user?.id) return createSession;
@@ -121,22 +122,13 @@ export async function searchCreditNoteProducts(query: string) {
   const session = await requireCreditNoteProductPermission();
   if (!session?.user?.id) return [];
 
-  const normalizedQuery = query.trim();
-  if (normalizedQuery.length < 3) return [];
+  return (await searchTransactionProductDetailRows(query)).map(serializeCreditNoteDetailRow);
+}
 
-  const searchResult = await searchProductIds({
-    query: normalizedQuery,
-    take: 20,
-    cacheProfile: "admin",
-  });
-  if (searchResult.ids.length === 0) return [];
-
-  const products = await db.product.findMany({
-    where: { id: { in: searchResult.ids } },
-    select: creditNoteProductOptionSelect,
-  });
-
-  return sortProductsByIds(products, searchResult.ids).map(serializeCreditNoteProductOption);
+export async function loadCreditNoteProductsByIds(ids: string[]) {
+  const session = await requireCreditNoteProductPermission();
+  if (!session?.user?.id) return [];
+  return (await getTransactionProductDetailRowsByIds(ids)).map(serializeCreditNoteDetailRow);
 }
 
 export async function searchCreditNoteCustomers(query: string) {

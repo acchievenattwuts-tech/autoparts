@@ -8,15 +8,14 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
-import { getSaleProductOptions, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const NewSalePage = async () => {
   await requirePermission("sales.create");
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "sales.view");
 
-  const [products, customers, config, suppliers, cashBankAccounts] = await Promise.all([
-    getSaleProductOptions(),
+  const [customers, config, suppliers, cashBankAccounts] = await Promise.all([
     getTransactionCustomers(),
     getSiteConfig(),
     getTransactionSuppliers(),
@@ -37,7 +36,7 @@ const NewSalePage = async () => {
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">บันทึกการขายสินค้า</h1>
       <SaleForm
-        products={products}
+        products={[]}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
         customers={customers.map((c) => ({ ...c, priceTier: c.customerType?.priceTier ?? "RETAIL" }))}

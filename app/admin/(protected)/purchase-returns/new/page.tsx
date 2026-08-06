@@ -10,7 +10,8 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseReturnForm from "./PurchaseReturnForm";
 import { getOriginalClaimUnitCost } from "@/lib/claim-stock";
 import { getThailandDateKey } from "@/lib/th-date";
-import { getPurchaseReturnProductOptions, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getTransactionSuppliers } from "@/lib/transaction-options";
+import { isInventoryTracked } from "@/lib/inventory-tracking";
 
 const NewPurchaseReturnPage = async ({
   searchParams,
@@ -62,15 +63,30 @@ const NewPurchaseReturnPage = async ({
       : Promise.resolve(null),
   ]);
 
-  const [products, supplierOptions] = await Promise.all([
-    getPurchaseReturnProductOptions(),
-    getTransactionSuppliers([linkedClaim?.supplierId]),
-  ]);
+  const supplierOptions = await getTransactionSuppliers([linkedClaim?.supplierId]);
 
   const originalCost = linkedClaim
     ? await db.$transaction((tx) => getOriginalClaimUnitCost(tx, linkedClaim.warrantyId))
     : null;
   const claimProduct = linkedClaim?.warranty.product;
+  const products = claimProduct
+    ? [{
+        id: claimProduct.id,
+        code: claimProduct.code,
+        name: claimProduct.name,
+        description: claimProduct.description?.slice(0, 300) ?? null,
+        avgCost: Number(claimProduct.avgCost),
+        isLotControl: isInventoryTracked(claimProduct.inventoryTracking) && claimProduct.isLotControl,
+        categoryName: claimProduct.category.name,
+        brandName: claimProduct.brand?.name ?? null,
+        aliases: claimProduct.aliases.map((alias) => alias.alias),
+        units: claimProduct.units.map((unit) => ({
+          name: unit.name,
+          scale: Number(unit.scale),
+          isBase: unit.isBase,
+        })),
+      }]
+    : [];
   const claimPurchaseUnit = claimProduct?.units.find((unit) => unit.name === claimProduct.purchaseUnitName)
     ?? claimProduct?.units.find((unit) => unit.isBase)
     ?? claimProduct?.units[0];

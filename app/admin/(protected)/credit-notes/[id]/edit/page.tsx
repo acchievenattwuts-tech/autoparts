@@ -16,8 +16,7 @@ import {
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
-import { getTransactionCustomers } from "@/lib/transaction-options";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getCreditNoteProductOptionsByIds, getTransactionCustomers } from "@/lib/transaction-options";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("credit_notes.update");
@@ -54,19 +53,8 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
-  const [rawProducts, customers, config, cashBankAccounts] = await Promise.all([
-    db.product.findMany({
-          orderBy: { code: "asc" },
-          select: {
-            id: true, code: true, name: true, description: true, isActive: true,
-            salePrice: true, saleUnitName: true,
-            inventoryTracking: true, isLotControl: true,
-            category: { select: { name: true } },
-            brand:    { select: { name: true } },
-            aliases:  { select: { alias: true } },
-            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-          },
-        }),
+  const [products, customers, config, cashBankAccounts] = await Promise.all([
+    getCreditNoteProductOptionsByIds(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
     getTransactionCustomers([cn.customerId]),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
@@ -80,16 +68,6 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         select:  { id: true, saleNo: true, customerName: true, saleDate: true },
       })
     : [];
-
-  const products = rawProducts.map((p) => ({
-    id: p.id, code: p.code, name: p.name, description: p.description,
-    salePrice: Number(p.salePrice), saleUnitName: p.saleUnitName ?? "",
-    isLotControl: isInventoryTracked(p.inventoryTracking) && p.isLotControl,
-    categoryName: p.category.name, brandName: p.brand?.name ?? null,
-    aliases: p.aliases.map((a) => a.alias),
-    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    isActive: p.isActive,
-  }));
 
   const initialItems = cn.items
     .filter((item) => item.productId !== null)

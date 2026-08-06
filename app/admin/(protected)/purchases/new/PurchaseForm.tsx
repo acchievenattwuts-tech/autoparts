@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createPurchase, updatePurchase } from "../actions";
+import { createPurchase, loadPurchaseProductsByIds, searchPurchaseProducts, updatePurchase } from "../actions";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import { PurchaseType } from "@/lib/generated/prisma";
@@ -141,7 +141,21 @@ const PurchaseForm = ({
       items,
     }), [payments, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
 
-  const applyDraft = (draft: PurchaseDraftPayload) => {
+  const applyDraft = async (draft: PurchaseDraftPayload) => {
+    const missingProductIds = [...new Set(draft.items.map((item) => item.productId).filter(Boolean))]
+      .filter((productId) => !productOptions.some((product) => product.id === productId));
+    if (missingProductIds.length > 0) {
+      const restoredProducts = await loadPurchaseProductsByIds(missingProductIds);
+      if (restoredProducts.length !== missingProductIds.length) {
+        setError("โหลดข้อมูลสินค้าจาก draft ไม่ครบ กรุณาลองใหม่");
+        return;
+      }
+      setProductOptions((current) => {
+        const merged = new Map(current.map((product) => [product.id, product]));
+        restoredProducts.forEach((product) => merged.set(product.id, product));
+        return [...merged.values()];
+      });
+    }
     setPurchaseDate(draft.purchaseDate);
     setSupplierId(draft.supplierId);
     setPurchaseType(draft.purchaseType as PurchaseType);
@@ -422,7 +436,7 @@ const PurchaseForm = ({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => applyDraft(availableDraft)}
+              onClick={() => void applyDraft(availableDraft)}
               className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
             >
               กู้คืน draft
@@ -643,6 +657,7 @@ const PurchaseForm = ({
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
+                          searchProducts={searchPurchaseProducts}
                           value={item.productId}
                           selectedProduct={prod ?? null}
                           onProductSelect={(product) => applySelectedProduct(i, product)}

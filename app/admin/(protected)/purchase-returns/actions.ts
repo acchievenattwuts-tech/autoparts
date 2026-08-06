@@ -35,7 +35,11 @@ import {
 } from "@/lib/lot-control";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
-import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import {
+  getTransactionProductDetailRowsByIds,
+  searchTransactionProductDetailRows,
+  type TransactionProductDetailRow,
+} from "@/lib/transaction-product-search";
 import { recalculatePurchaseReturnAmountRemain } from "@/lib/amount-remain";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
@@ -49,25 +53,6 @@ import {
 } from "@/lib/document-payments";
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
-
-const purchaseReturnProductOptionSelect = {
-  id: true,
-  code: true,
-  name: true,
-  description: true,
-  avgCost: true,
-  costPrice: true,
-  inventoryTracking: true,
-  isLotControl: true,
-  isActive: true,
-  category: { select: { name: true } },
-  brand: { select: { name: true } },
-  aliases: { select: { alias: true } },
-  units: {
-    select: { name: true, scale: true, isBase: true },
-    orderBy: { isBase: "desc" },
-  },
-} as const;
 
 type PurchaseReturnProductOption = {
   id: string;
@@ -209,6 +194,24 @@ function serializePurchaseReturnProductOption(product: {
   };
 }
 
+const serializePurchaseReturnDetailRow = (
+  product: TransactionProductDetailRow,
+): PurchaseReturnProductOption => ({
+  id: product.id,
+  code: product.code,
+  name: product.name,
+  description: product.description,
+  avgCost: product.avgCost,
+  costPrice: product.costPrice,
+  inventoryTracking: product.inventoryTracking,
+  isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
+  isActive: product.isActive,
+  categoryName: product.categoryName,
+  brandName: product.brandName,
+  aliases: [],
+  units: product.units,
+});
+
 async function requirePurchaseReturnProductPermission() {
   const createSession = await requirePermission("purchase_returns.create").catch(() => null);
   if (createSession?.user?.id) return createSession;
@@ -219,22 +222,13 @@ export async function searchPurchaseReturnProducts(query: string) {
   const session = await requirePurchaseReturnProductPermission();
   if (!session?.user?.id) return [];
 
-  const normalizedQuery = query.trim();
-  if (normalizedQuery.length < 3) return [];
+  return (await searchTransactionProductDetailRows(query)).map(serializePurchaseReturnDetailRow);
+}
 
-  const searchResult = await searchProductIds({
-    query: normalizedQuery,
-    take: 20,
-    cacheProfile: "admin",
-  });
-  if (searchResult.ids.length === 0) return [];
-
-  const products = await db.product.findMany({
-    where: { id: { in: searchResult.ids } },
-    select: purchaseReturnProductOptionSelect,
-  });
-
-  return sortProductsByIds(products, searchResult.ids).map(serializePurchaseReturnProductOption);
+export async function loadPurchaseReturnProductsByIds(ids: string[]) {
+  const session = await requirePurchaseReturnProductPermission();
+  if (!session?.user?.id) return [];
+  return (await getTransactionProductDetailRowsByIds(ids)).map(serializePurchaseReturnDetailRow);
 }
 
 export async function searchPurchaseReturnSuppliers(query: string) {

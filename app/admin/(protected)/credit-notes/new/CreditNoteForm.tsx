@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail } from "../actions";
+import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteProducts } from "../actions";
 import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -545,6 +545,7 @@ const CreditNoteForm = ({
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={productOptions}
+                          searchProducts={searchCreditNoteProducts}
                           value={item.productId}
                           onChange={(id) => {
                             if (!id) clearItemProduct(i);

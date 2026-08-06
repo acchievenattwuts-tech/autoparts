@@ -14,6 +14,7 @@ import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
 import { requirePermission } from "@/lib/require-auth";
 import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
+import { invalidateTransactionProductOptions } from "@/lib/transaction-options";
 
 const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อแบรนด์").max(100),
@@ -80,6 +81,7 @@ export const createPartsBrand = async (formData: FormData): Promise<{ error?: st
     revalidatePath("/admin/master/parts-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
     await refreshPartsBrandSearchCaches();
+    invalidateTransactionProductOptions();
     return {};
   } catch {
     return { error: "ชื่อแบรนด์นี้มีอยู่แล้ว" };
@@ -127,6 +129,7 @@ export const updatePartsBrand = async (
     revalidatePath("/admin/master/parts-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
     await refreshPartsBrandSearchCaches(id);
+    invalidateTransactionProductOptions();
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขชื่อแบรนด์ได้ หรือชื่อนี้มีอยู่แล้ว" };

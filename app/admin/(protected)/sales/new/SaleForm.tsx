@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { createSale, updateSale } from "../actions";
+import { createSale, loadSaleProductsByIds, searchSaleProducts, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap, Printer } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -259,7 +259,21 @@ const SaleForm = ({
       items,
     }), [payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
-  const applyDraft = (draft: SaleDraftPayload) => {
+  const applyDraft = async (draft: SaleDraftPayload) => {
+    const missingProductIds = [...new Set(draft.items.map((item) => item.productId).filter(Boolean))]
+      .filter((productId) => !productOptions.some((product) => product.id === productId));
+    if (missingProductIds.length > 0) {
+      const restoredProducts = await loadSaleProductsByIds(missingProductIds);
+      if (restoredProducts.length !== missingProductIds.length) {
+        setError("โหลดข้อมูลสินค้าจาก draft ไม่ครบ กรุณาลองใหม่");
+        return;
+      }
+      setProductOptions((current) => {
+        const merged = new Map(current.map((product) => [product.id, product]));
+        restoredProducts.forEach((product) => merged.set(product.id, product));
+        return [...merged.values()];
+      });
+    }
     setSaleDate(draft.saleDate);
     setSelectedCustomerId(draft.customerId);
     setCustomerNameOverride(draft.customerName);
@@ -746,7 +760,7 @@ const SaleForm = ({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => applyDraft(availableDraft)}
+                onClick={() => void applyDraft(availableDraft)}
                 className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400"
               >
                 กู้คืน draft
@@ -1141,6 +1155,7 @@ const SaleForm = ({
                     <td className="py-2 px-2">
                       <ProductSearchSelect
                         products={productOptions}
+                        searchProducts={searchSaleProducts}
                         value={item.productId}
                         selectedProduct={prod ?? null}
                         onProductSelect={(product) => applySelectedProduct(i, product)}

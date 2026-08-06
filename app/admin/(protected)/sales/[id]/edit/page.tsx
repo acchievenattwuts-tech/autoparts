@@ -17,8 +17,7 @@ import {
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
-import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
-import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getSaleProductOptionsByIds, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
@@ -63,20 +62,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
-  const [rawProducts, customers, suppliers] = await Promise.all([
-    db.product.findMany({
-          orderBy: { code: "asc" },
-          select: {
-            id: true, code: true, name: true, description: true, isActive: true,
-            salePrice: true, retailPrice: true, memberPrice: true, saleUnitName: true, warrantyDays: true,
-            preferredSupplierId: true, inventoryTracking: true, isLotControl: true, lotIssueMethod: true, allowExpiredIssue: true,
-            category:          { select: { name: true } },
-            brand:             { select: { name: true } },
-            aliases:           { select: { alias: true } },
-            preferredSupplier: { select: { name: true, isActive: true } },
-            units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
-          },
-        }),
+  const [products, customers, suppliers] = await Promise.all([
+    getSaleProductOptionsByIds(saleProductIds),
     getTransactionCustomers([sale.customerId]),
     getTransactionSuppliers(saleSupplierIds),
   ]);
@@ -113,22 +100,6 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         select: { productId: true, lotNo: true, qtyOnHand: true },
       })
     : [];
-
-  const products = rawProducts.map((p) => ({
-    id: p.id, code: p.code, name: p.name, description: p.description,
-    salePrice: Number(p.salePrice), retailPrice: Number(p.retailPrice),
-    memberPrice: Number(p.memberPrice), saleUnitName: p.saleUnitName ?? "",
-    warrantyDays: p.warrantyDays ?? 0,
-    categoryName: p.category.name, brandName: p.brand?.name ?? null,
-    aliases: p.aliases.map((a) => a.alias),
-    units: p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-    preferredSupplierId:   p.preferredSupplier?.isActive ? p.preferredSupplierId : null,
-    preferredSupplierName: p.preferredSupplier?.isActive ? p.preferredSupplier.name : null,
-    isLotControl:          isInventoryTracked(p.inventoryTracking) && p.isLotControl,
-    lotIssueMethod:        p.lotIssueMethod as string,
-    allowExpiredIssue:     p.allowExpiredIssue,
-    isActive:              p.isActive,
-  }));
 
   const initialItems = sale.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];

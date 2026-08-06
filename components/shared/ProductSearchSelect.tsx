@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, Search, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
@@ -10,6 +10,11 @@ import {
   filterProductSearchOptions,
   getProductSearchOptionState,
 } from "@/lib/product-search-select-presentation";
+import {
+  getLoadedTransactionProductCatalog,
+  loadTransactionProductCatalog,
+} from "@/lib/transaction-product-catalog-client";
+import type { TransactionProductCatalogItem } from "@/lib/transaction-product-search";
 
 export interface SearchableProduct {
   id: string;
@@ -35,7 +40,7 @@ interface Props<T extends SearchableProduct> {
 
 const MAX_RESULTS = 50;
 const MIN_QUERY_LENGTH = 3;
-const SEARCH_DEBOUNCE_MS = 200;
+const FOLLOW_UP_SEARCH_DEBOUNCE_MS = 100;
 
 const ProductSearchSelect = <T extends SearchableProduct,>({
   products,
@@ -53,25 +58,48 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     top: 0, bottom: 0, left: 0, width: 0, maxHeight: 224, openUp: false,
   });
   const [remoteResults, setRemoteResults] = useState<T[]>([]);
+  const [catalogProducts, setCatalogProducts] = useState<TransactionProductCatalogItem[] | null>(
+    getLoadedTransactionProductCatalog,
+  );
   const [isLoading, setIsLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const adminTheme = useOptionalAdminTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const hasStartedRemoteSearchRef = useRef(false);
+  const listboxId = useId();
 
   const isDark = adminTheme?.isDark ?? false;
   const selected = selectedProduct ?? products.find((product) => product.id === value) ?? null;
 
   const trimmedQuery = query.trim();
   const isQueryReady = trimmedQuery.length >= MIN_QUERY_LENGTH;
-  const localResults = isQueryReady
-    ? filterProductSearchOptions(products, trimmedQuery, MAX_RESULTS)
+  const localResults: SearchableProduct[] = isQueryReady
+    ? searchProducts && catalogProducts
+      ? filterProductSearchOptions(catalogProducts, trimmedQuery, MAX_RESULTS)
+      : filterProductSearchOptions(products, trimmedQuery, MAX_RESULTS)
     : [];
   const filtered = searchProducts
-    ? isLoading && localResults.length > 0
+    ? catalogProducts && (isLoading || searchError)
       ? localResults
       : remoteResults
     : localResults;
+
+  useEffect(() => {
+    if (!searchProducts || catalogProducts) return;
+    let active = true;
+    void loadTransactionProductCatalog()
+      .then((nextCatalog) => {
+        if (active) setCatalogProducts(nextCatalog);
+      })
+      .catch(() => {
+        // Remote search remains the correctness-preserving fallback.
+      });
+    return () => {
+      active = false;
+    };
+  }, [catalogProducts, searchProducts]);
 
   useEffect(() => {
     if (!open || !searchProducts) {
@@ -82,11 +110,16 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     if (!isQueryReady) {
       setRemoteResults([]);
       setIsLoading(false);
+      setSearchError(false);
       return;
     }
 
     let isActive = true;
     setIsLoading(true);
+    setSearchError(false);
+    setRemoteResults([]);
+    const delayMs = hasStartedRemoteSearchRef.current ? FOLLOW_UP_SEARCH_DEBOUNCE_MS : 0;
+    hasStartedRemoteSearchRef.current = true;
     const timeoutId = window.setTimeout(async () => {
       try {
         const results = await searchProducts(trimmedQuery);
@@ -95,12 +128,13 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
       } catch {
         if (!isActive) return;
         setRemoteResults([]);
+        setSearchError(true);
       } finally {
         if (isActive) {
           setIsLoading(false);
         }
       }
-    }, SEARCH_DEBOUNCE_MS);
+    }, delayMs);
 
     return () => {
       isActive = false;
@@ -135,10 +169,15 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     }
   };
 
-  const handleSelect = (product: T) => {
+  const handleSelect = (product: SearchableProduct) => {
     if (product.isActive === false) return;
-    onChange(product.id);
-    onProductSelect?.(product);
+    const hydratedProduct = searchProducts
+      ? remoteResults.find((candidate) => candidate.id === product.id)
+        ?? products.find((candidate) => candidate.id === product.id)
+      : product as T;
+    if (!hydratedProduct) return;
+    onChange(hydratedProduct.id);
+    onProductSelect?.(hydratedProduct);
     setQuery("");
     setOpen(false);
   };
@@ -199,8 +238,15 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
       ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
       : "border-gray-300 hover:border-gray-400 bg-white";
 
+  const hasHydratedProduct = (productId: string): boolean =>
+    !searchProducts
+    || remoteResults.some((candidate) => candidate.id === productId)
+    || products.some((candidate) => candidate.id === productId);
+
   const dropdown = open ? (
     <div
+      id={listboxId}
+      role="listbox"
       ref={dropdownRef}
       style={coords.openUp
         ? { bottom: coords.bottom, left: coords.left, width: coords.width }
@@ -215,17 +261,21 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         ) : isLoading && filtered.length === 0 ? (
           <p className={dropdownMessageClassName}>กำลังโหลด...</p>
         ) : filtered.length === 0 ? (
-          <p className={dropdownMessageClassName}>ไม่พบสินค้า</p>
+          <p className={dropdownMessageClassName}>
+            {searchError ? "ค้นหาสินค้าไม่สำเร็จ กรุณาลองอีกครั้ง" : "ไม่พบสินค้า"}
+          </p>
         ) : (
           filtered.map((product) => {
             const selectedOption = product.id === value;
             const optionState = getProductSearchOptionState(product, selectedOption);
+            const hydrated = hasHydratedProduct(product.id);
+            const optionDisabled = optionState.disabled || !hydrated;
             return (
               <button
                 key={product.id}
                 type="button"
-                disabled={optionState.disabled}
-                aria-disabled={optionState.disabled}
+                disabled={optionDisabled}
+                aria-disabled={optionDisabled}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => handleSelect(product)}
                 className={`w-full px-3 py-2.5 text-left text-sm transition-colors disabled:pointer-events-auto ${
@@ -257,6 +307,11 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
                     {product.brandName ? ` · ${product.brandName}` : ""}
                   </span>
                 )}
+                {!hydrated && (
+                  <span className={`mt-0.5 block text-xs ${isDark ? "text-sky-300" : "text-blue-600"}`}>
+                    {searchError ? "โหลดรายละเอียดไม่สำเร็จ กรุณาพิมพ์ค้นหาอีกครั้ง" : "กำลังเตรียมราคาและหน่วยสินค้า..."}
+                  </span>
+                )}
               </button>
             );
           })
@@ -270,6 +325,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
       <div
         role="combobox"
         aria-expanded={open}
+        aria-controls={listboxId}
         onClick={handleOpen}
         className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${
           triggerClassName

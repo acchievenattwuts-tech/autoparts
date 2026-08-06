@@ -26,6 +26,8 @@
     "verify:reports-stock-section": "tsx --env-file=.env.local scripts/verify-reports-data-stock-section.ts",
     "verify:nested-orderby": "tsx --env-file=.env.local scripts/verify-nested-orderby-parity.ts",
     "verify:product-child-sync": "tsx --env-file=.env.local scripts/verify-product-child-sync.ts",
+    "test:transaction-product-picker-golden": "tsx --env-file=.env.local scripts/test-transaction-product-picker-golden.ts",
+    "measure:transaction-product-picker": "tsx --env-file=.env.local scripts/measure-transaction-product-picker-performance.ts",
     "test:admin-theme-regression": "tsx scripts/test-admin-theme-regression.ts",
     "test:security-hardening": "node scripts/test-security-hardening.mjs",
     "test:primary-transfer-roadmap": "tsx scripts/test-primary-transfer-roadmap.ts",

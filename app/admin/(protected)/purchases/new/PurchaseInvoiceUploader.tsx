@@ -6,6 +6,7 @@ import { FileText, ScanLine, Sparkles, Upload, X } from "lucide-react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
+import { searchPurchaseProducts } from "../actions";
 import {
   isAcceptedPurchaseOcrMime,
   PURCHASE_OCR_BUCKET,
@@ -447,6 +448,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
                       <td className="py-2 px-2">
                         <ProductSearchSelect
                           products={mergedProductList}
+                          searchProducts={searchPurchaseProducts}
                           value={selectedId}
                           selectedProduct={selectedProduct}
                           onProductSelect={(product) =>

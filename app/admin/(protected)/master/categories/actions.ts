@@ -23,6 +23,7 @@ import { normalizeSearchText } from "@/lib/search-normalization";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { refreshCategoryStorefrontCaches } from "@/lib/storefront-revalidation";
 import { invalidateCategoryAliasCache } from "@/lib/category-alias-cache";
+import { invalidateTransactionProductOptions } from "@/lib/transaction-options";
 
 const categorySchema = z
   .object({
@@ -162,6 +163,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     await refreshCategoryStorefrontCaches(category.id);
+    invalidateTransactionProductOptions();
     return {};
   } catch {
     return { error: "ไม่สามารถเพิ่มหมวดหมู่ได้ กรุณาตรวจสอบว่าชื่อนี้ซ้ำหรือไม่" };
@@ -232,6 +234,7 @@ export const updateCategory = async (
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
     await refreshCategoryStorefrontCaches(id);
+    invalidateTransactionProductOptions();
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไขหมวดหมู่นี้ได้" };

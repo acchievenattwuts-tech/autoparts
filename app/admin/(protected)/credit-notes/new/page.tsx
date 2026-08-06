@@ -7,13 +7,12 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import CreditNoteForm from "./CreditNoteForm";
-import { getCreditNoteProductOptions, getTransactionCustomers } from "@/lib/transaction-options";
+import { getTransactionCustomers } from "@/lib/transaction-options";
 
 const NewCreditNotePage = async () => {
   await requirePermission("credit_notes.create");
 
-  const [products, customers, config, cashBankAccounts] = await Promise.all([
-    getCreditNoteProductOptions(),
+  const [customers, config, cashBankAccounts] = await Promise.all([
     getTransactionCustomers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
@@ -33,7 +32,7 @@ const NewCreditNotePage = async () => {
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
       <CreditNoteForm
-        products={products}
+        products={[]}
         customers={customers}
         cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
