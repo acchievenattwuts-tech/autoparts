@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import {
   ClaimType,
   CNRefundMethod,
+  Prisma,
   CNSettlementType,
   PaymentMethod,
   PurchaseReturnRefundMethod,
@@ -263,6 +264,10 @@ export type ReportsData = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Rows shown in the stock section of the summary report. */
+const HIGHEST_VALUE_ITEM_LIMIT = 20;
+const LOW_STOCK_PREVIEW_LIMIT = 100;
 
 function toNumber(value: unknown): number {
   return Number(value ?? 0);
@@ -586,7 +591,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           note: true,
           cashBankAccount: { select: { name: true } },
           customer: { select: { code: true, name: true } },
-          items: { select: { quantity: true, costPrice: true, lineDiscount: true } },
+          items: { orderBy: { lineNo: "asc" }, select: { quantity: true, costPrice: true, lineDiscount: true } },
         },
       });
   const creditNotesPromise = db.creditNote.findMany({
@@ -607,6 +612,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           sale: {
             select: {
               items: {
+                orderBy: { lineNo: "asc" },
                 select: {
                   productId: true,
                   quantity: true,
@@ -616,6 +622,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
             },
           },
           items: {
+            orderBy: { lineNo: "asc" },
             select: {
               productId: true,
               qty: true,
@@ -679,6 +686,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           netAmount: true,
           cashBankAccount: { select: { name: true } },
           items: {
+            orderBy: { lineNo: "asc" },
             select: {
               amount: true,
               description: true,
@@ -716,19 +724,76 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           supplier: { select: { code: true, name: true } },
         },
       });
-  const productsPromise = db.product.findMany({
-        where: { isActive: true, ...(productCodeRange ? { code: productCodeRange } : {}) },
-        orderBy: [{ stock: "asc" }, { code: "asc" }],
-        select: {
-          id: true,
-          code: true,
-          name: true,
-          stock: true,
-          minStock: true,
-          avgCost: true,
-          category: { select: { name: true } },
-        },
-      });
+  // The stock section only needs the low-stock rows, the 20 most valuable rows
+  // and three totals — never the full product list. Loading every active
+  // product (928 rows plus a second round-trip for Category) to derive those in
+  // memory was the single largest payload in this report, so each output is
+  // queried directly instead. Postgres also sums stock * avgCost as exact
+  // numeric, which drops the float drift the in-memory reduce accumulated.
+  const productCodeSqlFilter = productCodeRange
+    ? Prisma.sql`AND ${
+        productCodeRange.gte ? Prisma.sql`p."code" >= ${productCodeRange.gte}` : Prisma.sql`TRUE`
+      } AND ${
+        productCodeRange.lte ? Prisma.sql`p."code" <= ${productCodeRange.lte}` : Prisma.sql`TRUE`
+      }`
+    : Prisma.empty;
+
+  // All three outputs come from one statement. Splitting them cost more in
+  // round-trips than the smaller payload saved: Prisma emits an extra statement
+  // per nested relation, and statements — not logical queries — are what
+  // contend for the 5-connection pool.
+  //
+  // stockValue is a computed column, so the top-20 ranking has to be ordered in
+  // SQL. The stock/code tie-break reproduces the stable sort the in-memory
+  // version inherited from its [stock asc, code asc] ordering.
+  const stockSectionPromise = db.$queryRaw<
+        Array<{
+          totals: {
+            activeProductCount: number;
+            totalUnitsOnHand: number;
+            totalStockValue: number;
+            lowStockCount: number;
+          };
+          lowStockItems: StockRow[] | null;
+          highestValueItems: StockRow[] | null;
+        }>
+      >`
+        WITH base AS (
+          SELECT p."id", p."code", p."name", c."name" AS "categoryName",
+                 p."stock"::int AS "stock", p."minStock"::int AS "minStock",
+                 p."avgCost"::float8 AS "avgCost",
+                 (p."stock" * p."avgCost") AS "stockValueExact"
+          FROM "Product" p
+          JOIN "Category" c ON c."id" = p."categoryId"
+          WHERE p."isActive" = true ${productCodeSqlFilter}
+        ),
+        low_stock AS (
+          SELECT "id", "code", "name", "categoryName", "stock", "minStock", "avgCost",
+                 "stockValueExact"::float8 AS "stockValue"
+          FROM base
+          WHERE "stock" <= "minStock"
+          ORDER BY "stock" ASC, "code" ASC
+          LIMIT ${LOW_STOCK_PREVIEW_LIMIT}
+        ),
+        highest_value AS (
+          SELECT "id", "code", "name", "categoryName", "stock", "minStock", "avgCost",
+                 "stockValueExact"::float8 AS "stockValue"
+          FROM base
+          ORDER BY "stockValueExact" DESC, "stock" ASC, "code" ASC
+          LIMIT ${HIGHEST_VALUE_ITEM_LIMIT}
+        ),
+        totals AS (
+          SELECT COUNT(*)::int AS "activeProductCount",
+                 COALESCE(SUM("stock"), 0)::float8 AS "totalUnitsOnHand",
+                 COALESCE(SUM("stockValueExact"), 0)::float8 AS "totalStockValue",
+                 COUNT(*) FILTER (WHERE "stock" <= "minStock")::int AS "lowStockCount"
+          FROM base
+        )
+        SELECT
+          (SELECT row_to_json(t) FROM totals t) AS "totals",
+          (SELECT json_agg(row_to_json(l)) FROM low_stock l) AS "lowStockItems",
+          (SELECT json_agg(row_to_json(h)) FROM highest_value h) AS "highestValueItems"
+      `;
   const warrantiesPromise = db.warranty.findMany({
         where: {
           endDate: { lte: soonDate },
@@ -813,14 +878,20 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     expenses,
     supplierAdvances,
     supplierPayments,
-    products,
+    stockSectionRows,
     warranties,
     openClaims,
     outstandingSales,
     receipts,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise],
-    [supplierAdvancesPromise, supplierPaymentsPromise, productsPromise, warrantiesPromise, openClaimsPromise],
+    [
+      supplierAdvancesPromise,
+      supplierPaymentsPromise,
+      stockSectionPromise,
+      warrantiesPromise,
+      openClaimsPromise,
+    ],
     [outstandingSalesPromise, receiptsPromise],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -830,7 +901,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     Awaited<typeof expensesPromise>,
     Awaited<typeof supplierAdvancesPromise>,
     Awaited<typeof supplierPaymentsPromise>,
-    Awaited<typeof productsPromise>,
+    Awaited<typeof stockSectionPromise>,
     Awaited<typeof warrantiesPromise>,
     Awaited<typeof openClaimsPromise>,
     Awaited<typeof outstandingSalesPromise>,
@@ -959,22 +1030,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
   const netProfit = grossProfit - expenseTotal;
   const vatPayable = salesVat - creditNoteVat - purchaseVat - expenseVat;
 
-  const stockRows: StockRow[] = products.map((product) => {
-    const stock = toNumber(product.stock);
-    const avgCost = toNumber(product.avgCost);
-    return {
-      id: product.id,
-      code: product.code,
-      name: product.name,
-      categoryName: product.category.name,
-      stock,
-      minStock: toNumber(product.minStock),
-      avgCost,
-      stockValue: stock * avgCost,
-    };
-  });
-  const lowStockItems = stockRows.filter((row) => row.stock <= row.minStock);
-  const highestValueItems = [...stockRows].sort((a, b) => b.stockValue - a.stockValue).slice(0, 20);
+  const stockSection = stockSectionRows[0];
+  const lowStockItems: StockRow[] = stockSection?.lowStockItems ?? [];
+  const highestValueItems: StockRow[] = stockSection?.highestValueItems ?? [];
 
   const expiringItems: WarrantyRow[] = warranties.map((warranty) => ({
     id: warranty.id,
@@ -1281,11 +1339,11 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       vatPayable,
     },
     stock: {
-      activeProductCount: stockRows.length,
-      totalUnitsOnHand: stockRows.reduce((sum, row) => sum + row.stock, 0),
-      totalStockValue: stockRows.reduce((sum, row) => sum + row.stockValue, 0),
-      lowStockCount: lowStockItems.length,
-      lowStockItems: lowStockItems.slice(0, 100),
+      activeProductCount: toNumber(stockSection?.totals.activeProductCount),
+      totalUnitsOnHand: toNumber(stockSection?.totals.totalUnitsOnHand),
+      totalStockValue: toNumber(stockSection?.totals.totalStockValue),
+      lowStockCount: toNumber(stockSection?.totals.lowStockCount),
+      lowStockItems,
       highestValueItems,
     },
     warranties: {
