@@ -61,8 +61,7 @@ function SectionSkeleton({ heightClass }: { heightClass: string }) {
 }
 
 export default async function SummaryReportPage({ searchParams }: PageProps) {
-  await requirePermission("reports.view");
-  const params = await searchParams;
+  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams]);
 
   const filters = parseReportFilters({
     from: params.from,
@@ -105,7 +104,10 @@ export default async function SummaryReportPage({ searchParams }: PageProps) {
         <SummaryCashBankSection />
       </Suspense>
 
-      <Suspense fallback={<SectionSkeleton heightClass="min-h-[720px]" />}>
+      <Suspense
+        key={`${filters.fromInput}|${filters.toInput}`}
+        fallback={<SectionSkeleton heightClass="min-h-[720px]" />}
+      >
         <SummaryReportsSection from={params.from} to={params.to} />
       </Suspense>
     </div>

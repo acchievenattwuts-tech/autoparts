@@ -1,14 +1,39 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { LineRecipientType } from "@/lib/generated/prisma";
 import LineDailySummaryManager from "@/app/admin/(protected)/reports/line-daily-summary/LineDailySummaryManager";
-import { buildLineDailySummary, buildRiskRadarItems, resolveBangkokDayKey } from "@/lib/line-daily-summary";
+import { resolveBangkokDayKey } from "@/lib/line-daily-summary";
 import { getLineDailySummaryQStashStatus } from "@/lib/line-daily-summary-qstash";
 import { getLineDailySummarySettings } from "@/lib/line-daily-summary-settings";
 import { getLineDailySummaryConfig, resolveConfiguredLineRecipients } from "@/lib/line-messaging";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
+
+import LineDailySummaryPreview from "./LineDailySummaryPreview";
+import LineDailySummaryStatCards from "./LineDailySummaryStatCards";
+import { StatCard } from "./summary-presentation";
+
+/** Placeholder while a summary-backed section streams in. */
+function SummarySectionSkeleton({
+  heightClass,
+  count,
+}: {
+  heightClass: string;
+  count: number;
+}) {
+  return (
+    <div className={count > 1 ? "grid gap-3 md:grid-cols-2 xl:grid-cols-4" : ""} aria-busy="true">
+      {Array.from({ length: count }).map((_, index) => (
+        <div
+          key={index}
+          className={`animate-pulse rounded-xl border border-gray-200 bg-gray-100 dark:border-white/10 dark:bg-white/5 ${heightClass}`}
+        />
+      ))}
+    </div>
+  );
+}
 
 interface PageProps {
   searchParams: Promise<{
@@ -16,90 +41,6 @@ interface PageProps {
   }>;
 }
 
-function StatCard({
-  title,
-  value,
-  tone = "default",
-}: {
-  title: string;
-  value: string;
-  tone?: "default" | "warn";
-}) {
-  return (
-    <div
-      className={`rounded-xl border p-4 ${
-        tone === "warn"
-          ? "border-amber-200 bg-amber-50 dark:border-amber-400/30 dark:bg-amber-500/15"
-          : "border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950/80"
-      }`}
-    >
-      <p className="text-xs font-medium text-gray-500 dark:text-slate-400">{title}</p>
-      <p className="mt-1 font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
-    </div>
-  );
-}
-
-function fmtMoney(value: number) {
-  return value.toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function fmtPercent(value: number) {
-  const safeValue = Number.isFinite(value) ? value : 0;
-
-  return safeValue.toLocaleString("th-TH", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function PreviewMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-white/5">
-      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</p>
-      <p className="mt-1 font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">{value}</p>
-    </div>
-  );
-}
-
-function FlexPreviewSection({
-  title,
-  items,
-}: {
-  title: string;
-  items: Array<{ label: string; value: string }>;
-}) {
-  return (
-    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <div className="mt-3 space-y-2">
-        {items.map((item) => (
-          <div
-            key={`${title}-${item.label}`}
-            className="flex items-start justify-between gap-4 border-b border-slate-100 pb-2 text-sm last:border-b-0 last:pb-0"
-          >
-            <span className="text-slate-500">{item.label}</span>
-            <span className="text-right font-semibold text-slate-900">{item.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function keepPreviewItem(compactMode: boolean, rawValue: number, keepWhenZero = false) {
-  if (!compactMode) return true;
-  if (keepWhenZero) return true;
-  return rawValue !== 0;
-}
 
 export default async function LineDailySummaryPage({ searchParams }: PageProps) {
   await requirePermission("reports.view");
@@ -182,11 +123,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       },
     }),
   ]);
-  const summary = await buildLineDailySummary(reportDayKey, {
-    compactMode: settings.compactMode,
-  });
-
-  const totalRiskItems = summary.counts.lowStockCount + summary.counts.outOfStockCount;
   const availableUserRecipients = recipients
     .filter((recipient) => recipient.type === LineRecipientType.USER)
     .map((recipient) => ({
@@ -209,50 +145,6 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
       lastWebhookAt: recipient.lastWebhookAt?.toISOString() ?? null,
       linkedUserName: recipient.userLinks?.user.name ?? null,
     }));
-  const previewMoneyAndOutstandingItems = [
-    keepPreviewItem(settings.compactMode, summary.money.cashInTotal, true)
-      ? { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.cashChannelTotal)
-      ? { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.transferChannelTotal)
-      ? { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.arOutstanding)
-      ? { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.codOutstanding)
-      ? { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.apOutstanding)
-      ? { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` }
-      : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
-  const previewSalesItems = [
-    keepPreviewItem(settings.compactMode, summary.money.salesTotal, true)
-      ? { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.cashSales)
-      ? { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.creditSales)
-      ? { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` }
-      : null,
-    keepPreviewItem(settings.compactMode, summary.money.costOfGoodsSoldToday)
-      ? { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` }
-      : null,
-  ].filter((item): item is { label: string; value: string } => item !== null);
-  const previewBalanceItems = [
-    ...summary.balances.accounts
-      .filter((account) => keepPreviewItem(settings.compactMode, account.balance))
-      .map((account) => ({ label: account.label, value: `฿${fmtMoney(account.balance)}` })),
-    { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}` },
-  ];
-  const previewRiskItems = buildRiskRadarItems(summary.risks)
-    .filter((item) => keepPreviewItem(settings.compactMode, item.count))
-    .map((item) => ({ label: item.label, value: item.value }));
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -288,19 +180,9 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         </form>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard title="ยอดขายวันนี้" value={`฿${fmtMoney(summary.money.salesTotal)}`} />
-        <StatCard title="เงินรับเข้าวันนี้" value={`฿${fmtMoney(summary.money.cashInTotal)}`} />
-        <StatCard
-          title="ลูกหนี้ + COD คงค้าง"
-          value={`฿${fmtMoney(summary.money.arOutstanding + summary.money.codOutstanding)}`}
-        />
-        <StatCard
-          title="สต๊อกเสี่ยงวันนี้"
-          value={`${totalRiskItems} รายการ`}
-          tone={totalRiskItems > 0 ? "warn" : "default"}
-        />
-      </div>
+      <Suspense fallback={<SummarySectionSkeleton heightClass="h-24" count={4} />}>
+        <LineDailySummaryStatCards reportDayKey={reportDayKey} compactMode={settings.compactMode} />
+      </Suspense>
 
       <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
         <div className="flex flex-col gap-1">
@@ -370,104 +252,9 @@ export default async function LineDailySummaryPage({ searchParams }: PageProps) 
         }))}
       />
 
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
-          <div className="flex flex-col gap-1">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ข้อความ LINE ที่จะส่งจริง</h3>
-            <p className="text-sm text-gray-500 dark:text-slate-400">
-              preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
-              {settings.compactMode ? " โดยเปิด compact mode ซ่อนแถวค่า 0" : " โดยแสดงครบทุกแถวตามค่าเดิม"}
-            </p>
-          </div>
-
-          <div className="line-preview-root mt-4 rounded-[28px] border border-gray-200 bg-white p-4 shadow-sm md:p-5">
-            <div className="mx-auto max-w-3xl">
-              <div className="mb-3 flex items-center justify-between text-xs font-medium text-slate-600">
-                <span>LINE OA preview</span>
-                <span>{summary.reportDateLabel}</span>
-              </div>
-
-              <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
-                <div className="rounded-[24px] bg-gradient-to-br from-emerald-600 via-green-600 to-teal-700 p-5 text-white">
-                  <p className="text-xs font-semibold tracking-wide text-emerald-100">SME Daily Closing</p>
-                  <h4 className="mt-2 font-kanit text-2xl font-bold">🌈 สรุปงานประจำวันที่ {summary.reportDateLabel}</h4>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">กำไรขั้นต้นวันนี้</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">
-                        ฿{fmtMoney(summary.money.grossProfitToday)}({fmtPercent(summary.money.grossMarginPctToday)}%)
-                      </p>
-                    </div>
-                    <div className="rounded-2xl bg-white/15 p-4 backdrop-blur">
-                      <p className="text-xs text-emerald-100">เงินเข้าวันนี้</p>
-                      <p className="mt-1 font-kanit text-2xl font-bold">฿{fmtMoney(summary.money.cashInTotal)}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  <FlexPreviewSection
-                    title="🧾 รายละเอียดการขาย"
-                    items={previewSalesItems}
-                  />
-
-                  <FlexPreviewSection
-                    title="💸 เงินเข้าและยอดค้าง"
-                    items={previewMoneyAndOutstandingItems}
-                  />
-
-                  <FlexPreviewSection
-                    title="💵 ยอดเงินคงเหลือแต่ละบัญชี"
-                    items={previewBalanceItems}
-                  />
-
-                  <FlexPreviewSection
-                    title="📡 เรดาร์ความเสี่ยงวันนี้"
-                    items={previewRiskItems}
-                  />
-
-                  <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
-                    <p className="font-semibold">✨ ปิดท้ายวันนี้</p>
-                    <p className="mt-1">
-                      จ่ายเงินวันนี้ ฿{fmtMoney(summary.money.expensesToday)} • เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ตัวเลขหลัก</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <PreviewMetric label="ขายสด" value={`฿${fmtMoney(summary.money.cashSales)}`} />
-              <PreviewMetric label="ขายเชื่อ" value={`฿${fmtMoney(summary.money.creditSales)}`} />
-              <PreviewMetric label="รับชำระหนี้" value={`฿${fmtMoney(summary.money.cashInFromReceipts)}`} />
-              <PreviewMetric label="เงินสด" value={`฿${fmtMoney(summary.money.cashChannelTotal)}`} />
-              <PreviewMetric label="เงินโอน" value={`฿${fmtMoney(summary.money.transferChannelTotal)}`} />
-              <PreviewMetric label="เจ้าหนี้ค้างจ่าย" value={`฿${fmtMoney(summary.money.apOutstanding)}`} />
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-white/10 dark:bg-slate-950/80">
-            <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">งานค้าง/ความเสี่ยง</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <PreviewMetric label="รอจัดส่ง" value={`${summary.counts.pendingDelivery} รายการ`} />
-              <PreviewMetric label="กำลังจัดส่ง" value={`${summary.counts.outForDelivery} รายการ`} />
-              <PreviewMetric label="ส่งสำเร็จวันนี้" value={`${summary.counts.deliveredToday} รายการ`} />
-              <PreviewMetric label="ต่ำกว่าขั้นต่ำ" value={`${summary.counts.lowStockCount} รายการ`} />
-              <PreviewMetric label="ของหมด" value={`${summary.counts.outOfStockCount} รายการ`} />
-              <PreviewMetric label="lot ใกล้หมดอายุ" value={`${summary.counts.expiringLotCount} lot`} />
-              <PreviewMetric label="lot หมดอายุค้างสต๊อก" value={`${summary.counts.expiredLotCount} lot`} />
-              <PreviewMetric label="เคลมค้างดำเนินการ" value={`${summary.counts.openClaimCount} รายการ`} />
-              <PreviewMetric label="เอกสารถูกยกเลิกวันนี้" value={`${summary.counts.cancelledDocumentCount} รายการ`} />
-            </div>
-          </section>
-        </div>
-      </section>
+      <Suspense fallback={<SummarySectionSkeleton heightClass="h-[520px]" count={1} />}>
+        <LineDailySummaryPreview reportDayKey={reportDayKey} compactMode={settings.compactMode} />
+      </Suspense>
     </div>
   );
 }
