@@ -770,7 +770,7 @@ export async function cancelPurchase(
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
     include: {
-      items:          { select: { id: true, productId: true } },
+      items:          { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } },
       purchaseReturns: { where: { status: "ACTIVE" }, select: { returnNo: true } },
       supplierPaymentItems: {
         where: { payment: { status: "ACTIVE" } },
@@ -858,6 +858,7 @@ export async function updatePurchase(
     where: { id },
     include: {
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           lineNo: true,
@@ -866,6 +867,7 @@ export async function updatePurchase(
           costPrice: true,
           landedCost: true,
           lotItems: {
+            orderBy: { id: "asc" },
             select: {
               lotNo: true,
               qty: true,

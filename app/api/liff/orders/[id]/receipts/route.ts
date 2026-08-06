@@ -56,6 +56,7 @@ export async function GET(
       status: true,
       cancelNote: true,
       items: {
+        orderBy: { lineNo: "asc" },
         where: { saleId: id },
         select: {
           id: true,

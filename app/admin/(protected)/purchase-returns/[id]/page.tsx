@@ -29,7 +29,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
           product: { select: { code: true, name: true } },
-          lotItems: { select: { lotNo: true, qty: true } },
+          lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
         },
       },
     },

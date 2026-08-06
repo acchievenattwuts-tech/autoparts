@@ -347,7 +347,7 @@ export async function cancelAdjustment(
 
   const adjustment = await db.adjustment.findUnique({
     where: { id: adjustmentId },
-    include: { items: { select: { productId: true } } },
+    include: { items: { orderBy: { lineNo: "asc" }, select: { productId: true } } },
   });
   if (!adjustment) return { error: "ไม่พบเอกสาร" };
   if (adjustment.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };

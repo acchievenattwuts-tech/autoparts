@@ -761,7 +761,7 @@ export async function cancelSale(
   const sale = await db.sale.findUnique({
     where: { id: saleId },
     include: {
-      items:       { select: { id: true, productId: true } },
+      items:       { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
       receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
       warranties:  {
@@ -880,6 +880,7 @@ export async function updateSale(
     include: {
       user:        { select: { name: true, signatureUrl: true } },
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id:            true,
           productId:     true,
@@ -889,6 +890,7 @@ export async function updateSale(
           supplierId:    true,
           supplierName:  true,
           lotItems: {
+            orderBy: { id: "asc" },
             select: { lotNo: true, qty: true },
           },
         },
@@ -1720,6 +1722,7 @@ export async function updateShippingStatus(
             activeSaleId: saleId,
             run: { status: "ACTIVE" },
           },
+          orderBy: { createdAt: "desc" },
           select: { id: true },
           take: 1,
         },

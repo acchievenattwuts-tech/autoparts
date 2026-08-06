@@ -223,6 +223,7 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       vatRate: true,
       vatType: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           productId: true,
@@ -371,6 +372,7 @@ export async function rebuildCreditNoteProfitFacts(
         select: {
           saleNo: true,
           items: {
+            orderBy: { lineNo: "asc" },
             select: {
               productId: true,
               quantity: true,
@@ -381,6 +383,7 @@ export async function rebuildCreditNoteProfitFacts(
       },
       customer: { select: { name: true } },
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           productId: true,
@@ -498,6 +501,7 @@ export async function rebuildExpenseProfitFacts(
       status: true,
       netAmount: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           amount: true,

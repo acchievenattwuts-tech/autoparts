@@ -327,6 +327,7 @@ export async function querySalesRows(
           },
         },
         items: {
+          orderBy: { lineNo: "asc" },
           select: {
             quantity: true,
             salePrice: true,
@@ -465,6 +466,7 @@ export async function queryPurchaseRows(
         status: true,
         supplier: { select: { code: true, name: true } },
         items: {
+          orderBy: { lineNo: "asc" },
           select: {
             quantity: true,
             costPrice: true,
@@ -587,6 +589,7 @@ export async function queryCreditNoteRows(
         sale: { select: { saleNo: true } },
         customer: { select: { code: true } },
         items: {
+          orderBy: { lineNo: "asc" },
           select: {
             qty: true,
             unitPrice: true,
@@ -672,6 +675,7 @@ export async function queryReceiptRows(
       cashBankAccount: { select: { name: true } },
       customer: { select: { code: true } },
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           paidAmount: true,
           sale: { select: { saleNo: true } },
@@ -785,6 +789,7 @@ export async function queryPaymentRows(
         status: true,
         note: true,
         items: {
+          orderBy: { lineNo: "asc" },
           select: { expenseCode: { select: { name: true } } },
           take: 1,
         },
@@ -1128,6 +1133,7 @@ export async function queryDailyPaymentRows(
         status: true,
         cashBankAccount: { select: { name: true, type: true } },
         items: {
+          orderBy: { lineNo: "asc" },
           select: { expenseCode: { select: { name: true } } },
           take: 1,
         },
@@ -1222,6 +1228,7 @@ export async function queryDailyPaymentRows(
         cashBankAccount: { select: { name: true } },
         supplier: { select: { code: true, name: true } },
         items: {
+          orderBy: { lineNo: "asc" },
           select: {
             paidAmount: true,
             purchaseId: true,

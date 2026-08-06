@@ -397,7 +397,7 @@ async function buildPurchaseReferenceCostMap(
     where: { id: purchaseId },
     select: {
       purchaseNo: true,
-      items: { select: { id: true, productId: true } },
+      items: { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } },
     },
   });
   if (!purchase || purchase.items.length === 0) return map;
@@ -844,7 +844,7 @@ export async function cancelPurchaseReturn(
   const ret = await db.purchaseReturn.findUnique({
     where: { id: parsed.data.returnId },
     include: {
-      items: { select: { id: true, productId: true } },
+      items: { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } },
     },
   });
   if (!ret) return { error: "ไม่พบเอกสาร" };
@@ -940,12 +940,13 @@ export async function updatePurchaseReturn(
     where: { id },
     include: {
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id:        true,
           productId: true,
           qty:       true,
           costPrice: true,
-          lotItems:  { select: { lotNo: true, qty: true } },
+          lotItems:  { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
         },
       },
     },
@@ -1315,6 +1316,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
     where: { id: purchaseId },
     select: {
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           productId: true,
           quantity: true,
@@ -1342,6 +1344,7 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
             },
           },
           lotItems: {
+            orderBy: { id: "asc" },
             select: {
               lotNo: true,
               qty: true,

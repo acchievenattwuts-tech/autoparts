@@ -586,6 +586,7 @@ export async function updateSupplierPayment(
       paymentNo: true,
       status: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           purchaseId: true,
           purchaseReturnId: true,
@@ -743,6 +744,7 @@ export async function cancelSupplierPayment(
       id: true,
       status: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           purchaseId: true,
           purchaseReturnId: true,

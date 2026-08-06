@@ -325,6 +325,7 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
         },
         deliveryCommissionItems: {
           where: { run: { status: DocStatus.ACTIVE } },
+          orderBy: { createdAt: "desc" },
           take: 1,
           select: {
             commissionAmount: true,

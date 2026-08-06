@@ -31,6 +31,7 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         category: { select: { name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
+          orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
           where: { fitmentType: "DIRECT" },
           select: {
             yearStart: true,

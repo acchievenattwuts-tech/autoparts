@@ -79,7 +79,7 @@ export async function createWarranty(
           quantity: true,
           sale: { select: { id: true, saleDate: true, customerId: true, customerName: true } },
           product: { select: { isLotControl: true } },
-          lotItems: { select: { lotNo: true } },
+          lotItems: { orderBy: { id: "asc" }, select: { lotNo: true } },
         },
       });
       if (!saleItem) return { error: "ไม่พบรายการสินค้า" };
@@ -309,6 +309,7 @@ export async function getSaleItems(saleId: string) {
       saleDate: true,
       customerName: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           product: { select: { code: true, name: true } },

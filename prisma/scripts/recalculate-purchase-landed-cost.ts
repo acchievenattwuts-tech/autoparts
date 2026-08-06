@@ -69,6 +69,7 @@ async function main() {
       shippingFee: true,
       discount: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id: true,
           productId: true,

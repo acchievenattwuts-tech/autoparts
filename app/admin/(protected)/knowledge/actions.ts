@@ -195,7 +195,7 @@ export async function createKnowledgeDraft(formData: FormData): Promise<Knowledg
           },
         },
       },
-      include: { revisions: { take: 1 } },
+      include: { revisions: { orderBy: { revisionNo: "desc" }, take: 1 } },
     });
     const revision = source.revisions[0];
     if (revision) {

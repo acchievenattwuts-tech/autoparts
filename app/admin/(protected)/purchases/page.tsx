@@ -78,7 +78,7 @@ const PurchasesPage = async ({
       skip: (pageNum - 1) * PAGE_SIZE,
       include: {
         supplier: { select: { name: true } },
-        items:    { select: { id: true } },
+        items:    { orderBy: { lineNo: "asc" }, select: { id: true } },
       },
     }),
     db.purchase.count({ where: whereClause }),

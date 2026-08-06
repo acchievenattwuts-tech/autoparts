@@ -449,7 +449,7 @@ export async function cancelReceipt(
 
   const receipt = await db.receipt.findUnique({
     where: { id: receiptId },
-    include: { items: { select: { saleId: true, cnId: true } } },
+    include: { items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true } } },
   });
   if (!receipt)                        return { error: "ไม่พบเอกสาร" };
   if (receipt.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
@@ -518,7 +518,7 @@ export async function updateReceipt(
     where: { id },
     include: {
       user: { select: { name: true, signatureUrl: true } },
-      items: { select: { saleId: true, cnId: true } },
+      items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true } },
     },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };

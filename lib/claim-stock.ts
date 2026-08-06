@@ -44,6 +44,7 @@ export async function getOriginalClaimUnitCost(
         select: {
           costPrice: true,
           lotItems: {
+            orderBy: { id: "asc" },
             select: {
               lotNo: true,
               unitCost: true,

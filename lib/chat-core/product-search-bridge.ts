@@ -171,6 +171,7 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       retailPrice: true,
       memberPrice: true,
       carModels: {
+        orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
         select: {
           submodel: true,
           engineSize: true,

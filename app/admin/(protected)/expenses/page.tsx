@@ -85,6 +85,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
         status: true,
         cancelNote: true,
         items: {
+          orderBy: { lineNo: "asc" },
           select: {
             id: true,
             amount: true,

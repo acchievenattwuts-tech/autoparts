@@ -113,7 +113,7 @@ const DeliveryPrintPage = async ({
             unitScale: true,
             moreDetail: true,
             warrantyDays: true,
-            lotItems: { select: { lotNo: true, qty: true } },
+            lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
             product: {
               select: { code: true, name: true, reportUnitName: true },
             },

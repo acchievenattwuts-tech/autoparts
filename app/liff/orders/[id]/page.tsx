@@ -123,6 +123,7 @@ export default async function LiffOrderDetailPage({
             status: true,
             cancelNote: true,
             items: {
+              orderBy: { lineNo: "asc" },
               where: { saleId: order.id },
               select: {
                 id: true,

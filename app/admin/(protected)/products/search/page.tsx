@@ -182,7 +182,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         inventoryTracking: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
-        aliases: { take: 4, select: { alias: true } },
+        aliases: { orderBy: { id: "asc" }, take: 4, select: { alias: true } },
         carModels: {
           where: { fitmentType: "DIRECT" },
           select: {

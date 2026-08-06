@@ -32,7 +32,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
           product: {
             select: { units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } } },
           },
-          lotItems: { select: { lotNo: true, qty: true } },
+          lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
         },
       },
       claim: {

@@ -39,7 +39,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
                 units: { select: { name: true, scale: true, isBase: true }, orderBy: { isBase: "desc" } },
               },
             },
-            lotItems: { select: { lotNo: true, qty: true, unitCost: true } },
+            lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true, unitCost: true } },
           },
         },
       },

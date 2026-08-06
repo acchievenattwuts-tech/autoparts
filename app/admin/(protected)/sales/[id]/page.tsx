@@ -129,7 +129,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
             product: { select: { code: true, name: true, reportUnitName: true, isLotControl: true } },
-            lotItems: { select: { lotNo: true, qty: true } },
+            lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
           },
         },
         user: { select: { name: true, signatureUrl: true } },

@@ -58,6 +58,7 @@ const getStorefrontProductsLandingPageProducts = unstable_cache(
         category: { select: { id: true, name: true, slug: true } },
         brand: { select: { name: true } },
         carModels: {
+          orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
           where: {
             fitmentType: "DIRECT",
             carModel: { isActive: true, carBrand: { isActive: true } },

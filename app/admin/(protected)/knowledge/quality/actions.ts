@@ -228,7 +228,7 @@ export async function createDraftFromKnowledgeGap(
           },
         },
       },
-      include: { revisions: { take: 1 } },
+      include: { revisions: { orderBy: { revisionNo: "desc" }, take: 1 } },
     });
     const revision = created.revisions[0];
     if (revision) {

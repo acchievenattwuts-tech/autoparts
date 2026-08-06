@@ -100,7 +100,7 @@ const DeliveryUpdatePage = async ({
             salePrice: true,
             totalAmount: true,
             product: { select: { code: true, name: true, saleUnitName: true } },
-            lotItems: { select: { lotNo: true, qty: true } },
+            lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
           },
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         },

@@ -295,6 +295,7 @@ async function buildSaleReferenceCostMap(
     where: { id: saleId },
     select: {
       items: {
+        orderBy: { lineNo: "asc" },
         select: { productId: true, quantity: true, costPrice: true },
       },
     },
@@ -648,7 +649,7 @@ export async function cancelCreditNote(
 
   const cn = await db.creditNote.findUnique({
     where: { id: cnId },
-    include: { items: { select: { id: true, productId: true } } },
+    include: { items: { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } } },
   });
   if (!cn)                        return { error: "ไม่พบเอกสาร" };
   if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
@@ -747,12 +748,14 @@ export async function updateCreditNote(
     where: { id },
     include: {
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           id:        true,
           productId: true,
           qty:       true,
           unitPrice: true,
           lotItems: {
+            orderBy: { id: "asc" },
             select: { lotNo: true, qty: true, isReturnLot: true },
           },
         },
@@ -1208,6 +1211,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
       vatType: true,
       vatRate: true,
       items: {
+        orderBy: { lineNo: "asc" },
         select: {
           productId: true,
           quantity:  true,

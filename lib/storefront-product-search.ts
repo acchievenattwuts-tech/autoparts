@@ -15,6 +15,17 @@ import { segmentThaiQueryTokens } from "@/lib/thai-segment";
 import { resolveStorefrontSearchIntent } from "@/lib/storefront-search-intent";
 import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
 
+/**
+ * Fitment chips are user-facing, so their order must not depend on the
+ * database's row order. Declared as a typed constant (not inlined) so the
+ * `as const` selects below keep a mutable array type Prisma accepts.
+ */
+const FITMENT_ORDER_BY: Prisma.ProductFitmentOrderByWithRelationInput[] = [
+  { carModel: { name: "asc" } },
+  { yearStart: "asc" },
+  { id: "asc" },
+];
+
 export const STOREFRONT_PRODUCTS_PER_PAGE = 24;
 
 const PRODUCT_SELECT = {
@@ -31,6 +42,7 @@ const PRODUCT_SELECT = {
   category: { select: { name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {
+    orderBy: FITMENT_ORDER_BY,
     where: { fitmentType: "DIRECT" },
     select: {
       yearStart: true,
