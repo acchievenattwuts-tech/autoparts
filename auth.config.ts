@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
-import { getAllPermissionKeys, getRoutePermission, isKnowledgePermission } from "@/lib/access-control";
+import { getRoutePermission, isKnowledgePermission } from "@/lib/access-control";
 import { db, withDbRetry } from "@/lib/db";
 import { isSessionRevisionInvalid } from "@/lib/auth-session-revocation";
 
@@ -68,15 +68,6 @@ export const authConfig: NextAuthConfig = {
             select: {
               authVersion: true,
               isActive: true,
-              role: true,
-              appRole: {
-                select: {
-                  permissions: { select: { permission: { select: { key: true } } } },
-                },
-              },
-              directPermissionGrants: {
-                select: { permission: { select: { key: true } } },
-              },
             },
           }),
         );
@@ -85,12 +76,6 @@ export const authConfig: NextAuthConfig = {
           currentVersion: current?.authVersion,
           isActive: current?.isActive,
         });
-        if (current && !token.sessionInvalid) {
-          const direct = current.directPermissionGrants.map((item) => item.permission.key);
-          token.permissions = current.role === "ADMIN"
-            ? getAllPermissionKeys().filter((permission) => !isKnowledgePermission(permission) || direct.includes(permission))
-            : [...new Set([...(current.appRole?.permissions.map((item) => item.permission.key) ?? []), ...direct])];
-        }
       } catch (error) {
         // Authorization must fail closed when the revocation check cannot run.
         console.error("[auth] session revocation check failed", error);

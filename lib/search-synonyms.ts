@@ -43,7 +43,7 @@ export const MAX_SYNONYMS_PER_TERM = 18;
 /** Hard cap on tokens produced after expansion, so a single query never explodes. */
 const MAX_EXPANDED_TOKENS = 32;
 
-type SynonymRow = {
+export type SynonymRow = {
   term: string;
   synonyms: string[];
 };
@@ -63,6 +63,10 @@ const loadActiveSynonyms = unstable_cache(
   SYNONYM_CACHE_KEY,
   { tags: [SYNONYM_CACHE_TAG], revalidate: SYNONYM_CACHE_REVALIDATE },
 );
+
+/** Shared active-row source for every search consumer, including chat guards. */
+export const loadActiveSynonymRows = (options: { bypassCache?: boolean } = {}): Promise<SynonymRow[]> =>
+  options.bypassCache ? loadActiveSynonymsUncached() : loadActiveSynonyms();
 
 /**
  * Build a bi-directional expansion map: every input token (term or synonym)
@@ -109,7 +113,7 @@ export async function expandQueryTokens(rawQuery: string): Promise<string[]> {
   const normalized = normalizeSearchText(rawQuery);
   if (!normalized) return [];
 
-  const rows = await loadActiveSynonyms();
+  const rows = await loadActiveSynonymRows();
   if (rows.length === 0) return [normalized];
 
   const map = buildExpansionMap(rows);
@@ -154,7 +158,7 @@ export async function expandQueryTokenGroups(
   const conceptTokens = normalized.split(/\s+/).filter(Boolean);
   if (conceptTokens.length === 0) return [];
 
-  const rows = await (options.bypassCache ? loadActiveSynonymsUncached() : loadActiveSynonyms());
+  const rows = await loadActiveSynonymRows({ bypassCache: options.bypassCache });
   const map = rows.length > 0 ? buildExpansionMap(rows) : null;
 
   const groups: string[][] = [];

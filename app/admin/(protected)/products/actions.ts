@@ -39,6 +39,7 @@ import {
   uploadProductsBucketObject,
 } from "@/lib/products-bucket-storage";
 import { runProductAiResearch, type ProductAiResearchDraft, type ProductAiResearchInput } from "@/lib/product-ai-research";
+import { planCollectionSync } from "@/lib/collection-sync";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -677,6 +678,17 @@ const buildProductFitmentCreateManyData = (
   })),
 ];
 
+const stableRowKey = (values: readonly unknown[]): string => JSON.stringify(values);
+
+const uniqueAliases = (aliases: ProductInput["aliases"]) =>
+  Array.from(
+    new Map(
+      aliases
+        .filter(({ alias }) => alias.trim() !== "")
+        .map(({ alias, kind }) => [stableRowKey([alias, kind]), { alias, kind }] as const),
+    ).values(),
+  );
+
 export const createProduct = async (
   formData: FormData
 ): Promise<{ error?: string }> => {
@@ -943,48 +955,141 @@ export const updateProduct = async (
         },
       });
 
-      // Sync units — delete all and recreate
-      await tx.productUnit.deleteMany({ where: { productId: id } });
-      await tx.productUnit.createMany({
-        data: units.map((u) => ({
-          productId: id,
-          name: u.name,
-          scale: u.scale,
-          isBase: u.isBase,
-        })),
+      const [existingUnits, existingImages, existingAliases, existingFitments] = await Promise.all([
+        tx.productUnit.findMany({
+          where: { productId: id },
+          select: { id: true, name: true, scale: true, isBase: true },
+        }),
+        tx.productImage.findMany({
+          where: { productId: id },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: { id: true, url: true, alt: true, sortOrder: true, isPrimary: true },
+        }),
+        tx.productAlias.findMany({
+          where: { productId: id },
+          select: { id: true, alias: true, kind: true, weight: true },
+        }),
+        tx.productFitment.findMany({
+          where: { productId: id },
+          select: {
+            id: true,
+            productId: true,
+            fitmentType: true,
+            carModelId: true,
+            submodel: true,
+            yearStart: true,
+            yearEnd: true,
+            engineCode: true,
+            engineSize: true,
+            note: true,
+          },
+        }),
+      ]);
+
+      const desiredUnits = units.map((unit) => ({
+        productId: id,
+        name: unit.name,
+        scale: unit.scale,
+        isBase: unit.isBase,
+      }));
+      const unitPlan = planCollectionSync({
+        existing: existingUnits,
+        desired: desiredUnits,
+        existingKey: (unit) => unit.name,
+        desiredKey: (unit) => unit.name,
       });
+      if (unitPlan.deleteIds.length > 0) {
+        await tx.productUnit.deleteMany({ where: { id: { in: unitPlan.deleteIds } } });
+      }
+      await Promise.all(
+        unitPlan.matched
+          .filter(({ existing, desired }) => existing.scale !== desired.scale || existing.isBase !== desired.isBase)
+          .map(({ existing, desired }) =>
+            tx.productUnit.update({
+              where: { id: existing.id },
+              data: { scale: desired.scale, isBase: desired.isBase },
+              select: { id: true },
+            }),
+          ),
+      );
+      if (unitPlan.create.length > 0) await tx.productUnit.createMany({ data: unitPlan.create });
 
-      await tx.productImage.deleteMany({ where: { productId: id } });
-      if (productImages.length > 0) {
-        await tx.productImage.createMany({
-          data: productImages.map((image, index) => ({
-            productId: id,
-            url: image.url,
-            alt: image.alt || productData.name,
-            sortOrder: index,
-            isPrimary: image.url === primaryImageUrl,
-          })),
-        });
+      const desiredImages = productImages.map((image, index) => ({
+        productId: id,
+        url: image.url,
+        alt: image.alt || productData.name,
+        sortOrder: index,
+        isPrimary: image.url === primaryImageUrl,
+      }));
+      const imagePlan = planCollectionSync({
+        existing: existingImages,
+        desired: desiredImages,
+        existingKey: (image) => image.url,
+        desiredKey: (image) => image.url,
+      });
+      if (imagePlan.deleteIds.length > 0) {
+        await tx.productImage.deleteMany({ where: { id: { in: imagePlan.deleteIds } } });
+      }
+      await Promise.all(
+        imagePlan.matched
+          .filter(({ existing, desired }) =>
+            existing.alt !== desired.alt ||
+            existing.sortOrder !== desired.sortOrder ||
+            existing.isPrimary !== desired.isPrimary,
+          )
+          .map(({ existing, desired }) =>
+            tx.productImage.update({
+              where: { id: existing.id },
+              data: { alt: desired.alt, sortOrder: desired.sortOrder, isPrimary: desired.isPrimary },
+              select: { id: true },
+            }),
+          ),
+      );
+      if (imagePlan.create.length > 0) await tx.productImage.createMany({ data: imagePlan.create });
+
+      const desiredAliases = uniqueAliases(aliases).map((alias) => ({ productId: id, ...alias }));
+      const aliasPlan = planCollectionSync({
+        existing: existingAliases,
+        desired: desiredAliases,
+        existingKey: (alias) => stableRowKey([alias.alias, alias.kind]),
+        desiredKey: (alias) => stableRowKey([alias.alias, alias.kind]),
+      });
+      if (aliasPlan.deleteIds.length > 0) {
+        await tx.productAlias.deleteMany({ where: { id: { in: aliasPlan.deleteIds } } });
+      }
+      const weightedAliasIds = aliasPlan.matched
+        .filter(({ existing }) => existing.weight !== null)
+        .map(({ existing }) => existing.id);
+      if (weightedAliasIds.length > 0) {
+        await tx.productAlias.updateMany({ where: { id: { in: weightedAliasIds } }, data: { weight: null } });
+      }
+      if (aliasPlan.create.length > 0) {
+        await tx.productAlias.createMany({ data: aliasPlan.create, skipDuplicates: true });
       }
 
-      // Sync aliases (delete-and-recreate with kind)
-      await tx.productAlias.deleteMany({ where: { productId: id } });
-      if (aliases.length > 0) {
-        await tx.productAlias.createMany({
-          data: aliases
-            .filter((a) => a.alias.trim() !== "")
-            .map(({ alias, kind }) => ({ productId: id, alias, kind })),
-          skipDuplicates: true,
-        });
+      const desiredFitments = buildProductFitmentCreateManyData(id, fitments, compatibleFitments);
+      const fitmentKey = (fitment: (typeof desiredFitments)[number]) => stableRowKey([
+        fitment.productId,
+        fitment.fitmentType,
+        fitment.carModelId,
+        fitment.submodel,
+        fitment.yearStart,
+        fitment.yearEnd,
+        fitment.engineCode,
+        fitment.engineSize,
+        fitment.note,
+      ]);
+      const fitmentPlan = planCollectionSync({
+        existing: existingFitments,
+        desired: desiredFitments,
+        existingKey: fitmentKey,
+        desiredKey: fitmentKey,
+      });
+      if (fitmentPlan.deleteIds.length > 0) {
+        await tx.productFitment.deleteMany({ where: { id: { in: fitmentPlan.deleteIds } } });
       }
-
-      // Sync fitments (delete-and-recreate)
-      await tx.productFitment.deleteMany({ where: { productId: id } });
-      if (fitments.length > 0 || compatibleFitments.length > 0) {
-        await tx.productFitment.createMany({
-          data: buildProductFitmentCreateManyData(id, fitments, compatibleFitments),
-          skipDuplicates: true,
-        });
+      if (fitmentPlan.create.length > 0) {
+        await tx.productFitment.createMany({ data: fitmentPlan.create, skipDuplicates: true });
       }
     });
 

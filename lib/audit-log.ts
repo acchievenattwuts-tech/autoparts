@@ -224,7 +224,7 @@ function normalizeAuditPayload(input: AuditLogInput) {
 
 export async function writeAuditLog(input: AuditLogInput): Promise<void> {
   const payload = normalizeAuditPayload(input);
-  await db.auditLog.create({ data: payload });
+  await db.auditLog.create({ data: payload, select: { id: true } });
 }
 
 export async function writeAuditLogTx(
@@ -232,7 +232,7 @@ export async function writeAuditLogTx(
   input: AuditLogInput,
 ): Promise<void> {
   const payload = normalizeAuditPayload(input);
-  await tx.auditLog.create({ data: payload });
+  await tx.auditLog.create({ data: payload, select: { id: true } });
 }
 
 export async function safeWriteAuditLog(input: AuditLogInput): Promise<void> {
