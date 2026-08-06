@@ -35,6 +35,7 @@ test(
   let inboundSeq = 0;
   const inboundCreatedAt = new Date();
   let currentText = "พัดลมเป่า 14นิ้วมีไหมคับ";
+  let currentTexts: string[] | null = null;
   let searchHasResults = false;
   let classifiedGroup: "product" | "purchase" = "product";
   let detectedSubjects: Array<{
@@ -78,16 +79,15 @@ test(
         created: false,
       }),
       getRecentMessengerMessagesForAi: async () => [],
-      getUnansweredMessengerMessages: async () => [
-        {
-          id: "inbound-1",
-          text: currentText,
+      getUnansweredMessengerMessages: async () =>
+        (currentTexts ?? [currentText]).map((text, index) => ({
+          id: `inbound-${index + 1}`,
+          text,
           messageType: LineMessageType.TEXT,
           imageUrl: null,
           intent: null,
-          createdAt: inboundCreatedAt,
-        },
-      ],
+          createdAt: new Date(inboundCreatedAt.getTime() + index),
+        })),
       markMessengerProcessedSeq: async ({ seq }: { seq: number }) => {
         calls.processedSeqs.push(seq);
       },
@@ -159,8 +159,20 @@ test(
         };
       },
       generateScopedConversationalReply: async () => "scoped reply",
-      extractChatSearchIntent: async () =>
-        classifiedGroup === "purchase"
+      extractChatSearchIntent: async (input: { latestText: string }) =>
+        input.latestText.includes("ส่งที่อู่")
+          ? {
+              group: "shipping_address",
+              query: "",
+              isProductQuery: false,
+              partType: null,
+              carBrand: null,
+              carModel: null,
+              year: null,
+              partKind: null,
+              tooBroad: false,
+            }
+          : classifiedGroup === "purchase"
           ? {
               group: "purchase",
               query: "",
@@ -283,6 +295,7 @@ test(
   calls.escalations.length = 0;
   calls.notifications.length = 0;
   calls.outboundMessages.length = 0;
+  currentTexts = null;
   currentText = "วาล์ว/ไดรเออร์ Triton ปี 2013";
   searchHasResults = true;
   detectedSubjects = [
@@ -314,6 +327,39 @@ test(
   calls.escalations.length = 0;
   calls.notifications.length = 0;
   calls.outboundMessages.length = 0;
+  currentTexts = ["พัดลมเป่า 14นิ้วมีไหมคับ", "ส่งที่อู่ช่างเตี้ย"];
+  currentText = currentTexts.join("\n");
+  detectedSubjects = null;
+  classifiedGroup = "product";
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-mixed",
+        fbEventId: "event-mixed",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.equal(calls.searches.length, 1, "mixed burst searches its product segment once");
+  assert.doesNotMatch(calls.searches[0]?.text ?? "", /ส่งที่อู่/);
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.doesNotMatch(calls.textReplies[0] ?? "", /แอดมิน/, "product reply is sent before handoff text");
+  assert.match(calls.textReplies.at(-1) ?? "", /เรื่องค่าจัดส่งหรือการจัดส่ง.*แอดมิน/);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentTexts = null;
   currentText = "ทำใบเสนอราคามาให้หน่อยได้ไหมคะ ต้องการ 15 อัน";
   detectedSubjects = null;
 

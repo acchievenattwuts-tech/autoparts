@@ -47,7 +47,8 @@ function createCoalesceHarness(options?: {
    *  so a burst can spread brand/part type across different photos. */
   imageClassByMessageId?: Record<string, Partial<LineImageClassification>>;
   /** Stand-in for the text intent classifier (extractChatSearchIntent). */
-  textIntent?: ChatSearchIntent | null;
+  textIntent?: ChatSearchIntent | null | ((latestText: string) => ChatSearchIntent | null);
+  fitmentFilters?: { categoryName?: string; carBrandName?: string; carModelName?: string };
   lockAcquirable?: boolean;
   /** Bumps the inbound seq once during the FIRST pipeline pass to force one abort. */
   bumpDuringFirstPass?: boolean;
@@ -64,6 +65,7 @@ function createCoalesceHarness(options?: {
   };
   const calls = {
     replies: [] as string[],
+    replyBatches: [] as string[][],
     pushes: [] as string[],
     searches: [] as string[],
     statePatches: [] as string[],
@@ -146,6 +148,9 @@ function createCoalesceHarness(options?: {
     },
     getChatProductSummaries: async () => [{ id: "product-1", name: "หม้อน้ำ D-Max", code: "P1", imageUrl: null, salePrice: 100, retailPrice: 130, memberPrice: 130 }],
     replyLineMessage: async (input) => {
+      calls.replyBatches.push(
+        input.messages.flatMap((message) => (message.type === "text" ? [message.text] : ["[flex]"])),
+      );
       calls.replies.push(input.messages[0]?.type === "text" ? input.messages[0].text : "");
       return { sent: true, replyToken: input.replyToken };
     },
@@ -186,7 +191,10 @@ function createCoalesceHarness(options?: {
     // WHOLESALE → salePrice shown (mirrors the processor test harness default).
     resolveLinePriceTier: async () => "WHOLESALE",
     answerFromChatFaq: async () => ({ answered: false, reply: "" }),
-    extractChatSearchIntent: async () => options?.textIntent ?? null,
+    extractChatSearchIntent: async (input) =>
+      typeof options?.textIntent === "function"
+        ? options.textIntent(input.latestText ?? "")
+        : options?.textIntent ?? null,
     // Hermetic: the real detector resolves categories against the DB, which this
     // suite has no access to — it would fail closed (subjects: null) and silently
     // route every multi-subject case down the single-subject path. Mirror the
@@ -200,7 +208,7 @@ function createCoalesceHarness(options?: {
         categories: [],
       };
     },
-    resolveChatFitmentFilters: async () => ({}),
+    resolveChatFitmentFilters: async () => options?.fitmentFilters ?? ({}),
     generateChatSuggestion: async () => ({
       suggestedReply: "เบื้องต้นพบรายการที่ใกล้เคียงค่ะ",
       confidence: LineAiConfidence.POSSIBLE_MATCH,
@@ -356,6 +364,58 @@ test("coalescing: an unknown image alongside part images does not hijack the tur
   assert.equal(calls.replies.length, 1);
   assert.ok(calls.searches.length >= 1, "search ran for the merged turn");
   assert.ok(!calls.statePatches.includes("waiting_admin"));
+});
+
+test("coalescing: product + shipping burst searches and replies with products before the admin handoff", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({
+    fitmentFilters: {
+      categoryName: "หม้อน้ำ (Radiator)",
+      carBrandName: "Toyota",
+      carModelName: "Vios",
+    },
+    textIntent: (latestText) =>
+      latestText.includes("ส่งที่อู่")
+        ? {
+            group: "shipping_address",
+            query: "",
+            isProductQuery: false,
+            partType: null,
+            carBrand: null,
+            carModel: null,
+            year: null,
+            partKind: null,
+            tooBroad: false,
+          }
+        : productIntent({
+            query: "หม้อน้ำ vios 2008 denso",
+            partType: "หม้อน้ำ",
+            carBrand: "Toyota",
+            carModel: "Vios",
+            year: 2008,
+            partKind: "fitment",
+          }),
+  });
+
+  await processLineWebhookPayload(
+    {
+      events: [
+        textEvent("mixed-product", "หม้อน้ำ vios 08 denso"),
+        textEvent("mixed-shipping", "ส่งที่อู่ช่างเตี้ย"),
+      ],
+    },
+    baseConfig,
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1, "catalog search runs exactly once");
+  assert.match(calls.searches[0] ?? "", /หม้อน้ำ vios 2008 denso/i);
+  assert.doesNotMatch(calls.searches[0] ?? "", /ส่งที่อู่/, "shipping text is excluded from the product query");
+  assert.equal(calls.replyBatches.length, 1, "the burst receives one ordered reply batch");
+  const batch = calls.replyBatches[0] ?? [];
+  assert.match(batch[0] ?? "", /พบรายการ|ใกล้เคียง/);
+  assert.match(batch.at(-1) ?? "", /เรื่องค่าจัดส่งหรือการจัดส่ง.*แอดมิน/);
+  assert.ok(calls.statePatches.includes("waiting_admin"), "room freezes only after the ordered reply");
 });
 
 test("coalescing: a newer message mid-pipeline aborts and re-runs once, still ONE reply", async () => {

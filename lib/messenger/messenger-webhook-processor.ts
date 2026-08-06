@@ -57,6 +57,7 @@ import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-produ
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { detectChatMultiSubjects } from "@/lib/chat-core/multi-subject-detector";
+import { resolveMixedProductAdminTurn } from "@/lib/chat-core/mixed-intent";
 import {
   appendChatCompatibilityNote,
   filterChatProductsByVehicleCompatibility,
@@ -189,6 +190,42 @@ async function handoffUncertainMessengerProduct(input: {
   await persistOutbound(input.conversationId, input.psid, text, {
     intent: input.intent,
   });
+}
+
+function deferredMessengerAdminMessage(intent: LineIntent): string {
+  if (intent === LineIntent.SHIPPING_ADDRESS) {
+    return buildJuneAdminOnlyHandoffMessage("shipping");
+  }
+  if (intent === LineIntent.CLAIM_OR_RETURN) {
+    return buildJuneAdminOnlyHandoffMessage("warranty_return");
+  }
+  if (intent === LineIntent.ORDER_STATUS) {
+    return "เดี๋ยวแอดมินช่วยเช็กสถานะ/พัสดุให้นะคะ 🙏 รอสักครู่ค่ะ";
+  }
+  if (intent === LineIntent.PRICE_NEGOTIATION) {
+    return "เรื่องราคา/ส่วนลด เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
+  }
+  return "รับทราบค่ะ 🙏 เดี๋ยวแอดมินมาช่วยดูแลต่อให้นะคะ รอสักครู่ค่ะ";
+}
+
+async function sendDeferredMessengerAdminHandoff(input: {
+  pageAccessToken: string;
+  conversationId: string;
+  psid: string;
+  originalText: string;
+  intent: LineIntent;
+}): Promise<void> {
+  await escalateMessengerConversationToAdmin(input.conversationId);
+  await safeNotify(
+    notifyMessengerNeedsAdmin({
+      conversationId: input.conversationId,
+      text: input.originalText,
+      messageType: "TEXT",
+    }),
+  );
+  const text = deferredMessengerAdminMessage(input.intent);
+  await sendMessengerText({ pageAccessToken: input.pageAccessToken, psid: input.psid, text });
+  await persistOutbound(input.conversationId, input.psid, text, { intent: input.intent });
 }
 
 function productToCarouselElement(
@@ -446,11 +483,10 @@ async function replyToMessengerTurn(params: {
     return;
   }
 
-  const mergedText = unanswered
+  const textSegments = unanswered
     .map((m) => m.text?.trim())
-    .filter((t): t is string => Boolean(t))
-    .join("\n")
-    .trim();
+    .filter((t): t is string => Boolean(t));
+  const mergedText = textSegments.join("\n").trim();
   // Use the most recent attachment in the burst as the representative image.
   const latestImageUrl = [...unanswered].reverse().find((m) => Boolean(m.imageUrl))?.imageUrl ?? null;
 
@@ -577,7 +613,13 @@ async function replyToMessengerTurn(params: {
 
   if (!mergedText) return;
 
-  const processText = normalizeInboundChatQuery(mergedText);
+  const mixedIntentPlan = await resolveMixedProductAdminTurn({
+    segments: textSegments,
+    history,
+    classify: ({ intent, latestText, history: segmentHistory }) =>
+      extractChatSearchIntent({ intent, latestText, history: segmentHistory }),
+  }).catch(() => null);
+  const processText = normalizeInboundChatQuery(mixedIntentPlan?.productText ?? mergedText);
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
@@ -649,13 +691,14 @@ async function replyToMessengerTurn(params: {
   // questions out of catalog search and routes them to a human, while preserving
   // deterministic greeting/shop-info/smalltalk routes.
   const classifiedIntent =
-    route.allowsSearch || route.intent === LineIntent.UNKNOWN
+    mixedIntentPlan?.productSearchIntent ??
+    (route.allowsSearch || route.intent === LineIntent.UNKNOWN
       ? await extractChatSearchIntent({
           intent: route.intent,
           latestText: processText,
           history,
         }).catch(() => null)
-      : null;
+      : null);
 
   // Apply the LLM's interpreted purpose through the same shared group routing
   // used by LINE. This is especially important for contextual follow-ups such as
@@ -723,14 +766,23 @@ async function replyToMessengerTurn(params: {
     return;
   }
   if (multiDetection?.subjects && multiDetection.subjects.length >= 2) {
-    await replyWithMessengerMultiSubject({
+    const multiOutcome = await replyWithMessengerMultiSubject({
       pageAccessToken,
       conversationId,
       psid,
       subjects: multiDetection.subjects,
-      originalText: mergedText,
+      originalText: mixedIntentPlan?.productText ?? mergedText,
       history,
     });
+    if (multiOutcome === "replied" && mixedIntentPlan) {
+      await sendDeferredMessengerAdminHandoff({
+        pageAccessToken,
+        conversationId,
+        psid,
+        originalText: mergedText,
+        intent: mixedIntentPlan.adminRoute.intent,
+      });
+    }
     return;
   }
 
@@ -778,10 +830,21 @@ async function replyToMessengerTurn(params: {
         psid,
         route: MESSENGER_PRODUCT_ROUTE,
         bridgeInput: { route: MESSENGER_PRODUCT_ROUTE, text: null, extractedPartNumber: directTextCode },
-        originalText: mergedText,
+        originalText: mixedIntentPlan?.productText ?? mergedText,
         history,
       });
-      if (outcome !== "not_searched") return;
+      if (outcome !== "not_searched") {
+        if (outcome === "replied" && mixedIntentPlan) {
+          await sendDeferredMessengerAdminHandoff({
+            pageAccessToken,
+            conversationId,
+            psid,
+            originalText: mergedText,
+            intent: mixedIntentPlan.adminRoute.intent,
+          });
+        }
+        return;
+      }
     }
     const outcome = await replyWithProductSearch({
       pageAccessToken,
@@ -789,10 +852,21 @@ async function replyToMessengerTurn(params: {
       psid,
       route: effectiveRoute,
       bridgeInput: { route: effectiveRoute, text: processText, fitmentHints, fitmentPartHeadNoun },
-      originalText: mergedText,
+      originalText: mixedIntentPlan?.productText ?? mergedText,
       history,
     });
-    if (outcome !== "not_searched") return;
+    if (outcome !== "not_searched") {
+      if (outcome === "replied" && mixedIntentPlan) {
+        await sendDeferredMessengerAdminHandoff({
+          pageAccessToken,
+          conversationId,
+          psid,
+          originalText: mergedText,
+          intent: mixedIntentPlan.adminRoute.intent,
+        });
+      }
+      return;
+    }
   }
 
   // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
@@ -1013,7 +1087,7 @@ async function replyWithMessengerMultiSubject(input: {
   subjects: ChatSubject[];
   originalText: string;
   history: ChatHistoryItem[];
-}): Promise<void> {
+}): Promise<MessengerProductReplyOutcome> {
   for (const subject of input.subjects.slice(0, 3)) {
     const query = (subject.query || subject.partType || input.originalText).trim();
     const subjectIntent: ChatSearchIntent = {
@@ -1042,7 +1116,7 @@ async function replyWithMessengerMultiSubject(input: {
           intent: LineIntent.PRODUCT_INQUIRY_TEXT,
           text: vehicleNamedButUnresolved ? CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY : undefined,
         });
-        return;
+        return "handoff";
       }
 
       const outcome = await replyWithProductSearch({
@@ -1060,13 +1134,13 @@ async function replyWithMessengerMultiSubject(input: {
         history: input.history,
       });
 
-      if (outcome === "handoff") return;
+      if (outcome === "handoff") return "handoff";
       if (outcome === "not_searched") {
         await handoffUncertainMessengerProduct({
           ...input,
           intent: LineIntent.PRODUCT_INQUIRY_TEXT,
         });
-        return;
+        return "handoff";
       }
     } catch (error) {
       console.error(
@@ -1076,9 +1150,10 @@ async function replyWithMessengerMultiSubject(input: {
         ...input,
         intent: LineIntent.PRODUCT_INQUIRY_TEXT,
       });
-      return;
+      return "handoff";
     }
   }
+  return "replied";
 }
 
 /**

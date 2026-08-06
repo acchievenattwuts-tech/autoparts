@@ -52,6 +52,10 @@ import {
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
+import {
+  resolveMixedProductAdminTurn,
+  type MixedProductAdminTurn,
+} from "@/lib/chat-core/mixed-intent";
 import { resolveLineAiSendDecision } from "@/lib/line-ai-policy";
 import {
   acquireLineConversationLock,
@@ -926,6 +930,10 @@ export type ProcessLineAiReplyInput = {
   messageType: LineMessageType;
   route: ReturnType<typeof routeChatIntent>;
   text: string | null;
+  /** Original text-message boundaries for a coalesced burst. Keeping these lets
+   *  product discovery run before a separate admin-owned operation in the same
+   *  burst instead of letting one merged intent suppress the product search. */
+  textSegments?: string[];
   imageClassification: LineImageClassification | null;
   lineEventId: string | null;
   /** Abort-on-newer hook (coalescing): called right before the reply is sent. If
@@ -961,6 +969,9 @@ async function respondMultiSubject(
      *  (mirror ของ hiddenPriceWithProducts ใน single path: โชว์ของก่อน แล้วต่อ note
      *  ส่งเรื่องราคา + freeze รอแอดมิน) */
     priceAsk: boolean;
+    /** Separate admin-owned message from the same coalesced burst. Product blocks
+     *  are delivered first; this acknowledgement is always the final block. */
+    deferredAdminIntent?: LineIntent | null;
   },
 ): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED } | null> {
   if (!config.channelAccessToken) return null;
@@ -1130,6 +1141,10 @@ async function respondMultiSubject(
   const unlinkedPriceNote = buildUnlinkedPriceNote(priceTier, shownProducts);
   if (unlinkedPriceNote) blocks.push([textMessage(unlinkedPriceNote)]);
 
+  if (extras.deferredAdminIntent) {
+    blocks.push([textMessage(handoffAckForIntent(extras.deferredAdminIntent))]);
+  }
+
   // Abort-on-newer (coalescing): a newer message arrived → re-run with the merged
   // turn instead of sending a now-stale multi answer.
   if (input.shouldAbortBeforeSend) {
@@ -1209,19 +1224,23 @@ async function respondMultiSubject(
   // Any missing/suppressed subject is now an admin handoff by policy. Freeze after
   // sending the useful subjects so the AI cannot continue while a human checks the
   // unresolved one. Price asks follow the same waiting-admin state.
-  if (anyNotFound || extras.priceAsk) {
+  if (anyNotFound || extras.priceAsk || extras.deferredAdminIntent) {
     await dependencies.updateLineConversationState(
       input.conversation.id,
       buildLineConversationStatePatch({
         type: "waiting_admin",
         at: new Date(),
-        reason: anyNotFound ? "MULTI_SUBJECT_NO_MATCH_HANDOFF" : "MULTI_SUBJECT_PRICE_HANDOFF",
+        reason: anyNotFound
+          ? "MULTI_SUBJECT_NO_MATCH_HANDOFF"
+          : extras.priceAsk
+            ? "MULTI_SUBJECT_PRICE_HANDOFF"
+            : `MULTI_SUBJECT_ADMIN_AFTER_SEARCH_${extras.deferredAdminIntent}`,
       }),
     );
   }
 
   // A missing/suppressed category or price ask always alerts the admin.
-  if (anyNotFound || extras.priceAsk) {
+  if (anyNotFound || extras.priceAsk || extras.deferredAdminIntent) {
     const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
     const countPending =
       dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
@@ -1333,8 +1352,40 @@ export async function processLineAiReply(
     // PAYMENT_SLIP_IMAGE from the vision classifier) — the text classifier only
     // applies to text messages.
     const isTextTurn = input.messageType === LineMessageType.TEXT;
-    const layer1Group = intentToGroup(input.route.intent);
-    const quotationRequest = input.route.reason === "QUOTATION_REQUEST_KEYWORD";
+    const mixedIntentPlan: MixedProductAdminTurn | null =
+      isTextTurn && (input.textSegments?.length ?? 0) >= 2
+        ? await resolveMixedProductAdminTurn({
+            segments: input.textSegments ?? [],
+            history,
+            classify: async ({ intent, latestText, history: segmentHistory }) => {
+              const known = await resolveKnownQueryIntent(latestText).catch(() => null);
+              if (known?.contextFree) {
+                return {
+                  group: "product",
+                  query: known.query,
+                  isProductQuery: true,
+                  partType: known.categoryName,
+                  carBrand: known.carBrandName,
+                  carModel: known.carModelName,
+                  year: known.fitmentYear,
+                  partKind: null,
+                  tooBroad: false,
+                };
+              }
+              return (dependencies.extractChatSearchIntent ?? extractChatSearchIntent)({
+                intent,
+                latestText,
+                history: segmentHistory,
+              });
+            },
+          }).catch(() => null)
+        : null;
+    const processText = normalizeInboundChatQuery(mixedIntentPlan?.productText ?? input.text);
+    const baseRoute = mixedIntentPlan
+      ? routeChatIntent({ messageType: LineMessageType.TEXT, text: processText })
+      : input.route;
+    const layer1Group = intentToGroup(baseRoute.intent);
+    const quotationRequest = baseRoute.reason === "QUOTATION_REQUEST_KEYWORD";
     // Price/purchase keyword hits are NO LONGER a hard skip — a message like
     // "หม้อน้ำ d-max ราคาเท่าไหร่" must be classified so it can route to product
     // (search + show), not a blind admin hand-off. Only payment/claim stay
@@ -1347,25 +1398,23 @@ export async function processLineAiReply(
       // จัดใหม่เป็น general_faq/other แล้วให้ Knowledge RAG แต่งคำตอบเองจนกลายเป็น
       // ข้อความชวนคุยกับแอดมิน (ซึ่งลูกค้าไม่ได้ข้อมูลร้านที่ขอ).
       layer1Group === "shop_info" ||
-      input.route.reason === "SHIPPING_ADMIN_ONLY" ||
-      input.route.reason === "SHIPPING_ADDRESS_KEYWORD" ||
+      baseRoute.reason === "SHIPPING_ADMIN_ONLY" ||
+      baseRoute.reason === "SHIPPING_ADDRESS_KEYWORD" ||
       quotationRequest ||
-      input.route.reason === "SERVICE_INQUIRY_KEYWORD";
+      baseRoute.reason === "SERVICE_INQUIRY_KEYWORD";
     // True when the regex flagged a price/buy intent — used to (a) skip the
     // purchase hand-off when it's really a price *inquiry* we can answer with
     // products, and (b) append a "price → admin" note after the matches.
     const regexPriceIntent =
-      input.route.intent === LineIntent.PURCHASE_INTENT ||
-      input.route.intent === LineIntent.PRICE_NEGOTIATION;
+      baseRoute.intent === LineIntent.PURCHASE_INTENT ||
+      baseRoute.intent === LineIntent.PRICE_NEGOTIATION;
     const priceQuestionIntent =
-      input.route.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(input.text ?? "");
+      baseRoute.intent === LineIntent.PRICE_NEGOTIATION || PRICE_QUESTION_RE.test(processText ?? "");
     const shouldClassify = isTextTurn && !hardGuard;
     // Space-split glued Thai+digit queries ("วาล์วโตโยต้า134" → "วาล์วโตโยต้า 134")
     // before the AI/search pipeline reads them, so model-code/year anchors tokenize
     // and the search guards engage. The raw input.text stays untouched for
     // storage/echo/audit.
-    const processText = normalizeInboundChatQuery(input.text);
-
     // Hybrid A (rule-first): when the message is a fully-known, self-contained
     // product query (part + vehicle, or a code) we derive the intent from the
     // SearchKeyword dictionary and SKIP the Gemini classifier. Gated on
@@ -1394,11 +1443,13 @@ export async function processLineAiReply(
       regexPriceIntent || priceQuestionIntent ? extractPriceProductSubjectsFromText(processText) : [];
     const priceSubjectIntent = buildPriceProductSearchIntent(extractedPriceSubjects);
 
-    const classifiedSearchIntent = ruleSearchIntent
+    const classifiedSearchIntent = mixedIntentPlan?.productSearchIntent
+      ? mixedIntentPlan.productSearchIntent
+      : ruleSearchIntent
       ? ruleSearchIntent
       : shouldClassify
         ? await (dependencies.extractChatSearchIntent ?? extractChatSearchIntent)({
-            intent: input.route.intent,
+            intent: baseRoute.intent,
             latestText: processText,
             history,
           }).catch(() => null)
@@ -1482,7 +1533,7 @@ export async function processLineAiReply(
     // / policy machinery). general_faq / social / other have no 1:1 intent → keep
     // the Layer-1 route and drive them with the flags below. Non-text turns keep
     // their original route untouched.
-    const route = isTextTurn ? groupToRoute(group) ?? input.route : input.route;
+    const route = isTextTurn ? groupToRoute(group) ?? baseRoute : baseRoute;
     const classifierUncertain =
       isTextTurn && classifyFailed && route.intent === LineIntent.PRODUCT_INQUIRY_TEXT;
     const tryFaqThenAsk = isTextTurn && (group === "general_faq" || group === "other");
@@ -1507,6 +1558,18 @@ export async function processLineAiReply(
         routedIntent: route.intent,
       },
     });
+    if (mixedIntentPlan) {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "MIXED_INTENT_PRODUCT_FIRST",
+        payload: {
+          lineEventId: input.lineEventId,
+          productText: mixedIntentPlan.productText,
+          adminText: mixedIntentPlan.adminText,
+          adminGroup: mixedIntentPlan.adminGroup,
+        },
+      });
+    }
 
     // social (ขอบคุณ/โอเค) → brief ack, or stay silent when it's just a closing
     // ack right after the shop replied. Handled inline like a sticker.
@@ -1572,6 +1635,7 @@ export async function processLineAiReply(
       const multi = await respondMultiSubject(input, config, dependencies, multiSubjects, {
         getPriceTier,
         priceAsk: priceAskThisTurn,
+        deferredAdminIntent: mixedIntentPlan?.adminRoute.intent ?? null,
       });
       if (multi) return multi;
     }
@@ -2667,7 +2731,7 @@ export async function processLineAiReply(
       (route.intent === LineIntent.PRODUCT_INQUIRY_TEXT ||
         route.intent === LineIntent.PART_IMAGE_INQUIRY)
     ) {
-      isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(input.text).catch(
+      isPurchaseIntent = await (dependencies.classifyPurchaseIntent ?? classifyPurchaseIntent)(processText).catch(
         () => false,
       );
     }
@@ -3115,7 +3179,7 @@ export async function processLineAiReply(
         : earlyGeneratePromise ??
           generateSuggestion({
             intent: route.intent,
-            originalText: input.text,
+            originalText: mixedIntentPlan?.productText ?? input.text,
             productSearch: displayProductSearch,
             history,
             products,
@@ -3238,6 +3302,18 @@ export async function processLineAiReply(
     if (!forcedResponse && hiddenPriceWithProducts && sendDecision.action === "send") {
       handoffAfterSend = true;
     }
+    // A coalesced burst can contain a complete product request followed by a
+    // separate admin-owned operation (for example a delivery destination). Keep
+    // the product route authoritative, then pause only after its answer/cards and
+    // the final admin acknowledgement have been delivered.
+    if (
+      !forcedResponse &&
+      mixedIntentPlan &&
+      products.length > 0 &&
+      sendDecision.action === "send"
+    ) {
+      handoffAfterSend = true;
+    }
 
     if (!forcedResponse && !handoffAfterSend && products.length > 0) {
       suggestion = {
@@ -3340,11 +3416,18 @@ export async function processLineAiReply(
     // สุดท้ายเสมอ ไม่ไปเบียด followUpBubble (didYouMean / near-match) ซึ่งเป็นคำเตือน
     // เรื่องความแม่นของผลค้นหา สำคัญกว่าเรื่องราคา จึงต้องได้ส่งด้วยทั้งคู่
     const unlinkedPriceNote = !forcedResponse ? buildUnlinkedPriceNote(priceTier, products) : null;
+    const deferredAdminBubble =
+      !forcedResponse && mixedIntentPlan && products.length > 0
+        ? textMessage(handoffAckForIntent(mixedIntentPlan.adminRoute.intent))
+        : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),
       ...(productFlex ? [productFlex] : []),
       ...(followUpBubble ? [followUpBubble] : []),
       ...(unlinkedPriceNote ? [textMessage(unlinkedPriceNote)] : []),
+      // Must remain last: the customer sees useful product information before
+      // being told that the separate operational request is going to an admin.
+      ...(deferredAdminBubble ? [deferredAdminBubble] : []),
     ];
 
     // Abort-on-newer (coalescing): a customer message arrived while we were
@@ -3437,7 +3520,9 @@ export async function processLineAiReply(
         buildLineConversationStatePatch({
           type: "waiting_admin",
           at: new Date(),
-          reason: sendDecision.reason,
+          reason: mixedIntentPlan
+            ? `MIXED_PRODUCT_ADMIN_AFTER_SEARCH_${mixedIntentPlan.adminRoute.intent}`
+            : sendDecision.reason,
         }),
       );
     }
@@ -4155,6 +4240,7 @@ async function runConversationOwnerLoop(args: {
         messageType: turn.messageType,
         route: turn.route,
         text: turn.text,
+        textSegments: turn.textSegments,
         imageClassification: turn.imageClassification,
         lineEventId: turn.lineEventId,
         shouldAbortBeforeSend,
@@ -4197,6 +4283,7 @@ async function buildMergedTurnInput(args: {
   messageType: LineMessageType;
   route: ReturnType<typeof routeChatIntent>;
   text: string | null;
+  textSegments: string[];
   imageClassification: LineImageClassification | null;
   replyToken: string | null;
   lineEventId: string | null;
@@ -4212,6 +4299,9 @@ async function buildMergedTurnInput(args: {
       .filter(Boolean)
       .join("\n")
       .trim() || null;
+  const textSegments = messages
+    .map((message) => message.text?.trim() ?? "")
+    .filter(Boolean);
 
   const imageMessages = messages.filter((message) => message.messageType === LineMessageType.IMAGE);
   let imageClassification: LineImageClassification | null = null;
@@ -4308,6 +4398,7 @@ async function buildMergedTurnInput(args: {
     messageType,
     route,
     text: mergedText,
+    textSegments,
     imageClassification,
     replyToken: latest.replyToken ?? null,
     lineEventId: latest.lineEventId ?? null,
