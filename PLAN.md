@@ -476,13 +476,27 @@
 - ตัด `revalidatePath("/")` ใน `master/categories/actions.ts` — ซ้ำซ้อนกับ `updateTag()` จริง แต่การแก้หมวดหมู่เกิดเดือนละไม่กี่ครั้ง ประหยัดแทบไม่มี ขณะที่ถ้าเข้าใจ route-cache tag inheritance ของ Next 16 คลาดเคลื่อน หน้าแรกจะค้าง 1 ชม. — **ไม่คุ้ม**
 - เปลี่ยน `where: { OR: keys }` (≤300 คู่) ใน `lots/expiry` เป็น `productId: { in: [...] }` — มีขอบเขตชัดด้วย `take: 300` อยู่แล้ว และเสี่ยงดึงแถวมากกว่าเดิมถ้าสินค้าตัวหนึ่งมีหลายร้อย lot
 - อัปเกรด `sharp` / `next` / `prisma` — เจ้าของร้านเลือกแยก deploy ต่างหาก
-- Error monitoring (Sentry / log drain) — ยังไม่ทำรอบนี้
+- Sentry / log drain — เลือกไม่ใช้ (ดูหัวข้อ Error monitoring ด้านล่าง): Sentry ต้องแก้ CSP `connect-src` เพิ่ม domain ภายนอก + เพิ่ม client bundle ~30KB gz ซึ่งขัดกับงาน Core Web Vitals ที่ลงแรงไว้ · ปัญหาจริงคือ "ไม่รู้ว่ามี error" ไม่ใช่ "วิเคราะห์ error ไม่ลึกพอ"
 
 **ค้างไว้ (ยืนยันแล้วว่าเลื่อน)**
 - [ ] ข้อ 11 — รวบ `upsert` ทีละ lot ใน [lib/lot-control.ts](lib/lot-control.ts) (ใบซื้อ 20 lot = 60 round-trip เรียงกันขณะถือ `FOR UPDATE` + `lock_timeout` 8 วิ) · **ต้องเขียน golden test คลุม `writePurchaseLots`/`writeAdjustmentLots` ก่อน** เพราะกระทบต้นทุนสินค้าโดยตรง
 - [ ] ข้อ 18 — แตกไฟล์ >800 บรรทัด 28 ไฟล์ (`line-webhook-processor.ts` 4,414) · ทำแบบ opportunistic ตอนแก้ไฟล์นั้นอยู่แล้ว
 - [ ] อัปเกรด `sharp` (CVE libvips บน path ที่รับ upload จากลูกค้า) — ควรทำเป็นลำดับถัดไป
 - [ ] ตรวจหลัง deploy: cron `/api/notifications/cron/cleanup` รอบแรกจะลบ notification ที่อ่านแล้ว + เก่ากว่า 30 วัน **ที่สะสมมาตั้งแต่ 9 มิ.ย. ในครั้งเดียว**
+
+## Error monitoring — เตือนผ่าน Telegram ที่มีอยู่แล้ว (2026-08-07)
+
+- **สถานะก่อนแก้ (นับจริง)**: `console.error` 165 · catch ที่ไม่ log 337 (ส่วนใหญ่ตั้งใจ เช่น parse fallback/permission check) · ในนั้น **46 จุดคืน "เกิดข้อผิดพลาด" ให้ผู้ใช้โดยไม่เก็บสาเหตุไว้เลย** · การดักจับ error ฝั่ง browser = 0 · Vercel runtime log ไม่มี alert → ธุรกรรมล้มเหลวจะรู้ต่อเมื่อลูกค้าโทรมาบ่น
+- **จุดที่แย่ที่สุด**: `warranty-claims/actions.ts` มี 14 catch แต่ `console.error` = **0** — เอกสารเคลมทั้งประเภทล้มเหลวแบบไร้ร่องรอย
+- **ทำไมไม่ใช้ Sentry**: CSP `connect-src` ล็อกไว้ ([next.config.ts](next.config.ts)) ต้องเปิด domain ภายนอกเพิ่ม + client bundle ~30KB gz ขัดกับงาน CWV · ระบบมีชื่อ/เบอร์/ที่อยู่ลูกค้าเต็มไปหมด scrubbing พลาดครั้งเดียวคือ PII รั่วออกนอกประเทศ · ปัญหาจริงคือ "ไม่รู้ว่ามี error" ไม่ใช่ "วิเคราะห์ไม่ลึกพอ" — dashboard ที่ไม่มีใครเปิดมีค่าน้อยกว่าข้อความที่เด้งเข้ามือถือ
+- [x] [lib/error-reporting.ts](lib/error-reporting.ts) — ใช้ `lib/telegram.ts` (retry + จัดการ 429) ที่มีอยู่แล้ว ไม่เพิ่ม dependency ไม่แตะ CSP · **ไม่ใช่ logger ทั่วไป**: `console.error` ยังเป็นบันทึกหลัก ตัวนี้ต่อเฉพาะ path ที่แพงถ้าพลาด
+- **3 คุณสมบัติที่สำคัญกว่าความครบถ้วน**: (1) พังไม่ได้ — ทุก error ภายในถูกกลืน · (2) ถล่มไม่ได้ — 1 ข้อความ/signature/15 นาที ผ่าน `ApiThrottle` · (3) ไม่พก payload อิสระ — ส่งได้แค่ `scope`/`docNo`/`entityId`/`userId`
+- **หัวใจคือการจัดกลุ่ม**: `normalizeErrorMessage()` ตัด uuid/เลขเอกสาร/timestamp ออก → ใบขาย 50 ใบที่พังด้วยสาเหตุเดียวกันได้ **1 ข้อความ ไม่ใช่ 50** · ถ้าตรงนี้พัง alert จะกลายเป็น noise แล้วคนเลิกอ่าน = แย่กว่าไม่มี · golden test 14 เคสล็อกคุณสมบัตินี้ไว้
+- [x] ต่อเข้า 32 จุด: warranty-claims 7 · sales/purchases/receipts/credit-notes/purchase-returns (create/cancel/update) 15 · cron ทั้งหมด 8 · LINE + Messenger webhook 2 · ตัด `console.error` ซ้ำซ้อนออก 14 บรรทัด
+- **ตัดสินใจต่างจากแผนตอนเสนอ**: ไม่ใส่ reporting ใน `writeStockCard` โดยตรง เพราะถูกเรียกในทรานแซกชันและจะได้ 2 alert ต่อ 1 ความล้มเหลว — การรายงานที่ขอบ action ครอบคลุมอยู่แล้วและได้ scope ที่มีความหมายกว่า (`sales.create` บอกได้มากกว่า `stock-card`) · `catch` ที่คืน "ไม่มีสิทธิ์เข้าถึง" ไม่ต่อ เพราะเป็นการปฏิเสธสิทธิ์ปกติ ไม่ใช่ความผิดพลาด
+- [x] ไม่แตะตามที่ตกลง: 165 call site เดิม · client-side capture · CSP · dependency ใหม่
+- [ ] `ALERT_COOLDOWN_MS` = 15 นาที เป็นค่าที่เดาไว้ก่อน — ใช้จริงสัก 1-2 สัปดาห์แล้วปรับ (แก้ที่เดียวใน [lib/error-reporting.ts](lib/error-reporting.ts))
+- [ ] ถ้าอยากได้สถิติย้อนหลัง/ค้นหา log ค่อยเพิ่ม structured logging + Vercel Log Drain ทีหลัง — ทาง Telegram นี้ไม่ขวาง
 
 ## ค้นหาช้า — ตัด `similarity(search_text)` ออกจากบล็อกให้คะแนน (2026-08-04)
 - บริบท: ตามรอยมาจาก error `timeout exceeded when trying to connect` ตอน revalidate cache (§ด้านล่าง 2026-07-31) ที่เกิดซ้ำเช้า 4 ส.ค. → เจาะจนพบว่าตัวกินเวลา connection จริงคือ query ค้นหาสินค้า ไม่ใช่ config ของพูล

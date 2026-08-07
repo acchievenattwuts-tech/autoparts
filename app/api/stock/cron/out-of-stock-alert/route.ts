@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { db } from "@/lib/db";
 import { notifyOutOfStockDaily, type OutOfStockProduct } from "@/lib/notifications";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
@@ -52,7 +54,7 @@ export async function GET(request: Request): Promise<Response> {
     const notified = await notifyOutOfStockDaily(products);
     return NextResponse.json({ ok: true, outOfStockCount: products.length, notified });
   } catch (error) {
-    console.error("[stock] out-of-stock alert cron failed:", error instanceof Error ? error.message : "unknown");
+    await reportCriticalError(error, { scope: "cron.out_of_stock_alert" });
     return NextResponse.json({ ok: false, error: "ALERT_FAILED" }, { status: 500 });
   }
 }

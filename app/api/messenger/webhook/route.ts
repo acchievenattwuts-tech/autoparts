@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 // so a slow Gemini turn never makes Facebook retry-deliver the event.
 export const maxDuration = 60;
 
+import { reportCriticalError } from "@/lib/error-reporting";
 import { after, type NextRequest } from "next/server";
 
 import {
@@ -93,9 +94,10 @@ export async function POST(request: NextRequest) {
     try {
       await processMessengerBatch(events, { pageAccessToken });
     } catch (error) {
-      console.error(
-        `[messenger-webhook] batch processing failed: ${error instanceof Error ? error.message : "unknown"}`,
-      );
+      // Same as the LINE webhook: this runs after the 200 has gone back to
+      // Meta, so a failure here is invisible except that the customer never
+      // gets a reply.
+      await reportCriticalError(error, { scope: "messenger.webhook_processing" });
     }
   });
 

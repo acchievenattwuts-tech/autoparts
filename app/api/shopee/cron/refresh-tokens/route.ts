@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { refreshExpiringShopTokens } from "@/lib/shopee/services/token-maintenance";
 
 /**
@@ -39,7 +41,7 @@ export async function GET(request: Request): Promise<Response> {
     const result = await refreshExpiringShopTokens();
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
-    console.error("[shopee] token refresh cron failed:", error instanceof Error ? error.message : "unknown");
+    await reportCriticalError(error, { scope: "cron.shopee_refresh_tokens" });
     return NextResponse.json({ ok: false, error: "REFRESH_FAILED" }, { status: 500 });
   }
 }

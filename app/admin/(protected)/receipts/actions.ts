@@ -7,6 +7,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { reportCriticalError } from "@/lib/error-reporting";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -420,7 +421,7 @@ export async function createReceipt(
 
     return { success: true, receiptNo, receiptId: createdReceiptId };
   } catch (err) {
-    console.error("[createReceipt] error:", err);
+    await reportCriticalError(err, { scope: "receipts.create" });
     return {
       success: false,
       error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้",
@@ -494,7 +495,7 @@ export async function cancelReceipt(
     revalidatePath("/admin/receipts");
     return { success: true };
   } catch (err) {
-    console.error("[cancelReceipt]", err);
+    await reportCriticalError(err, { scope: "receipts.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -640,7 +641,7 @@ export async function updateReceipt(
     revalidatePath("/admin/customers");
     return { success: true };
   } catch (err) {
-    console.error("[updateReceipt]", err);
+    await reportCriticalError(err, { scope: "receipts.update" });
     return {
       error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
     };

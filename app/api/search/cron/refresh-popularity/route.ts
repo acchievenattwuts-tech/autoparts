@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { refreshSearchPopularity, POPULARITY_WINDOW_DAYS } from "@/lib/search-popularity";
 
 /**
@@ -37,7 +39,7 @@ export async function GET(request: Request): Promise<Response> {
     const { rowsUpdated } = await refreshSearchPopularity();
     return NextResponse.json({ ok: true, windowDays: POPULARITY_WINDOW_DAYS, rowsUpdated });
   } catch (error) {
-    console.error("[search] popularity refresh cron failed:", error instanceof Error ? error.message : "unknown");
+    await reportCriticalError(error, { scope: "cron.search_popularity" });
     return NextResponse.json({ ok: false, error: "REFRESH_FAILED" }, { status: 500 });
   }
 }

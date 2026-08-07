@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { pullAllAuthorizedShops } from "@/lib/shopee/services/orders";
 
 /**
@@ -31,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     const summary = await pullAllAuthorizedShops();
     return NextResponse.json({ ok: true, ...summary });
   } catch (error) {
-    console.error("[shopee] order pull cron failed:", error instanceof Error ? error.message : "unknown");
+    await reportCriticalError(error, { scope: "cron.shopee_pull_orders" });
     return NextResponse.json({ ok: false, error: "PULL_FAILED" }, { status: 500 });
   }
 }

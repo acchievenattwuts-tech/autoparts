@@ -11,6 +11,7 @@ import { z } from "zod";
 
 import { db, dbTx } from "@/lib/db";
 import { generateClaimNo } from "@/lib/doc-number";
+import { reportCriticalError } from "@/lib/error-reporting";
 import {
   AuditAction,
   ClaimOutcome,
@@ -396,6 +397,7 @@ export async function createClaim(
     revalidatePath("/admin/warranty-claims");
     return { claimNo };
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.create", userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -474,7 +476,8 @@ export async function updateClaim(
     revalidatePath(`/admin/warranty-claims/${id}`);
     revalidatePath("/admin/warranty-claims");
     return {};
-  } catch {
+  } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.update", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };
   }
 }
@@ -559,6 +562,7 @@ export async function sendClaimToSupplier(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.send", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
@@ -736,6 +740,7 @@ export async function closeClaim(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.close", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
@@ -851,6 +856,7 @@ export async function returnClaimToCustomer(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.return", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
@@ -948,6 +954,7 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.reopen", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
@@ -1021,7 +1028,8 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
-  } catch {
+  } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };
   }
 }

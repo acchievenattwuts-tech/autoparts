@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import {
   cleanupExpiredPurchaseOcrFiles,
   PURCHASE_OCR_TEMP_MAX_AGE_MS,
@@ -35,10 +37,7 @@ export async function GET(request: Request): Promise<Response> {
       ...summary,
     });
   } catch (error) {
-    console.error(
-      "[purchase-ocr-cleanup] cron failed",
-      error instanceof Error ? error.message : "unknown",
-    );
+    await reportCriticalError(error, { scope: "cron.purchase_ocr_cleanup" });
     return NextResponse.json({ ok: false, error: "PURCHASE_OCR_CLEANUP_FAILED" }, { status: 500 });
   }
 }

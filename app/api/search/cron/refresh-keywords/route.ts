@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { refreshSearchKeywordIndex } from "@/lib/search-keyword-index";
 
 /**
@@ -34,10 +36,7 @@ export async function GET(request: Request): Promise<Response> {
     const rows = await refreshSearchKeywordIndex();
     return NextResponse.json({ ok: true, rows });
   } catch (error) {
-    console.error(
-      "[search] keyword index refresh cron failed:",
-      error instanceof Error ? error.message : "unknown",
-    );
+    await reportCriticalError(error, { scope: "cron.search_keywords" });
     return NextResponse.json({ ok: false, error: "REFRESH_FAILED" }, { status: 500 });
   }
 }

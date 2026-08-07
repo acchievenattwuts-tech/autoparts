@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 // processing-lock lease so the owner can finish and reply before being killed.
 export const maxDuration = 60;
 
+import { reportCriticalError } from "@/lib/error-reporting";
 import { after } from "next/server";
 
 import {
@@ -159,7 +160,10 @@ async function processWebhookInBackground(
       coalesceLeaseMs: 60_000,
     });
   } catch (error) {
-    console.error("[line-webhook] AI agent background processing failed", error);
+    // Runs in after(), so nothing surfaces to LINE or to the customer — the
+    // webhook has already answered 200. Without an alert this is completely
+    // silent: the customer just never gets a reply.
+    await reportCriticalError(error, { scope: "line.webhook_processing" });
   }
 }
 

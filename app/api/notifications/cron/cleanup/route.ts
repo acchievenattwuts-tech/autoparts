@@ -3,6 +3,8 @@ export const dynamic = "force-dynamic";
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
+import { reportCriticalError } from "@/lib/error-reporting";
+
 import { cleanupOldNotifications } from "@/lib/notifications";
 
 /**
@@ -50,10 +52,7 @@ export async function GET(request: Request): Promise<Response> {
     }
     return NextResponse.json({ ok: true, retentionDays: RETENTION_DAYS, deleted });
   } catch (error) {
-    console.error(
-      "[notification-cleanup] cron failed",
-      error instanceof Error ? error.message : "unknown",
-    );
+    await reportCriticalError(error, { scope: "cron.notification_cleanup" });
     return NextResponse.json({ ok: false, error: "NOTIFICATION_CLEANUP_FAILED" }, { status: 500 });
   }
 }

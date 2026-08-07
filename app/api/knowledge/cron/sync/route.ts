@@ -3,6 +3,8 @@ export const maxDuration = 60;
 
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+
+import { reportCriticalError } from "@/lib/error-reporting";
 import { syncKnowledgeRag } from "@/lib/knowledge-sync";
 import { processPendingKnowledgePublishJobs } from "@/lib/knowledge-cms-publish";
 import { db } from "@/lib/db";
@@ -31,10 +33,7 @@ export async function GET(request: Request): Promise<Response> {
     const result = await syncKnowledgeRag({ maxDocuments: 8 });
     return NextResponse.json({ ok: true, mode: "legacy", ...result });
   } catch (error) {
-    console.error(
-      "[knowledge-rag] automatic sync failed:",
-      error instanceof Error ? error.message : "unknown",
-    );
+    await reportCriticalError(error, { scope: "cron.knowledge_sync" });
     return NextResponse.json({ ok: false, error: "SYNC_FAILED" }, { status: 500 });
   }
 }

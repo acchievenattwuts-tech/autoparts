@@ -7,6 +7,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -615,7 +616,7 @@ export async function createCreditNote(
     revalidatePath("/admin/products");
     return { success: true, cnNo };
   } catch (err) {
-    console.error("[createCreditNote]", err);
+    await reportCriticalError(err, { scope: "credit_notes.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -716,7 +717,7 @@ export async function cancelCreditNote(
     revalidatePath("/admin/credit-notes");
     return { success: true };
   } catch (err) {
-    console.error("[cancelCreditNote]", err);
+    await reportCriticalError(err, { scope: "credit_notes.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1161,7 +1162,7 @@ export async function updateCreditNote(
     revalidatePath("/admin/products");
     return { success: true };
   } catch (err) {
-    console.error("[updateCreditNote]", err);
+    await reportCriticalError(err, { scope: "credit_notes.update" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

@@ -11,6 +11,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { reportCriticalError } from "@/lib/error-reporting";
 import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
@@ -707,7 +708,7 @@ export async function createSale(
     });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
-    console.error("[createSale]", err);
+    await reportCriticalError(err, { scope: "sales.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -830,7 +831,7 @@ export async function cancelSale(
     revalidatePath("/admin/sales");
     return { success: true };
   } catch (err) {
-    console.error("[cancelSale]", err);
+    await reportCriticalError(err, { scope: "sales.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1475,7 +1476,8 @@ const uploadDeliveryProofImage = async ({
       contentType: detectedType,
     });
     return { url };
-  } catch {
+  } catch (error) {
+    await reportCriticalError(error, { scope: "sales.update" });
     return { error: "อัปโหลดรูปหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
   }
 };

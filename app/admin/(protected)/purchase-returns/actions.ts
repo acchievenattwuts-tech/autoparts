@@ -9,6 +9,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
@@ -813,7 +814,7 @@ export async function createPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true, returnNo };
   } catch (error) {
-    console.error("[createPurchaseReturn]", error);
+    await reportCriticalError(error, { scope: "purchase_returns.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -914,7 +915,7 @@ export async function cancelPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
-    console.error("[cancelPurchaseReturn]", error);
+    await reportCriticalError(error, { scope: "purchase_returns.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1278,7 +1279,7 @@ export async function updatePurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
-    console.error("[updatePurchaseReturn]", error);
+    await reportCriticalError(error, { scope: "purchase_returns.update" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

@@ -7,6 +7,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { reportCriticalError } from "@/lib/error-reporting";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -719,7 +720,7 @@ export async function createPurchase(
     });
     return { success: true, purchaseId: createdPurchaseId, purchaseNo };
   } catch (err) {
-    console.error("[createPurchase]", err);
+    await reportCriticalError(err, { scope: "purchases.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -810,7 +811,7 @@ export async function cancelPurchase(
     revalidatePath("/admin/purchases");
     return { success: true };
   } catch (err) {
-    console.error("[cancelPurchase]", err);
+    await reportCriticalError(err, { scope: "purchases.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1523,7 +1524,7 @@ export async function updatePurchase(
     });
     return { success: true };
   } catch (err) {
-    console.error("[updatePurchase]", err);
+    await reportCriticalError(err, { scope: "purchases.update" });
     if (err instanceof Error && /lock timeout|deadlock/i.test(err.message)) {
       return { error: "มีการบันทึกใบนี้ซ้อนกันอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง" };
     }
