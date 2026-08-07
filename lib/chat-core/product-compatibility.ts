@@ -1,3 +1,9 @@
+import {
+  extractChatProductVoltage,
+  extractChatProductVoltages,
+  type ChatProductVoltage,
+} from "@/lib/chat-core/product-spec-resolve";
+
 export type ChatProductFitmentEvidence = {
   carBrandName: string | null;
   carModelName: string | null;
@@ -16,9 +22,14 @@ export type ChatVehicleConstraints = {
   side: "driver" | "passenger" | null;
   generation: string | null;
   engineSize: number | null;
+  voltage: ChatProductVoltage | null;
 };
 
-export type ChatProductConflictReason = "opposite_side" | "wrong_generation" | "wrong_engine";
+export type ChatProductConflictReason =
+  | "opposite_side"
+  | "wrong_generation"
+  | "wrong_engine"
+  | "wrong_voltage";
 
 export type ChatProductCompatibilityResult<T> = {
   products: T[];
@@ -69,6 +80,9 @@ export function extractChatVehicleConstraints(text?: string | null): ChatVehicle
     side: detectSide(text),
     generation: generations.size === 1 ? Array.from(generations)[0] : null,
     engineSize: engineSizes.size === 1 ? Array.from(engineSizes)[0] : null,
+    // Activates only when the customer explicitly names exactly one supported
+    // voltage. No V in the query (or an ambiguous "12V/24V") means no guard.
+    voltage: extractChatProductVoltage(text),
   };
 }
 
@@ -111,6 +125,11 @@ function analyzeProductEvidence(
     // vehicle on the same row. Once a relevant brand/model fitment exists, only
     // its structured engineSize is strong enough to declare a contradiction.
     engineSizes: fitments.length > 0 ? fitmentEngineSizes : extractEngineSizes(product.name),
+    // Product.name is the strongest catalog presentation fact available today.
+    // Aliases/descriptions are intentionally excluded because they may mention
+    // comparison variants (or contain a bad manual alias) without describing the
+    // actual SKU. Missing voltage is not a conflict; only an explicit opposite is.
+    voltages: new Set(extractChatProductVoltages(product.name)),
   };
 }
 
@@ -161,6 +180,13 @@ export function filterChatProductsByVehicleCompatibility<T extends ChatCompatibi
     ) {
       reasons.push("wrong_engine");
     }
+    if (
+      constraints.voltage !== null &&
+      evidence.voltages.size > 0 &&
+      !evidence.voltages.has(constraints.voltage)
+    ) {
+      reasons.push("wrong_voltage");
+    }
 
     if (reasons.length > 0) suppressed.push({ id: product.id, reasons });
     else kept.push({ product, evidence });
@@ -175,6 +201,9 @@ export function filterChatProductsByVehicleCompatibility<T extends ChatCompatibi
   }
   if (constraints.engineSize !== null && kept.some(({ evidence }) => evidence.engineSizes.size === 0)) {
     missing.push(`เครื่อง ${constraints.engineSize.toFixed(1)}`);
+  }
+  if (constraints.voltage !== null && kept.some(({ evidence }) => evidence.voltages.size === 0)) {
+    missing.push(`ระบบไฟ ${constraints.voltage}V`);
   }
 
   return {

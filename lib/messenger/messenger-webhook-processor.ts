@@ -580,6 +580,7 @@ async function replyToMessengerTurn(params: {
           : {
               route: partRoute,
               text: mergedText || null,
+              customerText: mergedText || null,
               extractedPartNumber: null,
               extractedImageHints: useHints ? imageHints : null,
               fitmentHints: useHardFilters
@@ -638,6 +639,7 @@ async function replyToMessengerTurn(params: {
           bridgeInput: {
             route: MESSENGER_PRODUCT_ROUTE,
             text: query,
+            customerText: query,
             fitmentHints: {
               categoryName: subject.partType,
               carBrandName: subject.carBrand,
@@ -851,7 +853,13 @@ async function replyToMessengerTurn(params: {
       conversationId,
       psid,
       route: effectiveRoute,
-      bridgeInput: { route: effectiveRoute, text: processText, fitmentHints, fitmentPartHeadNoun },
+      bridgeInput: {
+        route: effectiveRoute,
+        text: processText,
+        customerText: processText,
+        fitmentHints,
+        fitmentPartHeadNoun,
+      },
       originalText: mixedIntentPlan?.productText ?? mergedText,
       history,
     });
@@ -1127,6 +1135,7 @@ async function replyWithMessengerMultiSubject(input: {
         bridgeInput: {
           route: MESSENGER_PRODUCT_ROUTE,
           text: query,
+          customerText: query,
           fitmentHints,
           fitmentPartHeadNoun,
         },
@@ -1220,7 +1229,8 @@ async function replyWithProductSearch(params: {
   const priceTier = await resolveMessengerPriceTier(params.conversationId).catch(() => "UNKNOWN" as const);
   const compatibility = filterChatProductsByVehicleCompatibility({
     products: await getChatProductSummaries(ids).catch(() => []),
-    customerText: params.bridgeInput.text ?? params.originalText,
+    customerText:
+      params.bridgeInput.customerText ?? params.bridgeInput.text ?? params.originalText,
     carBrandName: params.bridgeInput.fitmentHints?.carBrandName,
     carModelName: params.bridgeInput.fitmentHints?.carModelName,
   });

@@ -20,11 +20,17 @@
 const THAI_DIGIT_BOUNDARY = /([฀-๿])(\d)/g;
 const DIGIT_THAI_BOUNDARY = /(\d)([฀-๿])/g;
 const LATIN_MODEL_SHORTHAND_YEAR_BOUNDARY = /\b([A-Za-z]{2,})(\d{2}(?:-\d{2})?)(?=\s|$)/g;
+// Customers commonly omit the space between a numeric compressor model and its
+// voltage ("50824v" = model 508, 24V). Split only a standalone numeric token
+// with a 12V/24V suffix; mixed product codes such as R134a and STA-7065 stay intact.
+const COMPACT_NUMERIC_VOLTAGE_BOUNDARY =
+  /(?<![\p{L}\p{N}_-])(\d{3,}?)(12|24)(v)(?![\p{L}\p{N}_-])/giu;
 
 export const normalizeInboundChatQuery = (text?: string | null): string =>
   (text ?? "")
     .replace(THAI_DIGIT_BOUNDARY, "$1 $2")
     .replace(DIGIT_THAI_BOUNDARY, "$1 $2")
     .replace(LATIN_MODEL_SHORTHAND_YEAR_BOUNDARY, "$1 $2")
+    .replace(COMPACT_NUMERIC_VOLTAGE_BOUNDARY, "$1 $2$3")
     .replace(/\s+/g, " ")
     .trim();

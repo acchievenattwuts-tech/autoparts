@@ -28,6 +28,7 @@ type TestCalls = {
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
   scopedReplyGroups: string[];
   searches: string[];
+  searchCustomerTexts: Array<string | null | undefined>;
   searchFitmentHints: Array<
     | {
         categoryName?: string | null;
@@ -211,6 +212,7 @@ function createProcessorTestDeps(input?: {
     markedSent: [],
     scopedReplyGroups: [],
     searches: [],
+    searchCustomerTexts: [],
     searchFitmentHints: [],
     conversationInputs: [],
     conversationProfileInputs: [],
@@ -302,6 +304,7 @@ function createProcessorTestDeps(input?: {
       calls.searches.push(
         input.extractedPartNumber ?? input.text ?? (input.extractedImageHints ?? []).join(" "),
       );
+      calls.searchCustomerTexts.push(input.customerText);
       calls.searchFitmentHints.push(input.fitmentHints ?? null);
       // Mirror the real bridge: a specific fitment part that anchored to zero
       // matches surfaces the SEARCHED_FITMENT_PART_NO_MATCH reason.
@@ -2673,6 +2676,61 @@ test("inquiry frame: a new part type is a topic shift — query rebuilt from the
   // Frame: part replaced, vehicle kept.
   assert.equal(calls.savedFrames.at(-1)?.partType, "คอยล์เย็น");
   assert.equal(calls.savedFrames.at(-1)?.carModel, "D-Max");
+});
+
+test("golden: LINE topic shift keeps a customer-authored model code outside the rebuilt frame query", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 },
+    consolidatedQuery: "คอมแอร์ 508",
+    intentPartType: "คอมแอร์",
+    intentCarModel: null,
+    intentPartKind: "universal",
+    fitmentFilters: { categoryName: "คอมแอร์ (Compressor)" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("คอมแอร์508", "golden-code-topic-shift"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.searches, ["คอมแอร์"], "the frame may keep the canonical part query");
+  assert.deepEqual(
+    calls.searchCustomerTexts,
+    ["คอมแอร์ 508"],
+    "the normalized customer text remains available for hard-code extraction",
+  );
+  assert.equal(calls.searchFitmentHints[0]?.categoryName, "คอมแอร์ (Compressor)");
+});
+
+test("golden: LINE hands off immediately when a customer-authored code search returns zero", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "หม้อน้ำ", carModel: "D-Max", year: 2003 },
+    consolidatedQuery: "คอมแอร์ 508",
+    intentPartType: "คอมแอร์",
+    intentCarModel: null,
+    intentPartKind: "universal",
+    fitmentFilters: { categoryName: "คอมแอร์ (Compressor)" },
+    searchIds: [],
+    searchTotal: 0,
+    faqReply: "ข้อความ FAQ ต้องไม่ถูกใช้แทนการส่งแอดมิน",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอมแอร์508", "golden-code-zero"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searches, ["คอมแอร์"]);
+  assert.deepEqual(calls.searchCustomerTexts, ["คอมแอร์ 508"]);
+  assert.equal(calls.searchFitmentHints[0]?.categoryName, "คอมแอร์ (Compressor)");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  assert.equal(calls.scopedReplyGroups.length, 0, "no FAQ/general reply may replace the code no-match handoff");
 });
 
 test("inquiry frame: a car named this turn but unreadable drops the carried vehicle (ซิ้ตี้ case)", async () => {

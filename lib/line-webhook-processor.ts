@@ -2328,6 +2328,11 @@ export async function processLineAiReply(
         : await dependencies.searchChatProductInquiry({
           route,
           text: consolidatedQuery ?? input.text,
+          // The inquiry frame may rebuild the effective query to a canonical part
+          // name on a topic shift ("คอมแอร์508" -> "คอมแอร์"). Preserve the
+          // customer's actual latest text so model/part codes remain hard search
+          // constraints and a zero result follows the existing admin-handoff path.
+          customerText: processText,
           extractedImageHints: trustedImageSearchHints.length > 0 ? trustedImageSearchHints : null,
           contextHints,
           fitmentHints: {
@@ -2492,7 +2497,9 @@ export async function processLineAiReply(
         : [];
     const compatibility = filterChatProductsByVehicleCompatibility({
       products: rawProducts,
-      customerText: consolidatedQuery ?? processText ?? input.text,
+      // Keep customer-authored codes/specs (notably voltage) even when the frame
+      // rebuilt the effective query, while retaining any grounded carried context.
+      customerText: [processText, consolidatedQuery].filter(Boolean).join(" ") || input.text,
       carBrandName: fitmentFilters.carBrandName,
       carModelName: fitmentFilters.carModelName,
     });

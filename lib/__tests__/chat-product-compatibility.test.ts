@@ -92,15 +92,50 @@ test("does not interpret digits inside real model names as generation markers", 
     side: null,
     generation: null,
     engineSize: 1.5,
+    voltage: null,
   });
   assert.deepEqual(extractChatVehicleConstraints("อะไหล่ CX-3 2.0"), {
     side: null,
     generation: null,
     engineSize: 2,
+    voltage: null,
   });
   assert.deepEqual(extractChatVehicleConstraints("อะไหล่ Mazda3 2.0"), {
     side: null,
     generation: null,
     engineSize: 2,
+    voltage: null,
   });
+});
+
+test("voltage guard suppresses only an explicit opposite voltage and retains missing metadata", () => {
+  const result = filterChatProductsByVehicleCompatibility({
+    customerText: "คอมแอร์ 508 24V",
+    products: [
+      { id: "P0460", name: "คอมแอร์ SANDEN 508 24V" },
+      { id: "P0532", name: "คอมแอร์ Sanden 508 24V STAL" },
+      { id: "P0459", name: "คอมแอร์ SANDEN 508 12V" },
+      { id: "unknown", name: "คอมแอร์ Sanden 508 ไม่ระบุระบบไฟ" },
+    ],
+  });
+
+  assert.equal(result.constraints.voltage, 24);
+  assert.deepEqual(result.products.map((product) => product.id), ["P0460", "P0532", "unknown"]);
+  assert.deepEqual(result.suppressed, [{ id: "P0459", reasons: ["wrong_voltage"] }]);
+  assert.match(result.verificationNote ?? "", /ระบบไฟ 24V/);
+});
+
+test("voltage guard stays off when the customer does not name one voltage", () => {
+  for (const customerText of ["คอมแอร์ 508", "คอมแอร์ 508 12V\/24V"]) {
+    const result = filterChatProductsByVehicleCompatibility({
+      customerText,
+      products: [
+        { id: "12v", name: "คอมแอร์ 508 12V" },
+        { id: "24v", name: "คอมแอร์ 508 24V" },
+      ],
+    });
+    assert.equal(result.constraints.voltage, null);
+    assert.deepEqual(result.products.map((product) => product.id), ["12v", "24v"]);
+    assert.deepEqual(result.suppressed, []);
+  }
 });

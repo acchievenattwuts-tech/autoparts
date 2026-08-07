@@ -9,6 +9,8 @@ import {
   CONDENSER_FAN_MOTOR_CATEGORY_HINT,
   COOLING_FAN_BLADE_CATEGORY_HINT,
   extractChatProductIdentityConstraints,
+  extractChatProductVoltage,
+  extractChatProductVoltages,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 
@@ -55,6 +57,14 @@ test("nearby universal fan wording keeps size, direction, and voltage", () => {
   assert.equal(quoted.diameterInches, 12);
   assert.equal(quoted.fanDirection, "push");
   assert.equal(quoted.voltage, 12);
+});
+
+test("voltage extraction requires explicit V wording and preserves dual-voltage evidence", () => {
+  assert.equal(extractChatProductVoltage("คอมแอร์ 508 24V"), 24);
+  assert.equal(extractChatProductVoltage("มอเตอร์ 12 โวลต์"), 12);
+  assert.equal(extractChatProductVoltage("คอมแอร์ 508"), null);
+  assert.equal(extractChatProductVoltage("คอมแอร์ 12V/24V"), null);
+  assert.deepEqual(extractChatProductVoltages("ใช้ได้ทั้ง 12V / 24 volts"), [12, 24]);
 });
 
 test("bare or unrelated numbers never become an inch hard-filter", () => {

@@ -23,7 +23,7 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
   const calls = {
-    searches: [] as Array<{ text?: string | null }>,
+    searches: [] as Array<{ text?: string | null; customerText?: string | null }>,
     textReplies: [] as string[],
     escalations: [] as string[],
     notifications: [] as Array<{ text?: string | null }>,
@@ -115,10 +115,13 @@ test(
           : [],
       searchChatProductInquiry: async (input: {
         text?: string | null;
+        customerText?: string | null;
         fitmentHints?: { categoryName?: string | null } | null;
       }) => {
-        calls.searches.push({ text: input.text });
-        const expectedCategory = input.text?.includes("วาล์ว")
+        calls.searches.push({ text: input.text, customerText: input.customerText });
+        const expectedCategory = input.text?.includes("คอมแอร์")
+          ? "คอมแอร์ (Compressor)"
+          : input.text?.includes("วาล์ว")
           ? "วาล์ว (Expansion Valve)"
           : input.text?.includes("ไดรเออร์")
             ? "ดรายเออร์ (Drier / Receiver Drier)"
@@ -172,6 +175,18 @@ test(
               partKind: null,
               tooBroad: false,
             }
+          : input.latestText.includes("508")
+          ? {
+              group: "product",
+              query: "คอมแอร์ 508",
+              isProductQuery: true,
+              partType: "คอมแอร์",
+              carBrand: null,
+              carModel: null,
+              year: null,
+              partKind: "universal",
+              tooBroad: false,
+            }
           : classifiedGroup === "purchase"
           ? {
               group: "purchase",
@@ -203,7 +218,9 @@ test(
   await mock.module("@/lib/chat-core/fitment-resolve", {
     namedExports: {
       resolveChatFitmentFilters: async (input: { partType?: string | null; queryText?: string | null }) => ({
-        categoryName: input.partType?.includes("วาล์ว") || input.queryText?.includes("วาล์ว")
+        categoryName: input.partType?.includes("คอมแอร์") || input.queryText?.includes("คอมแอร์")
+          ? "คอมแอร์ (Compressor)"
+          : input.partType?.includes("วาล์ว") || input.queryText?.includes("วาล์ว")
           ? "วาล์ว (Expansion Valve)"
           : input.partType?.includes("ไดรเออร์") || input.queryText?.includes("ไดรเออร์")
             ? "ดรายเออร์ (Drier / Receiver Drier)"
@@ -278,6 +295,11 @@ test(
 
   assert.equal(calls.searches.length, 1);
   assert.equal(calls.searches[0]?.text, "พัดลมเป่า 14 นิ้วมีไหมคับ");
+  assert.equal(
+    calls.searches[0]?.customerText,
+    "พัดลมเป่า 14 นิ้วมีไหมคับ",
+    "golden: Messenger keeps the customer-authored source for shared hard constraints",
+  );
   assert.deepEqual(calls.escalations, ["conversation-1"]);
   assert.equal(calls.notifications.length, 1);
   assert.equal(calls.aiSuggestions.length, 0);
@@ -289,6 +311,36 @@ test(
     /ไม่มีสินค้า|ไม่มีของ|หาไม่เจอ|ไม่พบสินค้า|ยังไม่พบ/,
   );
   assert.deepEqual(calls.processedSeqs, [1]);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentTexts = null;
+  currentText = "คอมแอร์508";
+  searchHasResults = false;
+  detectedSubjects = null;
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-code-zero",
+        fbEventId: "event-code-zero",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, [{ text: "คอมแอร์ 508", customerText: "คอมแอร์ 508" }]);
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.notifications.length, 1);
+  assert.ok(calls.textReplies[0]?.includes("แอดมิน"));
 
   calls.searches.length = 0;
   calls.textReplies.length = 0;

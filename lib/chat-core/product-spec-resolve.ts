@@ -3,6 +3,7 @@ export const BLOWER_MOTOR_CATEGORY_HINT = "Blower Motor)";
 export const CONDENSER_FAN_MOTOR_CATEGORY_HINT = "Condenser Fan Motor";
 
 export type ChatFanDirection = "push" | "pull";
+export type ChatProductVoltage = 12 | 24;
 
 export type ChatProductSpecs = {
   categoryHint: string | null;
@@ -137,10 +138,27 @@ const extractDiameterInches = (text: string): number | null => {
   return Number.isFinite(value) && value > 0 && value <= 50 ? value : null;
 };
 
-const extractVoltage = (text: string): number | null => {
-  const match = text.match(/(?:^|[^\d])(12|24)\s*(?:v(?:olt)?s?|โวลต์)/iu);
-  return match?.[1] ? Number(match[1]) : null;
-};
+const VOLTAGE_RE = /(?:^|[^\d])(12|24)\s*(?:v(?:olt)?s?|โวลต์)(?=$|[^a-z0-9])/giu;
+
+/**
+ * Returns every explicit 12V/24V value grounded in the supplied text. Multiple
+ * values are preserved so compatibility checks can treat a genuine "12V/24V"
+ * product as supporting both, while a customer query that names both remains
+ * ambiguous and does not activate a single-voltage guard.
+ */
+export function extractChatProductVoltages(value: string | null | undefined): ChatProductVoltage[] {
+  const voltages = new Set<ChatProductVoltage>();
+  for (const match of (value ?? "").matchAll(VOLTAGE_RE)) {
+    const voltage = Number(match[1]);
+    if (voltage === 12 || voltage === 24) voltages.add(voltage);
+  }
+  return Array.from(voltages);
+}
+
+export function extractChatProductVoltage(value: string | null | undefined): ChatProductVoltage | null {
+  const voltages = extractChatProductVoltages(value);
+  return voltages.length === 1 ? voltages[0] : null;
+}
 
 /**
  * Resolves only fan contexts that have enough customer evidence to be safe.
@@ -173,7 +191,7 @@ export function resolveChatProductSpecs(value: string | null | undefined): ChatP
     categoryHint,
     diameterInches,
     fanDirection,
-    voltage: extractVoltage(text),
+    voltage: extractChatProductVoltage(text),
   };
 }
 

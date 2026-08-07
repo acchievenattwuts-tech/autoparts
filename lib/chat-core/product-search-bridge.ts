@@ -1,6 +1,7 @@
 import { LineIntent } from "@/lib/generated/prisma";
 import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
+import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import {
   buildChatProductSpecRequiredTokenGroups,
@@ -43,6 +44,13 @@ type ProductSearchFn = (input: ProductSearchInput) => Promise<ProductSearchOutpu
 
 export type ChatProductSearchBridgeInput = {
   route: ChatIntentRouteResult;
+  /**
+   * The customer's latest product text before an AI/inquiry-frame rewrite.
+   * Keep this separate from `text`: `text` is the effective catalog query and may
+   * legitimately be rebuilt from structured context, while customerText is the
+   * source of truth for customer-grounded codes/specs that must never be dropped.
+   */
+  customerText?: string | null;
   text?: string | null;
   extractedPartNumber?: string | null;
   extractedImageHints?: string[] | null;
@@ -481,7 +489,12 @@ export async function searchChatProductInquiry(
   // Required tokens (hard recall anchors) come only from CUSTOMER-typed sources —
   // never from image OCR hints. A code the customer typed is intentional; a code
   // an image reader guessed is not, so it must stay a soft signal at most.
-  const customerSeed = [input.extractedPartNumber, input.text, ...(input.contextHints ?? [])]
+  const authoritativeCustomerText = normalizeInboundChatQuery(input.customerText ?? input.text);
+  const customerSeed = [
+    input.extractedPartNumber,
+    authoritativeCustomerText,
+    ...(input.contextHints ?? []),
+  ]
     .filter(Boolean)
     .join(" ");
   const requiredTokens = extractChatRequiredSearchTokens(customerSeed);
@@ -499,13 +512,18 @@ export async function searchChatProductInquiry(
     carModelName: input.fitmentHints?.carModelName ?? null,
     fitmentYear: input.fitmentHints?.fitmentYear ?? null,
   };
-  const productSpecs = resolveChatProductSpecs(input.text);
+  // Structured/AI query text may carry useful context, but customer-authored
+  // details are authoritative. Reading both preserves e.g. a compact model code
+  // or voltage even when an inquiry-frame topic shift rebuilt `text` to only the
+  // canonical part name.
+  const groundedSpecText = [authoritativeCustomerText, input.text].filter(Boolean).join(" ");
+  const productSpecs = resolveChatProductSpecs(groundedSpecText);
   const fanSpecRequiredTokenGroups =
     baseFilters.categoryName?.includes(COOLING_FAN_BLADE_CATEGORY_HINT) &&
     productSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
       ? buildChatProductSpecRequiredTokenGroups(productSpecs)
       : [];
-  const identityConstraints = extractChatProductIdentityConstraints(input.text);
+  const identityConstraints = extractChatProductIdentityConstraints(groundedSpecText);
   const requiredTokenGroups = [
     ...fanSpecRequiredTokenGroups,
     ...identityConstraints.map((constraint) => constraint.variants),
