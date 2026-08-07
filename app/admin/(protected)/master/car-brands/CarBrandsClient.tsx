@@ -10,12 +10,23 @@ import {
   createCarBrandAlias,
   toggleCarBrandAlias,
 } from "./actions";
-import { CarBrand, CarBrandAlias, CarModel } from "@/lib/generated/prisma";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
-type CarBrandWithModels = CarBrand & { carModels: CarModel[]; aliases: CarBrandAlias[] };
+// Mirrors the `select` in page.tsx rather than the full Prisma models, so
+// widening the query is the only way to widen what crosses to the client —
+// and dropping a column the UI still needs fails the build instead of at
+// runtime.
+type CarModelOption = { id: string; name: string; isActive: boolean };
+type CarBrandAliasOption = { id: string; alias: string; isActive: boolean };
+type CarBrandWithModels = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  carModels: CarModelOption[];
+  aliases: CarBrandAliasOption[];
+};
 
 interface CarBrandsClientProps {
   carBrands: CarBrandWithModels[];

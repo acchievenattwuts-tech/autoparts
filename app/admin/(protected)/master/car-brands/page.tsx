@@ -18,14 +18,24 @@ const CarBrandsPage = async () => {
   const permissions =
     role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
 
+  // Selected rather than `include`d: the page renders name + active state only,
+  // while the full rows carry timestamps on every brand, model and alias plus
+  // CarBrandAlias.notes (free text). Those travel to the browser inside the RSC
+  // payload for every row, so they were pure egress. Same rows, same order —
+  // only the unused columns are gone.
   const carBrands = await db.carBrand.findMany({
     orderBy: { name: "asc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
       carModels: {
         orderBy: { name: "asc" },
+        select: { id: true, name: true, isActive: true },
       },
       aliases: {
         orderBy: { alias: "asc" },
+        select: { id: true, alias: true, isActive: true },
       },
     },
   });

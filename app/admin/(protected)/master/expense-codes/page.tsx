@@ -23,9 +23,20 @@ const ExpenseCodesPage = async () => {
   const canUpdate = hasPermissionAccess(role, permissions, "master.update");
   const canCancel = hasPermissionAccess(role, permissions, "master.cancel");
 
+  // Narrowed to the columns ExpenseCodeRow declares. `include` pulled every
+  // column, including createdAt and deliveryCommissionSlot, which nothing here
+  // renders. Row set and order are unchanged.
   const codes = await db.expenseCode.findMany({
     orderBy: { code: "asc" },
-    include: { _count: { select: { items: true } } },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      description: true,
+      isActive: true,
+      isDeliveryCommission: true,
+      _count: { select: { items: true } },
+    },
   });
 
   return (

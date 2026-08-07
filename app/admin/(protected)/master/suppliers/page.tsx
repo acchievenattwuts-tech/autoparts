@@ -20,6 +20,17 @@ const SuppliersPage = async () => {
 
   const suppliers = await db.supplier.findMany({
     orderBy: { name: "asc" },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      contactName: true,
+      phone: true,
+      address: true,
+      taxId: true,
+      creditTerm: true,
+      isActive: true,
+    },
   });
 
   return (

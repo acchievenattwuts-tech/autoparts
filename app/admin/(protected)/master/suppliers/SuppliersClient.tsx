@@ -3,13 +3,26 @@
 import { useRef, useState, useTransition } from "react";
 import { Plus, Pencil, X, Check } from "lucide-react";
 import { createSupplier, updateSupplier, toggleSupplier } from "./actions";
-import { Supplier } from "@/lib/generated/prisma";
 import TaxIdInput from "@/components/shared/TaxIdInput";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+
+// Mirrors the `select` in page.tsx, not the full Prisma model, so the columns
+// that cross to the client stay an explicit decision.
+type Supplier = {
+  id: string;
+  code: string | null;
+  name: string;
+  contactName: string | null;
+  phone: string | null;
+  address: string | null;
+  taxId: string | null;
+  creditTerm: number | null;
+  isActive: boolean;
+};
 
 interface SuppliersClientProps {
   suppliers: Supplier[];

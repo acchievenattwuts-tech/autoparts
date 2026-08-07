@@ -7,6 +7,7 @@ import {
   createCashBankAdjustment,
   updateCashBankAdjustment,
 } from "../actions";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 type AccountOption = {
@@ -53,6 +54,14 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
   const router = useRouter();
   const [adjustmentId, setAdjustmentId] = useState<string | null>(null);
   const [adjustDate, setAdjustDate] = useState(getThailandDateKey());
+  const accountOptions: SelectOption[] = useMemo(
+    () =>
+      accounts.map((account) => ({
+        id: account.id,
+        label: `${account.code} - ${account.name}`,
+      })),
+    [accounts],
+  );
   const [accountId, setAccountId] = useState("");
   const [direction, setDirection] = useState<"IN" | "OUT">("IN");
   const [amount, setAmount] = useState("");
@@ -198,12 +207,12 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">บัญชี</label>
-              <select className={`${inputCls} bg-white`} value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                <option value="">เลือกบัญชี</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>{account.code} - {account.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={accountOptions}
+                value={accountId}
+                onChange={setAccountId}
+                placeholder="เลือกบัญชี"
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">ทิศทาง</label>

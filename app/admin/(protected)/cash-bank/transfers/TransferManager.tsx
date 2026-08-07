@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cancelCashBankTransfer, createCashBankTransfer } from "../actions";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 type AccountOption = {
@@ -46,6 +47,10 @@ function formatDate(value: string): string {
 export default function TransferManager({ accounts, transfers, canCreate, canCancel }: Props) {
   const router = useRouter();
   const [transferDate, setTransferDate] = useState(getThailandDateKey());
+  const accountOptions: SelectOption[] = accounts.map((account) => ({
+    id: account.id,
+    label: `${account.code} - ${account.name}`,
+  }));
   const [fromAccountId, setFromAccountId] = useState("");
   const [toAccountId, setToAccountId] = useState("");
   const [amount, setAmount] = useState("");
@@ -150,21 +155,21 @@ export default function TransferManager({ accounts, transfers, canCreate, canCan
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">บัญชีต้นทาง</label>
-              <select className={`${inputCls} bg-white`} value={fromAccountId} onChange={(e) => setFromAccountId(e.target.value)}>
-                <option value="">เลือกบัญชีต้นทาง</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>{account.code} - {account.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={accountOptions}
+                value={fromAccountId}
+                onChange={setFromAccountId}
+                placeholder="เลือกบัญชีต้นทาง"
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">บัญชีปลายทาง</label>
-              <select className={`${inputCls} bg-white`} value={toAccountId} onChange={(e) => setToAccountId(e.target.value)}>
-                <option value="">เลือกบัญชีปลายทาง</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>{account.code} - {account.name}</option>
-                ))}
-              </select>
+              <SearchableSelect
+                options={accountOptions}
+                value={toAccountId}
+                onChange={setToAccountId}
+                placeholder="เลือกบัญชีปลายทาง"
+              />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700 dark:text-slate-300">จำนวนเงิน</label>

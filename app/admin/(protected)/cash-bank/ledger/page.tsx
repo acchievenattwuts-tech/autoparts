@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import {
   parseCashBankReportFilters,
@@ -65,18 +66,17 @@ export default async function CashBankLedgerPage({ searchParams }: PageProps) {
         <AdminSearchForm method="GET" className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="text-sm font-medium text-gray-700 dark:text-slate-300">
             บัญชี
-            <select
-              name="accountId"
-              defaultValue={filters.accountId ?? ""}
-              className={fieldCls}
-            >
-              <option value="">ทุกบัญชี</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.code} - {account.name}
-                </option>
-              ))}
-            </select>
+            <div className="mt-1">
+              <SearchableSelectFilter
+                name="accountId"
+                defaultValue={filters.accountId ?? ""}
+                options={accounts.map((account) => ({
+                  id: account.id,
+                  label: `${account.code} - ${account.name}`,
+                }))}
+                placeholder="ทุกบัญชี"
+              />
+            </div>
           </label>
           <label className="text-sm font-medium text-gray-700 dark:text-slate-300">
             ตั้งแต่วันที่
