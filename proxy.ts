@@ -1,6 +1,7 @@
 import { auth } from "./auth";
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getClientIp } from "@/lib/client-ip";
 import {
   extractProductIdFromSlug,
   getLegacyThaiProductPathRedirectTarget,
@@ -50,14 +51,6 @@ const MAX_TRACKED_IPS = 2000;
 type RateEntry = { count: number; resetAt: number };
 const ipHits = new Map<string, RateEntry>();
 
-function getClientIp(req: NextRequest): string {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() ?? "unknown";
-  }
-  return req.headers.get("x-real-ip") ?? "unknown";
-}
-
 function isRateLimited(key: string, max: number, now: number): boolean {
   const entry = ipHits.get(key);
   if (!entry || entry.resetAt < now) {
@@ -94,7 +87,7 @@ export const proxy = auth(async (req) => {
     (pathname.startsWith("/product/") || pathname === "/products" || pathname.startsWith("/products/"))
   ) {
     const now = Date.now();
-    const ip = getClientIp(req);
+    const ip = getClientIp(req.headers);
     if (isRateLimited(`storefront-catalog:${ip}`, RATE_LIMIT_MAX_STOREFRONT_CATALOG_PER_MIN, now)) {
       return new NextResponse("Too Many Requests", {
         status: 429,
@@ -155,7 +148,7 @@ export const proxy = auth(async (req) => {
   // Rate limit /_next/image (source of Supabase Cached Egress)
   if (pathname.startsWith("/_next/image")) {
     const now = Date.now();
-    const ip = getClientIp(req);
+    const ip = getClientIp(req.headers);
     if (isRateLimited(`next-image:${ip}`, RATE_LIMIT_MAX_IMAGE_PER_MIN, now)) {
       return new NextResponse("Too Many Requests", {
         status: 429,

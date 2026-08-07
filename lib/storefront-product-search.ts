@@ -107,6 +107,13 @@ export type SearchProductsResult = {
     requiredTokens: string[];
     usedFallback: boolean;
   };
+  /**
+   * Set when the caller was throttled, so the search never ran. The UI must
+   * keep whatever it is already showing and explain the wait — rendering the
+   * empty payload as "ไม่พบสินค้าที่ค้นหา" would tell the customer we have no
+   * such part when we simply declined to look.
+   */
+  rateLimited?: boolean;
 };
 
 type SearchProductRecord = Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }>;

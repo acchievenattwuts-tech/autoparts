@@ -1,7 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
-import { getRoutePermission, isKnowledgePermission } from "@/lib/access-control";
 import { db, withDbRetry } from "@/lib/db";
 import { isSessionRevisionInvalid } from "@/lib/auth-session-revocation";
+import { decideAdminRouteAccess } from "@/lib/admin-route-access";
 
 export const authConfig: NextAuthConfig = {
   pages: {
@@ -9,40 +9,22 @@ export const authConfig: NextAuthConfig = {
   },
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user;
-      const isAdmin = auth?.user?.role === "ADMIN";
-      const mustChangePassword = Boolean(auth?.user?.mustChangePassword);
-      const sessionInvalid = Boolean(auth?.user?.sessionInvalid);
-      const permissions = auth?.user?.permissions ?? [];
-      const hasAppRole = !!auth?.user?.appRoleId;
-      const isAdminRoute = nextUrl.pathname.startsWith("/admin");
-      const isLoginPage = nextUrl.pathname === "/admin/login";
-      const isChangePasswordPage = nextUrl.pathname === "/admin/profile/change-password";
-      const requiredPermission = getRoutePermission(nextUrl.pathname);
+      // The decision itself lives in lib/admin-route-access.ts so it can be
+      // tested without a request; this callback only carries it out.
+      const decision = decideAdminRouteAccess({
+        pathname: nextUrl.pathname,
+        isLoggedIn: !!auth?.user,
+        isAdmin: auth?.user?.role === "ADMIN",
+        hasAppRole: !!auth?.user?.appRoleId,
+        mustChangePassword: Boolean(auth?.user?.mustChangePassword),
+        sessionInvalid: Boolean(auth?.user?.sessionInvalid),
+        permissions: auth?.user?.permissions ?? [],
+      });
 
-      if (isLoginPage) {
-        if (!sessionInvalid && (isAdmin || hasAppRole)) {
-          const destination = mustChangePassword ? "/admin/profile/change-password" : "/admin";
-          return Response.redirect(new URL(destination, nextUrl));
-        }
-        return true;
+      if (decision.type === "redirect") {
+        return Response.redirect(new URL(decision.to, nextUrl));
       }
-
-      if (isAdminRoute) {
-        if (!isLoggedIn || sessionInvalid) {
-          return Response.redirect(new URL("/admin/login", nextUrl));
-        }
-        if (mustChangePassword && !isChangePasswordPage) {
-          return Response.redirect(new URL("/admin/profile/change-password", nextUrl));
-        }
-        if (isAdmin && !(requiredPermission && isKnowledgePermission(requiredPermission))) return true;
-        if (!hasAppRole && !isAdmin) return false;
-        if (typeof requiredPermission === "undefined") return false;
-        if (requiredPermission === null) return true;
-        return permissions.includes(requiredPermission);
-      }
-
-      return true;
+      return decision.type === "allow";
     },
     async jwt({ token, user }) {
       if (user) {

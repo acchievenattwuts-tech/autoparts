@@ -9,6 +9,12 @@ import {
 import type { SearchProductsResult } from "@/lib/storefront-product-search";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
+import { getClientIp } from "@/lib/client-ip";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  EMPTY_SEARCH_RESULT,
+  RATE_LIMITED_SEARCH_RESULT,
+} from "@/lib/storefront-search-result-states";
 
 const SearchInputSchema = z.object({
   q: z.string().max(200).optional(),
@@ -29,14 +35,39 @@ const SearchInputSchema = z.object({
 
 export type SearchFilterInput = z.infer<typeof SearchInputSchema>;
 
-const EMPTY_RESULT: SearchProductsResult = {
-  products: [],
-  total: 0,
-  didYouMean: [],
-  page: 1,
-  totalPages: 1,
-  pageStart: 0,
-  pageEnd: 0,
+const EMPTY_RESULT = EMPTY_SEARCH_RESULT;
+const RATE_LIMITED_RESULT = RATE_LIMITED_SEARCH_RESULT;
+
+// Matches the storefront-catalog ceiling proxy.ts applies to GET /products, so
+// the two entry points into the same search engine cost the same.
+//
+// These actions POST to the page URL, and proxy.ts only rate-limits GET/HEAD —
+// so the heaviest unauthenticated query in the system (trigram + semantic +
+// EXISTS subqueries, several seconds of Postgres time each) was reachable with
+// no ceiling at all. Enforced here rather than in the proxy so a throttled
+// caller gets a typed result the UI can explain, instead of a raw 429 that
+// would surface as a broken Server Action.
+const SEARCH_RATE_LIMIT_PER_MINUTE = 60;
+const SEARCH_RATE_LIMIT_WINDOW_MS = 60_000;
+
+/**
+ * True when this caller may run a search now. Failures are treated as "allow":
+ * the limiter is a safety valve, and a hiccup in the throttle table must not
+ * take storefront search down.
+ */
+const allowStorefrontSearch = async (): Promise<boolean> => {
+  try {
+    const ip = getClientIp(await headers());
+    const rate = await checkRateLimit({
+      key: `storefront-search:${ip}`,
+      limit: SEARCH_RATE_LIMIT_PER_MINUTE,
+      windowMs: SEARCH_RATE_LIMIT_WINDOW_MS,
+    });
+    return rate.ok;
+  } catch (error) {
+    console.error("[searchProductsAction] rate limit check failed", error);
+    return true;
+  }
 };
 
 const getSearchProductsResult = async (
@@ -63,6 +94,7 @@ export async function searchProductsAction(
 ): Promise<SearchProductsResult> {
   const parsed = SearchInputSchema.safeParse(input);
   if (!parsed.success) return EMPTY_RESULT;
+  if (!(await allowStorefrontSearch())) return RATE_LIMITED_RESULT;
 
   const {
     q,
@@ -125,6 +157,7 @@ export async function loadMoreSearchProductsAction(
 ): Promise<SearchProductsResult> {
   const parsed = SearchInputSchema.safeParse(input);
   if (!parsed.success) return EMPTY_RESULT;
+  if (!(await allowStorefrontSearch())) return RATE_LIMITED_RESULT;
 
   try {
     return await getSearchProductsResult(parsed.data);

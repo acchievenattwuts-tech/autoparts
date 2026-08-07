@@ -2,30 +2,21 @@ import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
 import { isTrackingExpired, isStale } from "@/lib/delivery-tracking";
+import { getClientIp } from "@/lib/client-ip";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
-// Simple in-memory rate limiter (resets on server restart, suitable for Vercel serverless)
-const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+// This endpoint exists to be guessed at: the token is the only credential, so
+// the ceiling is what makes enumeration impractical. It used to be a per-process
+// Map, which on Vercel means one counter per warm instance — the real ceiling
+// was 10 × however many instances were up, i.e. not a ceiling. Backed by the
+// shared ApiThrottle table it is now enforced across every instance.
+//
+// Traffic here is low (a customer opening their own delivery link), so the extra
+// round-trip per request is not on any hot path.
 const RATE_LIMIT_MAX = 10; // requests per window
-const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute window
-
-function checkRateLimit(identifier: string): boolean {
-  const now = Date.now();
-  const record = rateLimitMap.get(identifier);
-
-  if (!record || now > record.resetTime) {
-    rateLimitMap.set(identifier, { count: 1, resetTime: now + RATE_LIMIT_WINDOW });
-    return true;
-  }
-
-  if (record.count >= RATE_LIMIT_MAX) {
-    return false;
-  }
-
-  record.count++;
-  return true;
-}
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
 
 export async function GET(
   req: Request,
@@ -44,8 +35,13 @@ export async function GET(
   }
 
   // Rate limiting by IP address
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || req.headers.get("x-real-ip") || "unknown";
-  if (!checkRateLimit(ip)) {
+  const ip = getClientIp(req.headers);
+  const rate = await checkRateLimit({
+    key: `liff-tracking:${ip}`,
+    limit: RATE_LIMIT_MAX,
+    windowMs: RATE_LIMIT_WINDOW_MS,
+  });
+  if (!rate.ok) {
     return NextResponse.json(
       { error: "ขอข้อมูลบ่อยเกินไป กรุณารอสักครู่" },
       { status: 429, headers: { "Retry-After": "60" } },

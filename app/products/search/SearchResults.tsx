@@ -134,6 +134,10 @@ const SearchResults = ({
   const [requiredTokenFallback, setRequiredTokenFallback] = useState<
     RequiredTokenFallback | undefined
   >(initialRequiredTokenFallback);
+  // Set when the server declined to run the search because this visitor is over
+  // the per-minute ceiling. Shown as a "please wait a moment" notice above the
+  // grid, with the previous results left in place.
+  const [isRateLimited, setIsRateLimited] = useState(false);
   const [isTransitionPending, startTransition] = useTransition();
   const [isRouteSyncPending, setIsRouteSyncPending] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -261,6 +265,15 @@ const SearchResults = ({
         const result = await searchProductsAction(input);
         if (latestRequestIdRef.current !== requestId) return;
 
+        // Throttled: the search never ran, so the empty payload means "we did
+        // not look", not "we have nothing". Keep the current grid and say so —
+        // overwriting it would read as ไม่พบสินค้า and send the customer away.
+        if (result.rateLimited) {
+          setIsRateLimited(true);
+          return;
+        }
+        setIsRateLimited(false);
+
         setProducts(result.products);
         setTotal(result.total);
         setDidYouMean(result.didYouMean);
@@ -329,6 +342,14 @@ const SearchResults = ({
     try {
       const result = await loadMoreSearchProductsAction(input);
       if (latestLoadMoreIdRef.current !== requestId) return;
+
+      // Same reasoning as the filter path: append nothing rather than treat a
+      // declined request as "the catalogue ends here".
+      if (result.rateLimited) {
+        setIsRateLimited(true);
+        return;
+      }
+      setIsRateLimited(false);
 
       setProducts((current) => {
         const seen = new Set(current.map((product) => product.id));
@@ -516,6 +537,20 @@ const SearchResults = ({
           )}
         </div>
 
+        {/* Only ever appears after the visitor trips the per-minute search
+            ceiling, never on load — so it costs no layout shift on first paint.
+            Deliberately worded as "our side is busy", not "nothing found": the
+            search did not run, and implying we have no such part would send a
+            real customer away. */}
+        {isRateLimited && (
+          <div
+            role="status"
+            className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            ค้นหาถี่เกินไป ระบบขอพักสักครู่ — กรุณารอสักครู่แล้วลองอีกครั้ง
+            (รายการที่แสดงอยู่ยังเป็นผลค้นหาก่อนหน้า)
+          </div>
+        )}
 
         <div className="relative min-h-[400px]">
           {/* Loading pill — absolute so it doesn't reserve vertical space when hidden.

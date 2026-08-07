@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getClientIpOrNull } from "@/lib/client-ip";
 
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 5 * 60 * 1000;
@@ -10,17 +11,6 @@ function normalizeUsername(username: string): string {
   return username.trim().toLowerCase();
 }
 
-function getClientIp(request: Request): string | null {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const ip = forwardedFor.split(",")[0]?.trim();
-    if (ip) return ip;
-  }
-
-  const realIp = request.headers.get("x-real-ip")?.trim();
-  return realIp || null;
-}
-
 function buildThrottleKeys(username: string, ip: string | null): string[] {
   const keys = [`${USERNAME_PREFIX}${normalizeUsername(username)}`];
   if (ip) keys.push(`${IP_PREFIX}${ip}`);
@@ -28,7 +18,9 @@ function buildThrottleKeys(username: string, ip: string | null): string[] {
 }
 
 export function getLoginThrottleKeys(username: string, request: Request): string[] {
-  return buildThrottleKeys(username, getClientIp(request));
+  // Nullable on purpose: an attempt we cannot attribute to an IP adds no IP
+  // bucket, so it can never contribute to locking out other anonymous callers.
+  return buildThrottleKeys(username, getClientIpOrNull(request.headers));
 }
 
 export async function isLoginBlocked(keys: string[]): Promise<boolean> {
