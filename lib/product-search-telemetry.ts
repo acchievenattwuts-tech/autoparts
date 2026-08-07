@@ -1,3 +1,5 @@
+import { after } from "next/server";
+
 import { isLikelyNoiseQuery } from "@/lib/search-noise";
 import { normalizeSearchText } from "@/lib/search-normalization";
 
@@ -134,23 +136,35 @@ export async function logProductSearchTelemetry(args: ProductSearchLogInputArgs)
       isBot: data.isBot,
     });
 
-    // Fire-and-forget: telemetry must never block the search response.
+    // Off the response path, but still guaranteed to run. A bare `void promise`
+    // used to leak the write past the response: Vercel freezes the instance the
+    // moment the response is flushed, so an upsert still in flight was dropped
+    // and the search log silently under-counted. `after()` keeps the request
+    // alive until the callback settles, so telemetry stops losing rows without
+    // adding anything to what the user waits for.
+    //
+    // Every caller is a Server Component, Route Handler or Server Action, which
+    // is what `after()` requires. If it is ever called outside a request scope
+    // it throws — caught below, same as any other telemetry failure.
+    //
     // Repeated identical searches inside the same hourly bucket upsert into a
     // single row (incrementing hitCount) instead of bloating the table.
-    void db.productSearchLog
-      .upsert({
-        where: { dedupeKey },
-        create: { ...data, dedupeKey, hitCount: 1 },
-        update: {
-          resultCount: data.resultCount,
-          filters: data.filters,
-          path: data.path,
-          hitCount: { increment: 1 },
-        },
-      })
-      .catch((error) => {
+    after(async () => {
+      try {
+        await db.productSearchLog.upsert({
+          where: { dedupeKey },
+          create: { ...data, dedupeKey, hitCount: 1 },
+          update: {
+            resultCount: data.resultCount,
+            filters: data.filters,
+            path: data.path,
+            hitCount: { increment: 1 },
+          },
+        });
+      } catch (error) {
         console.error("Product search telemetry logging failed.", error);
-      });
+      }
+    });
   } catch (error) {
     console.error("Product search telemetry logging failed.", error);
   }

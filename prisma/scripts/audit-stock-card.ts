@@ -7,6 +7,7 @@
  */
 import { db } from "../../lib/db";
 import { Prisma } from "../../lib/generated/prisma";
+import { formatDateOnlyForInput } from "../../lib/th-date";
 
 const STOCK_QTY_SCALE = 4;
 const STOCK_PRICE_SCALE = 4;
@@ -167,7 +168,10 @@ async function main(): Promise<void> {
           rowMismatchCount += 1;
           if (rowMismatches.length < 40) {
             rowMismatches.push(
-              `${product.code ?? "-"} | ${r.docNo} | ${r.docDate.toISOString().slice(0, 10)} | ${r.source}` +
+              // docDate is a date-only business field stored at Bangkok
+              // midnight, i.e. 17:00 UTC the day before — toISOString() printed
+              // the previous day for every row in this report.
+              `${product.code ?? "-"} | ${r.docNo} | ${formatDateOnlyForInput(r.docDate)} | ${r.source}` +
                 (qtyBad ? ` | qtyBalance stored=${r.qtyBalance} expected=${round(item.qtyBalance, STOCK_QTY_SCALE)}` : "") +
                 (priceBad ? ` | priceBalance stored=${r.priceBalance} expected=${round(item.priceBalance, STOCK_PRICE_SCALE)}` : "") +
                 (outBad ? ` | priceOut stored=${r.priceOut} expected=${round(item.priceOut, STOCK_PRICE_SCALE)}` : ""),

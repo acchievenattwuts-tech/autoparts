@@ -183,7 +183,7 @@ const PurchaseForm = ({
     const draft = parsePurchaseDraft(window.localStorage.getItem(draftKey), persistedPurchaseId ? { mode: "edit", purchaseId: persistedPurchaseId } : { mode: "new" });
     if (draft) {
       setAvailableDraft(draft);
-      setDraftStatus(`พบ draft ล่าสุด ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+      setDraftStatus(`พบ draft ล่าสุด ${new Date(draft.updatedAt).toLocaleTimeString("th-TH-u-ca-gregory", { hour: "2-digit", minute: "2-digit" })}`);
     }
     // Run once per loaded form context; user edits are handled by the autosave effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,7 +215,7 @@ const PurchaseForm = ({
         });
         window.localStorage.setItem(draftKey, JSON.stringify(draft));
         lastPersistedDraftRef.current = snapshot;
-        setDraftStatus(`Draft saved ${new Date(draft.updatedAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`);
+        setDraftStatus(`Draft saved ${new Date(draft.updatedAt).toLocaleTimeString("th-TH-u-ca-gregory", { hour: "2-digit", minute: "2-digit" })}`);
       } catch {
         setDraftStatus("บันทึก draft ไม่สำเร็จ");
       }

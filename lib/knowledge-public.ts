@@ -6,10 +6,20 @@ import {
   listActiveKnowledgeEntries,
   type ActiveKnowledgeEntry,
 } from "@/lib/knowledge-cms-repository";
+import { getThailandDateKey } from "@/lib/th-date";
 
+/**
+ * Calendar day, in Thailand time, for an article's publish/update stamp.
+ *
+ * Previously `toISOString().slice(0, 10)`, which is the UTC day: an article
+ * activated between 00:00 and 07:00 Bangkok reported the day before, both in
+ * the "อัปเดต …" line on the article page and in the JSON-LD datePublished /
+ * dateModified that Google reads. The shop and its readers are in Thailand, so
+ * the Thailand day is the correct one. See .rules §8.
+ */
 function dateOnly(value: Date | string | null | undefined): string {
-  if (!value) return new Date().toISOString().slice(0, 10);
-  return (value instanceof Date ? value : new Date(value)).toISOString().slice(0, 10);
+  if (!value) return getThailandDateKey();
+  return getThailandDateKey(value instanceof Date ? value : new Date(value));
 }
 
 export function activeEntryToArticle(entry: ActiveKnowledgeEntry): KnowledgeArticle {

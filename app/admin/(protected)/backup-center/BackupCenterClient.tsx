@@ -67,7 +67,10 @@ function formatBytes(raw: string): string {
 
 function formatDate(value: string | null): string {
   if (!value) return "-";
-  return new Intl.DateTimeFormat("th-TH", {
+  // "th-TH" alone resolves to the Buddhist calendar and renders 2569 for 2026.
+  // Every other date in the system is Gregorian, so this column was the one
+  // place showing a B.E. year. See .rules §8.
+  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
