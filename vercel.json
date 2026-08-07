@@ -35,6 +35,10 @@
     {
       "path": "/api/stock/cron/out-of-stock-alert",
       "schedule": "30 11 * * *"
+    },
+    {
+      "path": "/api/notifications/cron/cleanup",
+      "schedule": "0 19 * * *"
     }
   ]
 }
