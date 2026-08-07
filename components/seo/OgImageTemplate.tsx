@@ -60,6 +60,10 @@ const OgImageTemplate = ({ title, meta }: OgImageTemplateProps) => {
       }}
     >
       {logoSrc ? (
+        // Satori renders this tree to a PNG at the edge — it implements a small
+        // subset of HTML/CSS and has no React runtime, so next/image (which
+        // needs the browser and the /_next/image optimizer) cannot work here.
+        // A raw <img> with an explicit width/height is the required form.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={logoSrc} width={LOGO_SIZE} height={LOGO_SIZE} alt="" />
       ) : null}

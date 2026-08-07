@@ -148,6 +148,20 @@ const nextConfig: NextConfig = {
         permanent: true,
         basePath: false,
       },
+      // Retired homepage design variants. They used to be real pages, so the
+      // 308 stays for any surviving inbound link (they are also disallowed in
+      // robots.ts). Handled here rather than by two app/home*/page.tsx routes
+      // that each existed only to call permanentRedirect("/") — same 308, but
+      // resolved at the edge instead of booting a React render to emit it.
+      //
+      // /home2 is deliberately NOT in this list: it is a live page again
+      // (app/home2), kept out of search results by its own robots metadata and
+      // by the robots.ts disallow rule rather than by a redirect.
+      {
+        source: "/:variant(home3|home4)",
+        destination: "/",
+        permanent: true,
+      },
     ];
   },
 

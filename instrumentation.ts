@@ -11,6 +11,13 @@
  * app/api/notifications/cron/cleanup/route.ts for the pattern.
  */
 
+import { assertEnv } from "@/lib/env";
+
 export async function register() {
-  // No startup work. See the note above before adding any.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Reports missing configuration once, at boot, instead of whenever a
+    // customer happens to hit the affected feature. Fatal only for values the
+    // app cannot run without; the rest warn. See lib/env.ts.
+    assertEnv();
+  }
 }

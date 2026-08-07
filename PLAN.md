@@ -437,6 +437,53 @@
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront
 
+## Code review ทั้ง repo — test infra, security, กฎวันที่, rate limit (2026-08-07)
+
+- บริบท: รีวิวทั้ง repo (1,306 ไฟล์, 113 models, 279 indexes) แล้วไล่แก้ตามรายการที่เจ้าของร้านยืนยันทีละข้อ · ผลรวม: `npm test` **728 tests / 0 fail** · `tsc --noEmit` 0 error · `eslint` **0 error** (จากเดิม 1) · `npm run build` ผ่าน
+
+**ตาข่ายรองรับ (ทำก่อนเพราะข้ออื่นพึ่งของนี้)**
+- [x] `npm test` — เดิมมีไฟล์เทสต์ 104 ไฟล์แต่ผูกกับ npm script แค่ 4 ไฟล์ และ **ไม่มี CI เลย** → ต่อสายครบทุกไฟล์ + เพิ่ม `npm run typecheck` / `npm run verify`
+- [x] [scripts/test-env.mjs](scripts/test-env.mjs) ปัก DATABASE_URL ปลอมเสมอ — เทสต์แตะ Supabase production ไม่ได้ (ห้ามเติม `--env-file=.env.local` เข้า `npm test`)
+- [x] [.github/workflows/ci.yml](.github/workflows/ci.yml) — lint + typecheck + test + mojibake · **ไม่รัน `next build`** เพราะหน้า storefront เป็น static generation ที่ต้องต่อ DB จริง และ Vercel build ทุก push อยู่แล้ว
+- [x] เทสต์แดงค้าง 4 ตัวตั้งแต่ `ba1097e` (9 มิ.ย.) — โค้ดเปลี่ยน poll interval 5→10 นาทีแต่ไม่ได้อัปเดตเทสต์ ไม่มีใครเห็นเพราะไม่มีอะไรรันมัน · แก้แล้วและผูกค่ากับ constant จริงเพื่อไม่ให้ค้างซ้ำ
+
+**Security**
+- [x] `next-auth` 5.0.0-beta.30 → **beta.32** (`@auth/core` 0.41.0 → 0.41.3) — ปิด critical *"auth check fail open"* · critical เหลือ **0** (จาก 2) · ยังเหลือ 11 high ที่ยังไม่แตะรอบนี้: `sharp`, `next`, `prisma`, และ transitive ของ dev tooling
+- [x] `searchProductsAction` / `loadMoreSearchProductsAction` เดิม **ไม่มี rate limit เลย** — proxy.ts จำกัดเฉพาะ GET แต่ server action เป็น POST → query หนักที่สุดในระบบเรียกได้ไม่จำกัด · ใส่เพดาน 60/นาที/IP (เท่า GET) ผ่าน `ApiThrottle`
+- [x] `/api/liff/tracking/[token]` เดิมใช้ Map ใน process → เพดานจริง = 10 × จำนวน instance · เปลี่ยนเป็น DB-backed (traffic ต่ำ ไม่ใช่ hot path) · **คง in-memory ไว้ที่ `/api/search/products/autocomplete` ตั้งใจ** เพราะยิงทุกตัวอักษรที่พิมพ์
+- [x] [lib/client-ip.ts](lib/client-ip.ts) — เดิม parse `x-forwarded-for` เองซ้ำ 3 ที่ด้วย fallback ไม่เหมือนกัน
+- [x] [lib/admin-route-access.ts](lib/admin-route-access.ts) — ยก authorization gate ของ `/admin` ออกจาก `authorized()` callback มาเป็นฟังก์ชัน pure (พฤติกรรมเดิมทุกบรรทัด) เพื่อให้เทสต์ได้ · **20 golden tests** ครอบทุกสาขา รวมเคส fail-closed
+
+**บั๊กจริงที่เจอระหว่างทาง**
+- [x] `node-cron` ใน [instrumentation.ts](instrumentation.ts) **ไม่เคยทำงานบน Vercel** (instance ถูก freeze/recycle) → `Notification` ไม่เคยถูกล้างเลยตั้งแต่ 9 มิ.ย. · ย้ายเป็น Vercel Cron `/api/notifications/cron/cleanup` เวลา 19:00 UTC = 02:00 ไทย (node-cron อ่าน TZ ของเซิร์ฟเวอร์ = UTC จึงเพี้ยนอยู่แล้วต่อให้ยิงติด) · ถอด `node-cron` + `@types/node-cron` ออก
+- [x] telemetry ค้นหาใช้ `void promise` → โดนทิ้งเมื่อ instance freeze หลังส่ง response · เปลี่ยนเป็น `after()` · **ตัวเลขใน `ProductSearchLog` จะสูงขึ้นจากเดิม เทียบกับช่วงก่อน 7 ส.ค. ตรง ๆ ไม่ได้**
+- [x] [lib/knowledge-public.ts](lib/knowledge-public.ts) ใช้ `toISOString().slice(0,10)` = วัน UTC → บทความที่ activate 00:00–07:00 น. แสดงวันย้อนหลัง 1 วัน ทั้งบนหน้าเว็บและใน JSON-LD `datePublished`/`dateModified` · เปลี่ยนเป็น `getThailandDateKey()`
+- [x] `prisma/scripts/audit-stock-card.ts` พิมพ์ `docDate` ด้วย `toISOString()` — `docDate` เก็บที่เที่ยงคืนไทย (17:00 UTC วันก่อน) จึงรายงานผิดวันทุกแถว
+- [x] Backup Center ใช้ `Intl.DateTimeFormat("th-TH")` → แสดง 2569 แทน 2026 (จุดเดียวในทั้ง repo)
+
+**บังคับกฎอัตโนมัติ แทนการพึ่งความจำ**
+- [x] [eslint.config.mjs](eslint.config.mjs) เพิ่ม `no-restricted-syntax` 3 ข้อ: ห้าม `"th-TH"` ใน `DateTimeFormat`/`toLocale{Date,Time}String` (ไม่แตะ `toLocaleString` ของตัวเลข) และห้าม `toISOString().slice()` กับวันที่
+- [x] แก้ lint error ค้างที่ `ProductImageZoomLightbox` ด้วย [components/shared/use-mounted.ts](components/shared/use-mounted.ts) (`useSyncExternalStore` — ผลลัพธ์เท่าเดิม ไม่มี render รอบสอง)
+
+**UX / คุณภาพ**
+- [x] เพิ่ม `app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx`, `app/admin/(protected)/error.tsx` — เดิม **ไม่มีสักไฟล์ทั้ง repo** ผู้ใช้จึงเจอหน้า error ภาษาอังกฤษของ framework · ไม่แสดง `error.message` (กัน Prisma/PII รั่วตาม .rules §7) แสดงแค่ `digest` ไว้อ้างอิง
+- [x] SearchableSelect ครบตามกฎ: แปลง dropdown บัญชี cash-bank 8 จุดใน 6 ไฟล์ (เดิม native `<select>` ขณะที่อีก 7 หน้าใช้ SearchableSelect กับข้อมูลชนิดเดียวกันแล้ว) · `direction` (2 ตัวเลือก) คง native ตามข้อยกเว้น
+- [x] `select` แทน `include`/ดึงทุกคอลัมน์: `master/car-brands` (ตัด `notes` + timestamps ที่ติดมาทุก alias/model), `master/suppliers`, `master/expense-codes` · prop type ฝั่ง client ผูกกับ `select` แล้ว การขยาย query จึงต้องตั้งใจ
+- [x] [lib/env.ts](lib/env.ts) — ตรวจ env ตอน boot · fatal เฉพาะตัวที่ระบบตายแน่ ที่เหลือเตือนพร้อมบอกผลกระทบ (เช่น `CRON_SECRET` ไม่ตั้ง = cron ตอบ 401 เงียบ ๆ ทุกวัน) · **การเลื่อน warning เป็น error ต้องดูทีละตัว** ไม่งั้น deploy พัง
+- [x] ย้าย `/home3`, `/home4` (route ที่มีแค่ `permanentRedirect("/")`) ไป `redirects()` ใน next.config → 308 เดิมแต่จบที่ edge · **`/home2` ไม่รวมด้วย** เพราะกลับมาเป็นหน้าจริงที่กำลังพัฒนาอยู่ · ย้าย `lot_flow_aircon_spare_parts.docx` ไป `docs/`
+
+**ตรวจแล้วตัดสินใจ "ไม่ทำ" (พร้อมเหตุผล)**
+- ตัด `revalidatePath("/")` ใน `master/categories/actions.ts` — ซ้ำซ้อนกับ `updateTag()` จริง แต่การแก้หมวดหมู่เกิดเดือนละไม่กี่ครั้ง ประหยัดแทบไม่มี ขณะที่ถ้าเข้าใจ route-cache tag inheritance ของ Next 16 คลาดเคลื่อน หน้าแรกจะค้าง 1 ชม. — **ไม่คุ้ม**
+- เปลี่ยน `where: { OR: keys }` (≤300 คู่) ใน `lots/expiry` เป็น `productId: { in: [...] }` — มีขอบเขตชัดด้วย `take: 300` อยู่แล้ว และเสี่ยงดึงแถวมากกว่าเดิมถ้าสินค้าตัวหนึ่งมีหลายร้อย lot
+- อัปเกรด `sharp` / `next` / `prisma` — เจ้าของร้านเลือกแยก deploy ต่างหาก
+- Error monitoring (Sentry / log drain) — ยังไม่ทำรอบนี้
+
+**ค้างไว้ (ยืนยันแล้วว่าเลื่อน)**
+- [ ] ข้อ 11 — รวบ `upsert` ทีละ lot ใน [lib/lot-control.ts](lib/lot-control.ts) (ใบซื้อ 20 lot = 60 round-trip เรียงกันขณะถือ `FOR UPDATE` + `lock_timeout` 8 วิ) · **ต้องเขียน golden test คลุม `writePurchaseLots`/`writeAdjustmentLots` ก่อน** เพราะกระทบต้นทุนสินค้าโดยตรง
+- [ ] ข้อ 18 — แตกไฟล์ >800 บรรทัด 28 ไฟล์ (`line-webhook-processor.ts` 4,414) · ทำแบบ opportunistic ตอนแก้ไฟล์นั้นอยู่แล้ว
+- [ ] อัปเกรด `sharp` (CVE libvips บน path ที่รับ upload จากลูกค้า) — ควรทำเป็นลำดับถัดไป
+- [ ] ตรวจหลัง deploy: cron `/api/notifications/cron/cleanup` รอบแรกจะลบ notification ที่อ่านแล้ว + เก่ากว่า 30 วัน **ที่สะสมมาตั้งแต่ 9 มิ.ย. ในครั้งเดียว**
+
 ## ค้นหาช้า — ตัด `similarity(search_text)` ออกจากบล็อกให้คะแนน (2026-08-04)
 - บริบท: ตามรอยมาจาก error `timeout exceeded when trying to connect` ตอน revalidate cache (§ด้านล่าง 2026-07-31) ที่เกิดซ้ำเช้า 4 ส.ค. → เจาะจนพบว่าตัวกินเวลา connection จริงคือ query ค้นหาสินค้า ไม่ใช่ config ของพูล
 - **Metric ฐานข้อมูล (อ่านอย่างเดียว)**: `max_connections = 90` (ไม่ใช่ 200 ตามคอมเมนต์ใน [lib/db.ts](lib/db.ts)) · `product_search_documents` มีแค่ 949 แถว → ที่ช้าคือ **ต้นทุน CPU ต่อแถว** ไม่ใช่ข้อมูลเยอะ · `search_text` ยาวเฉลี่ย 2,389 ตัวอักษร (`trgm_text` 702)
