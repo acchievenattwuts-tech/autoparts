@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Image from "next/image";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import { useMounted } from "@/components/shared/use-mounted";
 import { ChevronLeft, ChevronRight, Minus, Plus, RotateCcw, X } from "lucide-react";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 
@@ -43,7 +44,8 @@ const ProductImageZoomLightbox = ({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragOffset, setDragOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  // Portal guard: false while server-rendering/hydrating, true afterwards.
+  const mounted = useMounted();
   // ฝั่งแอดมิน class `dark` อยู่ที่ `.admin-theme-root` ซึ่ง portal นี้อยู่นอกออกมา
   // จึงต้องพก theme มาเอง (บนหน้าบ้าน `dark` อยู่ที่ <html> อยู่แล้ว = ไม่กระทบ)
   const adminTheme = useOptionalAdminTheme();
@@ -104,10 +106,6 @@ const ProductImageZoomLightbox = ({
     },
     [clampPan],
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!open) return;

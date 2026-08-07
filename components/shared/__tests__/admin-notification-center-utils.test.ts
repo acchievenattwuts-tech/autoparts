@@ -7,8 +7,13 @@ import {
   shouldPollNotificationSummary,
 } from "../admin-notification-center-utils";
 
-test("uses a five-minute summary poll interval for shared notification sources", () => {
-  assert.equal(ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS, 5 * 60_000);
+// Raised from 5 to 10 minutes in ba1097e to cut notification DB/API traffic.
+// The elapsed-time cases below derive their clock from the constant so a future
+// interval change can never leave this suite asserting a stale number again.
+const INTERVAL = ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS;
+
+test("uses a ten-minute summary poll interval for shared notification sources", () => {
+  assert.equal(ADMIN_NOTIFICATION_SUMMARY_POLL_INTERVAL_MS, 10 * 60_000);
 });
 
 test("aggregates unread counts across all registered notification sources", () => {
@@ -33,7 +38,7 @@ test("polls shared notification sources immediately when they never fetched befo
 test("does not poll shared notification sources while the document is hidden", () => {
   assert.equal(
     shouldPollNotificationSummary({
-      now: 10 * 60_000,
+      now: 1_000 + INTERVAL,
       lastFetchedAt: 1_000,
       isDocumentHidden: true,
     }),
@@ -44,7 +49,7 @@ test("does not poll shared notification sources while the document is hidden", (
 test("polls shared notification sources again once the interval elapses", () => {
   assert.equal(
     shouldPollNotificationSummary({
-      now: 10 * 60_000,
+      now: 1_000 + INTERVAL,
       lastFetchedAt: 1_000,
       isDocumentHidden: false,
     }),
@@ -55,7 +60,7 @@ test("polls shared notification sources again once the interval elapses", () => 
 test("does not poll shared notification sources before the interval elapses", () => {
   assert.equal(
     shouldPollNotificationSummary({
-      now: 60_000,
+      now: 1_000 + INTERVAL - 1,
       lastFetchedAt: 1_000,
       isDocumentHidden: false,
     }),
