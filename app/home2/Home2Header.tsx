@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Phone } from "lucide-react";
+import { ChevronRight, Phone } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import Home2SearchBar from "./Home2SearchBar";
 import type { Home2KeywordData } from "./home2-data";
@@ -74,14 +74,14 @@ const Home2Header = ({
       <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 sm:gap-5">
           <Link href="/home2" className="flex shrink-0 items-center gap-2.5">
-            <span className="relative inline-flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-white/95">
+            <span className="relative inline-flex h-10 w-10 items-center justify-center overflow-hidden">
               {shopLogoUrl ? (
                 <Image
                   src={shopLogoSrc}
                   alt={`${shopName} logo`}
                   fill
                   sizes="40px"
-                  className="object-contain p-1"
+                  className="object-contain"
                   priority
                 />
               ) : (
@@ -123,17 +123,28 @@ const Home2Header = ({
 
         {/* Trending searches — real terms ranked by SearchKeyword.popularity */}
         {trendingKeywords.length > 0 && (
-          <div className="mt-2 flex gap-2 overflow-x-auto text-xs text-white/75 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {trendingKeywords.map((keyword) => (
-              <Link
-                key={keyword.id}
-                href={`/products?q=${encodeURIComponent(keyword.term)}`}
-                prefetch={false}
-                className="inline-flex min-h-[28px] items-center whitespace-nowrap rounded-full px-2.5 transition-colors hover:bg-white/15 hover:text-white"
-              >
-                {keyword.term}
-              </Link>
-            ))}
+          /* Desktop: wrap onto as many lines as needed so every term is visible.
+             Phones: keep the Shopee-style rail, with a fading edge + chevron so
+             it reads as swipeable. */
+          <div className="relative mt-2">
+            <div className="flex gap-2 overflow-x-auto pr-9 text-xs text-white/75 [scrollbar-width:none] lg:flex-wrap lg:overflow-x-visible lg:pr-0 [&::-webkit-scrollbar]:hidden">
+              {trendingKeywords.map((keyword) => (
+                <Link
+                  key={keyword.id}
+                  href={`/products?q=${encodeURIComponent(keyword.term)}`}
+                  prefetch={false}
+                  className="inline-flex min-h-[28px] items-center whitespace-nowrap rounded-full px-2.5 transition-colors hover:bg-white/15 hover:text-white"
+                >
+                  {keyword.term}
+                </Link>
+              ))}
+            </div>
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 right-0 flex w-9 items-center justify-end bg-gradient-to-l from-[#22447090] via-[#22447060] to-transparent text-white/70 lg:hidden"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </span>
           </div>
         )}
       </div>

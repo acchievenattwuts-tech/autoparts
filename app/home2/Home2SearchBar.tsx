@@ -1,23 +1,25 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 /**
  * Shopee-style search field for the home2 header.
  *
  * Reuses the shared <ProductAutocomplete/> (real product + keyword suggestions
- * from the live catalogue) but supplies its own blue submit button instead of
- * the component's built-in orange one, so the header stays on the blue theme.
+ * from the live catalogue). Like shopee.co.th the field stretches across the
+ * whole header row and the submit button sits inside the box; it is restyled
+ * blue via submitButtonClassName so the header stays on the blue theme.
  */
+
+/** Blue submit button pinned inside the field — Shopee's in-box search key. */
+const SUBMIT_BUTTON_CLASS =
+  "absolute right-1 top-1/2 flex h-8 w-12 -translate-y-1/2 items-center justify-center rounded-md bg-[#2563eb] text-white transition-colors hover:bg-[#1d4ed8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70";
 
 const SEARCH_PLACEHOLDER = "ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ หรือรหัสอะไหล่...";
 
 const SearchField = ({ variant }: { variant: "mobile" | "desktop" }) => {
   const router = useRouter();
-  const [value, setValue] = useState("");
 
   const submit = (query: string) => {
     // Link straight at /products — /products/search only 307s here anyway.
@@ -29,27 +31,20 @@ const SearchField = ({ variant }: { variant: "mobile" | "desktop" }) => {
     <div
       className={
         variant === "desktop"
-          ? "hidden min-w-0 flex-1 items-center gap-2 lg:flex"
-          : "flex min-w-0 flex-1 items-center gap-2 lg:hidden"
+          ? "hidden min-w-0 flex-1 items-center lg:flex"
+          : "flex min-w-0 flex-1 items-center lg:hidden"
       }
     >
       <ProductAutocomplete
         mode="storefront"
         placeholder={SEARCH_PLACEHOLDER}
         onSubmit={submit}
-        onValueChange={setValue}
         enhanced={variant}
+        fullWidth
+        showSubmitButton
+        submitButtonClassName={SUBMIT_BUTTON_CLASS}
         className="w-full"
       />
-
-      <button
-        type="button"
-        onClick={() => submit(value)}
-        aria-label="ค้นหาสินค้า"
-        className="flex h-9 w-11 shrink-0 items-center justify-center rounded-lg bg-[#2563eb] text-white transition-colors hover:bg-[#1d4ed8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-      >
-        <Search className="h-4 w-4" />
-      </button>
     </div>
   );
 };

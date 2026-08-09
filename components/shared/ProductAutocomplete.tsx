@@ -67,6 +67,13 @@ interface Props {
   autoFocus?: boolean;
   /** Show an orange submit button on the right side of the input. */
   showSubmitButton?: boolean;
+  /** Optional className overriding the inline submit button (e.g. blue on home2). */
+  submitButtonClassName?: string;
+  /**
+   * Let the field fill its flex parent instead of the default expand-on-focus
+   * max-width clamp (enhanced="desktop" only).
+   */
+  fullWidth?: boolean;
   /** Storefront enhanced UX. */
   enhanced?: "desktop" | "mobile";
   /** Admin-only return URL appended when selecting a suggestion. */
@@ -94,6 +101,8 @@ const ProductAutocomplete = ({
   inputClassName,
   autoFocus,
   showSubmitButton,
+  submitButtonClassName,
+  fullWidth,
   enhanced,
   adminReturnTo,
 }: Props) => {
@@ -609,10 +618,12 @@ const ProductAutocomplete = ({
         {pendingOverlay}
         <div ref={wrapperRef} className={`relative ${className ?? ""}`}>
           <div className="relative">
-            <Search
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500"
-            />
+            {!showSubmitButton && (
+              <Search
+                size={16}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500"
+              />
+            )}
             {/* Read-only trigger — tapping opens modal */}
             <input
               type="text"
@@ -624,9 +635,22 @@ const ProductAutocomplete = ({
                 e.target.blur();
                 setModalOpen(true);
               }}
-              className={`pl-9 pr-3 ${inputBase} ${inputClassName ?? ""} cursor-pointer`}
+              className={`${showSubmitButton ? "px-4 pr-12" : "pl-9 pr-3"} ${inputBase} ${inputClassName ?? ""} cursor-pointer`}
               aria-label="เปิดช่องค้นหา"
             />
+            {showSubmitButton && (
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                className={
+                  submitButtonClassName ??
+                  "absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[#f97316] text-white transition-colors hover:bg-[#ea6c0a] active:scale-95"
+                }
+                aria-label="ค้นหา"
+              >
+                <Search size={13} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -703,8 +727,10 @@ const ProductAutocomplete = ({
           ref={wrapperRef}
           onFocusCapture={handleInlineFocusCapture}
           onBlurCapture={handleInlineBlurCapture}
-          className={`relative z-50 transition-[max-width] duration-300 ease-out ${
-            isExpanded ? "max-w-2xl" : "max-w-sm"
+          className={`relative z-50 ${
+            fullWidth
+              ? "w-full"
+              : `transition-[max-width] duration-300 ease-out ${isExpanded ? "max-w-2xl" : "max-w-sm"}`
           } ${className ?? ""}`}
         >
           <div className="relative">
@@ -744,7 +770,10 @@ const ProductAutocomplete = ({
               <button
                 type="button"
                 onClick={() => submitQuery()}
-                className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[#f97316] text-white transition-colors hover:bg-[#ea6c0a] active:scale-95"
+                className={
+                  submitButtonClassName ??
+                  "absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-[#f97316] text-white transition-colors hover:bg-[#ea6c0a] active:scale-95"
+                }
                 aria-label="ค้นหา"
               >
                 {loading ? (

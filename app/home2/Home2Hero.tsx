@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { ArrowRight, Boxes, MessageCircle, ShieldCheck, Truck, Wrench } from "lucide-react";
-import { getCategoryPath } from "@/lib/product-slug";
-import type { Home2CategoryData } from "./home2-data";
 import { HOME2_OUTLINE_BUTTON_CLASS, HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 
 const SERVICE_HIGHLIGHTS = [
@@ -16,13 +14,11 @@ interface Props {
   heroTitle: string;
   heroSubtitle: string;
   lineUrl: string;
-  /** Top categories by live product count — used as the two banner tiles. */
-  bannerCategories: Home2CategoryData[];
 }
 
-const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl, bannerCategories }: Props) => (
+const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl }: Props) => (
   <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+    <div className="grid gap-3">
       {/* Primary banner */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e3a5f] via-[#25508a] to-[#2563eb] p-6 text-white sm:p-9">
         <div
@@ -64,28 +60,6 @@ const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl, bannerCategorie
             )}
           </div>
         </div>
-      </div>
-
-      {/* Secondary banners — biggest live categories */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-        {bannerCategories.map((category) => (
-          <Link
-            key={category.id}
-            href={getCategoryPath(category)}
-            prefetch={false}
-            className="group flex items-center justify-between gap-3 rounded-2xl border border-[#dbe6f5] bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-[#1e3a5f]/30 hover:shadow-md"
-          >
-            <span className="min-w-0">
-              <span className="block truncate font-kanit text-base font-bold text-[#1e3a5f]">
-                {category.name}
-              </span>
-              <span className="mt-1 block text-xs text-slate-500">
-                {category.productCount.toLocaleString("th-TH")} รายการพร้อมให้เลือก
-              </span>
-            </span>
-            <ArrowRight className="h-5 w-5 shrink-0 text-[#2563eb] transition-transform group-hover:translate-x-1" />
-          </Link>
-        ))}
       </div>
     </div>
 

@@ -4,34 +4,25 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
-import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
 import Home2CarBrands from "./Home2CarBrands";
-import Home2CategoryStrip from "./Home2CategoryStrip";
 import Home2Header from "./Home2Header";
 import Home2Hero from "./Home2Hero";
 import Home2ProductSection from "./Home2ProductSection";
 import {
   getHome2BestSellers,
-  getHome2Categories,
   getHome2DailyPicks,
   getHome2NewArrivals,
   getHome2TrendingKeywords,
 } from "./home2-data";
 
-/** Category tiles shown in the icon strip. */
-const CATEGORY_STRIP_LIMIT = 16;
 /** Car brand shortcuts shown in the brand grid. */
 const CAR_BRAND_LIMIT = 12;
-/** Secondary hero banners. */
-const HERO_BANNER_COUNT = 2;
 
 const getHome2PageData = cache(async () => {
   const [
     config,
-    categories,
-    visualSettings,
     dailyPicks,
     bestSellers,
     newArrivals,
@@ -39,8 +30,6 @@ const getHome2PageData = cache(async () => {
     productFilters,
   ] = await Promise.all([
     getPublicSiteConfig(),
-    getHome2Categories(),
-    getCategoryVisualSettings(),
     getHome2DailyPicks(),
     getHome2BestSellers(),
     getHome2NewArrivals(),
@@ -50,8 +39,6 @@ const getHome2PageData = cache(async () => {
 
   return {
     config,
-    categories,
-    visualSettings,
     dailyPicks,
     bestSellers,
     newArrivals,
@@ -74,21 +61,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home2Page = async () => {
-  const {
-    config,
-    categories,
-    visualSettings,
-    dailyPicks,
-    bestSellers,
-    newArrivals,
-    trendingKeywords,
-    productFilters,
-  } = await getHome2PageData();
+  const { config, dailyPicks, bestSellers, newArrivals, trendingKeywords, productFilters } =
+    await getHome2PageData();
 
-  const stockedCategories = categories.filter((category) => category.productCount > 0);
-  const bannerCategories = [...stockedCategories]
-    .sort((left, right) => right.productCount - left.productCount)
-    .slice(0, HERO_BANNER_COUNT);
   const carBrands = productFilters.carBrands.slice(0, CAR_BRAND_LIMIT).map((brand) => ({
     id: brand.id,
     name: brand.name,
@@ -112,12 +87,6 @@ const Home2Page = async () => {
           heroTitle={config.heroTitle}
           heroSubtitle={config.heroSubtitle}
           lineUrl={config.shopLineUrl}
-          bannerCategories={bannerCategories}
-        />
-
-        <Home2CategoryStrip
-          categories={stockedCategories.slice(0, CATEGORY_STRIP_LIMIT)}
-          visualSettings={visualSettings}
         />
 
         <Home2ProductSection
