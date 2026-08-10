@@ -78,6 +78,8 @@ const Home2Page = async () => {
         shopLogoUrl={config.shopLogoUrl}
         shopPhone={config.shopPhone}
         lineUrl={config.shopLineUrl}
+        finderBrands={finderBrands}
+        finderCategories={finderCategories}
       />
 
       <main className="flex-1">

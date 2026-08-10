@@ -2,7 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Phone } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import Home2MobileNav from "./Home2MobileNav";
 import Home2SearchBar from "./Home2SearchBar";
+import type { Home2FinderBrand } from "./Home2FitmentFinder";
+import { HOME2_NAV_LINKS } from "./home2-nav";
 import { HOME2_HEADER_BAR_CLASS } from "./home2-theme";
 
 const LINE_ICON = (
@@ -11,22 +14,26 @@ const LINE_ICON = (
   </svg>
 );
 
-const NAV_LINKS = [
-  { label: "สินค้าทั้งหมด", href: "/products" },
-  { label: "เกี่ยวกับร้าน", href: "/about" },
-  { label: "คำถามที่พบบ่อย", href: "/faq" },
-  { label: "คลังความรู้", href: "/knowledge" },
-] as const;
-
 interface Props {
   shopName: string;
   shopSlogan: string;
   shopLogoUrl: string;
   shopPhone: string;
   lineUrl: string;
+  /** Passed through to the mobile finder sheet. */
+  finderBrands: Home2FinderBrand[];
+  finderCategories: string[];
 }
 
-const Home2Header = ({ shopName, shopSlogan, shopLogoUrl, shopPhone, lineUrl }: Props) => {
+const Home2Header = ({
+  shopName,
+  shopSlogan,
+  shopLogoUrl,
+  shopPhone,
+  lineUrl,
+  finderBrands,
+  finderCategories,
+}: Props) => {
   const displayPhone = shopPhone ? shopPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") : "";
   const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl;
 
@@ -87,37 +94,33 @@ const Home2Header = ({ shopName, shopSlogan, shopLogoUrl, shopPhone, lineUrl }: 
 
           <Home2SearchBar />
 
+          {/* Below lg the nav row and LINE pill collapse into these two */}
+          <Home2MobileNav
+            finderBrands={finderBrands}
+            finderCategories={finderCategories}
+            lineUrl={lineUrl}
+            shopPhone={shopPhone}
+          />
+
           {lineUrl && (
-            <>
-              {/* Phones: icon-only so the CTA survives next to the search box */}
-              <a
-                href={lineUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="สั่งซื้อผ่าน LINE"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-[#1e3a5f] transition-colors hover:bg-[#e6eefa] sm:hidden"
-              >
-                {LINE_ICON}
-              </a>
-              <a
-                href={lineUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#e6eefa] sm:inline-flex"
-              >
-                {LINE_ICON}
-                สั่งซื้อผ่าน LINE
-              </a>
-            </>
+            <a
+              href={lineUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden shrink-0 items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#e6eefa] lg:inline-flex"
+            >
+              {LINE_ICON}
+              สั่งซื้อผ่าน LINE
+            </a>
           )}
         </div>
 
       </div>
 
       {/* Section nav */}
-      <nav className="border-t border-white/10">
+      <nav className="hidden border-t border-white/10 lg:block">
         <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {NAV_LINKS.map((link) => (
+          {HOME2_NAV_LINKS.map((link) => (
             <Link
               key={link.href}
               href={link.href}

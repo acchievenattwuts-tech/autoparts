@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import Home2Carousel from "./Home2Carousel";
 import Home2ProductCard from "./Home2ProductCard";
 import type { Home2ProductCardData } from "./home2-data";
 import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
@@ -13,13 +14,11 @@ interface Props {
   lineUrl: string;
 }
 
-const Home2ProductSection = ({
-  title,
-  subtitle,
-  href,
-  products,
-  lineUrl,
-}: Props) => {
+/**
+ * Product row that scrolls sideways in a single line, like the category block
+ * above it but one row deep.
+ */
+const Home2ProductSection = ({ title, subtitle, href, products, lineUrl }: Props) => {
   if (products.length === 0) return null;
 
   return (
@@ -43,11 +42,16 @@ const Home2ProductSection = ({
         </div>
 
         <div className="p-3 sm:p-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Home2Carousel label={title} trackClassName="flex gap-3 pb-1">
             {products.map((product) => (
-              <Home2ProductCard key={product.id} product={product} lineUrl={lineUrl} />
+              <Home2ProductCard
+                key={product.id}
+                product={product}
+                lineUrl={lineUrl}
+                variant="rail"
+              />
             ))}
-          </div>
+          </Home2Carousel>
         </div>
       </div>
     </section>
