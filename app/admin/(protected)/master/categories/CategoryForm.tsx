@@ -1,18 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
-import { Check, Pencil, X } from "lucide-react";
-import { CategoryVisualIcon } from "@/components/shared/CategoryVisualIcon";
-import {
-  CATEGORY_ICON_OPTIONS,
-  CATEGORY_MOTION_OPTIONS,
-  CATEGORY_TONE_OPTIONS,
-  DEFAULT_CATEGORY_VISUAL,
-  type CategoryIconKey,
-  type CategoryMotionKey,
-  type CategoryToneKey,
-  type CategoryVisualSetting,
-} from "@/lib/category-visual-config";
+import { Check, ImageOff, Pencil, Upload, X } from "lucide-react";
 import type { Category } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import {
@@ -22,6 +12,7 @@ import {
   toggleCategoryAlias,
   updateCategory,
   updateCategoryAlias,
+  uploadCategoryImage,
 } from "./actions";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
@@ -29,7 +20,10 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 
-type CategoryRow = Pick<Category, "id" | "name" | "slug" | "isActive" | "createdAt">;
+type CategoryRow = Pick<
+  Category,
+  "id" | "name" | "slug" | "isActive" | "createdAt" | "imageUrl"
+>;
 
 type CategoryAliasRow = {
   id: string;
@@ -41,23 +35,17 @@ type CategoryAliasRow = {
   notes: string | null;
 };
 
-export type CategoryWithVisual = CategoryRow & {
+export type CategoryWithAliases = CategoryRow & {
   aliases: CategoryAliasRow[];
-  visual: CategoryVisualSetting;
 };
 
 export interface CategoryFormProps {
-  categories: CategoryWithVisual[];
+  categories: CategoryWithAliases[];
   aliasCoverageGaps: Array<{ id: string; name: string }>;
   canCreate: boolean;
   canUpdate: boolean;
   canCancel: boolean;
 }
-
-const getOptionLabel = <Key extends string>(
-  options: readonly { key: Key; label: string }[],
-  key: Key,
-) => options.find((option) => option.key === key)?.label ?? key;
 
 const selectClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
@@ -75,78 +63,119 @@ const MATCH_MODE_LABELS: Record<CategoryAliasRow["matchMode"], string> = {
   TOKEN: "ตรง token",
 };
 
-const VisualFields = ({
-  defaultVisual = DEFAULT_CATEGORY_VISUAL,
+/** Fixed square preview so the admin sees exactly the storefront tile crop. */
+const IMAGE_PREVIEW_SIZE_PX = 72;
+
+/**
+ * Category thumbnail picker. Uploads immediately to Blob and carries the
+ * resulting URL in a hidden input, so the enclosing form still submits as plain
+ * FormData. An empty value means "no image" — the storefront then falls back to
+ * the category's best-selling product photo, then to a name-inferred icon.
+ */
+const CategoryImageField = ({
+  categoryId = "",
+  defaultImageUrl = null,
 }: {
-  defaultVisual?: CategoryVisualSetting;
+  categoryId?: string;
+  defaultImageUrl?: string | null;
 }) => {
-  const [iconKey, setIconKey] = useState<CategoryIconKey>(defaultVisual.iconKey);
-  const [toneKey, setToneKey] = useState<CategoryToneKey>(defaultVisual.toneKey);
-  const [motionKey, setMotionKey] = useState<CategoryMotionKey>(defaultVisual.motionKey);
-  const previewVisual: CategoryVisualSetting = { iconKey, toneKey, motionKey };
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [imageUrl, setImageUrl] = useState<string>(defaultImageUrl ?? "");
+  const [error, setError] = useState<string>("");
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setError("");
+    setIsUploading(true);
+    try {
+      const uploadData = new FormData();
+      uploadData.set("file", file);
+      const result = await uploadCategoryImage(categoryId, uploadData);
+      if (result.error) {
+        setError(result.error);
+      } else if (result.url) {
+        setImageUrl(result.url);
+      }
+    } catch {
+      setError("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
+    } finally {
+      setIsUploading(false);
+      // Let the same file be re-picked after an error.
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   return (
     <div className="rounded-xl border border-gray-100 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5">
-      <div className="group mb-3 flex items-center gap-3">
-        <CategoryVisualIcon
-          visual={previewVisual}
-          className="h-11 w-11 rounded-xl"
-          iconClassName="h-5 w-5"
-        />
-        <div>
-          <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">พรีวิวไอคอนหน้าร้าน</p>
-          <p className="text-xs text-gray-500 dark:text-slate-400">เลือกไอคอน สี และโมชั่น hover ได้จากตรงนี้</p>
+      <input type="hidden" name="imageUrl" value={imageUrl} />
+
+      <div className="flex items-start gap-3">
+        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950">
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt="พรีวิวรูปหมวดหมู่"
+              width={IMAGE_PREVIEW_SIZE_PX}
+              height={IMAGE_PREVIEW_SIZE_PX}
+              sizes="72px"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ImageOff className="h-6 w-6 text-gray-300 dark:text-slate-600" aria-hidden="true" />
+          )}
+        </span>
+
+        <div className="min-w-0 flex-1 space-y-2">
+          <div>
+            <p className="text-xs font-semibold text-gray-700 dark:text-slate-200">
+              รูปหมวดหมู่บนหน้าร้าน
+            </p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              แนบได้ JPG, PNG, WebP ไม่เกิน 2MB — แนะนำรูปสี่เหลี่ยมจัตุรัส
+              ถ้าไม่แนบระบบจะใช้รูปสินค้าขายดีในหมวดนั้นให้อัตโนมัติ
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-white/10 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-white/10"
+            >
+              <Upload size={12} />
+              {isUploading ? "กำลังอัปโหลด..." : imageUrl ? "เปลี่ยนรูป" : "แนบรูป"}
+            </button>
+
+            {imageUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setImageUrl("");
+                  setError("");
+                }}
+                disabled={isUploading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-300 disabled:opacity-60 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
+              >
+                <X size={12} />
+                ลบรูป
+              </button>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500 dark:text-red-300">{error}</p>}
         </div>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
-          <span>ไอคอน</span>
-          <select
-            name="iconKey"
-            value={iconKey}
-            onChange={(event) => setIconKey(event.target.value as CategoryIconKey)}
-            className={selectClassName}
-          >
-            {CATEGORY_ICON_OPTIONS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
-          <span>โทนสี</span>
-          <select
-            name="toneKey"
-            value={toneKey}
-            onChange={(event) => setToneKey(event.target.value as CategoryToneKey)}
-            className={selectClassName}
-          >
-            {CATEGORY_TONE_OPTIONS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="space-y-1 text-xs font-medium text-gray-600 dark:text-slate-300">
-          <span>โมชั่น</span>
-          <select
-            name="motionKey"
-            value={motionKey}
-            onChange={(event) => setMotionKey(event.target.value as CategoryMotionKey)}
-            className={selectClassName}
-          >
-            {CATEGORY_MOTION_OPTIONS.map((option) => (
-              <option key={option.key} value={option.key}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
     </div>
   );
@@ -156,7 +185,7 @@ const AliasManager = ({
   category,
   canUpdate,
 }: {
-  category: CategoryWithVisual;
+  category: CategoryWithAliases;
   canUpdate: boolean;
 }) => {
   const [error, setError] = useState<string>("");
@@ -349,7 +378,7 @@ const EditableRow = ({
   canUpdate,
   canCancel,
 }: {
-  category: CategoryWithVisual;
+  category: CategoryWithAliases;
   canUpdate: boolean;
   canCancel: boolean;
 }) => {
@@ -396,7 +425,10 @@ const EditableRow = ({
                 </p>
               </div>
 
-              <VisualFields defaultVisual={category.visual} />
+              <CategoryImageField
+                categoryId={category.id}
+                defaultImageUrl={category.imageUrl}
+              />
 
               <div className="flex gap-2 xl:justify-end">
                 <button
@@ -433,21 +465,24 @@ const EditableRow = ({
     >
       <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
       <td className="px-4 py-3">
-        <div className="group inline-flex items-center gap-2">
-          <CategoryVisualIcon
-            visual={category.visual}
-            className="h-10 w-10 rounded-xl"
-            iconClassName="h-5 w-5"
-          />
-          <div className="min-w-[120px] text-xs text-gray-500 dark:text-slate-400">
-            <p className="font-medium text-gray-700 dark:text-slate-200">
-              {getOptionLabel(CATEGORY_ICON_OPTIONS, category.visual.iconKey)}
-            </p>
-            <p>
-              {getOptionLabel(CATEGORY_TONE_OPTIONS, category.visual.toneKey)} ·{" "}
-              {getOptionLabel(CATEGORY_MOTION_OPTIONS, category.visual.motionKey)}
-            </p>
-          </div>
+        <div className="inline-flex items-center gap-2">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-slate-950">
+            {category.imageUrl ? (
+              <Image
+                src={category.imageUrl}
+                alt={`รูปหมวด ${category.name}`}
+                width={40}
+                height={40}
+                sizes="40px"
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <ImageOff className="h-4 w-4 text-gray-300 dark:text-slate-600" aria-hidden="true" />
+            )}
+          </span>
+          <span className="text-xs text-gray-500 dark:text-slate-400">
+            {category.imageUrl ? "แนบรูปแล้ว" : "ใช้รูปสินค้าขายดีอัตโนมัติ"}
+          </span>
         </div>
       </td>
       <td className="px-4 py-3">
@@ -545,7 +580,7 @@ const CategoryForm = ({ categories, aliasCoverageGaps, canCreate, canUpdate, can
                 />
                 {error && <p className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
               </div>
-              <VisualFields key={formResetKey} />
+              <CategoryImageField key={formResetKey} />
             </div>
 
             <button
@@ -567,7 +602,7 @@ const CategoryForm = ({ categories, aliasCoverageGaps, canCreate, canUpdate, can
               <thead className="bg-gray-50 dark:bg-white/5">
                 <tr className="border-b border-gray-100 dark:border-white/10">
                   <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อหมวดหมู่</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ไอคอนหน้าร้าน</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รูปหน้าร้าน</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่เพิ่ม</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จัดการ</th>

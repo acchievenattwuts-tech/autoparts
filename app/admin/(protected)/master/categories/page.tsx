@@ -7,8 +7,6 @@ import {
   hasPermissionAccess,
 } from "@/lib/access-control";
 import { getCategoryAliasCoverageGaps } from "@/lib/category-alias-audit";
-import { resolveCategoryVisual } from "@/lib/category-visual-config";
-import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { requirePermission } from "@/lib/require-auth";
 import CategoriesTabs from "./CategoriesTabs";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -21,7 +19,7 @@ const CategoriesPage = async () => {
   const permissions =
     role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
 
-  const [categories, visualSettings, pendingRows] = await Promise.all([
+  const [categories, pendingRows] = await Promise.all([
     db.category.findMany({
       orderBy: { createdAt: "desc" },
       select: {
@@ -30,6 +28,7 @@ const CategoriesPage = async () => {
         slug: true,
         isActive: true,
         createdAt: true,
+        imageUrl: true,
         aliases: {
           // Only human-facing (APPROVED) aliases here — AI suggestions awaiting
           // review live in the dedicated "AI เสนอ" tab, rejected ones stay hidden.
@@ -47,7 +46,6 @@ const CategoriesPage = async () => {
         },
       },
     }),
-    getCategoryVisualSettings(),
     db.categoryAlias.findMany({
       where: { source: "AI_AUTO", reviewStatus: "PENDING" },
       orderBy: { createdAt: "desc" },
@@ -63,10 +61,6 @@ const CategoriesPage = async () => {
     }),
   ]);
 
-  const categoriesWithVisual = categories.map((category) => ({
-    ...category,
-    visual: resolveCategoryVisual(category, visualSettings[category.id]),
-  }));
   const aliasCoverageGaps = getCategoryAliasCoverageGaps(categories);
 
   const pendingSuggestions = pendingRows.map((row) => ({
@@ -82,10 +76,10 @@ const CategoriesPage = async () => {
     <div className="space-y-4">
       <AdminPageHeader
         title="จัดการหมวดหมู่สินค้า"
-        description="จัดการหมวดหมู่ สถานะ และภาพลักษณ์หมวดหมู่บนหน้าร้าน"
+        description="จัดการหมวดหมู่ สถานะ และรูปหมวดหมู่ที่แสดงบนหน้าร้าน"
       />
       <CategoriesTabs
-        categories={categoriesWithVisual}
+        categories={categories}
         aliasCoverageGaps={aliasCoverageGaps}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
         canUpdate={hasPermissionAccess(role, permissions, "master.update")}

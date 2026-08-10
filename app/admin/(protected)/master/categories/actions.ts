@@ -13,23 +13,96 @@ import { ADMIN_MASTER_OPTION_TAGS } from "@/lib/admin-master-options";
 import { AuditAction } from "@/lib/generated/prisma";
 import { updateProductSearchCache } from "@/lib/product-search-cache";
 import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
+import { sniffImageMimeType } from "@/lib/image-upload-validation";
+import { buildCategoryImageObjectPath } from "@/lib/product-image-url";
 import {
-  categoryVisualInputSchema,
-  saveCategoryVisualSetting,
-} from "@/lib/category-visual-settings";
+  deleteCategoryImageObjects,
+  isOwnedBlobCategoryImageUrl,
+  uploadProductsBucketObject,
+} from "@/lib/products-bucket-storage";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
-import { requirePermission } from "@/lib/require-auth";
+import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { normalizeSearchText } from "@/lib/search-normalization";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { refreshCategoryStorefrontCaches } from "@/lib/storefront-revalidation";
 import { invalidateCategoryAliasCache } from "@/lib/category-alias-cache";
 import { invalidateTransactionProductOptions } from "@/lib/transaction-options";
 
-const categorySchema = z
-  .object({
-    name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
+/**
+ * Empty string means "no image" — the storefront then falls back on its own.
+ *
+ * Anything else must be a URL this app itself produced: our Blob host, under the
+ * category-thumbnail root. `next.config.ts` only lets next/image load the Blob
+ * host, so a URL from anywhere else would render as a broken tile on every
+ * storefront page rather than an image.
+ */
+const categoryImageUrlSchema = z
+  .string()
+  .max(500)
+  .refine((value) => value === "" || isOwnedBlobCategoryImageUrl(value), {
+    message: "ลิงก์รูปภาพไม่ถูกต้อง",
   })
-  .merge(categoryVisualInputSchema);
+  .default("");
+
+const categorySchema = z.object({
+  name: z.string().min(1, "กรุณากรอกชื่อหมวดหมู่").max(100),
+  imageUrl: categoryImageUrlSchema,
+});
+
+const CATEGORY_IMAGE_ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const CATEGORY_IMAGE_ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp"];
+const CATEGORY_IMAGE_MAX_BYTES = 2 * 1024 * 1024; // 2 MB — tiles render at 80px.
+
+/**
+ * Uploads a category thumbnail and returns its public URL. The row is only
+ * written when the admin saves the form, so an abandoned upload just leaves an
+ * orphan object (same behaviour as the shop-logo uploader).
+ *
+ * Both master.create and master.update are accepted: the same picker sits in the
+ * "add category" form, which a create-only staff member is allowed to submit.
+ */
+export const uploadCategoryImage = async (
+  categoryId: string,
+  formData: FormData,
+): Promise<{ url?: string; error?: string }> => {
+  const session = await requireAnyPermission(["master.create", "master.update"]).catch(() => null);
+  if (!session?.user?.id) {
+    return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  }
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) {
+    return { error: "กรุณาเลือกไฟล์รูปภาพ" };
+  }
+  if (!CATEGORY_IMAGE_ALLOWED_MIME_TYPES.includes(file.type)) {
+    return { error: "อนุญาตเฉพาะไฟล์รูปภาพ (JPEG, PNG, WebP)" };
+  }
+  if (file.size > CATEGORY_IMAGE_MAX_BYTES) {
+    return { error: "ขนาดไฟล์ต้องไม่เกิน 2MB" };
+  }
+
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!CATEGORY_IMAGE_ALLOWED_EXTENSIONS.includes(extension)) {
+    return { error: "นามสกุลไฟล์ไม่ถูกต้อง ใช้ได้: jpg, png, webp" };
+  }
+
+  try {
+    const body = new Uint8Array(await file.arrayBuffer());
+    const detectedType = sniffImageMimeType(body);
+    if (!detectedType || !CATEGORY_IMAGE_ALLOWED_MIME_TYPES.includes(detectedType)) {
+      return { error: "ไฟล์นี้ไม่ใช่รูปภาพที่รองรับ (JPEG, PNG, WebP)" };
+    }
+
+    const url = await uploadProductsBucketObject({
+      objectPath: buildCategoryImageObjectPath(categoryId || "new", extension),
+      body,
+      contentType: detectedType,
+    });
+    return { url };
+  } catch {
+    return { error: "เกิดข้อผิดพลาดขณะอัปโหลดรูปภาพ" };
+  }
+};
 
 const categoryAliasSchema = z.object({
   alias: z.string().trim().min(1, "กรุณากรอก alias").max(120),
@@ -81,6 +154,7 @@ async function getCategoryAuditSnapshot(id: string) {
       name: true,
       slug: true,
       isActive: true,
+      imageUrl: true,
     },
   });
 }
@@ -113,15 +187,13 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
   const requestContext = await getRequestContext();
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
-    iconKey: formData.get("iconKey"),
-    toneKey: formData.get("toneKey"),
-    motionKey: formData.get("motionKey"),
+    imageUrl: formData.get("imageUrl") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, iconKey, toneKey, motionKey } = parsed.data;
+  const { name, imageUrl } = parsed.data;
 
   try {
     const existingSlugs = await db.category.findMany({
@@ -131,6 +203,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
     const category = await db.category.create({
       data: {
         name,
+        imageUrl: imageUrl || null,
         slug: buildUniqueSlug({
           value: name,
           taken: existingSlugs.flatMap(({ slug }) => (slug ? [slug] : [])),
@@ -139,8 +212,6 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
         }),
       },
     });
-
-    await saveCategoryVisualSetting(category.id, { iconKey, toneKey, motionKey });
 
     const afterSnapshot = await getCategoryAuditSnapshot(category.id);
     if (afterSnapshot) {
@@ -151,12 +222,7 @@ export const createCategory = async (formData: FormData): Promise<{ error?: stri
         entityType: "Category",
         entityId: afterSnapshot.id,
         entityRef: afterSnapshot.slug ?? afterSnapshot.name,
-        after: {
-          ...afterSnapshot,
-          iconKey,
-          toneKey,
-          motionKey,
-        },
+        after: afterSnapshot,
       });
     }
 
@@ -186,39 +252,35 @@ export const updateCategory = async (
 
   const parsed = categorySchema.safeParse({
     name: formData.get("name"),
-    iconKey: formData.get("iconKey"),
-    toneKey: formData.get("toneKey"),
-    motionKey: formData.get("motionKey"),
+    imageUrl: formData.get("imageUrl") ?? "",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message };
   }
 
-  const { name, iconKey, toneKey, motionKey } = parsed.data;
+  const { name, imageUrl } = parsed.data;
 
   try {
     const beforeSnapshot = await getCategoryAuditSnapshot(id);
-    const existingCategory = await db.category.findUnique({
-      where: { id },
-      select: { id: true, name: true, slug: true },
-    });
-
-    if (!existingCategory) {
+    if (!beforeSnapshot) {
       return { error: "ไม่พบหมวดหมู่นี้" };
     }
 
+    const nextImageUrl = imageUrl || null;
     await db.category.update({
       where: { id },
-      data: { name },
+      data: { name, imageUrl: nextImageUrl },
     });
-    await saveCategoryVisualSetting(id, { iconKey, toneKey, motionKey });
+
+    // The previous thumbnail is unreachable the moment the row points elsewhere,
+    // so drop it from Blob. Best-effort, and gated to the category image root.
+    if (beforeSnapshot.imageUrl && beforeSnapshot.imageUrl !== nextImageUrl) {
+      await deleteCategoryImageObjects([beforeSnapshot.imageUrl]);
+    }
 
     const afterSnapshot = await getCategoryAuditSnapshot(id);
-    if (beforeSnapshot && afterSnapshot) {
-      const diff = diffEntity(
-        { ...beforeSnapshot, iconKey: null, toneKey: null, motionKey: null },
-        { ...afterSnapshot, iconKey, toneKey, motionKey },
-      );
+    if (afterSnapshot) {
+      const diff = diffEntity(beforeSnapshot, afterSnapshot);
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
         ...requestContext,

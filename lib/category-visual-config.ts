@@ -1,4 +1,11 @@
-export const CATEGORY_VISUAL_SITE_CONTENT_KEY = "category_visual_settings";
+/**
+ * Icon vocabulary for category tiles.
+ *
+ * There is no admin setting behind this any more: the icon/tone/motion for a
+ * category is inferred from its name, and it is only ever a last-resort fallback
+ * for a category that has neither an uploaded thumbnail nor a photographed
+ * product. Keeping it inferred means one less DB read on every storefront render.
+ */
 
 export const CATEGORY_ICON_OPTIONS = [
   { key: "compressor", label: "คอมเพรสเซอร์", keywords: ["compressor", "คอมเพรส", "คลัทช์"] },
@@ -51,29 +58,6 @@ export const DEFAULT_CATEGORY_VISUAL: CategoryVisualSetting = {
   motionKey: "lift",
 };
 
-const ICON_KEYS = CATEGORY_ICON_OPTIONS.map((option) => option.key);
-const TONE_KEYS = CATEGORY_TONE_OPTIONS.map((option) => option.key);
-const MOTION_KEYS = CATEGORY_MOTION_OPTIONS.map((option) => option.key);
-
-export const isCategoryIconKey = (value: unknown): value is CategoryIconKey =>
-  typeof value === "string" && ICON_KEYS.includes(value as CategoryIconKey);
-
-export const isCategoryToneKey = (value: unknown): value is CategoryToneKey =>
-  typeof value === "string" && TONE_KEYS.includes(value as CategoryToneKey);
-
-export const isCategoryMotionKey = (value: unknown): value is CategoryMotionKey =>
-  typeof value === "string" && MOTION_KEYS.includes(value as CategoryMotionKey);
-
-export const normalizeCategoryVisualSetting = (
-  value: Partial<CategoryVisualSetting> | null | undefined,
-): CategoryVisualSetting => ({
-  iconKey: isCategoryIconKey(value?.iconKey) ? value.iconKey : DEFAULT_CATEGORY_VISUAL.iconKey,
-  toneKey: isCategoryToneKey(value?.toneKey) ? value.toneKey : DEFAULT_CATEGORY_VISUAL.toneKey,
-  motionKey: isCategoryMotionKey(value?.motionKey)
-    ? value.motionKey
-    : DEFAULT_CATEGORY_VISUAL.motionKey,
-});
-
 export const inferCategoryVisual = (input: {
   name: string;
   slug?: string | null;
@@ -106,8 +90,3 @@ export const inferCategoryVisual = (input: {
       return DEFAULT_CATEGORY_VISUAL;
   }
 };
-
-export const resolveCategoryVisual = (
-  category: { name: string; slug?: string | null },
-  savedSetting: CategoryVisualSetting | undefined,
-): CategoryVisualSetting => savedSetting ?? inferCategoryVisual(category);

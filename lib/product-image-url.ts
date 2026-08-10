@@ -10,6 +10,8 @@
 export const PRODUCT_IMAGE_BUCKET = "products";
 export const PRODUCT_IMAGE_ROOT = "products";
 export const LINE_CHAT_IMAGE_BUCKET = "line-chat";
+/** Object root for admin-uploaded category thumbnails (inside the products bucket). */
+export const CATEGORY_IMAGE_ROOT = "settings/categories";
 
 /**
  * Legacy same-origin image-proxy prefix. No longer used now that images are
@@ -45,6 +47,16 @@ export function getProductImageFolder(productCode: string): string {
 export function buildProductImageObjectPath(productCode: string, extension: string): string {
   const safeExt = extension.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
   return `${getProductImageFolder(productCode)}/${Date.now()}-${crypto.randomUUID()}.${safeExt}`;
+}
+
+/**
+ * Object path for a category thumbnail. Content-addressed (timestamp + uuid) so a
+ * replacement never collides with — or silently overwrites — the previous file.
+ */
+export function buildCategoryImageObjectPath(categoryId: string, extension: string): string {
+  const safeExt = extension.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const safeId = sanitizeProductImageCode(categoryId);
+  return `${CATEGORY_IMAGE_ROOT}/${safeId}/${Date.now()}-${crypto.randomUUID()}.${safeExt}`;
 }
 
 export function buildPublicProductImageUrl(supabaseUrl: string, objectPath: string): string {

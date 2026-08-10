@@ -4,8 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { CategoryVisualIcon } from "@/components/shared/CategoryVisualIcon";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import { db } from "@/lib/db";
-import { inferCategoryVisual, resolveCategoryVisual } from "@/lib/category-visual-config";
-import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
+import { inferCategoryVisual } from "@/lib/category-visual-config";
 import { getCategoryPath } from "@/lib/product-slug";
 import { STOREFRONT_LINE_COMPACT_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
@@ -46,10 +45,7 @@ const ProductCategories = async ({
   categories?: HomeCategories;
   lineUrl?: string;
 }) => {
-  const [resolvedCategories, visualSettings] = await Promise.all([
-    categories ? Promise.resolve(categories) : fetchHomeCategories(),
-    getCategoryVisualSettings(),
-  ]);
+  const resolvedCategories = categories ?? (await fetchHomeCategories());
 
   const items =
     resolvedCategories.length > 0
@@ -57,7 +53,7 @@ const ProductCategories = async ({
           id: category.id,
           name: category.name,
           count: category._count.products,
-          visual: resolveCategoryVisual(category, visualSettings[category.id]),
+          visual: inferCategoryVisual(category),
           href: getCategoryPath(category),
         }))
       : fallbackCategories.map((category) => ({

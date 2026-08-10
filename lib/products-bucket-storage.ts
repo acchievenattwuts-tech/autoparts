@@ -1,5 +1,6 @@
 import { copy, del, put } from "@vercel/blob";
 import {
+  CATEGORY_IMAGE_ROOT,
   PRODUCT_IMAGE_ROOT,
   buildProductImageObjectPath,
   isProductImageObjectPathForCode,
@@ -37,8 +38,8 @@ export async function uploadProductsBucketObject(input: PublicObjectUploadInput)
   return result.url;
 }
 
-/** The products-bucket object path for one of our Blob URLs (else null). */
-export function getBlobProductObjectPath(url: string): string | null {
+/** The object path of one of our Blob URLs under `root/` (else null). */
+function getBlobObjectPathUnderRoot(url: string, root: string): string | null {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -53,7 +54,12 @@ export function getBlobProductObjectPath(url: string): string | null {
   } catch {
     objectPath = parsed.pathname.replace(/^\/+/, "");
   }
-  return objectPath.startsWith(`${PRODUCT_IMAGE_ROOT}/`) ? objectPath : null;
+  return objectPath.startsWith(`${root}/`) ? objectPath : null;
+}
+
+/** The products-bucket object path for one of our Blob URLs (else null). */
+export function getBlobProductObjectPath(url: string): string | null {
+  return getBlobObjectPathUnderRoot(url, PRODUCT_IMAGE_ROOT);
 }
 
 /**
@@ -63,6 +69,17 @@ export function getBlobProductObjectPath(url: string): string | null {
  */
 export function isOwnedBlobProductUrl(url: string): boolean {
   return getBlobProductObjectPath(url) !== null;
+}
+
+/**
+ * True only for *our* category-thumbnail objects — the public Blob host plus the
+ * `settings/categories/` object root. Used to validate what an admin form may
+ * store in `Category.imageUrl`: `next.config.ts` only allows next/image to load
+ * the Blob host, so any other URL would render as a broken tile on the
+ * storefront rather than an image.
+ */
+export function isOwnedBlobCategoryImageUrl(url: string): boolean {
+  return getBlobObjectPathUnderRoot(url, CATEGORY_IMAGE_ROOT) !== null;
 }
 
 /** True if a Blob product image URL already lives under the given product's code folder. */
@@ -116,5 +133,21 @@ export async function deleteProductsBucketObjects(urls: string[]): Promise<void>
     await del(blobUrls);
   } catch (error) {
     console.error("[products-bucket-storage] blob delete failed", error);
+  }
+}
+
+/**
+ * Deletes category-thumbnail objects. Gated to the `settings/categories/` root on
+ * our own Blob host, so neither a product image nor an arbitrary URL can be removed
+ * through here. Best-effort — never throws, since losing a replaced file is not a
+ * reason to fail the admin's save.
+ */
+export async function deleteCategoryImageObjects(urls: string[]): Promise<void> {
+  const blobUrls = urls.filter((url) => getBlobObjectPathUnderRoot(url, CATEGORY_IMAGE_ROOT) !== null);
+  if (blobUrls.length === 0) return;
+  try {
+    await del(blobUrls);
+  } catch (error) {
+    console.error("[products-bucket-storage] category image delete failed", error);
   }
 }

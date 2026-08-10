@@ -960,6 +960,9 @@ model Category {
   createdAt DateTime        @default(now()) @db.Timestamptz(3)
   isActive  Boolean         @default(true)
   slug      String?         @unique
+  /// Admin-uploaded thumbnail for the storefront category strip. Null falls back
+  /// to the category's best-selling product photo, then to a name-inferred icon.
+  imageUrl  String?
   aliases   CategoryAlias[]
   products  Product[]
 }
