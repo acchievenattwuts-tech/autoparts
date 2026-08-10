@@ -12,6 +12,7 @@ import HomeHero from "@/components/storefront/HomeHero";
 import HomeLineCta from "@/components/storefront/HomeLineCta";
 import HomeNewArrivals from "@/components/storefront/HomeNewArrivals";
 import HomeProductRail from "@/components/storefront/HomeProductRail";
+import HomeSeoIntro from "@/components/storefront/HomeSeoIntro";
 import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
@@ -130,6 +131,15 @@ const Home = async () => {
         />
 
         <HomeNewArrivals initialPage={newArrivals} lineUrl={config.shopLineUrl} />
+
+        {/* Long-form copy for crawlers and answer engines — the grid above is
+            almost all product names and prices */}
+        <HomeSeoIntro
+          productCount={newArrivals.total}
+          categoryCount={categories.length}
+          carBrandCount={productFilters.carBrands.length}
+          shopName={config.shopName}
+        />
 
         <HomeLineCta
           shopName={config.shopName}
