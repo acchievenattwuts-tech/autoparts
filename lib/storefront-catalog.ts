@@ -9,29 +9,33 @@ export const getStorefrontProductFilters = unstable_cache(
   // not fail (and log an error) on a single dropped connection during a crawl.
   async () =>
     withDbRetry(async () => {
-      const categories = await db.category.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      });
-      const carBrands = await db.carBrand.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          name: true,
-          carModels: {
-            where: { isActive: true },
-            select: { id: true, name: true },
-            orderBy: { name: "asc" },
+      // Three independent master reads — run them in parallel so a cache miss
+      // costs one round trip instead of three.
+      const [categories, carBrands, partsBrands] = await Promise.all([
+        db.category.findMany({
+          where: { isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+        db.carBrand.findMany({
+          where: { isActive: true },
+          select: {
+            id: true,
+            name: true,
+            carModels: {
+              where: { isActive: true },
+              select: { id: true, name: true },
+              orderBy: { name: "asc" },
+            },
           },
-        },
-        orderBy: { name: "asc" },
-      });
-      const partsBrands = await db.partsBrand.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      });
+          orderBy: { name: "asc" },
+        }),
+        db.partsBrand.findMany({
+          where: { isActive: true },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+      ]);
 
       return { categories, carBrands, partsBrands };
     }),

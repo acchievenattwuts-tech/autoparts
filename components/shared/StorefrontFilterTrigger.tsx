@@ -9,6 +9,10 @@ import {
   type AppliedFilters,
   type ProductFilterData,
 } from "@/components/shared/ProductFilterPanel";
+import {
+  loadStorefrontFilterData,
+  primeStorefrontFilterData,
+} from "@/lib/storefront-filter-data-client";
 
 const FILTER_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2">
@@ -25,8 +29,6 @@ export const OPEN_PRODUCT_FILTER_EVENT = "storefront:open-product-filter";
 // Suspense boundary for static pages like / and /about).
 export const PRODUCT_FILTER_COUNT_EVENT = "storefront:product-filter-count";
 
-let sharedFilterData: ProductFilterData | null = null;
-let sharedFilterDataPromise: Promise<ProductFilterData> | null = null;
 let filterCountSearchOverride: string | null = null;
 
 const computeFilterCount = (search: string): number => {
@@ -60,9 +62,19 @@ const buildProductsUrl = (draft: AppliedFilters): string => {
 
 interface Props {
   filterData?: ProductFilterData;
+  /**
+   * Override the button's look. Defaults to the white pill built for the light
+   * navbar; the storefront header passes a translucent circle for its blue bar.
+   */
+  className?: string;
+  badgeClassName?: string;
 }
 
-const FILTER_DATA_ENDPOINT = "/api/storefront-filters";
+const DEFAULT_BUTTON_CLASS =
+  "relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#1e3a5f] shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:ring-[#1e3a5f]/30 lg:hidden";
+
+const DEFAULT_BADGE_CLASS =
+  "absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1.5 text-[10px] font-semibold text-white shadow-sm";
 
 const LoadingFilterDrawer = ({ onClose }: { onClose: () => void }) => {
   if (typeof document === "undefined") return null;
@@ -88,34 +100,11 @@ const LoadingFilterDrawer = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
-const loadSharedFilterData = async (): Promise<ProductFilterData> => {
-  if (sharedFilterData) {
-    return sharedFilterData;
-  }
-
-  if (!sharedFilterDataPromise) {
-    sharedFilterDataPromise = fetch(FILTER_DATA_ENDPOINT, {
-      method: "GET",
-      credentials: "same-origin",
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to load filters: ${response.status}`);
-        }
-
-        const payload = (await response.json()) as ProductFilterData;
-        sharedFilterData = payload;
-        return payload;
-      })
-      .finally(() => {
-        sharedFilterDataPromise = null;
-      });
-  }
-
-  return sharedFilterDataPromise;
-};
-
-const StorefrontFilterTrigger = ({ filterData }: Props) => {
+const StorefrontFilterTrigger = ({
+  filterData,
+  className = DEFAULT_BUTTON_CLASS,
+  badgeClassName = DEFAULT_BADGE_CLASS,
+}: Props) => {
   const pathname = usePathname();
   const router = useRouter();
   const isOnProducts = pathname === "/products";
@@ -128,7 +117,7 @@ const StorefrontFilterTrigger = ({ filterData }: Props) => {
 
   useEffect(() => {
     if (filterData) {
-      sharedFilterData = filterData;
+      primeStorefrontFilterData(filterData);
       setResolvedFilterData(filterData);
     }
   }, [filterData]);
@@ -172,7 +161,7 @@ const StorefrontFilterTrigger = ({ filterData }: Props) => {
     setIsLoadingFilterData(true);
 
     try {
-      const payload = await loadSharedFilterData();
+      const payload = await loadStorefrontFilterData();
       setResolvedFilterData(payload);
     } catch {
       setDrawerOpen(false);
@@ -211,12 +200,12 @@ const StorefrontFilterTrigger = ({ filterData }: Props) => {
       <button
         type="button"
         onClick={handleClick}
-        className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-[#1e3a5f] shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-50 hover:ring-[#1e3a5f]/30 lg:hidden"
+        className={className}
         aria-label="ตัวกรองสินค้า"
       >
         {FILTER_ICON}
         {count > 0 && (
-          <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-[#f97316] px-1.5 text-[10px] font-semibold text-white shadow-sm">
+          <span className={badgeClassName}>
             {count}
           </span>
         )}

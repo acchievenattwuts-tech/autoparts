@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MessageCircleMore, RotateCcw, Search } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import MultiSelectFilter, { type MultiSelectOption } from "@/components/shared/MultiSelectFilter";
+import type { ProductFilterData } from "@/components/shared/ProductFilterPanel";
+import {
+  getCachedStorefrontFilterData,
+  loadStorefrontFilterData,
+} from "@/lib/storefront-filter-data-client";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
 /**
@@ -18,13 +23,13 @@ import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-them
  * the white + blue palette; orange stays reserved for prices.
  */
 
-export interface Home2FinderBrand {
-  name: string;
-  models: string[];
-}
-
 interface Props {
-  brands: Home2FinderBrand[];
+  /**
+   * Car brand names only. The brand→model map is far larger and is needed only
+   * once a brand is picked, so it is fetched on demand from
+   * `/api/storefront-filters` instead of riding along in the page payload.
+   */
+  brands: string[];
   categories: string[];
   lineUrl?: string;
 }
@@ -48,7 +53,20 @@ const buildYearOptions = (): SelectOption[] => {
 const toOptions = (values: string[]): SelectOption[] =>
   values.map((value) => ({ id: value, label: value }));
 
-const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
+/** Flattens the shared filter payload into the brand-name → model-names map. */
+const buildModelsByBrand = (
+  data: ProductFilterData | null,
+): Record<string, string[]> => {
+  if (!data) return {};
+  return Object.fromEntries(
+    data.carBrands.map((carBrand) => [
+      carBrand.name,
+      carBrand.carModels.map((carModel) => carModel.name),
+    ]),
+  );
+};
+
+const FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -57,24 +75,46 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   const [year, setYear] = useState("");
   // หมวดอะไหล่เลือกได้มากกว่า 1 — /products รองรับ `categories` ซ้ำหลายค่าอยู่แล้ว
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  // Populated lazily on the first interaction with the brand field, so a visitor
+  // who never opens the finder never pays for the map.
+  const [modelsByBrand, setModelsByBrand] = useState<Record<string, string[]>>(
+    () => buildModelsByBrand(getCachedStorefrontFilterData()),
+  );
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
 
-  const brandOptions = useMemo(() => toOptions(brands.map((item) => item.name)), [brands]);
+  const brandOptions = useMemo(() => toOptions(brands), [brands]);
   const yearOptions = useMemo(() => buildYearOptions(), []);
   const categoryOptions = useMemo<MultiSelectOption[]>(
     () => categories.map((name) => ({ id: name, label: name })),
     [categories],
   );
 
-  const modelOptions = useMemo(() => {
-    const selected = brands.find((item) => item.name === brand);
-    return toOptions(selected?.models ?? []);
-  }, [brands, brand]);
+  const hasModelMap = Object.keys(modelsByBrand).length > 0;
+  const modelOptions = useMemo(
+    () => toOptions(modelsByBrand[brand] ?? []),
+    [modelsByBrand, brand],
+  );
+
+  const ensureModelMap = useCallback(async () => {
+    if (hasModelMap || isLoadingModels) return;
+
+    setIsLoadingModels(true);
+    try {
+      setModelsByBrand(buildModelsByBrand(await loadStorefrontFilterData()));
+    } catch {
+      // Leave the map empty — the model field stays in its "no options" state and
+      // brand / year / category still search fine on their own.
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }, [hasModelMap, isLoadingModels]);
 
   const hasAnyFilter = Boolean(brand || model || year || selectedCategories.length > 0);
 
   const handleBrandChange = (nextBrand: string) => {
     setBrand(nextBrand);
     setModel(""); // reset dependent model when brand changes
+    if (nextBrand) void ensureModelMap();
   };
 
   const handleReset = () => {
@@ -111,13 +151,17 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
       <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4 [&_.text-orange-400]:!text-[#5c7fb3] [&_[role=combobox]:has(.text-orange-400)]:!border-[#cddff2] [&_[role=combobox]:has(.text-orange-400)]:!bg-[#f7fafe] [&_[role=combobox]:has(.text-orange-400):hover]:!border-[#93b4dd]">
         <div>
           <label className="mb-1 block text-xs font-medium text-[#4d6fba]">ยี่ห้อรถ</label>
-          <SearchableSelect
-            options={brandOptions}
-            value={brand}
-            onChange={handleBrandChange}
-            placeholder="เลือกยี่ห้อ"
-            autoFocusSearch={false}
-          />
+          {/* Warm the model map as soon as the customer reaches for the brand
+              field, so picking a brand rarely lands on the loading state. */}
+          <div onPointerEnter={() => void ensureModelMap()} onFocusCapture={() => void ensureModelMap()}>
+            <SearchableSelect
+              options={brandOptions}
+              value={brand}
+              onChange={handleBrandChange}
+              placeholder="เลือกยี่ห้อ"
+              autoFocusSearch={false}
+            />
+          </div>
         </div>
         <div>
           <label className="mb-1 block text-xs font-medium text-[#4d6fba]">รุ่นรถ</label>
@@ -125,8 +169,10 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
             options={modelOptions}
             value={model}
             onChange={setModel}
-            placeholder={brand ? "เลือกรุ่น" : "เลือกยี่ห้อก่อน"}
-            disabled={!brand}
+            placeholder={
+              !brand ? "เลือกยี่ห้อก่อน" : isLoadingModels ? "กำลังโหลดรุ่น..." : "เลือกรุ่น"
+            }
+            disabled={!brand || isLoadingModels}
             autoFocusSearch={false}
           />
         </div>
@@ -209,4 +255,4 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   );
 };
 
-export default Home2FitmentFinder;
+export default FitmentFinder;
