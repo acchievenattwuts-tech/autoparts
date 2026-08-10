@@ -26,15 +26,15 @@ interface Props {
  */
 const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
   <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#16345d] via-[#25508a] to-[#2563eb] px-4 py-8 text-white sm:px-8 sm:py-10 lg:py-12">
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#16345d] via-[#25508a] to-[#2563eb] px-4 py-6 text-white sm:px-8 sm:py-7">
       {/* Soft light shapes — purely decorative, clipped by the card */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl"
+        className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-white/10 blur-2xl"
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-[#06C755]/10 blur-3xl"
+        className="pointer-events-none absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-[#06C755]/10 blur-3xl"
       />
       <div
         aria-hidden="true"
@@ -42,22 +42,19 @@ const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
       />
 
       <div className="relative mx-auto max-w-5xl">
-        <header className="text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold backdrop-blur-sm">
-            <Wrench className="h-3.5 w-3.5" />
-            เช็กความตรงรุ่นก่อนสั่ง
-          </span>
-
-          <h1 className="mt-4 font-kanit text-2xl font-bold leading-tight sm:text-4xl">
+        {/* Headline and strapline share one line on desktop so the banner stays
+            shallow and the form sits close to the fold. */}
+        <header className="flex flex-col items-center gap-1 text-center lg:flex-row lg:justify-center lg:gap-3">
+          <h1 className="inline-flex items-center gap-2 font-kanit text-xl font-bold leading-tight sm:text-2xl">
+            <Wrench className="h-5 w-5 shrink-0 opacity-80" />
             ค้นหาอะไหล่ตามรถของคุณ
           </h1>
-
-          <p className="mx-auto mt-2.5 max-w-2xl text-sm text-white/75 sm:text-base">
-            เลือกยี่ห้อ รุ่น และปีรถ แล้วให้ระบบกรองเฉพาะอะไหล่ที่ระบุว่าตรงรุ่นให้ทันที
+          <p className="hidden text-xs text-white/70 sm:block sm:text-sm">
+            เลือกยี่ห้อ รุ่น ปีรถ แล้วกรองเฉพาะอะไหล่ที่ตรงรุ่นได้ทันที
           </p>
         </header>
 
-        <div className="mt-6 sm:mt-8">
+        <div className="mt-4">
           {/* Same search logic as "/", re-skinned to blue */}
           <Home2FitmentFinder
             brands={finderBrands}

@@ -99,7 +99,7 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   };
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-[0_18px_45px_rgba(9,25,48,0.28)] sm:p-6">
+    <div className="rounded-2xl bg-white p-3.5 shadow-[0_18px_45px_rgba(9,25,48,0.28)] sm:p-4">
       {/*
         SearchableSelect / MultiSelectFilter hardcode an orange "nothing picked
         yet" state (border-orange-300 / bg-orange-50/30 / text-orange-400) and
@@ -108,9 +108,9 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
         scoped to this card. `:has(.text-orange-400)` matches only the closed +
         empty trigger, leaving the focused and filled states untouched.
       */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 [&_.text-orange-400]:!text-[#5c7fb3] [&_[role=combobox]:has(.text-orange-400)]:!border-[#cddff2] [&_[role=combobox]:has(.text-orange-400)]:!bg-[#f7fafe] [&_[role=combobox]:has(.text-orange-400):hover]:!border-[#93b4dd]">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4 [&_.text-orange-400]:!text-[#5c7fb3] [&_[role=combobox]:has(.text-orange-400)]:!border-[#cddff2] [&_[role=combobox]:has(.text-orange-400)]:!bg-[#f7fafe] [&_[role=combobox]:has(.text-orange-400):hover]:!border-[#93b4dd]">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">ยี่ห้อรถ</label>
+          <label className="mb-1 block text-xs font-medium text-[#4d6fba]">ยี่ห้อรถ</label>
           <SearchableSelect
             options={brandOptions}
             value={brand}
@@ -120,7 +120,7 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">รุ่นรถ</label>
+          <label className="mb-1 block text-xs font-medium text-[#4d6fba]">รุ่นรถ</label>
           <SearchableSelect
             options={modelOptions}
             value={model}
@@ -131,7 +131,7 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">ปีรถ</label>
+          <label className="mb-1 block text-xs font-medium text-[#4d6fba]">ปีรถ</label>
           <SearchableSelect
             options={yearOptions}
             value={year}
@@ -141,8 +141,9 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
           />
         </div>
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-[#4d6fba]">
-            หมวดอะไหล่ <span className="font-normal text-slate-400">(เลือกได้หลายหมวด)</span>
+          <label className="mb-1 block truncate text-xs font-medium text-[#4d6fba]">
+            หมวดอะไหล่{" "}
+            <span className="hidden font-normal text-slate-400 sm:inline">(เลือกได้หลายหมวด)</span>
           </label>
           <MultiSelectFilter
             options={categoryOptions}
@@ -153,45 +154,56 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col gap-2.5 sm:flex-row">
-        <button
-          type="button"
-          onClick={handleSearch}
-          disabled={!hasAnyFilter || isPending}
-          className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#1e3a5f] px-6 py-3.5 font-kanit text-base font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#163055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/45 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
-        >
-          <Search className="h-4 w-4" />
-          {isPending ? "กำลังค้นหา..." : "ค้นหาอะไหล่ที่ตรงรุ่น"}
-        </button>
-        {lineUrl && (
-          <a
-            href={lineUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} flex-1 px-6 py-3.5 text-base`}
-          >
-            <MessageCircleMore className="h-4 w-4" />
-            ไม่รู้รุ่น? ส่งรูปทาง LINE
-          </a>
-        )}
-      </div>
-
-      {/* Hint and reset share a row that is always present, so revealing the
-          reset button cannot shift the layout. */}
-      <div className="mt-3 flex min-h-[28px] flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-slate-400">
-          เลือกอย่างน้อย 1 ช่องเพื่อค้นหา — ยิ่งระบุครบ ยิ่งกรองให้ตรงรุ่นมากขึ้น
-        </p>
-        {hasAnyFilter && (
+      {/* Buttons, hint and reset share one row on desktop — the hint used to
+          own a line of its own, which the banner could not afford. */}
+      <div className="mt-3 flex flex-col gap-2.5 lg:flex-row lg:items-center">
+        <div className="flex gap-2.5 lg:shrink-0">
           <button
             type="button"
-            onClick={handleReset}
-            className="inline-flex min-h-[28px] shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-slate-400 transition hover:bg-[#eff5fc] hover:text-[#2563eb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/40"
+            onClick={handleSearch}
+            disabled={!hasAnyFilter || isPending}
+            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-[#1e3a5f] px-5 py-2.5 font-kanit text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#163055] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/45 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 lg:flex-none"
           >
-            <RotateCcw className="h-3.5 w-3.5" />
-            ล้างค่า
+            <Search className="h-4 w-4 shrink-0" />
+            {isPending ? (
+              "กำลังค้นหา..."
+            ) : (
+              <>
+                <span className="sm:hidden">ค้นหา</span>
+                <span className="hidden sm:inline">ค้นหาอะไหล่ที่ตรงรุ่น</span>
+              </>
+            )}
           </button>
-        )}
+          {lineUrl && (
+            <a
+              href={lineUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`${STOREFRONT_LINE_PRIMARY_BUTTON_CLASS} flex-1 px-5 py-2.5 text-sm lg:flex-none`}
+            >
+              <MessageCircleMore className="h-4 w-4 shrink-0" />
+              <span className="sm:hidden">ส่งรูป LINE</span>
+              <span className="hidden sm:inline">ไม่รู้รุ่น? ส่งรูปทาง LINE</span>
+            </a>
+          )}
+        </div>
+
+        <div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+          <p className="text-[11px] leading-snug text-slate-400 sm:text-xs">
+            เลือกอย่างน้อย 1 ช่องเพื่อค้นหา
+            <span className="hidden sm:inline"> — ยิ่งระบุครบ ยิ่งกรองให้ตรงรุ่นมากขึ้น</span>
+          </p>
+          {hasAnyFilter && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="inline-flex min-h-[28px] shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-medium text-slate-400 transition hover:bg-[#eff5fc] hover:text-[#2563eb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/40"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              ล้างค่า
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

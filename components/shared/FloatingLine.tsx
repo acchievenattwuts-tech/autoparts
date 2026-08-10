@@ -11,7 +11,7 @@ import { MessageCircleMore, Phone, X } from "lucide-react";
  * corner stays quiet until a customer actually needs help.
  */
 
-const PROMPT_TEXT = "หาอะไหล่ไม่เจอ ทักสอบถามได้เลยค่ะ";
+const PROMPT_TEXT = "หาอะไหล่ไม่เจอ ทักได้เลยค่ะ";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-6 w-6 fill-current" aria-hidden="true">
