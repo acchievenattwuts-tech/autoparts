@@ -80,7 +80,7 @@ const Home2Page = async () => {
         lineUrl={config.shopLineUrl}
       />
 
-      <main className="flex-1 pb-8">
+      <main className="flex-1">
         <Home2Hero
           shopName={config.shopName}
           heroTitle={config.heroTitle}

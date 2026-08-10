@@ -80,6 +80,8 @@ export interface Home2CategoryData {
   name: string;
   slug: string | null;
   productCount: number;
+  /** Best-selling in-stock product's photo, used as the category thumbnail. */
+  imageUrl: string | null;
 }
 
 const formatFitmentYear = (yearStart: number | null, yearEnd: number | null): string | null => {
@@ -166,6 +168,15 @@ export const getHome2Categories = unstable_cache(
           name: true,
           slug: true,
           _count: { select: { products: { where: { isActive: true, isStorefrontVisible: true } } } },
+          // Prisma batches this nested read into one extra query keyed by
+          // categoryId — it is not an N+1. Best-seller first so the thumbnail
+          // is a part customers actually recognise.
+          products: {
+            where: { ...STOREFRONT_PRODUCT_WHERE, imageUrl: { not: null } },
+            orderBy: { saleItems: { _count: "desc" } },
+            select: { imageUrl: true },
+            take: 1,
+          },
         },
       });
 
@@ -174,6 +185,7 @@ export const getHome2Categories = unstable_cache(
         name: category.name,
         slug: category.slug,
         productCount: category._count.products,
+        imageUrl: category.products[0]?.imageUrl ?? null,
       }));
     }),
   ["home2-categories"],

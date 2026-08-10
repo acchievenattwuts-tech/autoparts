@@ -1,6 +1,12 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Cog,
   Droplets,
@@ -17,15 +23,15 @@ import {
   type CategoryIconKey,
   type CategoryVisualSetting,
 } from "@/lib/category-visual-config";
+import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getCategoryPath } from "@/lib/product-slug";
 import type { Home2CategoryData } from "./home2-data";
 import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 
 /**
- * Same icon vocabulary as the live storefront's <CategoryVisualIcon/>, so an
- * admin's icon choice is honoured here too — but rendered in a single blue tone
- * instead of the per-category tone colours, to keep home2 on the white + blue
- * palette.
+ * Icon fallback for categories with no photographed product yet — same icon
+ * vocabulary as the storefront's <CategoryVisualIcon/>, so an admin's icon
+ * choice still applies.
  */
 const ICONS: Record<CategoryIconKey, LucideIcon> = {
   compressor: Cog,
@@ -40,13 +46,59 @@ const ICONS: Record<CategoryIconKey, LucideIcon> = {
   gear: Cog,
 };
 
+/** Fraction of the visible width one arrow click travels. */
+const SCROLL_STEP_RATIO = 0.85;
+/** Ignore sub-pixel rounding when deciding whether an arrow is still usable. */
+const SCROLL_EPSILON = 4;
+
 interface Props {
-  /** Every active category — this section is not truncated. */
   categories: Home2CategoryData[];
   visualSettings: Record<string, CategoryVisualSetting>;
 }
 
+/**
+ * Shopee-style category block: two rows that scroll sideways, with arrow
+ * controls on desktop and native swipe on touch.
+ */
 const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const syncArrows = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    const maxScroll = scroller.scrollWidth - scroller.clientWidth;
+    setCanScrollLeft(scroller.scrollLeft > SCROLL_EPSILON);
+    setCanScrollRight(scroller.scrollLeft < maxScroll - SCROLL_EPSILON);
+  }, []);
+
+  useEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+
+    syncArrows();
+    scroller.addEventListener("scroll", syncArrows, { passive: true });
+
+    // Column count is breakpoint-driven, so the overflow changes on resize.
+    const observer = new ResizeObserver(syncArrows);
+    observer.observe(scroller);
+
+    return () => {
+      scroller.removeEventListener("scroll", syncArrows);
+      observer.disconnect();
+    };
+  }, [syncArrows]);
+
+  const scrollByStep = (direction: 1 | -1) => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    scroller.scrollBy({
+      left: direction * scroller.clientWidth * SCROLL_STEP_RATIO,
+      behavior: "smooth",
+    });
+  };
+
   if (categories.length === 0) return null;
 
   return (
@@ -58,7 +110,7 @@ const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
               หมวดหมู่สินค้า
             </h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              ครบทั้ง {categories.length.toLocaleString("th-TH")} หมวด กดเลือกหมวดที่ต้องการได้เลย
+              ครบทั้ง {categories.length.toLocaleString("th-TH")} หมวด เลื่อนดูหรือกดเลือกได้เลย
             </p>
           </div>
           <Link
@@ -70,34 +122,73 @@ const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
           </Link>
         </div>
 
-        {/* Per-cell borders, with the grid pulled 1px past the card on the
-            bottom/right edges so the trailing lines are clipped away. Avoids a
-            tinted gap-track, which would show through the empty cells left over
-            in the final row. */}
-        <div className="-mb-px -mr-px grid grid-cols-2 overflow-hidden sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-          {categories.map((category) => {
-            const visual = resolveCategoryVisual(category, visualSettings[category.id]);
-            const Icon = ICONS[visual.iconKey] ?? Cog;
+        <div className="group/strip relative">
+          {/* grid-flow-col + grid-rows-2 lays tiles down-then-across, so the
+              block fills two rows and overflows sideways like Shopee's. */}
+          <div
+            ref={scrollerRef}
+            className="grid snap-x snap-mandatory grid-flow-col grid-rows-2 overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {categories.map((category) => {
+              const visual = resolveCategoryVisual(category, visualSettings[category.id]);
+              const Icon = ICONS[visual.iconKey] ?? Cog;
+              const imageSrc = category.imageUrl
+                ? (toProductImageCdnPath(category.imageUrl) ?? category.imageUrl)
+                : null;
 
-            return (
-              <Link
-                key={category.id}
-                href={getCategoryPath(category)}
-                prefetch={false}
-                className="group flex min-h-[9.5rem] flex-col items-center gap-2 border-b border-r border-[#eef3fa] bg-white px-3 py-4 text-center transition-colors hover:bg-[#f6f9fe]"
-              >
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#eff5fc] text-[#1e3a5f] transition-colors group-hover:bg-[#1e3a5f] group-hover:text-white">
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="line-clamp-3 text-xs font-medium leading-snug text-slate-700 sm:text-[13px]">
-                  {category.name}
-                </span>
-                <span className="mt-auto text-[11px] text-slate-400">
-                  {category.productCount.toLocaleString("th-TH")} รายการ
-                </span>
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={category.id}
+                  href={getCategoryPath(category)}
+                  prefetch={false}
+                  className="group/tile flex w-[124px] shrink-0 snap-start flex-col items-center gap-2 border-b border-r border-[#eef3fa] px-2 py-4 text-center transition-colors hover:bg-[#f6f9fe] sm:w-[142px]"
+                >
+                  <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30">
+                    {imageSrc ? (
+                      <Image
+                        src={imageSrc}
+                        alt={`หมวด ${category.name}`}
+                        fill
+                        sizes="64px"
+                        className="object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
+                      />
+                    ) : (
+                      <Icon className="h-6 w-6 text-[#1e3a5f]" />
+                    )}
+                  </span>
+
+                  <span className="line-clamp-2 min-h-[2.25rem] text-[11px] font-medium leading-snug text-slate-700 sm:text-xs">
+                    {category.name}
+                  </span>
+                  <span className="text-[10px] text-slate-400">
+                    {category.productCount.toLocaleString("th-TH")} รายการ
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Arrows: pointer-only affordance — touch users just swipe. */}
+          {canScrollLeft && (
+            <button
+              type="button"
+              onClick={() => scrollByStep(-1)}
+              aria-label="เลื่อนหมวดหมู่ไปทางซ้าย"
+              className="absolute left-1 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] lg:flex"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+          {canScrollRight && (
+            <button
+              type="button"
+              onClick={() => scrollByStep(1)}
+              aria-label="เลื่อนหมวดหมู่ไปทางขวา"
+              className="absolute right-1 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] lg:flex"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          )}
         </div>
       </div>
     </section>

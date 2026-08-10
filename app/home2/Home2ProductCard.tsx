@@ -63,7 +63,7 @@ const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
         )}
 
         {product.warrantyDays > 0 && (
-          <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-[#1e3a5f]/92 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+          <span className="absolute left-1.5 top-1.5 inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/95 px-2 py-0.5 text-[10px] font-bold text-emerald-700 shadow-sm">
             <ShieldCheck className="h-3 w-3" />
             ประกัน {product.warrantyDays.toLocaleString("th-TH")} วัน
           </span>
