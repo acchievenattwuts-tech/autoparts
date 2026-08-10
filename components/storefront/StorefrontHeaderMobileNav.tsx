@@ -1,17 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ChevronRight, Menu, Phone, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, Menu, Phone } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import {
-  EMPTY_FILTERS,
-  ProductFilterDrawer,
-  type DraftFilters,
-  type ProductFilterData,
-} from "@/components/shared/ProductFilterPanel";
-import { HOME2_NAV_LINKS } from "./home2-nav";
+import StorefrontFilterTrigger from "@/components/shared/StorefrontFilterTrigger";
+import { STOREFRONT_NAV_LINKS } from "@/lib/storefront-nav";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0 fill-current" aria-hidden="true">
@@ -23,8 +17,6 @@ const ICON_BUTTON_CLASS =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70";
 
 interface Props {
-  /** Same shape /products feeds its own filter panel. */
-  filterData: ProductFilterData;
   lineUrl: string;
   shopPhone: string;
 }
@@ -32,50 +24,24 @@ interface Props {
 /**
  * Compact header controls for phones and tablets.
  *
- * Below lg the header has no room for the section nav or the LINE pill, so
- * they collapse into two icon buttons: the same filter drawer /products uses,
- * and a side drawer holding the section links plus contact details.
+ * Below lg the header has no room for the section nav or the LINE pill, so they
+ * collapse into two icon buttons: the shared product filter, and a drawer
+ * holding the section links plus contact details.
  */
-const Home2MobileNav = ({ filterData, lineUrl, shopPhone }: Props) => {
-  const router = useRouter();
-  const [filterOpen, setFilterOpen] = useState(false);
+const StorefrontHeaderMobileNav = ({ lineUrl, shopPhone }: Props) => {
   const [menuOpen, setMenuOpen] = useState(false);
-
-  /**
-   * home2 has no product list to filter in place, so applying the drawer's
-   * selection hands off to /products. Param names match buildSearchUrl in
-   * app/products/search/SearchResults.tsx so the destination reads them back
-   * as the same active filters.
-   */
-  const applyFilters = useCallback(
-    (draft: DraftFilters) => {
-      const params = new URLSearchParams();
-      draft.categories.forEach((value) => params.append("categories", value));
-      draft.partsBrands.forEach((value) => params.append("partsBrand", value));
-      draft.carBrands.forEach((value) => params.append("carBrand", value));
-      draft.models.forEach((value) => params.append("model", value));
-      if (draft.yearMin !== null) params.set("yearMin", String(draft.yearMin));
-      if (draft.yearMax !== null) params.set("yearMax", String(draft.yearMax));
-      if (draft.priceMin !== null) params.set("priceMin", String(draft.priceMin));
-      if (draft.priceMax !== null) params.set("priceMax", String(draft.priceMax));
-
-      const query = params.toString();
-      setFilterOpen(false);
-      router.push(query ? `/products?${query}` : "/products");
-    },
-    [router],
-  );
 
   return (
     <div className="flex shrink-0 items-center gap-2 lg:hidden">
-      <button
-        type="button"
-        onClick={() => setFilterOpen(true)}
-        aria-label="ตัวกรองสินค้า"
-        className={ICON_BUTTON_CLASS}
-      >
-        <SlidersHorizontal className="h-4 w-4" />
-      </button>
+      {/* The storefront-wide trigger, restyled for the blue bar. It keeps the
+          behaviour a local copy would lose: on /products it opens that page's
+          own drawer with the filters already applied instead of resetting them,
+          it shows how many are active, and it fetches the filter lists only
+          when first opened rather than shipping them with every page. */}
+      <StorefrontFilterTrigger
+        className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 lg:hidden"
+        badgeClassName="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[10px] font-bold text-[#1e3a5f] shadow-sm"
+      />
 
       <button
         type="button"
@@ -86,16 +52,6 @@ const Home2MobileNav = ({ filterData, lineUrl, shopPhone }: Props) => {
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* The filter drawer /products already ships, reused verbatim */}
-      <ProductFilterDrawer
-        isOpen={filterOpen}
-        onClose={() => setFilterOpen(false)}
-        initialFilters={EMPTY_FILTERS}
-        filterData={filterData}
-        onApply={applyFilters}
-        onClear={() => undefined}
-      />
-
       {/* Section links + contact */}
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>
         <SheetContent side="right" className="bg-white p-0">
@@ -104,7 +60,7 @@ const Home2MobileNav = ({ filterData, lineUrl, shopPhone }: Props) => {
           </SheetHeader>
 
           <nav className="flex flex-col px-2 py-2">
-            {HOME2_NAV_LINKS.map((link) => (
+            {STOREFRONT_NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
@@ -148,4 +104,4 @@ const Home2MobileNav = ({ filterData, lineUrl, shopPhone }: Props) => {
   );
 };
 
-export default Home2MobileNav;
+export default StorefrontHeaderMobileNav;

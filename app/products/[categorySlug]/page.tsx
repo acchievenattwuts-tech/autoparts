@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { permanentRedirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
@@ -130,14 +130,14 @@ const CategoryPage = async ({ params }: Props) => {
 
   return (
     <>
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
       />
-      <main className="min-h-screen bg-slate-50 pt-16">
+      <main className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-7xl px-4 py-2 sm:px-6 lg:px-8">
           <nav className="overflow-x-auto px-1 py-1">
             <ol className="flex min-w-max items-center gap-1.5 text-xs font-medium text-slate-500">

@@ -4,7 +4,10 @@ import { useRouter } from "next/navigation";
 import ProductAutocomplete from "@/components/shared/ProductAutocomplete";
 
 /**
- * Shopee-style search field for the home2 header.
+ * Shopee-style search field for the storefront header.
+ *
+ * `searchQuery` keeps whatever the customer searched for in the box on result
+ * pages, so refining a query does not mean retyping it.
  *
  * Reuses the shared <ProductAutocomplete/> (real product + keyword suggestions
  * from the live catalogue). Like shopee.co.th the field stretches across the
@@ -18,7 +21,13 @@ const SUBMIT_BUTTON_CLASS =
 
 const SEARCH_PLACEHOLDER = "ค้นหาสินค้า ยี่ห้อรถ รุ่นรถ หรือรหัสอะไหล่...";
 
-const SearchField = ({ variant }: { variant: "mobile" | "desktop" }) => {
+const SearchField = ({
+  variant,
+  searchQuery,
+}: {
+  variant: "mobile" | "desktop";
+  searchQuery?: string;
+}) => {
   const router = useRouter();
 
   const submit = (query: string) => {
@@ -36,6 +45,7 @@ const SearchField = ({ variant }: { variant: "mobile" | "desktop" }) => {
       }
     >
       <ProductAutocomplete
+        initialValue={searchQuery ?? ""}
         mode="storefront"
         placeholder={SEARCH_PLACEHOLDER}
         onSubmit={submit}
@@ -49,11 +59,11 @@ const SearchField = ({ variant }: { variant: "mobile" | "desktop" }) => {
   );
 };
 
-const Home2SearchBar = () => (
+const StorefrontHeaderSearch = ({ searchQuery }: { searchQuery?: string }) => (
   <>
-    <SearchField variant="mobile" />
-    <SearchField variant="desktop" />
+    <SearchField variant="mobile" searchQuery={searchQuery} />
+    <SearchField variant="desktop" searchQuery={searchQuery} />
   </>
 );
 
-export default Home2SearchBar;
+export default StorefrontHeaderSearch;

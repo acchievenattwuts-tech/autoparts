@@ -1,7 +1,7 @@
 const SKELETON_TILES = Array.from({ length: 8 }, (_, index) => index);
 const SKELETON_CARDS = Array.from({ length: 6 }, (_, index) => index);
 
-const Home2Loading = () => (
+const HomeLoading = () => (
   <div className="min-h-full bg-[#f4f7fc]">
     <div className="h-[7.5rem] bg-gradient-to-b from-[#1e3a5f] to-[#254b7a]" />
 
@@ -41,4 +41,4 @@ const Home2Loading = () => (
   </div>
 );
 
-export default Home2Loading;
+export default HomeLoading;

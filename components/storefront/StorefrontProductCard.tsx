@@ -12,11 +12,11 @@ import {
   STOREFRONT_PRICE_INQUIRY_LABEL,
   STOREFRONT_SPECIAL_PRICE_CTA_COMPACT,
 } from "@/lib/storefront-pricing";
-import type { Home2ProductCardData } from "./home2-data";
-import { HOME2_PRICE_TEXT_CLASS } from "./home2-theme";
+import type { StorefrontProductCardData } from "@/lib/storefront-home";
+import { STOREFRONT_PRICE_TEXT_CLASS } from "@/lib/storefront-home-theme";
 
 interface Props {
-  product: Home2ProductCardData;
+  product: StorefrontProductCardData;
   lineUrl: string;
   /** Rail cards get a fixed width so the row scrolls; grid cards flex. */
   variant?: "grid" | "rail";
@@ -29,7 +29,7 @@ interface Props {
  * product page streams in — same feedback as the storefront card on /products,
  * which otherwise leaves a tap looking unregistered on a slow connection.
  */
-const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
+const StorefrontProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -106,11 +106,11 @@ const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
 
         <div className="mt-auto pt-1.5">
           {pricing ? (
-            <p className={`text-base font-extrabold leading-none ${HOME2_PRICE_TEXT_CLASS}`}>
+            <p className={`text-base font-extrabold leading-none ${STOREFRONT_PRICE_TEXT_CLASS}`}>
               ฿{pricing.retailPrice.toLocaleString("th-TH")}
             </p>
           ) : (
-            <p className={`text-base font-extrabold leading-none ${HOME2_PRICE_TEXT_CLASS}`}>
+            <p className={`text-base font-extrabold leading-none ${STOREFRONT_PRICE_TEXT_CLASS}`}>
               {STOREFRONT_PRICE_INQUIRY_LABEL}
             </p>
           )}
@@ -134,4 +134,4 @@ const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
   );
 };
 
-export default Home2ProductCard;
+export default StorefrontProductCard;

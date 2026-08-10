@@ -1,7 +1,7 @@
 import BrandLoader from "@/components/shared/BrandLoader";
 
 const Loading = () => (
-  <main className="min-h-screen bg-slate-50 pt-16">
+  <main className="min-h-screen bg-slate-50">
     <BrandLoader variant="overlay" size="lg" label="กำลังโหลด..." />
     <section className="border-b border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">

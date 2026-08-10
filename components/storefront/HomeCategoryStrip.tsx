@@ -13,21 +13,17 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import {
-  resolveCategoryVisual,
-  type CategoryIconKey,
-  type CategoryVisualSetting,
-} from "@/lib/category-visual-config";
+import { inferCategoryVisual, type CategoryIconKey } from "@/lib/category-visual-config";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getCategoryPath } from "@/lib/product-slug";
-import Home2Carousel from "./Home2Carousel";
-import type { Home2CategoryData } from "./home2-data";
-import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
+import StorefrontCarousel from "@/components/storefront/StorefrontCarousel";
+import type { StorefrontCategoryData } from "@/lib/storefront-home";
+import { STOREFRONT_SECTION_CARD_CLASS } from "@/lib/storefront-home-theme";
 
 /**
- * Icon fallback for categories with no photographed product yet — same icon
- * vocabulary as the storefront's <CategoryVisualIcon/>, so an admin's icon
- * choice still applies.
+ * Last-resort icon for a category with neither an uploaded thumbnail nor a
+ * photographed product. Inferred from the category name — same vocabulary as the
+ * storefront's <CategoryVisualIcon/>.
  */
 const ICONS: Record<CategoryIconKey, LucideIcon> = {
   compressor: Cog,
@@ -43,19 +39,18 @@ const ICONS: Record<CategoryIconKey, LucideIcon> = {
 };
 
 interface Props {
-  categories: Home2CategoryData[];
-  visualSettings: Record<string, CategoryVisualSetting>;
+  categories: StorefrontCategoryData[];
 }
 
 /**
  * Shopee-style category block: two rows that scroll sideways.
  */
-const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
+const HomeCategoryStrip = ({ categories }: Props) => {
   if (categories.length === 0) return null;
 
   return (
     <section id="categories" className="mx-auto max-w-7xl px-4 pt-3 sm:px-6 lg:px-8">
-      <div className={`${HOME2_SECTION_CARD_CLASS} overflow-hidden`}>
+      <div className={`${STOREFRONT_SECTION_CARD_CLASS} overflow-hidden`}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eef3fa] px-4 py-3 sm:px-5">
           <div className="min-w-0">
             <h2 className="font-kanit text-base font-bold text-[#1e3a5f] sm:text-lg">
@@ -79,10 +74,9 @@ const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
             the card on the bottom/right edges so trailing cell borders clip
             away — a tinted gap-track would show through the final row's empty
             cells instead. */}
-        <Home2Carousel label="หมวดหมู่" trackClassName="-mb-px -mr-px grid grid-flow-col grid-rows-2">
+        <StorefrontCarousel label="หมวดหมู่" trackClassName="-mb-px -mr-px grid grid-flow-col grid-rows-2">
           {categories.map((category) => {
-            const visual = resolveCategoryVisual(category, visualSettings[category.id]);
-            const Icon = ICONS[visual.iconKey] ?? Cog;
+            const Icon = ICONS[inferCategoryVisual(category).iconKey] ?? Cog;
             const imageSrc = category.imageUrl
               ? (toProductImageCdnPath(category.imageUrl) ?? category.imageUrl)
               : null;
@@ -117,10 +111,10 @@ const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
               </Link>
             );
           })}
-        </Home2Carousel>
+        </StorefrontCarousel>
       </div>
     </section>
   );
 };
 
-export default Home2CategoryStrip;
+export default HomeCategoryStrip;

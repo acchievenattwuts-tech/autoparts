@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Boxes, Car, LayoutGrid, ShieldCheck, Truck, Wrench } from "lucide-react";
-import Home2FitmentFinder, { type Home2FinderBrand } from "./Home2FitmentFinder";
-import type { Home2CarModelData } from "./home2-data";
-import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
+import FitmentFinder from "@/components/storefront/FitmentFinder";
+import type { StorefrontCarModelData } from "@/lib/storefront-home";
+import { STOREFRONT_SECTION_CARD_CLASS } from "@/lib/storefront-home-theme";
 
 const SERVICE_HIGHLIGHTS = [
   { icon: Wrench, title: "เช็กความตรงรุ่น", description: "แจ้งรุ่นรถ ปี ให้ร้านช่วยเทียบก่อนสั่ง" },
@@ -12,8 +12,8 @@ const SERVICE_HIGHLIGHTS = [
 ] as const;
 
 interface Props {
-  /** Active car brands with their models, for the fitment finder. */
-  finderBrands: Home2FinderBrand[];
+  /** Active car brand names, for the fitment finder (models load on demand). */
+  finderBrands: string[];
   /** Active category names, for the finder's multi-select. */
   finderCategories: string[];
   lineUrl: string;
@@ -22,7 +22,7 @@ interface Props {
   categoryCount: number;
   carBrandCount: number;
   /** One-tap shortcuts into /products for the best-stocked models. */
-  popularModels: Home2CarModelData[];
+  popularModels: StorefrontCarModelData[];
 }
 
 /**
@@ -32,7 +32,7 @@ interface Props {
  * carries no competing marketing column — just the headline and the form,
  * centred on the blue field.
  */
-const Home2Hero = ({
+const HomeHero = ({
   finderBrands,
   finderCategories,
   lineUrl,
@@ -97,7 +97,7 @@ const Home2Hero = ({
 
         <div className="mt-4">
           {/* Same search logic as "/", re-skinned to blue */}
-          <Home2FitmentFinder
+          <FitmentFinder
             brands={finderBrands}
             categories={finderCategories}
             lineUrl={lineUrl}
@@ -124,7 +124,7 @@ const Home2Hero = ({
     </div>
 
     {/* Service strip */}
-    <div className={`${HOME2_SECTION_CARD_CLASS} mt-3 grid grid-cols-2 gap-px overflow-hidden lg:grid-cols-4`}>
+    <div className={`${STOREFRONT_SECTION_CARD_CLASS} mt-3 grid grid-cols-2 gap-px overflow-hidden lg:grid-cols-4`}>
       {SERVICE_HIGHLIGHTS.map(({ icon: Icon, title, description }) => (
         <div key={title} className="flex items-start gap-2.5 bg-white p-4">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eff5fc] text-[#1e3a5f]">
@@ -140,4 +140,4 @@ const Home2Hero = ({
   </section>
 );
 
-export default Home2Hero;
+export default HomeHero;

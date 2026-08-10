@@ -2,11 +2,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Phone } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
-import Home2MobileNav from "./Home2MobileNav";
-import Home2SearchBar from "./Home2SearchBar";
-import type { ProductFilterData } from "@/components/shared/ProductFilterPanel";
-import { HOME2_NAV_LINKS } from "./home2-nav";
-import { HOME2_HEADER_BAR_CLASS } from "./home2-theme";
+import StorefrontHeaderMobileNav from "@/components/storefront/StorefrontHeaderMobileNav";
+import StorefrontHeaderSearch from "@/components/storefront/StorefrontHeaderSearch";
+import { STOREFRONT_NAV_LINKS } from "@/lib/storefront-nav";
+import { STOREFRONT_HEADER_BAR_CLASS } from "@/lib/storefront-home-theme";
 
 const LINE_ICON = (
   <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 fill-current" aria-hidden="true">
@@ -20,28 +19,44 @@ interface Props {
   shopLogoUrl: string;
   shopPhone: string;
   lineUrl: string;
-  /** Passed through to the mobile filter drawer. */
-  filterData: ProductFilterData;
+  /** Keeps the current query in the search box on result pages. */
+  searchQuery?: string;
 }
 
-const Home2Header = ({
+const StorefrontHeader = ({
   shopName,
   shopSlogan,
   shopLogoUrl,
   shopPhone,
   lineUrl,
-  filterData,
+  searchQuery,
 }: Props) => {
   const displayPhone = shopPhone ? shopPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") : "";
   const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl;
 
   return (
-    <header className={`sticky top-0 z-50 ${HOME2_HEADER_BAR_CLASS} text-white`}>
-      {/* Utility strip — desktop only, mirrors Shopee's thin top bar */}
+    <header className={`sticky top-0 z-50 ${STOREFRONT_HEADER_BAR_CLASS} text-white`}>
+      {/* Utility strip — desktop only, but on every page: it now carries the
+          section nav, so hiding it would leave content pages with no internal
+          links in the header at all. */}
       <div className="hidden border-b border-white/10 lg:block">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-1.5 text-xs sm:px-6 lg:px-8">
-          <p className="text-white/70">{shopSlogan}</p>
-          <div className="flex items-center gap-4">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-1.5 text-xs sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-5">
+            <p className="truncate text-white/70">{shopSlogan}</p>
+            {/* Section nav — keeps its own 14px, the size it had as its own row */}
+            <nav className="flex shrink-0 items-center gap-5 text-sm">
+              {STOREFRONT_NAV_LINKS.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="whitespace-nowrap font-medium text-white/80 transition-colors hover:text-white"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+          <div className="flex shrink-0 items-center gap-4">
             {displayPhone && (
               <a
                 href={`tel:${shopPhone}`}
@@ -69,7 +84,7 @@ const Home2Header = ({
       {/* Main bar — logo + search + LINE CTA */}
       <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-3 sm:gap-5">
-          <Link href="/home2" className="flex shrink-0 items-center gap-2.5">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5">
             <span className="relative inline-flex h-10 w-10 items-center justify-center overflow-hidden">
               {shopLogoUrl ? (
                 <Image
@@ -90,14 +105,10 @@ const Home2Header = ({
             </span>
           </Link>
 
-          <Home2SearchBar />
+          <StorefrontHeaderSearch searchQuery={searchQuery} />
 
           {/* Below lg the nav row and LINE pill collapse into these two */}
-          <Home2MobileNav
-            filterData={filterData}
-            lineUrl={lineUrl}
-            shopPhone={shopPhone}
-          />
+          <StorefrontHeaderMobileNav lineUrl={lineUrl} shopPhone={shopPhone} />
 
           {lineUrl && (
             <a
@@ -113,23 +124,8 @@ const Home2Header = ({
         </div>
 
       </div>
-
-      {/* Section nav */}
-      <nav className="hidden border-t border-white/10 lg:block">
-        <div className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {HOME2_NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-white/80 transition-colors hover:text-white"
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
     </header>
   );
 };
 
-export default Home2Header;
+export default StorefrontHeader;

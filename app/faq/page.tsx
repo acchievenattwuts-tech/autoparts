@@ -3,7 +3,7 @@ export const revalidate = 3600;
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronRight, MessagesSquare, Phone, Search } from "lucide-react";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import BreadcrumbJsonLd from "@/components/seo/BreadcrumbJsonLd";
@@ -71,14 +71,14 @@ const FaqPage = async () => {
 
   return (
     <>
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
       />
-      <main className="min-h-screen bg-slate-50 pt-16">
+      <main className="min-h-screen bg-slate-50">
         <section className="relative overflow-hidden bg-[#10213d]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_25%)]" />
           <div className="relative mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8 lg:py-20">

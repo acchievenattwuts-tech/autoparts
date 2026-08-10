@@ -2,21 +2,25 @@ export const revalidate = 3600;
 
 import { cache } from "react";
 import type { Metadata } from "next";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
-import HeroShowcase from "@/components/shared/HeroShowcase";
-import SeoIntentSection from "@/components/shared/SeoIntentSection";
-import ProductCategories, { fetchHomeCategories } from "@/components/shared/ProductCategories";
-import WhyUs from "@/components/shared/WhyUs";
-import FeaturedProducts, { fetchHomeFeaturedProducts } from "@/components/shared/FeaturedProducts";
-import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
-import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import LocalBusinessJsonLd from "@/components/seo/LocalBusinessJsonLd";
 import OrganizationJsonLd from "@/components/seo/OrganizationJsonLd";
 import WebSiteJsonLd from "@/components/seo/WebSiteJsonLd";
+import HomeCategoryStrip from "@/components/storefront/HomeCategoryStrip";
+import HomeHero from "@/components/storefront/HomeHero";
+import HomeLineCta from "@/components/storefront/HomeLineCta";
+import HomeNewArrivals from "@/components/storefront/HomeNewArrivals";
+import HomeProductRail from "@/components/storefront/HomeProductRail";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
+import {
+  getHomeCategories,
+  getHomeNewArrivals,
+  getHomePopularCarModels,
+  getHomeWeeklyBestSellers,
+} from "@/lib/storefront-home";
 import {
   DEFAULT_TITLE,
   LOCAL_SEO_KEYWORDS,
@@ -26,26 +30,29 @@ import {
 } from "@/lib/seo";
 
 const getStorefrontHomeData = cache(async () => {
-  const [config, categories, featuredProducts, productFilters] = await Promise.all([
+  const [
+    config,
+    categories,
+    weeklyBestSellers,
+    newArrivals,
+    popularModels,
+    productFilters,
+  ] = await Promise.all([
     getPublicSiteConfig(),
-    fetchHomeCategories(),
-    fetchHomeFeaturedProducts(),
+    getHomeCategories(),
+    getHomeWeeklyBestSellers(),
+    getHomeNewArrivals(),
+    getHomePopularCarModels(),
     getStorefrontProductFilters(),
   ]);
-
-  const finderBrands = productFilters.carBrands.map((brand) => ({
-    name: brand.name,
-    models: brand.carModels.map((model) => model.name),
-  }));
-  const finderCategories = productFilters.categories.map((category) => category.name);
 
   return {
     config,
     categories,
-    featuredProducts,
+    weeklyBestSellers,
+    newArrivals,
+    popularModels,
     productFilters,
-    finderBrands,
-    finderCategories,
   };
 });
 
@@ -76,57 +83,69 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home = async () => {
-  const { config, categories, featuredProducts, finderBrands, finderCategories, productFilters } =
-    await getStorefrontHomeData();
+  const {
+    config,
+    categories,
+    weeklyBestSellers,
+    newArrivals,
+    popularModels,
+    productFilters,
+  } = await getStorefrontHomeData();
+
+  // Finder feeds off the full active catalogue, not the trimmed brand shortcuts.
+  // Only the brand names travel with the page — the finder pulls each brand's
+  // models from /api/storefront-filters when the customer actually reaches for it.
+  const finderBrands = productFilters.carBrands.map((brand) => brand.name);
+  const finderCategories = productFilters.categories.map((category) => category.name);
 
   return (
-    <>
-      <StorefrontNavbar
+    <div className="flex min-h-full flex-col bg-[#f4f7fc]">
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
-        lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
-        filterData={productFilters}
+        lineUrl={config.shopLineUrl}
       />
-      <main>
-        <ScrollReveal>
-          <HeroShowcase
-            lineUrl={config.shopLineUrl}
-            shopPhone={config.shopPhone}
-            shopName={config.shopName}
-            finderBrands={finderBrands}
-            finderCategories={finderCategories}
-          />
-        </ScrollReveal>
-        <ScrollReveal delay={80}>
-          <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
-        </ScrollReveal>
-        <ScrollReveal delay={120}>
-          <ProductCategories categories={categories} lineUrl={config.shopLineUrl} />
-        </ScrollReveal>
-        <ScrollReveal delay={160}>
-          <SeoIntentSection />
-        </ScrollReveal>
-        <ScrollReveal delay={200}>
-          <WhyUs />
-        </ScrollReveal>
-        <ScrollReveal delay={240}>
-          <LineCTA
-            lineId={config.shopLineId}
-            lineUrl={config.shopLineUrl}
-            lineQrUrl={config.shopLineQrUrl}
-            shopPhone={config.shopPhone}
-            shopName={config.shopName}
-          />
-        </ScrollReveal>
+
+      <main className="flex-1">
+        <HomeHero
+          finderBrands={finderBrands}
+          finderCategories={finderCategories}
+          lineUrl={config.shopLineUrl}
+          productCount={newArrivals.total}
+          categoryCount={categories.length}
+          carBrandCount={productFilters.carBrands.length}
+          popularModels={popularModels}
+        />
+
+        {/* Categories live here, in the page body — not in the header */}
+        <HomeCategoryStrip categories={categories} />
+
+        <HomeProductRail
+          title="ขายดีประจำสัปดาห์"
+          href="/products"
+          products={weeklyBestSellers}
+          lineUrl={config.shopLineUrl}
+        />
+
+        <HomeNewArrivals initialPage={newArrivals} lineUrl={config.shopLineUrl} />
+
+        <HomeLineCta
+          shopName={config.shopName}
+          lineId={config.shopLineId}
+          lineUrl={config.shopLineUrl}
+          lineQrUrl={config.shopLineQrUrl}
+          shopPhone={config.shopPhone}
+        />
       </main>
+
       <Footer config={config} />
       <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
       <OrganizationJsonLd config={config} />
       <LocalBusinessJsonLd config={config} />
       <WebSiteJsonLd />
-    </>
+    </div>
   );
 };
 

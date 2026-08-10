@@ -28,7 +28,7 @@ interface Props {
   label: string;
 }
 
-const Home2Carousel = ({ children, trackClassName = "", label }: Props) => {
+const StorefrontCarousel = ({ children, trackClassName = "", label }: Props) => {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -105,4 +105,4 @@ const Home2Carousel = ({ children, trackClassName = "", label }: Props) => {
   );
 };
 
-export default Home2Carousel;
+export default StorefrontCarousel;

@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { getHome2NewArrivals, NEW_ARRIVAL_PAGE_SIZE, type Home2ProductPage } from "./home2-data";
+import { getHomeNewArrivals, NEW_ARRIVAL_PAGE_SIZE, type StorefrontProductPage } from "@/lib/storefront-home";
 
 const MAX_PAGE = 500;
 
@@ -9,7 +9,7 @@ const NewArrivalsInputSchema = z.object({
   page: z.number().int().min(1).max(MAX_PAGE),
 });
 
-const EMPTY_RESULT: Home2ProductPage = {
+const EMPTY_RESULT: StorefrontProductPage = {
   products: [],
   total: 0,
   page: 1,
@@ -23,16 +23,16 @@ const EMPTY_RESULT: Home2ProductPage = {
  * session needed (nothing is mutated), and failures degrade to an empty page
  * rather than surfacing a DB error to the browser.
  */
-export async function loadMoreHome2NewArrivalsAction(
+export async function loadMoreHomeNewArrivalsAction(
   input: z.infer<typeof NewArrivalsInputSchema>,
-): Promise<Home2ProductPage> {
+): Promise<StorefrontProductPage> {
   const parsed = NewArrivalsInputSchema.safeParse(input);
   if (!parsed.success) return EMPTY_RESULT;
 
   try {
-    return await getHome2NewArrivals(parsed.data.page);
+    return await getHomeNewArrivals(parsed.data.page);
   } catch (error) {
-    console.error("[loadMoreHome2NewArrivalsAction] failed", error);
+    console.error("[loadMoreHomeNewArrivalsAction] failed", error);
     return EMPTY_RESULT;
   }
 }

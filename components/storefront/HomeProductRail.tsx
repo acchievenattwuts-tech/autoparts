@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import Home2Carousel from "./Home2Carousel";
-import Home2ProductCard from "./Home2ProductCard";
-import type { Home2ProductCardData } from "./home2-data";
-import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
+import StorefrontCarousel from "@/components/storefront/StorefrontCarousel";
+import StorefrontProductCard from "@/components/storefront/StorefrontProductCard";
+import type { StorefrontProductCardData } from "@/lib/storefront-home";
+import { STOREFRONT_SECTION_CARD_CLASS } from "@/lib/storefront-home-theme";
 
 interface Props {
   title: string;
   subtitle?: string;
   /** Destination of the "ดูทั้งหมด" link. */
   href: string;
-  products: Home2ProductCardData[];
+  products: StorefrontProductCardData[];
   lineUrl: string;
 }
 
@@ -18,12 +18,12 @@ interface Props {
  * Product row that scrolls sideways in a single line, like the category block
  * above it but one row deep.
  */
-const Home2ProductSection = ({ title, subtitle, href, products, lineUrl }: Props) => {
+const HomeProductRail = ({ title, subtitle, href, products, lineUrl }: Props) => {
   if (products.length === 0) return null;
 
   return (
     <section className="mx-auto max-w-7xl px-4 pt-3 sm:px-6 lg:px-8">
-      <div className={HOME2_SECTION_CARD_CLASS}>
+      <div className={STOREFRONT_SECTION_CARD_CLASS}>
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eef3fa] px-4 py-3 sm:px-5">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="font-kanit text-base font-bold text-[#1e3a5f] sm:text-lg">{title}</h2>
@@ -42,20 +42,20 @@ const Home2ProductSection = ({ title, subtitle, href, products, lineUrl }: Props
         </div>
 
         <div className="p-3 sm:p-4">
-          <Home2Carousel label={title} trackClassName="flex gap-3 pb-1">
+          <StorefrontCarousel label={title} trackClassName="flex gap-3 pb-1">
             {products.map((product) => (
-              <Home2ProductCard
+              <StorefrontProductCard
                 key={product.id}
                 product={product}
                 lineUrl={lineUrl}
                 variant="rail"
               />
             ))}
-          </Home2Carousel>
+          </StorefrontCarousel>
         </div>
       </div>
     </section>
   );
 };
 
-export default Home2ProductSection;
+export default HomeProductRail;

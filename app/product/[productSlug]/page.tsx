@@ -14,7 +14,7 @@ import {
   Phone,
   Tag,
 } from "lucide-react";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ProductImageGallery from "@/components/shared/ProductImageGallery";
@@ -357,14 +357,14 @@ const ProductDetailPage = async ({ params }: Props) => {
         categoryName={product.category.name}
         brandName={product.brand?.name}
       />
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
       />
-      <main className="min-h-screen overflow-hidden bg-[#f4f7fb] pt-16 text-[13px] text-[#10213d] sm:text-sm">
+      <main className="min-h-screen overflow-hidden bg-[#f4f7fb] text-[13px] text-[#10213d] sm:text-sm">
         <section className="relative">
           <div className="absolute inset-x-0 top-0 h-[30rem] bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.20),transparent_30%),radial-gradient(circle_at_80%_10%,rgba(16,33,61,0.16),transparent_34%)]" />
           <div className="relative mx-auto max-w-7xl px-4 py-2 sm:px-6 lg:px-8 lg:py-3">

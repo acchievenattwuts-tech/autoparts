@@ -2,7 +2,7 @@ import Link from "next/link";
 import { MessageCircle, RefreshCw } from "lucide-react";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
 
@@ -19,14 +19,14 @@ export default function StorefrontTemporaryUnavailable({
 
   return (
     <>
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={resolvedConfig.shopName}
         shopSlogan={resolvedConfig.shopSlogan}
         shopLogoUrl={resolvedConfig.shopLogoUrl}
         lineUrl={resolvedConfig.shopLineUrl}
         shopPhone={resolvedConfig.shopPhone}
       />
-      <main className="min-h-screen bg-slate-50 pt-16 text-[#10213d]">
+      <main className="min-h-screen bg-slate-50 text-[#10213d]">
         <section className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center px-4 py-16 text-center sm:px-6">
           <div className="rounded-full bg-orange-50 p-4 text-[#f97316] ring-1 ring-orange-100">
             <RefreshCw className="h-8 w-8" />

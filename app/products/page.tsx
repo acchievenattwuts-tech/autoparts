@@ -2,7 +2,7 @@ export const revalidate = 300;
 
 import type { Metadata } from "next";
 import { getSiteConfig } from "@/lib/site-config";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import StorefrontTemporaryUnavailable from "@/components/shared/StorefrontTemporaryUnavailable";
@@ -351,16 +351,15 @@ const ProductsPage = async ({ searchParams }: Props) => {
 
   return (
     <>
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
         searchQuery={q}
-        filterData={filterData}
       />
-      <main className="min-h-screen bg-gray-50 pt-16">
+      <main className="min-h-screen bg-gray-50">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
           <SearchResults
             renderNonce={renderNonce}

@@ -1,133 +1,107 @@
 export const revalidate = 3600;
 
-import type { Metadata } from "next";
 import { cache } from "react";
+import type { Metadata } from "next";
+import HeroShowcase from "@/components/shared/HeroShowcase";
+import SeoIntentSection from "@/components/shared/SeoIntentSection";
+import ProductCategories, { fetchHomeCategories } from "@/components/shared/ProductCategories";
+import WhyUs from "@/components/shared/WhyUs";
+import FeaturedProducts, { fetchHomeFeaturedProducts } from "@/components/shared/FeaturedProducts";
+import LineCTA from "@/components/shared/LineCTA";
 import Footer from "@/components/shared/Footer";
+import ScrollReveal from "@/components/shared/ScrollReveal";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
-import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
-import Home2CategoryStrip from "./Home2CategoryStrip";
-import Home2Header from "./Home2Header";
-import Home2Hero from "./Home2Hero";
-import Home2LineCta from "./Home2LineCta";
-import Home2NewArrivals from "./Home2NewArrivals";
-import Home2ProductSection from "./Home2ProductSection";
-import {
-  getHome2WeeklyBestSellers,
-  getHome2Categories,
-  getHome2NewArrivals,
-  getHome2PopularCarModels,
-} from "./home2-data";
 
-const getHome2PageData = cache(async () => {
-  const [
-    config,
-    categories,
-    visualSettings,
-    weeklyBestSellers,
-    newArrivals,
-    popularModels,
-    productFilters,
-  ] = await Promise.all([
+/**
+ * The storefront's previous homepage design, kept reachable for comparison
+ * after the Shopee-style layout took over "/".
+ *
+ * It renders the current site header rather than the white navbar it was built
+ * against, so the header stays consistent everywhere. Everything below the
+ * header is the original composition.
+ */
+const getLegacyHomeData = cache(async () => {
+  const [config, categories, featuredProducts, productFilters] = await Promise.all([
     getPublicSiteConfig(),
-    getHome2Categories(),
-    getCategoryVisualSettings(),
-    getHome2WeeklyBestSellers(),
-    getHome2NewArrivals(),
-    getHome2PopularCarModels(),
+    fetchHomeCategories(),
+    fetchHomeFeaturedProducts(),
     getStorefrontProductFilters(),
   ]);
 
-  return {
-    config,
-    categories,
-    visualSettings,
-    weeklyBestSellers,
-    newArrivals,
-    popularModels,
-    productFilters,
-  };
-});
-
-export async function generateMetadata(): Promise<Metadata> {
-  const { config } = await getHome2PageData();
-
-  return {
-    title: `${config.shopName} | หน้าแรก (ดีไซน์ทดลอง)`,
-    description:
-      "หน้าแรกเวอร์ชันทดลองของร้านอะไหล่แอร์รถยนต์ ค้นหาอะไหล่ตามรุ่นรถ พร้อมหมวดหมู่ สินค้าขายดีประจำสัปดาห์ และสินค้ามาใหม่จากสต๊อกจริง",
-    // Duplicate of "/" by design — keep it out of the index so it cannot
-    // compete with the real homepage. robots.ts also disallows /home2.
-    robots: { index: false, follow: false },
-  };
-}
-
-const Home2Page = async () => {
-  const {
-    config,
-    categories,
-    visualSettings,
-    weeklyBestSellers,
-    newArrivals,
-    popularModels,
-    productFilters,
-  } = await getHome2PageData();
-
-  // Finder feeds off the full active catalogue, not the trimmed brand shortcuts.
   const finderBrands = productFilters.carBrands.map((brand) => ({
     name: brand.name,
     models: brand.carModels.map((model) => model.name),
   }));
   const finderCategories = productFilters.categories.map((category) => category.name);
 
+  return { config, categories, featuredProducts, finderBrands, finderCategories };
+});
+
+export async function generateMetadata(): Promise<Metadata> {
+  const { config } = await getLegacyHomeData();
+
+  return {
+    title: `${config.shopName} | หน้าแรก (ดีไซน์เดิม)`,
+    description:
+      "หน้าแรกดีไซน์เดิมของร้านอะไหล่แอร์รถยนต์ เก็บไว้เปรียบเทียบกับหน้าแรกปัจจุบัน",
+    // Near-duplicate of "/" — keep it out of the index so it cannot compete
+    // with the real homepage. robots.ts disallows /home2 as well.
+    robots: { index: false, follow: false },
+  };
+}
+
+const LegacyHomePage = async () => {
+  const { config, categories, featuredProducts, finderBrands, finderCategories } =
+    await getLegacyHomeData();
+
   return (
-    <div className="flex min-h-full flex-col bg-[#f4f7fc]">
-      <Home2Header
+    <>
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         shopPhone={config.shopPhone}
         lineUrl={config.shopLineUrl}
-        filterData={productFilters}
       />
-
-      <main className="flex-1">
-        <Home2Hero
-          finderBrands={finderBrands}
-          finderCategories={finderCategories}
-          lineUrl={config.shopLineUrl}
-          productCount={newArrivals.total}
-          categoryCount={categories.length}
-          carBrandCount={productFilters.carBrands.length}
-          popularModels={popularModels}
-        />
-
-        {/* Categories live here, in the page body — not in the header */}
-        <Home2CategoryStrip categories={categories} visualSettings={visualSettings} />
-
-        <Home2ProductSection
-          title="ขายดีประจำสัปดาห์"
-          href="/products"
-          products={weeklyBestSellers}
-          lineUrl={config.shopLineUrl}
-        />
-
-        <Home2NewArrivals initialPage={newArrivals} lineUrl={config.shopLineUrl} />
-
-        <Home2LineCta
-          shopName={config.shopName}
-          lineId={config.shopLineId}
-          lineUrl={config.shopLineUrl}
-          lineQrUrl={config.shopLineQrUrl}
-          shopPhone={config.shopPhone}
-        />
+      <main>
+        <ScrollReveal>
+          <HeroShowcase
+            lineUrl={config.shopLineUrl}
+            shopPhone={config.shopPhone}
+            shopName={config.shopName}
+            finderBrands={finderBrands}
+            finderCategories={finderCategories}
+          />
+        </ScrollReveal>
+        <ScrollReveal delay={80}>
+          <FeaturedProducts lineUrl={config.shopLineUrl} products={featuredProducts} />
+        </ScrollReveal>
+        <ScrollReveal delay={120}>
+          <ProductCategories categories={categories} lineUrl={config.shopLineUrl} />
+        </ScrollReveal>
+        <ScrollReveal delay={160}>
+          <SeoIntentSection />
+        </ScrollReveal>
+        <ScrollReveal delay={200}>
+          <WhyUs />
+        </ScrollReveal>
+        <ScrollReveal delay={240}>
+          <LineCTA
+            lineId={config.shopLineId}
+            lineUrl={config.shopLineUrl}
+            lineQrUrl={config.shopLineQrUrl}
+            shopPhone={config.shopPhone}
+            shopName={config.shopName}
+          />
+        </ScrollReveal>
       </main>
-
       <Footer config={config} />
       <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
-    </div>
+    </>
   );
 };
 
-export default Home2Page;
+export default LegacyHomePage;

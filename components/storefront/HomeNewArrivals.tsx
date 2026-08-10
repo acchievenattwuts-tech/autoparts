@@ -3,12 +3,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Loader2 } from "lucide-react";
-import Home2ProductCard from "./Home2ProductCard";
+import StorefrontProductCard from "@/components/storefront/StorefrontProductCard";
 // Type-only: home2-data pulls in the Prisma client, which must never reach the
 // browser bundle. Any value needed here is declared locally instead.
-import type { Home2ProductCardData, Home2ProductPage } from "./home2-data";
-import { loadMoreHome2NewArrivalsAction } from "./home2-new-arrivals-actions";
-import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
+import type { StorefrontProductCardData, StorefrontProductPage } from "@/lib/storefront-home";
+import { loadMoreHomeNewArrivalsAction } from "@/components/storefront/home-new-arrivals-actions";
+import { STOREFRONT_SECTION_CARD_CLASS } from "@/lib/storefront-home-theme";
 
 /**
  * Pages fetched automatically on scroll before the manual button appears.
@@ -36,7 +36,7 @@ const CardSkeleton = () => (
 );
 
 interface Props {
-  initialPage: Home2ProductPage;
+  initialPage: StorefrontProductPage;
   lineUrl: string;
 }
 
@@ -45,8 +45,8 @@ interface Props {
  * the first extra page auto-loads on scroll, then a manual "โหลดเพิ่มเติม"
  * button takes over so we never fetch the whole catalogue unattended.
  */
-const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
-  const [products, setProducts] = useState<Home2ProductCardData[]>(initialPage.products);
+const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
+  const [products, setProducts] = useState<StorefrontProductCardData[]>(initialPage.products);
   const [total, setTotal] = useState(initialPage.total);
   const [loadedPage, setLoadedPage] = useState(initialPage.page);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -79,7 +79,7 @@ const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
     setIsLoadingMore(true);
 
     try {
-      const result = await loadMoreHome2NewArrivalsAction({ page: loadedPage + 1 });
+      const result = await loadMoreHomeNewArrivalsAction({ page: loadedPage + 1 });
       if (latestRequestIdRef.current !== requestId) return;
 
       setProducts((current) => {
@@ -114,7 +114,7 @@ const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
 
   return (
     <section className="mx-auto max-w-7xl px-4 pt-3 sm:px-6 lg:px-8">
-      <div className={`${HOME2_SECTION_CARD_CLASS} overflow-hidden`}>
+      <div className={`${STOREFRONT_SECTION_CARD_CLASS} overflow-hidden`}>
         {/* Equal 1fr side columns put the heading dead centre without absolute
             positioning, so it can never overlap the counter or the link. */}
         <div className="border-b-[3px] border-[#1e3a5f] px-4 py-3 sm:px-5">
@@ -144,7 +144,7 @@ const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
         <div className="p-3 sm:p-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {products.map((product) => (
-              <Home2ProductCard key={product.id} product={product} lineUrl={lineUrl} />
+              <StorefrontProductCard key={product.id} product={product} lineUrl={lineUrl} />
             ))}
             {isLoadingMore &&
               Array.from({ length: SKELETON_COUNT }).map((_, index) => (
@@ -184,4 +184,4 @@ const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
   );
 };
 
-export default Home2NewArrivals;
+export default HomeNewArrivals;

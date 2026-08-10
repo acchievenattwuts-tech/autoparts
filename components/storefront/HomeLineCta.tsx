@@ -23,7 +23,7 @@ interface Props {
  * decorative orange glow is swapped for blue, since orange stays reserved for
  * prices. LINE green is kept, being the brand's own colour.
  */
-const Home2LineCta = ({ shopName, lineId, lineUrl, lineQrUrl, shopPhone }: Props) => {
+const HomeLineCta = ({ shopName, lineId, lineUrl, lineQrUrl, shopPhone }: Props) => {
   if (!lineUrl && !lineId) return null;
 
   const lineQrSrc = toPublicStorageCdnPath(lineQrUrl) ?? lineQrUrl ?? "";
@@ -112,4 +112,4 @@ const Home2LineCta = ({ shopName, lineId, lineUrl, lineQrUrl, shopPhone }: Props
   );
 };
 
-export default Home2LineCta;
+export default HomeLineCta;

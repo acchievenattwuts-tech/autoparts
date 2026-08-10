@@ -3,7 +3,7 @@ import Link from "next/link";
 export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, BookOpenText, Clock3, Search } from "lucide-react";
-import StorefrontNavbar from "@/components/shared/StorefrontNavbar";
+import StorefrontHeader from "@/components/storefront/StorefrontHeader";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
 import ArticleJsonLd from "@/components/seo/ArticleJsonLd";
@@ -107,14 +107,14 @@ const KnowledgeArticlePage = async ({ params }: Props) => {
 
   return (
     <>
-      <StorefrontNavbar
+      <StorefrontHeader
         shopName={config.shopName}
         shopSlogan={config.shopSlogan}
         shopLogoUrl={config.shopLogoUrl}
         lineUrl={config.shopLineUrl}
         shopPhone={config.shopPhone}
       />
-      <main className="min-h-screen bg-slate-50 pt-16">
+      <main className="min-h-screen bg-slate-50">
         <section className="border-b border-slate-200 bg-white">
           <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6 lg:px-8">
             <Link
