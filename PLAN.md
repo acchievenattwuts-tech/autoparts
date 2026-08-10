@@ -697,6 +697,47 @@
 - ยังไม่ได้ทำ (เสนอไว้ รอเจ้าของตัดสินใจ): **เปิด `relationJoins` flag** (ตอนนี้ปูทางเสร็จแล้ว รอยืนยัน) · ยุบ nested relation ของตาราง master เล็ก ๆ เป็น in-memory join · ลด statement ของ `queryStockRows` · เก็บ URL เต็ม+query ในแท็บเพื่อคืนฟิลเตอร์เดิม · `experimental.staleTimes`
 - ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` ไฟล์ที่แก้ผ่าน · `npm run build` ผ่าน · `check:mojibake` ผ่าน
 
+## รูปหมวดหมู่หน้าแรก — แนบไฟล์เองที่ `/admin/master/categories` + ตัด icon setting (2026-08-10)
+- ที่มา: section "หมวดหมู่สินค้า" บนหน้าแรก (`components/storefront/HomeCategoryStrip.tsx`) ใช้รูปสินค้าขายดีอันดับ 1 ของหมวดเป็น thumbnail เท่านั้น แอดมินเลือกรูปเองไม่ได้ · เจ้าของสั่งเพิ่มการแนบไฟล์ + ให้เอาการตั้งค่าไอคอน/โทน/โมชั่น (ที่ไม่ได้ใช้แล้ว) ออก
+- [x] Schema: `Category.imageUrl String?` — **ไม่ได้ใช้ `prisma db push`** เพราะ push จะ drop `product_search_documents.trgm_text` (generated column ของ `prisma/scripts/setup-search-v2.ts` ที่จงใจอยู่นอก schema) → ใช้ `prisma db execute` ยิง `ALTER TABLE "Category" ADD COLUMN IF NOT EXISTS "imageUrl" TEXT` แทน แล้ว `prisma generate`
+  - ⚠️ ข้อควรระวังสำหรับงานถัดไป: `prisma db push` ใน repo นี้ต้องดู warning ก่อนเสมอ — schema drift ของ `trgm_text` เป็นของจริง ห้ามใส่ `--accept-data-loss`
+- [x] Admin: `uploadCategoryImage()` (permission `master.create` **หรือ** `master.update`, sniff magic bytes, jpg/png/webp ≤ 2MB, path `settings/categories/<id>/<ts>-<uuid>.<ext>` บน Vercel Blob `cacheControlMaxAge` 1 ปี) + ช่องแนบ/เปลี่ยน/ลบรูปในฟอร์มเพิ่มและแก้ไขหมวด (light + dark) · `createCategory`/`updateCategory` รับ `imageUrl` ผ่าน hidden input · audit snapshot รวม `imageUrl` แล้ว
+  - (รอบ 3, จาก code review) เดิมเช็ก `master.update` อย่างเดียว → staff ที่มีแค่ `master.create` เห็นปุ่มแนบรูปในฟอร์ม "เพิ่มหมวดหมู่" แต่กดแล้วได้ "ไม่มีสิทธิ์เข้าถึง" · เปลี่ยนเป็น `requireAnyPermission(["master.create", "master.update"])`
+  - (รอบ 3, จาก code review) zod ของ `imageUrl` เดิมรับ `https://` อะไรก็ได้ → ถ้าหลุด URL นอก host Blob เข้าไป `next/image` จะ 400 ทั้ง tile (`next.config.ts` `remotePatterns` อนุญาตแค่ `**.public.blob.vercel-storage.com`) · เพิ่ม `isOwnedBlobCategoryImageUrl()` ใน `lib/products-bucket-storage.ts` (host Blob + root `settings/categories/`) มาใช้ใน `.refine()` — ใช้ helper ตัวเดียวกับที่ gate การลบไฟล์อยู่แล้ว
+- [x] ลบไฟล์เก่าบน Blob อัตโนมัติเมื่อเปลี่ยน/ลบรูป — `deleteCategoryImageObjects()` ใน `lib/products-bucket-storage.ts` gate เฉพาะ host Blob ของเราและ root `settings/categories/` (best-effort ไม่ throw)
+- [x] Storefront fallback 3 ชั้น: `Category.imageUrl` → รูปสินค้าขายดีในหมวด → ไอคอนที่เดาจากชื่อหมวด (`inferCategoryVisual`)
+- [x] ตัดการตั้งค่าไอคอนออกทั้งชุด: ลบ `lib/category-visual-settings.ts` (SiteContent `category_visual_settings`), ลบ `resolveCategoryVisual`/guards ออกจาก `lib/category-visual-config.ts` — ไอคอนเดาจากชื่อหมวดล้วน ๆ จึงหาย DB read ไป 1 ครั้งทั้งหน้า `/` และ `/home2` (แถว `SiteContent` เดิมยังอยู่ในฐานข้อมูล ไม่ได้ลบ)
+- [x] Perf/egress หน้า `/`:
+  - `getHomeCategories()` แยก query หารูป fallback (`orderBy: { saleItems: { _count: "desc" } }` = aggregate SaleItem ต่อสินค้า — ตัวแพงสุดของหน้านี้) ไปเป็น query ที่ 2 ที่ยิงเฉพาะหมวดที่ยังไม่มีรูป และ **ข้ามทั้งก้อนเมื่อทุกหมวดแนบรูปครบ**
+  - `getHome2WeeklyBestSellersForDate()` เดิม `saleItem.findMany` ไม่มี where วันที่/ไม่มี take = ลากทุก sale line ทั้งตารางมา rank ใน JS → ใส่กรอบ `sale.saleDate >= 180 วันย้อนหลัง` ในระดับ DB (ใช้ index `[saleDate desc, status]` ที่มีอยู่); ranking รายสัปดาห์เหมือนเดิม ต่างเฉพาะ top-up ที่เดิมนับ all-time
+- [x] (รอบ 2) `getStorefrontProductFilters()` — 3 query master (category / carBrand+carModel / partsBrand) เดิม `await` เรียงกัน → `Promise.all` (pool `DB_POOL_MAX` default 5 จึงขนานได้จริง) · cache/tag/ผลลัพธ์เหมือนเดิมทุกไบต์
+- [x] (รอบ 2) Fitment finder หน้าแรกไม่ส่ง brand→model map ลง client อีกต่อไป — หน้า `/` ส่งแค่**ชื่อยี่ห้อ** (19 ยี่ห้อ ~169B) ส่วน map รุ่นรถ (144 รุ่น ~1.8KB × 2 เพราะ RSC ใส่ทั้งใน HTML และ flight payload) ย้ายไปโหลดจาก `/api/storefront-filters` (`force-static`) ตอนผู้ใช้แตะช่องยี่ห้อจริง
+  - `lib/storefront-filter-data-client.ts` (ใหม่) — ดึงตรรกะ fetch+memo ที่เดิมฝังใน `StorefrontFilterTrigger.tsx` ออกมาใช้ร่วมกัน → filter drawer บน header กับ finder ยิง request เดียวต่อการโหลดหน้า (share ทั้ง cache และ in-flight promise)
+  - prefetch ตอน pointerenter/focus ช่องยี่ห้อ เพื่อให้แทบไม่เห็น state "กำลังโหลดรุ่น..."; ถ้า fetch ล้มเหลว ช่องรุ่นว่างแต่ยี่ห้อ/ปี/หมวด ยังค้นได้ปกติ
+  - ทดสอบจริงบน dev: โหลดหน้าแรก **ไม่มี** request ไป `/api/storefront-filters` → กดเลือก Toyota → ยิง 1 ครั้ง 200 → รุ่นขึ้นครบ (Alphard, Altis, Camry, …) ไม่มี console error
+  - `/home2` (legacy, noindex) ยังใช้ `HeroFitmentFinder` แบบเดิม — ไม่ได้แตะ
+- ตรวจแล้ว: `tsc --noEmit` ผ่าน · `npm run lint` 0 error · `npm run build` ผ่าน · `check:mojibake` ผ่าน
+
+## Header: ย้ายเมนูหมวดหลักขึ้นแถบบน + คืน internal link ให้ทุกหน้า (2026-08-10)
+- ที่มา: code review พบว่า `variant="compact"` ซ่อนทั้ง utility strip และแถวเมนู → ทุกหน้าที่ไม่ใช่หน้าแรก (`/products`, `/products/[slug]`, `/product/[slug]`, `/about`, `/faq`, `/knowledge`, `/return-warranty-policy`) เหลือลิงก์ใน header แค่โลโก้ · เจ้าของสั่งย้ายเมนูแถวที่ 3 ขึ้นไปต่อจากสโลแกนในแถวที่ 1 และให้ใช้ทุกหน้า
+- [x] `STOREFRONT_NAV_LINKS` (4 ลิงก์) ย้ายเข้า utility strip ต่อจาก `shopSlogan` — คงขนาด **14px (`text-sm`)** เท่าตอนเป็นแถวของตัวเอง ส่วนสโลแกน/เบอร์/LINE ยังเป็น 12px (`text-xs`) ตามเดิม (เจ้าของยืนยันตัวเลือกนี้)
+- [x] ลบแถวเมนู (แถวที่ 3) ออกทั้งก้อน · utility strip เลิก gate ด้วย `isHome` แสดง**ทั้งแถบ** (สโลแกน + เมนู + เบอร์ + LINE) ทุกหน้า (เจ้าของยืนยัน) · ยังเป็น `hidden lg:block` เหมือนเดิม มือถือใช้ drawer ของ `StorefrontHeaderMobileNav` ต่อไป
+- [x] ลบ prop `variant` ทิ้ง (กลายเป็น dead code เพราะทั้งสองค่าให้ผลเหมือนกันแล้ว) — เอาออกจาก 10 จุดที่เรียกใช้
+- กันล้น: กลุ่มซ้าย `min-w-0` + สโลแกน `truncate`, เมนูกับกลุ่มขวา `shrink-0` → ที่ความกว้างแคบสโลแกนจะย่อด้วย ellipsis แทนที่จะดัน layout ล้น
+- ผลด้าน SEO: internal link บน desktop กลับมาครบทุกหน้า (เดิมมีแค่หน้าแรก) · ความสูง header หน้าแรก **ลดลง ~34px** (เสียแถวเมนูไป) หน้าอื่น **เพิ่ม ~30px** (ได้แถบบนมา)
+- ⚠️ ยังค้าง (เจ้าของสั่งแยกงานทีหลัง): `<h1>` เปลี่ยนจากชื่อร้าน (4xl–6xl) เป็น "ค้นหาอะไหล่ตามรถของคุณ" (xl–2xl) ทำให้ brand entity signal อ่อนลง · ส่วน `WhyUs` ยังไม่ถูกนำกลับ (เนื้อหาเชิง intent ได้ `HomeSeoIntro` มาแทนบางส่วนแล้ว ดูหัวข้อถัดไป)
+
+## หน้าแรก: บล็อกเนื้อหาท้ายหน้าแบบ shopee.co.th (2026-08-10)
+- ที่มา: เจ้าของส่งภาพบล็อก SEO ท้ายหน้าแรกของ shopee.co.th มาให้ทำแบบเดียวกัน วางถัดจากการ์ด "สินค้ามาใหม่" · ปิดช่องว่างที่ review พบว่าหน้าแรกใหม่เหลือแต่ชื่อสินค้ากับราคา ไม่มีข้อความบรรยายให้ crawler/answer engine เก็บ
+- [x] `components/storefront/HomeSeoIntro.tsx` (ใหม่) — Server Component ล้วน ไม่มี `"use client"` จึงไม่เพิ่ม JS ลง bundle เลย · โครงเดียวกับ Shopee: H2 + ย่อหน้า 3 ย่อ แล้ว H2 ที่สอง + ย่อหน้ารวมลิงก์
+- [x] วางใน `app/page.tsx` ระหว่าง `HomeNewArrivals` กับ `HomeLineCta` ตามที่สั่ง
+- [x] เนื้อหา: **ข้อเท็จจริงจากระบบเท่านั้น** (เจ้าของยืนยันตัวเลือกนี้) — จำนวนสินค้า/หมวด/ยี่ห้อ ใช้ตัวเลขชุดเดียวกับที่ hero เรนเดอร์อยู่แล้ว (ส่งเป็น prop ไม่มี query เพิ่มแม้แต่ query เดียว) · ประโยคบริการอิงจาก trust row + `/about` ที่มีอยู่ · **ไม่มีข้อความส่งฟรี / โค้ดส่วนลด / รับประกันคืนเงิน** เพราะร้านไม่มีบริการเหล่านั้นจริง
+- [x] ลิงก์ในบล็อกที่สอง: เฉพาะหน้าข้อมูลร้าน (เจ้าของเลือก) — `/about`, `/faq`, `/return-warranty-policy`, `/knowledge` · บวกลิงก์ `/products` ที่แทรกในเนื้อความบล็อกแรกตามรูปแบบของ Shopee
+- [x] หน้าตา: พื้นขาวเต็มความกว้างแบบ Shopee เป๊ะ ไม่มีกรอบการ์ด (เจ้าของเลือก) · ลิงก์ใช้ **สีน้ำเงิน** ไม่ใช่ส้ม เพราะธีมหน้านี้สงวนส้ม (`#f97316`) ไว้ให้ราคาเท่านั้น
+- ยังไม่ได้ทำ (เสนอไว้ รอเจ้าของตัดสินใจ): ใส่ลิงก์หมวดหมู่ 21 หมวด / ยี่ห้อรถ 19 ยี่ห้อ / รุ่นยอดนิยม ลงในบล็อกที่สองแบบที่ Shopee ทำ — จะได้ internal link เพิ่มอีกมากโดยไม่มีต้นทุน query (ข้อมูลอยู่บนหน้าอยู่แล้ว) รอบนี้เจ้าของเลือกเฉพาะหน้าข้อมูลร้าน
+- ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` 0 error · `check:mojibake` ผ่าน · ทดสอบบน dev จริง: บล็อกอยู่ถัดจาก "สินค้ามาใหม่" และก่อน LINE CTA, พื้นหลัง `rgb(255,255,255)`, H2 2 ตัว / 5 ย่อหน้า / 5 ลิงก์ครบ, ตัวเลขในเนื้อความออกมาเป็น 958 รายการ / 21 หมวด / 19 ยี่ห้อ ตรงกับ hero, ข้อความรวม ~1,570 ตัวอักษร, ไม่มี horizontal overflow, ไม่มี console error
+- ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` 0 error · `npm run build` ผ่าน · `check:mojibake` ผ่าน · ทดสอบบน dev จริง: หน้าแรกและ `/products` มีเมนูครบ 4 ลิงก์ในแถบบน, nav 14px / สโลแกน 12px, เหลือ `<nav>` เดียวใน header, ไม่มี horizontal overflow, ไม่มี console error
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth
