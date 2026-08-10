@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronRight, Menu, Phone, SlidersHorizontal } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from "@/components/ui/sheet";
-import Home2FitmentFinder, { type Home2FinderBrand } from "./Home2FitmentFinder";
+  EMPTY_FILTERS,
+  ProductFilterDrawer,
+  type DraftFilters,
+  type ProductFilterData,
+} from "@/components/shared/ProductFilterPanel";
 import { HOME2_NAV_LINKS } from "./home2-nav";
 
 const LINE_ICON = (
@@ -23,8 +23,8 @@ const ICON_BUTTON_CLASS =
   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70";
 
 interface Props {
-  finderBrands: Home2FinderBrand[];
-  finderCategories: string[];
+  /** Same shape /products feeds its own filter panel. */
+  filterData: ProductFilterData;
   lineUrl: string;
   shopPhone: string;
 }
@@ -33,19 +33,45 @@ interface Props {
  * Compact header controls for phones and tablets.
  *
  * Below lg the header has no room for the section nav or the LINE pill, so
- * they collapse into two icon buttons: the fitment finder opens in a bottom
- * sheet, and the section links plus contact details in a side drawer.
+ * they collapse into two icon buttons: the same filter drawer /products uses,
+ * and a side drawer holding the section links plus contact details.
  */
-const Home2MobileNav = ({ finderBrands, finderCategories, lineUrl, shopPhone }: Props) => {
-  const [finderOpen, setFinderOpen] = useState(false);
+const Home2MobileNav = ({ filterData, lineUrl, shopPhone }: Props) => {
+  const router = useRouter();
+  const [filterOpen, setFilterOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  /**
+   * home2 has no product list to filter in place, so applying the drawer's
+   * selection hands off to /products. Param names match buildSearchUrl in
+   * app/products/search/SearchResults.tsx so the destination reads them back
+   * as the same active filters.
+   */
+  const applyFilters = useCallback(
+    (draft: DraftFilters) => {
+      const params = new URLSearchParams();
+      draft.categories.forEach((value) => params.append("categories", value));
+      draft.partsBrands.forEach((value) => params.append("partsBrand", value));
+      draft.carBrands.forEach((value) => params.append("carBrand", value));
+      draft.models.forEach((value) => params.append("model", value));
+      if (draft.yearMin !== null) params.set("yearMin", String(draft.yearMin));
+      if (draft.yearMax !== null) params.set("yearMax", String(draft.yearMax));
+      if (draft.priceMin !== null) params.set("priceMin", String(draft.priceMin));
+      if (draft.priceMax !== null) params.set("priceMax", String(draft.priceMax));
+
+      const query = params.toString();
+      setFilterOpen(false);
+      router.push(query ? `/products?${query}` : "/products");
+    },
+    [router],
+  );
 
   return (
     <div className="flex shrink-0 items-center gap-2 lg:hidden">
       <button
         type="button"
-        onClick={() => setFinderOpen(true)}
-        aria-label="ค้นหาอะไหล่ตามรถของคุณ"
+        onClick={() => setFilterOpen(true)}
+        aria-label="ตัวกรองสินค้า"
         className={ICON_BUTTON_CLASS}
       >
         <SlidersHorizontal className="h-4 w-4" />
@@ -60,25 +86,15 @@ const Home2MobileNav = ({ finderBrands, finderCategories, lineUrl, shopPhone }: 
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Fitment finder — the same component the hero uses */}
-      <Sheet open={finderOpen} onOpenChange={setFinderOpen}>
-        <SheetContent side="bottom" className="max-h-[88vh] overflow-y-auto bg-[#f4f7fc] p-4">
-          <SheetHeader className="p-0">
-            <SheetTitle className="font-kanit text-base font-bold text-[#1e3a5f]">
-              ค้นหาอะไหล่ตามรถของคุณ
-            </SheetTitle>
-            <SheetDescription className="text-xs text-slate-500">
-              เลือกยี่ห้อ รุ่น ปีรถ แล้วกรองเฉพาะอะไหล่ที่ตรงรุ่นได้ทันที
-            </SheetDescription>
-          </SheetHeader>
-
-          <Home2FitmentFinder
-            brands={finderBrands}
-            categories={finderCategories}
-            lineUrl={lineUrl}
-          />
-        </SheetContent>
-      </Sheet>
+      {/* The filter drawer /products already ships, reused verbatim */}
+      <ProductFilterDrawer
+        isOpen={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        initialFilters={EMPTY_FILTERS}
+        filterData={filterData}
+        onApply={applyFilters}
+        onClear={() => undefined}
+      />
 
       {/* Section links + contact */}
       <Sheet open={menuOpen} onOpenChange={setMenuOpen}>

@@ -17,6 +17,7 @@ import {
   getHome2WeeklyBestSellers,
   getHome2Categories,
   getHome2NewArrivals,
+  getHome2PopularCarModels,
 } from "./home2-data";
 
 const getHome2PageData = cache(async () => {
@@ -26,6 +27,7 @@ const getHome2PageData = cache(async () => {
     visualSettings,
     weeklyBestSellers,
     newArrivals,
+    popularModels,
     productFilters,
   ] = await Promise.all([
     getPublicSiteConfig(),
@@ -33,6 +35,7 @@ const getHome2PageData = cache(async () => {
     getCategoryVisualSettings(),
     getHome2WeeklyBestSellers(),
     getHome2NewArrivals(),
+    getHome2PopularCarModels(),
     getStorefrontProductFilters(),
   ]);
 
@@ -42,6 +45,7 @@ const getHome2PageData = cache(async () => {
     visualSettings,
     weeklyBestSellers,
     newArrivals,
+    popularModels,
     productFilters,
   };
 });
@@ -60,8 +64,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home2Page = async () => {
-  const { config, categories, visualSettings, weeklyBestSellers, newArrivals, productFilters } =
-    await getHome2PageData();
+  const {
+    config,
+    categories,
+    visualSettings,
+    weeklyBestSellers,
+    newArrivals,
+    popularModels,
+    productFilters,
+  } = await getHome2PageData();
 
   // Finder feeds off the full active catalogue, not the trimmed brand shortcuts.
   const finderBrands = productFilters.carBrands.map((brand) => ({
@@ -78,8 +89,7 @@ const Home2Page = async () => {
         shopLogoUrl={config.shopLogoUrl}
         shopPhone={config.shopPhone}
         lineUrl={config.shopLineUrl}
-        finderBrands={finderBrands}
-        finderCategories={finderCategories}
+        filterData={productFilters}
       />
 
       <main className="flex-1">
@@ -87,6 +97,10 @@ const Home2Page = async () => {
           finderBrands={finderBrands}
           finderCategories={finderCategories}
           lineUrl={config.shopLineUrl}
+          productCount={newArrivals.total}
+          categoryCount={categories.length}
+          carBrandCount={productFilters.carBrands.length}
+          popularModels={popularModels}
         />
 
         {/* Categories live here, in the page body — not in the header */}

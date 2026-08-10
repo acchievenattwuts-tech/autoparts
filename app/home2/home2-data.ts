@@ -22,6 +22,8 @@ export const NEW_ARRIVAL_PAGE_SIZE = 24;
 const BEST_SELLER_COUNT = 12;
 /** Rolling window, in days including today. */
 const BEST_SELLER_WINDOW_DAYS = 7;
+/** Quick-search chips shown under the hero form. */
+const POPULAR_MODEL_COUNT = 7;
 /** Fitment lines kept per card (the card renders at most two lines anyway). */
 const FITMENT_TAKE = 4;
 
@@ -76,6 +78,13 @@ export interface Home2ProductCardData {
   brandName: string | null;
   /** e.g. "TOYOTA - VIOS 2013-2017, TOYOTA - YARIS 2014+" */
   fitmentSummary: string | null;
+}
+
+export interface Home2CarModelData {
+  id: string;
+  name: string;
+  /** In-stock products that list this model as a direct fit. */
+  productCount: number;
 }
 
 export interface Home2CategoryData {
@@ -288,3 +297,48 @@ const getHome2NewArrivalsPage = unstable_cache(
 
 export const getHome2NewArrivals = (page = 1): Promise<Home2ProductPage> =>
   getHome2NewArrivalsPage(page);
+
+/**
+ * Car models to offer as one-tap chips in the hero.
+ *
+ * Ranked by how many in-stock parts list the model as a direct fit. That is a
+ * proxy for demand rather than a measurement of it — the shop stocks deepest
+ * for the cars people actually bring in — and it has the practical advantage
+ * that every chip is guaranteed to land on a non-empty result page.
+ */
+export const getHome2PopularCarModels = unstable_cache(
+  async (): Promise<Home2CarModelData[]> =>
+    withDbRetry(async () => {
+      const fitmentWhere = {
+        fitmentType: "DIRECT",
+        product: STOREFRONT_PRODUCT_WHERE,
+      } satisfies Prisma.ProductFitmentWhereInput;
+
+      const models = await db.carModel.findMany({
+        where: {
+          isActive: true,
+          carBrand: { isActive: true },
+          products: { some: fitmentWhere },
+        },
+        select: {
+          id: true,
+          name: true,
+          _count: { select: { products: { where: fitmentWhere } } },
+        },
+      });
+
+      return models
+        .sort(
+          (left, right) =>
+            right._count.products - left._count.products || left.name.localeCompare(right.name),
+        )
+        .slice(0, POPULAR_MODEL_COUNT)
+        .map((model) => ({
+          id: model.id,
+          name: model.name,
+          productCount: model._count.products,
+        }));
+    }),
+  ["home2-popular-car-models"],
+  { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
+);

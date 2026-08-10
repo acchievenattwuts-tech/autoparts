@@ -76,13 +76,17 @@ const Home2Carousel = ({ children, trackClassName = "", label }: Props) => {
         {children}
       </div>
 
-      {/* Arrows are a pointer affordance — touch users simply swipe. */}
+      {/* Arrows are a pointer affordance — touch users simply swipe.
+          z-40 keeps them above the product card's full-bleed overlay link
+          (z-10), its LINE button (z-20) and its loading veil (z-30); without a
+          z-index the overlay link won and swallowed the click. It stays below
+          the floating contact launcher (z-50), which should remain topmost. */}
       {canScrollLeft && (
         <button
           type="button"
           onClick={() => scrollByStep(-1)}
           aria-label={`เลื่อน${label}ไปทางซ้าย`}
-          className="absolute left-1 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] lg:flex"
+          className="absolute left-1 top-1/2 z-40 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] hover:shadow-lg lg:flex"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -92,7 +96,7 @@ const Home2Carousel = ({ children, trackClassName = "", label }: Props) => {
           type="button"
           onClick={() => scrollByStep(1)}
           aria-label={`เลื่อน${label}ไปทางขวา`}
-          className="absolute right-1 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] lg:flex"
+          className="absolute right-1 top-1/2 z-40 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[#dbe6f5] bg-white text-[#1e3a5f] shadow-md transition hover:bg-[#eff5fc] hover:shadow-lg lg:flex"
         >
           <ChevronRight className="h-5 w-5" />
         </button>

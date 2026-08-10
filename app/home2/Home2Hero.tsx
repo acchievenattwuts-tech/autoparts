@@ -1,5 +1,7 @@
-import { Boxes, ShieldCheck, Truck, Wrench } from "lucide-react";
+import Link from "next/link";
+import { Boxes, Car, LayoutGrid, ShieldCheck, Truck, Wrench } from "lucide-react";
 import Home2FitmentFinder, { type Home2FinderBrand } from "./Home2FitmentFinder";
+import type { Home2CarModelData } from "./home2-data";
 import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 
 const SERVICE_HIGHLIGHTS = [
@@ -15,6 +17,12 @@ interface Props {
   /** Active category names, for the finder's multi-select. */
   finderCategories: string[];
   lineUrl: string;
+  /** Live catalogue size, shown as proof there is something to find. */
+  productCount: number;
+  categoryCount: number;
+  carBrandCount: number;
+  /** One-tap shortcuts into /products for the best-stocked models. */
+  popularModels: Home2CarModelData[];
 }
 
 /**
@@ -24,7 +32,15 @@ interface Props {
  * carries no competing marketing column — just the headline and the form,
  * centred on the blue field.
  */
-const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
+const Home2Hero = ({
+  finderBrands,
+  finderCategories,
+  lineUrl,
+  productCount,
+  categoryCount,
+  carBrandCount,
+  popularModels,
+}: Props) => (
   <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#16345d] via-[#25508a] to-[#2563eb] px-4 py-6 text-white sm:px-8 sm:py-7">
       {/* Soft light shapes — purely decorative, clipped by the card */}
@@ -54,6 +70,31 @@ const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
           </p>
         </header>
 
+        {/* Catalogue size — every figure is already fetched for the page */}
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-5 gap-y-1.5 text-xs text-white/80 sm:text-[13px]">
+          <span className="inline-flex items-center gap-1.5">
+            <Boxes className="h-4 w-4 shrink-0 opacity-75" />
+            <b className="font-semibold tabular-nums text-white">
+              {productCount.toLocaleString("th-TH")}
+            </b>
+            รายการพร้อมส่ง
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <LayoutGrid className="h-4 w-4 shrink-0 opacity-75" />
+            <b className="font-semibold tabular-nums text-white">
+              {categoryCount.toLocaleString("th-TH")}
+            </b>
+            หมวดอะไหล่
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Car className="h-4 w-4 shrink-0 opacity-75" />
+            <b className="font-semibold tabular-nums text-white">
+              {carBrandCount.toLocaleString("th-TH")}
+            </b>
+            ยี่ห้อรถ
+          </span>
+        </div>
+
         <div className="mt-4">
           {/* Same search logic as "/", re-skinned to blue */}
           <Home2FitmentFinder
@@ -62,6 +103,23 @@ const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
             lineUrl={lineUrl}
           />
         </div>
+
+        {/* Skip the four dropdowns entirely for the cars we stock deepest */}
+        {popularModels.length > 0 && (
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <span className="text-xs text-white/60">รุ่นยอดนิยม</span>
+            {popularModels.map((model) => (
+              <Link
+                key={model.id}
+                href={`/products?model=${encodeURIComponent(model.name)}`}
+                prefetch={false}
+                className="inline-flex min-h-[28px] items-center rounded-full border border-white/25 bg-white/10 px-3 text-xs text-white transition-colors hover:border-white/45 hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 sm:text-[13px]"
+              >
+                {model.name}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
 

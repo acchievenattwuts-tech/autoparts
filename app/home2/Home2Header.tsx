@@ -4,7 +4,7 @@ import { Phone } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import Home2MobileNav from "./Home2MobileNav";
 import Home2SearchBar from "./Home2SearchBar";
-import type { Home2FinderBrand } from "./Home2FitmentFinder";
+import type { ProductFilterData } from "@/components/shared/ProductFilterPanel";
 import { HOME2_NAV_LINKS } from "./home2-nav";
 import { HOME2_HEADER_BAR_CLASS } from "./home2-theme";
 
@@ -20,9 +20,8 @@ interface Props {
   shopLogoUrl: string;
   shopPhone: string;
   lineUrl: string;
-  /** Passed through to the mobile finder sheet. */
-  finderBrands: Home2FinderBrand[];
-  finderCategories: string[];
+  /** Passed through to the mobile filter drawer. */
+  filterData: ProductFilterData;
 }
 
 const Home2Header = ({
@@ -31,8 +30,7 @@ const Home2Header = ({
   shopLogoUrl,
   shopPhone,
   lineUrl,
-  finderBrands,
-  finderCategories,
+  filterData,
 }: Props) => {
   const displayPhone = shopPhone ? shopPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") : "";
   const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl;
@@ -96,8 +94,7 @@ const Home2Header = ({
 
           {/* Below lg the nav row and LINE pill collapse into these two */}
           <Home2MobileNav
-            finderBrands={finderBrands}
-            finderCategories={finderCategories}
+            filterData={filterData}
             lineUrl={lineUrl}
             shopPhone={shopPhone}
           />

@@ -99,7 +99,7 @@ const Home2FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   };
 
   return (
-    <div className="rounded-2xl bg-white p-3.5 shadow-[0_18px_45px_rgba(9,25,48,0.28)] sm:p-4">
+    <div className="rounded-2xl bg-white/92 p-3.5 shadow-[0_18px_45px_rgba(9,25,48,0.28)] backdrop-blur-sm sm:p-4">
       {/*
         SearchableSelect / MultiSelectFilter hardcode an orange "nothing picked
         yet" state (border-orange-300 / bg-orange-50/30 / text-orange-400) and

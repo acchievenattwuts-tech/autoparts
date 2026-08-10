@@ -92,23 +92,23 @@ const Home2CategoryStrip = ({ categories, visualSettings }: Props) => {
                 key={category.id}
                 href={getCategoryPath(category)}
                 prefetch={false}
-                className="group/tile flex w-[124px] shrink-0 snap-start flex-col items-center gap-2 border-b border-r border-[#eef3fa] px-2 py-4 text-center transition-colors hover:bg-[#f6f9fe] sm:w-[142px]"
+                className="group/tile flex w-[124px] shrink-0 snap-start flex-col items-center gap-1.5 border-b border-r border-[#eef3fa] px-2 py-3 text-center transition-colors hover:bg-[#f6f9fe] sm:w-[142px]"
               >
-                <span className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30">
+                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30">
                   {imageSrc ? (
                     <Image
                       src={imageSrc}
                       alt={`หมวด ${category.name}`}
                       fill
-                      sizes="64px"
+                      sizes="80px"
                       className="object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
                     />
                   ) : (
-                    <Icon className="h-6 w-6 text-[#1e3a5f]" />
+                    <Icon className="h-7 w-7 text-[#1e3a5f]" />
                   )}
                 </span>
 
-                <span className="line-clamp-2 min-h-[2.25rem] text-[11px] font-medium leading-snug text-slate-700 sm:text-xs">
+                <span className="line-clamp-2 min-h-[2rem] text-[11px] font-medium leading-snug text-slate-700 sm:text-xs">
                   {category.name}
                 </span>
                 <span className="text-[10px] text-slate-400">
