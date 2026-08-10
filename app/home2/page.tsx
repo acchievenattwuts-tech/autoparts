@@ -4,45 +4,44 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import Footer from "@/components/shared/Footer";
 import StorefrontDeferredAssets from "@/components/shared/StorefrontDeferredAssets";
+import { getCategoryVisualSettings } from "@/lib/category-visual-settings";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { getStorefrontProductFilters } from "@/lib/storefront-catalog";
-import Home2CarBrands from "./Home2CarBrands";
+import Home2CategoryStrip from "./Home2CategoryStrip";
 import Home2Header from "./Home2Header";
 import Home2Hero from "./Home2Hero";
+import Home2LineCta from "./Home2LineCta";
+import Home2NewArrivals from "./Home2NewArrivals";
 import Home2ProductSection from "./Home2ProductSection";
 import {
   getHome2BestSellers,
-  getHome2DailyPicks,
+  getHome2Categories,
   getHome2NewArrivals,
-  getHome2TrendingKeywords,
 } from "./home2-data";
-
-/** Car brand shortcuts shown in the brand grid. */
-const CAR_BRAND_LIMIT = 12;
 
 const getHome2PageData = cache(async () => {
   const [
     config,
-    dailyPicks,
+    categories,
+    visualSettings,
     bestSellers,
     newArrivals,
-    trendingKeywords,
     productFilters,
   ] = await Promise.all([
     getPublicSiteConfig(),
-    getHome2DailyPicks(),
+    getHome2Categories(),
+    getCategoryVisualSettings(),
     getHome2BestSellers(),
     getHome2NewArrivals(),
-    getHome2TrendingKeywords(),
     getStorefrontProductFilters(),
   ]);
 
   return {
     config,
-    dailyPicks,
+    categories,
+    visualSettings,
     bestSellers,
     newArrivals,
-    trendingKeywords,
     productFilters,
   };
 });
@@ -53,7 +52,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `${config.shopName} | หน้าแรก (ดีไซน์ทดลอง)`,
     description:
-      "หน้าแรกเวอร์ชันทดลองของร้านอะไหล่แอร์รถยนต์ รวมหมวดหมู่ สินค้าขายดี และสินค้าแนะนำประจำวันจากสต๊อกจริง",
+      "หน้าแรกเวอร์ชันทดลองของร้านอะไหล่แอร์รถยนต์ ค้นหาอะไหล่ตามรุ่นรถ พร้อมหมวดหมู่ สินค้าขายดี และสินค้ามาใหม่จากสต๊อกจริง",
     // Duplicate of "/" by design — keep it out of the index so it cannot
     // compete with the real homepage. robots.ts also disallows /home2.
     robots: { index: false, follow: false },
@@ -61,14 +60,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home2Page = async () => {
-  const { config, dailyPicks, bestSellers, newArrivals, trendingKeywords, productFilters } =
+  const { config, categories, visualSettings, bestSellers, newArrivals, productFilters } =
     await getHome2PageData();
 
-  const carBrands = productFilters.carBrands.slice(0, CAR_BRAND_LIMIT).map((brand) => ({
-    id: brand.id,
+  // Finder feeds off the full active catalogue, not the trimmed brand shortcuts.
+  const finderBrands = productFilters.carBrands.map((brand) => ({
     name: brand.name,
-    modelCount: brand.carModels.length,
+    models: brand.carModels.map((model) => model.name),
   }));
+  const finderCategories = productFilters.categories.map((category) => category.name);
 
   return (
     <div className="flex min-h-full flex-col bg-[#f4f7fc]">
@@ -78,7 +78,6 @@ const Home2Page = async () => {
         shopLogoUrl={config.shopLogoUrl}
         shopPhone={config.shopPhone}
         lineUrl={config.shopLineUrl}
-        trendingKeywords={trendingKeywords}
       />
 
       <main className="flex-1 pb-8">
@@ -87,17 +86,12 @@ const Home2Page = async () => {
           heroTitle={config.heroTitle}
           heroSubtitle={config.heroSubtitle}
           lineUrl={config.shopLineUrl}
+          finderBrands={finderBrands}
+          finderCategories={finderCategories}
         />
 
-        <Home2ProductSection
-          title="แนะนำประจำวัน"
-          subtitle="สุ่มจากสินค้าที่มีสต๊อกจริง เปลี่ยนรายการใหม่ทุกวัน"
-          badge="อัปเดตทุกวัน"
-          href="/products"
-          products={dailyPicks}
-          lineUrl={config.shopLineUrl}
-          layout="rail"
-        />
+        {/* Categories live here, in the page body — not in the header */}
+        <Home2CategoryStrip categories={categories} visualSettings={visualSettings} />
 
         <Home2ProductSection
           title="สินค้าขายดี"
@@ -105,18 +99,16 @@ const Home2Page = async () => {
           href="/products"
           products={bestSellers}
           lineUrl={config.shopLineUrl}
-          layout="grid"
         />
 
-        <Home2CarBrands brands={carBrands} lineUrl={config.shopLineUrl} />
+        <Home2NewArrivals initialPage={newArrivals} lineUrl={config.shopLineUrl} />
 
-        <Home2ProductSection
-          title="สินค้ามาใหม่"
-          subtitle="รายการล่าสุดที่เพิ่งเพิ่มเข้าคลัง"
-          href="/products"
-          products={newArrivals}
+        <Home2LineCta
+          shopName={config.shopName}
+          lineId={config.shopLineId}
           lineUrl={config.shopLineUrl}
-          layout="rail"
+          lineQrUrl={config.shopLineQrUrl}
+          shopPhone={config.shopPhone}
         />
       </main>
 

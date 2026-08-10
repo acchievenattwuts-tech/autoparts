@@ -1,9 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Phone } from "lucide-react";
+import { Phone } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import Home2SearchBar from "./Home2SearchBar";
-import type { Home2KeywordData } from "./home2-data";
 import { HOME2_HEADER_BAR_CLASS } from "./home2-theme";
 
 const LINE_ICON = (
@@ -25,17 +24,9 @@ interface Props {
   shopLogoUrl: string;
   shopPhone: string;
   lineUrl: string;
-  trendingKeywords: Home2KeywordData[];
 }
 
-const Home2Header = ({
-  shopName,
-  shopSlogan,
-  shopLogoUrl,
-  shopPhone,
-  lineUrl,
-  trendingKeywords,
-}: Props) => {
+const Home2Header = ({ shopName, shopSlogan, shopLogoUrl, shopPhone, lineUrl }: Props) => {
   const displayPhone = shopPhone ? shopPhone.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3") : "";
   const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl;
 
@@ -121,32 +112,6 @@ const Home2Header = ({
           )}
         </div>
 
-        {/* Trending searches — real terms ranked by SearchKeyword.popularity */}
-        {trendingKeywords.length > 0 && (
-          /* Desktop: wrap onto as many lines as needed so every term is visible.
-             Phones: keep the Shopee-style rail, with a fading edge + chevron so
-             it reads as swipeable. */
-          <div className="relative mt-2">
-            <div className="flex gap-2 overflow-x-auto pr-9 text-xs text-white/75 [scrollbar-width:none] lg:flex-wrap lg:overflow-x-visible lg:pr-0 [&::-webkit-scrollbar]:hidden">
-              {trendingKeywords.map((keyword) => (
-                <Link
-                  key={keyword.id}
-                  href={`/products?q=${encodeURIComponent(keyword.term)}`}
-                  prefetch={false}
-                  className="inline-flex min-h-[28px] items-center whitespace-nowrap rounded-full px-2.5 transition-colors hover:bg-white/15 hover:text-white"
-                >
-                  {keyword.term}
-                </Link>
-              ))}
-            </div>
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 right-0 flex w-9 items-center justify-end bg-gradient-to-l from-[#22447090] via-[#22447060] to-transparent text-white/70 lg:hidden"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </span>
-          </div>
-        )}
       </div>
 
       {/* Section nav */}

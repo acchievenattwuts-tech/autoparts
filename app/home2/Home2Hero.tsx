@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Boxes, MessageCircle, ShieldCheck, Truck, Wrench } from "lucide-react";
-import { HOME2_OUTLINE_BUTTON_CLASS, HOME2_SECTION_CARD_CLASS } from "./home2-theme";
+import Home2FitmentFinder, { type Home2FinderBrand } from "./Home2FitmentFinder";
+import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 
 const SERVICE_HIGHLIGHTS = [
   { icon: Wrench, title: "เช็กความตรงรุ่น", description: "แจ้งรุ่นรถ ปี ให้ร้านช่วยเทียบก่อนสั่ง" },
@@ -14,9 +15,20 @@ interface Props {
   heroTitle: string;
   heroSubtitle: string;
   lineUrl: string;
+  /** Active car brands with their models, for the fitment finder. */
+  finderBrands: Home2FinderBrand[];
+  /** Active category names, for the finder's multi-select. */
+  finderCategories: string[];
 }
 
-const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl }: Props) => (
+const Home2Hero = ({
+  shopName,
+  heroTitle,
+  heroSubtitle,
+  lineUrl,
+  finderBrands,
+  finderCategories,
+}: Props) => (
   <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
     <div className="grid gap-3">
       {/* Primary banner */}
@@ -61,6 +73,13 @@ const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl }: Props) => (
           </div>
         </div>
       </div>
+
+      {/* Fitment finder — same search logic as "/", re-skinned to blue */}
+      <Home2FitmentFinder
+        brands={finderBrands}
+        categories={finderCategories}
+        lineUrl={lineUrl}
+      />
     </div>
 
     {/* Service strip */}
@@ -78,12 +97,6 @@ const Home2Hero = ({ shopName, heroTitle, heroSubtitle, lineUrl }: Props) => (
       ))}
     </div>
 
-    <div className="mt-3 flex justify-end lg:hidden">
-      <Link href="/products" className={HOME2_OUTLINE_BUTTON_CLASS}>
-        เลือกดูสินค้าทั้งหมด
-        <ArrowRight className="h-4 w-4" />
-      </Link>
-    </div>
   </section>
 );
 

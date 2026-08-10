@@ -1,7 +1,6 @@
 import { unstable_cache } from "next/cache";
 import type { Prisma } from "@/lib/generated/prisma";
 import { db, withDbRetry } from "@/lib/db";
-import { getThailandDateKey } from "@/lib/th-date";
 
 /**
  * Data layer for the /home2 Shopee-style homepage.
@@ -12,24 +11,19 @@ import { getThailandDateKey } from "@/lib/th-date";
  * outside /home2 imports this module.
  */
 
-/** Daily picks row — Shopee's flash-sale slot, filled with real products. */
-const DAILY_PICK_COUNT = 10;
-/** Candidate pool the daily picks are drawn from (ids only — cheap to scan). */
-const DAILY_PICK_POOL_SIZE = 400;
+/** Page size of the "สินค้ามาใหม่" list — matches /products. */
+export const NEW_ARRIVAL_PAGE_SIZE = 24;
 /** Best-seller grid size. */
 const BEST_SELLER_COUNT = 12;
 /** Over-fetch so category diversification still fills the grid. */
 const BEST_SELLER_POOL_SIZE = 48;
 /** Keep one category from taking over the best-seller grid. */
 const MAX_PER_CATEGORY = 3;
-/** Trending search chips under the header search bar. */
-const TRENDING_KEYWORD_COUNT = 8;
 /** Fitment lines kept per card (the card renders at most two lines anyway). */
 const FITMENT_TAKE = 4;
 
 const ONE_DAY_SECONDS = 86_400;
 const THIRTY_MINUTES_SECONDS = 1_800;
-const ONE_HOUR_SECONDS = 3_600;
 
 const STOREFRONT_PRODUCT_WHERE = {
   isActive: true,
@@ -88,11 +82,6 @@ export interface Home2CategoryData {
   productCount: number;
 }
 
-export interface Home2KeywordData {
-  id: string;
-  term: string;
-}
-
 const formatFitmentYear = (yearStart: number | null, yearEnd: number | null): string | null => {
   if (yearStart && yearEnd) return `${yearStart}-${yearEnd}`;
   if (yearStart) return `${yearStart}+`;
@@ -133,41 +122,6 @@ const toCardData = (product: Home2ProductRow): Home2ProductCardData => ({
   brandName: product.brand?.name ?? null,
   fitmentSummary: buildFitmentSummary(product.carModels),
 });
-
-/** FNV-1a — turns the Thailand date key into a stable 32-bit seed. */
-const hashSeed = (value: string): number => {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return hash >>> 0;
-};
-
-/** mulberry32 — deterministic PRNG so the same day always yields the same picks. */
-const createSeededRandom = (seed: number): (() => number) => {
-  let state = seed || 1;
-  return () => {
-    state = (state + 0x6d2b79f5) | 0;
-    let t = Math.imul(state ^ (state >>> 15), 1 | state);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4_294_967_296;
-  };
-};
-
-/** Partial Fisher-Yates: picks `count` items without bias, seeded by the day. */
-const pickSeeded = <T>(items: readonly T[], count: number, seed: string): T[] => {
-  const pool = [...items];
-  const random = createSeededRandom(hashSeed(seed));
-  const take = Math.min(count, pool.length);
-
-  for (let index = 0; index < take; index += 1) {
-    const swapWith = index + Math.floor(random() * (pool.length - index));
-    [pool[index], pool[swapWith]] = [pool[swapWith], pool[index]];
-  }
-
-  return pool.slice(0, take);
-};
 
 const diversifyByCategory = (
   pool: readonly Home2ProductRow[],
@@ -245,83 +199,44 @@ export const getHome2BestSellers = unstable_cache(
   { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
 );
 
-/**
- * Newest arrivals — real createdAt order, no synthetic promo data.
- */
-export const getHome2NewArrivals = unstable_cache(
-  async (): Promise<Home2ProductCardData[]> =>
-    withDbRetry(async () => {
-      const products = await db.product.findMany({
-        where: STOREFRONT_PRODUCT_WHERE,
-        select: HOME2_CARD_SELECT,
-        orderBy: { createdAt: "desc" },
-        take: DAILY_PICK_COUNT,
-      });
+export interface Home2ProductPage {
+  products: Home2ProductCardData[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
-      return products.map(toCardData);
+/**
+ * Newest arrivals, paginated — real createdAt order, no synthetic promo data.
+ *
+ * `createdAt` alone is not a total order (bulk imports share a timestamp), so
+ * `id` breaks ties. Without it, skip/take could repeat or drop a row between
+ * pages.
+ */
+const getHome2NewArrivalsPage = unstable_cache(
+  async (page: number): Promise<Home2ProductPage> =>
+    withDbRetry(async () => {
+      const [products, total] = await Promise.all([
+        db.product.findMany({
+          where: STOREFRONT_PRODUCT_WHERE,
+          select: HOME2_CARD_SELECT,
+          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+          skip: (page - 1) * NEW_ARRIVAL_PAGE_SIZE,
+          take: NEW_ARRIVAL_PAGE_SIZE,
+        }),
+        db.product.count({ where: STOREFRONT_PRODUCT_WHERE }),
+      ]);
+
+      return {
+        products: products.map(toCardData),
+        total,
+        page,
+        pageSize: NEW_ARRIVAL_PAGE_SIZE,
+      };
     }),
   ["home2-new-arrivals"],
   { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
 );
 
-/**
- * Ten products that rotate once per Thailand calendar day.
- *
- * The rotation is deterministic (seeded by the date key) rather than random per
- * request, so the cache entry stays stable for the whole day — every visitor on
- * a given day sees the same ten items, and the DB is touched twice per day at
- * most instead of once per render.
- */
-const getHome2DailyPicksForDate = unstable_cache(
-  async (dateKey: string): Promise<Home2ProductCardData[]> =>
-    withDbRetry(async () => {
-      const pool = await db.product.findMany({
-        where: STOREFRONT_PRODUCT_WHERE,
-        select: { id: true },
-        orderBy: { code: "asc" },
-        take: DAILY_PICK_POOL_SIZE,
-      });
-
-      if (pool.length === 0) return [];
-
-      const pickedIds = pickSeeded(
-        pool.map((product) => product.id),
-        DAILY_PICK_COUNT,
-        dateKey,
-      );
-
-      const products = await db.product.findMany({
-        where: { id: { in: pickedIds } },
-        select: HOME2_CARD_SELECT,
-      });
-
-      // `in` does not preserve order — restore the shuffled order so the row
-      // layout also changes day to day, not just its contents.
-      const orderById = new Map(pickedIds.map((id, index) => [id, index]));
-      return products
-        .sort((left, right) => (orderById.get(left.id) ?? 0) - (orderById.get(right.id) ?? 0))
-        .map(toCardData);
-    }),
-  ["home2-daily-picks"],
-  { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
-);
-
-export const getHome2DailyPicks = (): Promise<Home2ProductCardData[]> =>
-  getHome2DailyPicksForDate(getThailandDateKey());
-
-/**
- * Popular search terms for the Shopee-style chips under the search bar.
- */
-export const getHome2TrendingKeywords = unstable_cache(
-  async (): Promise<Home2KeywordData[]> =>
-    withDbRetry(() =>
-      db.searchKeyword.findMany({
-        where: { popularity: { gt: 0 } },
-        orderBy: [{ popularity: "desc" }, { term: "asc" }],
-        select: { id: true, term: true },
-        take: TRENDING_KEYWORD_COUNT,
-      }),
-    ),
-  ["home2-trending-keywords"],
-  { revalidate: ONE_HOUR_SECONDS },
-);
+export const getHome2NewArrivals = (page = 1): Promise<Home2ProductPage> =>
+  getHome2NewArrivalsPage(page);

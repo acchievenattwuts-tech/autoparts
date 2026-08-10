@@ -81,14 +81,9 @@ const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
 
         <div className="mt-auto pt-1.5">
           {pricing ? (
-            <div className="flex items-baseline gap-1.5">
-              <p className={`text-base font-extrabold leading-none ${HOME2_PRICE_TEXT_CLASS}`}>
-                ฿{pricing.retailPrice.toLocaleString("th-TH")}
-              </p>
-              <span className="text-[10px] text-slate-400 line-through">
-                ฿{pricing.compareAtPrice.toLocaleString("th-TH")}
-              </span>
-            </div>
+            <p className={`text-base font-extrabold leading-none ${HOME2_PRICE_TEXT_CLASS}`}>
+              ฿{pricing.retailPrice.toLocaleString("th-TH")}
+            </p>
           ) : (
             <p className={`text-base font-extrabold leading-none ${HOME2_PRICE_TEXT_CLASS}`}>
               {STOREFRONT_PRICE_INQUIRY_LABEL}
