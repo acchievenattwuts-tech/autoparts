@@ -1,6 +1,11 @@
 import { unstable_cache } from "next/cache";
 import type { Prisma } from "@/lib/generated/prisma";
 import { db, withDbRetry } from "@/lib/db";
+import {
+  addThailandDays,
+  getThailandDateKey,
+  parseDateOnlyToStartOfDay,
+} from "@/lib/th-date";
 
 /**
  * Data layer for the /home2 Shopee-style homepage.
@@ -13,12 +18,10 @@ import { db, withDbRetry } from "@/lib/db";
 
 /** Page size of the "สินค้ามาใหม่" list — matches /products. */
 export const NEW_ARRIVAL_PAGE_SIZE = 24;
-/** Best-seller grid size. */
+/** "ขายดีประจำสัปดาห์" grid size. */
 const BEST_SELLER_COUNT = 12;
-/** Over-fetch so category diversification still fills the grid. */
-const BEST_SELLER_POOL_SIZE = 48;
-/** Keep one category from taking over the best-seller grid. */
-const MAX_PER_CATEGORY = 3;
+/** Rolling window, in days including today. */
+const BEST_SELLER_WINDOW_DAYS = 7;
 /** Fitment lines kept per card (the card renders at most two lines anyway). */
 const FITMENT_TAKE = 4;
 
@@ -125,35 +128,6 @@ const toCardData = (product: Home2ProductRow): Home2ProductCardData => ({
   fitmentSummary: buildFitmentSummary(product.carModels),
 });
 
-const diversifyByCategory = (
-  pool: readonly Home2ProductRow[],
-  limit: number,
-): Home2ProductRow[] => {
-  const perCategory = new Map<string, number>();
-  const picked: Home2ProductRow[] = [];
-  const overflow: Home2ProductRow[] = [];
-
-  for (const product of pool) {
-    const used = perCategory.get(product.category.id) ?? 0;
-    if (used < MAX_PER_CATEGORY) {
-      perCategory.set(product.category.id, used + 1);
-      picked.push(product);
-    } else {
-      overflow.push(product);
-    }
-    if (picked.length === limit) return picked;
-  }
-
-  // Not enough distinct categories to fill the grid — backfill so the row never
-  // renders half-empty.
-  for (const product of overflow) {
-    picked.push(product);
-    if (picked.length === limit) break;
-  }
-
-  return picked;
-};
-
 /**
  * Active categories with their live storefront product counts.
  */
@@ -192,24 +166,86 @@ export const getHome2Categories = unstable_cache(
   { tags: ["storefront:categories"], revalidate: THIRTY_MINUTES_SECONDS },
 );
 
+/** Ranks product ids by how many distinct bills contain them, highest first. */
+const rankByBillCount = (lines: { productId: string; saleId: string }[]): string[] => {
+  const billsByProduct = new Map<string, Set<string>>();
+
+  for (const line of lines) {
+    const bills = billsByProduct.get(line.productId);
+    if (bills) {
+      bills.add(line.saleId);
+    } else {
+      billsByProduct.set(line.productId, new Set([line.saleId]));
+    }
+  }
+
+  return [...billsByProduct.entries()]
+    // Ties are broken by product id so the order stays stable across renders —
+    // with this shop's volume most products sit on a single bill.
+    .sort(([leftId, leftBills], [rightId, rightBills]) =>
+      rightBills.size - leftBills.size || leftId.localeCompare(rightId),
+    )
+    .map(([productId]) => productId);
+};
+
 /**
- * Best sellers ranked by lifetime sale-line count, capped per category.
+ * "ขายดีประจำสัปดาห์" — ranked by how many separate bills included the product
+ * over the trailing week, so one bulk order cannot crown a product on its own.
+ *
+ * Cancelled bills are excluded. If the week did not produce enough sellers, the
+ * grid is topped up with all-time bill leaders so it never renders half-empty.
+ *
+ * Both rankings come from one scan of ACTIVE sale lines: the whole table is a
+ * few hundred rows, so this is cheaper than two aggregate round trips, and it
+ * lets the count be distinct-by-bill, which Prisma's groupBy cannot express.
  */
-export const getHome2BestSellers = unstable_cache(
-  async (): Promise<Home2ProductCardData[]> =>
+const getHome2WeeklyBestSellersForDate = unstable_cache(
+  async (dateKey: string): Promise<Home2ProductCardData[]> =>
     withDbRetry(async () => {
-      const pool = await db.product.findMany({
-        where: STOREFRONT_PRODUCT_WHERE,
-        select: HOME2_CARD_SELECT,
-        orderBy: { saleItems: { _count: "desc" } },
-        take: BEST_SELLER_POOL_SIZE,
+      const windowStart = parseDateOnlyToStartOfDay(
+        getThailandDateKey(addThailandDays(parseDateOnlyToStartOfDay(dateKey), -(BEST_SELLER_WINDOW_DAYS - 1))),
+      );
+
+      const lines = await db.saleItem.findMany({
+        where: {
+          sale: { status: "ACTIVE" },
+          product: STOREFRONT_PRODUCT_WHERE,
+        },
+        select: { productId: true, saleId: true, sale: { select: { saleDate: true } } },
       });
 
-      return diversifyByCategory(pool, BEST_SELLER_COUNT).map(toCardData);
+      const weeklyRanking = rankByBillCount(
+        lines.filter((line) => line.sale.saleDate >= windowStart),
+      );
+      const picked = weeklyRanking.slice(0, BEST_SELLER_COUNT);
+
+      if (picked.length < BEST_SELLER_COUNT) {
+        const alreadyPicked = new Set(picked);
+        for (const productId of rankByBillCount(lines)) {
+          if (alreadyPicked.has(productId)) continue;
+          picked.push(productId);
+          if (picked.length === BEST_SELLER_COUNT) break;
+        }
+      }
+
+      if (picked.length === 0) return [];
+
+      const products = await db.product.findMany({
+        where: { id: { in: picked } },
+        select: HOME2_CARD_SELECT,
+      });
+
+      const rankById = new Map(picked.map((id, index) => [id, index]));
+      return products
+        .sort((left, right) => (rankById.get(left.id) ?? 0) - (rankById.get(right.id) ?? 0))
+        .map(toCardData);
     }),
-  ["home2-best-sellers"],
+  ["home2-weekly-best-sellers"],
   { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
 );
+
+export const getHome2WeeklyBestSellers = (): Promise<Home2ProductCardData[]> =>
+  getHome2WeeklyBestSellersForDate(getThailandDateKey());
 
 export interface Home2ProductPage {
   products: Home2ProductCardData[];

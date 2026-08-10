@@ -14,7 +14,7 @@ import Home2LineCta from "./Home2LineCta";
 import Home2NewArrivals from "./Home2NewArrivals";
 import Home2ProductSection from "./Home2ProductSection";
 import {
-  getHome2BestSellers,
+  getHome2WeeklyBestSellers,
   getHome2Categories,
   getHome2NewArrivals,
 } from "./home2-data";
@@ -24,14 +24,14 @@ const getHome2PageData = cache(async () => {
     config,
     categories,
     visualSettings,
-    bestSellers,
+    weeklyBestSellers,
     newArrivals,
     productFilters,
   ] = await Promise.all([
     getPublicSiteConfig(),
     getHome2Categories(),
     getCategoryVisualSettings(),
-    getHome2BestSellers(),
+    getHome2WeeklyBestSellers(),
     getHome2NewArrivals(),
     getStorefrontProductFilters(),
   ]);
@@ -40,7 +40,7 @@ const getHome2PageData = cache(async () => {
     config,
     categories,
     visualSettings,
-    bestSellers,
+    weeklyBestSellers,
     newArrivals,
     productFilters,
   };
@@ -52,7 +52,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `${config.shopName} | หน้าแรก (ดีไซน์ทดลอง)`,
     description:
-      "หน้าแรกเวอร์ชันทดลองของร้านอะไหล่แอร์รถยนต์ ค้นหาอะไหล่ตามรุ่นรถ พร้อมหมวดหมู่ สินค้าขายดี และสินค้ามาใหม่จากสต๊อกจริง",
+      "หน้าแรกเวอร์ชันทดลองของร้านอะไหล่แอร์รถยนต์ ค้นหาอะไหล่ตามรุ่นรถ พร้อมหมวดหมู่ สินค้าขายดีประจำสัปดาห์ และสินค้ามาใหม่จากสต๊อกจริง",
     // Duplicate of "/" by design — keep it out of the index so it cannot
     // compete with the real homepage. robots.ts also disallows /home2.
     robots: { index: false, follow: false },
@@ -60,7 +60,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 const Home2Page = async () => {
-  const { config, categories, visualSettings, bestSellers, newArrivals, productFilters } =
+  const { config, categories, visualSettings, weeklyBestSellers, newArrivals, productFilters } =
     await getHome2PageData();
 
   // Finder feeds off the full active catalogue, not the trimmed brand shortcuts.
@@ -91,9 +91,9 @@ const Home2Page = async () => {
         <Home2CategoryStrip categories={categories} visualSettings={visualSettings} />
 
         <Home2ProductSection
-          title="สินค้าขายดี"
+          title="ขายดีประจำสัปดาห์"
           href="/products"
-          products={bestSellers}
+          products={weeklyBestSellers}
           lineUrl={config.shopLineUrl}
         />
 
