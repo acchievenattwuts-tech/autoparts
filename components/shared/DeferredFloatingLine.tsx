@@ -7,7 +7,13 @@ const FloatingLine = dynamic(() => import("./FloatingLine"), {
   ssr: false,
 });
 
-export default function DeferredFloatingLine({ lineUrl }: { lineUrl?: string }) {
+export default function DeferredFloatingLine({
+  lineUrl,
+  shopPhone,
+}: {
+  lineUrl?: string;
+  shopPhone?: string;
+}) {
   const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
@@ -26,5 +32,5 @@ export default function DeferredFloatingLine({ lineUrl }: { lineUrl?: string }) 
     return null;
   }
 
-  return <FloatingLine lineUrl={lineUrl} />;
+  return <FloatingLine lineUrl={lineUrl} shopPhone={shopPhone} />;
 }

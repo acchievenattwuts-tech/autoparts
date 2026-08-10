@@ -57,7 +57,7 @@ export default function StorefrontTemporaryUnavailable({
         </section>
       </main>
       <Footer config={resolvedConfig} />
-      <StorefrontDeferredAssets lineUrl={resolvedConfig.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={resolvedConfig.shopLineUrl} shopPhone={resolvedConfig.shopPhone} />
     </>
   );
 }

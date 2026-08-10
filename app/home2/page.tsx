@@ -82,12 +82,9 @@ const Home2Page = async () => {
 
       <main className="flex-1">
         <Home2Hero
-          shopName={config.shopName}
-          heroTitle={config.heroTitle}
-          heroSubtitle={config.heroSubtitle}
-          lineUrl={config.shopLineUrl}
           finderBrands={finderBrands}
           finderCategories={finderCategories}
+          lineUrl={config.shopLineUrl}
         />
 
         {/* Categories live here, in the page body — not in the header */}
@@ -95,7 +92,6 @@ const Home2Page = async () => {
 
         <Home2ProductSection
           title="สินค้าขายดี"
-          subtitle="จัดอันดับจากยอดขายจริงของร้าน"
           href="/products"
           products={bestSellers}
           lineUrl={config.shopLineUrl}
@@ -113,7 +109,7 @@ const Home2Page = async () => {
       </main>
 
       <Footer config={config} />
-      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
     </div>
   );
 };

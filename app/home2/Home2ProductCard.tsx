@@ -1,3 +1,7 @@
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { MessageCircle, ShieldCheck } from "lucide-react";
@@ -21,10 +25,14 @@ interface Props {
 /**
  * Shopee-style compact product card, white + blue.
  *
- * Deliberately a Server Component: the whole card is links and anchors, so it
- * ships zero JavaScript and keeps the home2 LCP/INP budget clear.
+ * Navigation goes through a transition so the card can show a spinner while the
+ * product page streams in — same feedback as the storefront card on /products,
+ * which otherwise leaves a tap looking unregistered on a slow connection.
  */
 const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
+  const [isPending, startTransition] = useTransition();
+  const router = useRouter();
+
   const productPath = getProductPath({ category: product.category, product });
   const pricing = getStorefrontRetailPricing(product.retailPrice);
   const saleUnitLabel = product.saleUnitName.trim() || "หน่วย";
@@ -32,15 +40,32 @@ const Home2ProductCard = ({ product, lineUrl, variant = "grid" }: Props) => {
     ? (toProductImageCdnPath(product.imageUrl) ?? product.imageUrl)
     : null;
 
+  const handleProductClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    // Leave middle-click, ctrl/cmd/shift-click and right-click to the browser
+    // so "open in new tab" keeps working.
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    startTransition(() => {
+      router.push(productPath);
+    });
+  };
+
   return (
     <article
       className={`group relative flex h-full flex-col overflow-hidden rounded-xl border border-[#e3ecf8] bg-white transition-all duration-200 hover:-translate-y-0.5 hover:border-[#1e3a5f]/35 hover:shadow-[0_10px_28px_rgba(30,58,95,0.16)] motion-reduce:transform-none ${
         variant === "rail" ? "w-[158px] shrink-0 snap-start sm:w-[178px]" : "w-full"
       }`}
     >
+      {isPending && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center rounded-xl bg-white/75 backdrop-blur-[2px]">
+          <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[#1e3a5f]/25 border-t-[#1e3a5f]" />
+        </div>
+      )}
+
       <Link
         href={productPath}
         prefetch={false}
+        onClick={handleProductClick}
         aria-label={`ดูรายละเอียด ${product.name}`}
         className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb] focus-visible:ring-offset-2"
       />

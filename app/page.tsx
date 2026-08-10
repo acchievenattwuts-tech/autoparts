@@ -122,7 +122,7 @@ const Home = async () => {
         </ScrollReveal>
       </main>
       <Footer config={config} />
-      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
       <OrganizationJsonLd config={config} />
       <LocalBusinessJsonLd config={config} />
       <WebSiteJsonLd />

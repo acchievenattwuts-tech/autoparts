@@ -247,7 +247,7 @@ const KnowledgePage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
       <BreadcrumbJsonLd
         items={[
           { name: "หน้าแรก", item: absoluteUrl("/") },

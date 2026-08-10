@@ -729,7 +729,7 @@ const ProductDetailPage = async ({ params }: Props) => {
 
       </main>
       <Footer config={config} />
-      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
 
       <BreadcrumbJsonLd
         items={[

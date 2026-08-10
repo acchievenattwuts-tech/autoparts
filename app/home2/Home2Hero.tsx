@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowRight, Boxes, MessageCircle, ShieldCheck, Truck, Wrench } from "lucide-react";
+import { Boxes, ShieldCheck, Truck, Wrench } from "lucide-react";
 import Home2FitmentFinder, { type Home2FinderBrand } from "./Home2FitmentFinder";
 import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 
@@ -11,69 +10,54 @@ const SERVICE_HIGHLIGHTS = [
 ] as const;
 
 interface Props {
-  shopName: string;
-  heroTitle: string;
-  heroSubtitle: string;
-  lineUrl: string;
   /** Active car brands with their models, for the fitment finder. */
   finderBrands: Home2FinderBrand[];
   /** Active category names, for the finder's multi-select. */
   finderCategories: string[];
+  lineUrl: string;
 }
 
-const Home2Hero = ({
-  shopName,
-  heroTitle,
-  heroSubtitle,
-  lineUrl,
-  finderBrands,
-  finderCategories,
-}: Props) => (
+/**
+ * Hero banner built entirely around the fitment finder.
+ *
+ * Finding a part that fits is the one job customers arrive with, so the banner
+ * carries no competing marketing column — just the headline and the form,
+ * centred on the blue field.
+ */
+const Home2Hero = ({ finderBrands, finderCategories, lineUrl }: Props) => (
   <section className="mx-auto max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-    {/* Primary banner — the finder lives inside it, so the pitch and the
-        "find my part" step read as one unit instead of two stacked cards. */}
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e3a5f] via-[#25508a] to-[#2563eb] p-5 text-white sm:p-8">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-white/10"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-20 -left-10 h-52 w-52 rounded-full bg-white/5"
-        />
+    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#16345d] via-[#25508a] to-[#2563eb] px-4 py-8 text-white sm:px-8 sm:py-10 lg:py-12">
+      {/* Soft light shapes — purely decorative, clipped by the card */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full bg-white/10 blur-2xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full bg-[#06C755]/10 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent"
+      />
 
-        <div className="relative grid items-center gap-6 lg:grid-cols-2 lg:gap-10">
-          <div className="max-w-xl">
-            <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">
-              {shopName}
-            </span>
-            <h1 className="mt-3 font-kanit text-2xl font-bold leading-tight sm:text-4xl">
-              {heroTitle}
-            </h1>
-            <p className="mt-2 text-sm text-white/80 sm:text-base">{heroSubtitle}</p>
+      <div className="relative mx-auto max-w-5xl">
+        <header className="text-center">
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-xs font-semibold backdrop-blur-sm">
+            <Wrench className="h-3.5 w-3.5" />
+            เช็กความตรงรุ่นก่อนสั่ง
+          </span>
 
-            <div className="mt-5 flex flex-wrap gap-2.5">
-              <Link
-                href="/products"
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#1e3a5f] transition-colors hover:bg-[#e6eefa]"
-              >
-                ดูสินค้าทั้งหมด
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              {lineUrl && (
-                <a
-                  href={lineUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 rounded-full border border-white/40 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  สอบถามทาง LINE
-                </a>
-              )}
-            </div>
-          </div>
+          <h1 className="mt-4 font-kanit text-2xl font-bold leading-tight sm:text-4xl">
+            ค้นหาอะไหล่ตามรถของคุณ
+          </h1>
 
+          <p className="mx-auto mt-2.5 max-w-2xl text-sm text-white/75 sm:text-base">
+            เลือกยี่ห้อ รุ่น และปีรถ แล้วให้ระบบกรองเฉพาะอะไหล่ที่ระบุว่าตรงรุ่นให้ทันที
+          </p>
+        </header>
+
+        <div className="mt-6 sm:mt-8">
           {/* Same search logic as "/", re-skinned to blue */}
           <Home2FitmentFinder
             brands={finderBrands}
@@ -82,6 +66,7 @@ const Home2Hero = ({
           />
         </div>
       </div>
+    </div>
 
     {/* Service strip */}
     <div className={`${HOME2_SECTION_CARD_CLASS} mt-3 grid grid-cols-2 gap-px overflow-hidden lg:grid-cols-4`}>
@@ -97,7 +82,6 @@ const Home2Hero = ({
         </div>
       ))}
     </div>
-
   </section>
 );
 

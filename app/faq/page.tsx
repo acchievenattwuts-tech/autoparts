@@ -190,7 +190,7 @@ const FaqPage = async () => {
         </section>
       </main>
       <Footer config={config} />
-      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} />
+      <StorefrontDeferredAssets lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
 
       <FaqJsonLd items={storefrontFaqItems} />
       <BreadcrumbJsonLd

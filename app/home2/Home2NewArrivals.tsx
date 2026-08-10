@@ -16,8 +16,12 @@ import { HOME2_SECTION_CARD_CLASS } from "./home2-theme";
 const AUTO_LOAD_PAGE_LIMIT = 2;
 /** Placeholder cards rendered while the next page is in flight. */
 const SKELETON_COUNT = 6;
-/** Start fetching this far before the sentinel scrolls into view. */
-const PREFETCH_ROOT_MARGIN = "900px 0px";
+/**
+ * How far before the sentinel the next page starts loading. Kept short so the
+ * list genuinely rests at its initial 24 until the reader reaches the end —
+ * a large margin fired almost immediately and the count jumped to 48 on load.
+ */
+const PREFETCH_ROOT_MARGIN = "150px 0px";
 
 const CardSkeleton = () => (
   <div className="overflow-hidden rounded-xl border border-[#e3ecf8] bg-white">
@@ -113,9 +117,6 @@ const Home2NewArrivals = ({ initialPage, lineUrl }: Props) => {
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#eef3fa] px-4 py-3 sm:px-5">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h2 className="font-kanit text-base font-bold text-[#1e3a5f] sm:text-lg">สินค้ามาใหม่</h2>
-            <p className="w-full text-xs text-slate-500 sm:w-auto sm:text-sm">
-              รายการล่าสุดที่เพิ่งเพิ่มเข้าคลัง
-            </p>
           </div>
           <p className="text-xs text-slate-400 sm:text-sm">
             แสดง {products.length.toLocaleString("th-TH")} จาก {total.toLocaleString("th-TH")} รายการ
