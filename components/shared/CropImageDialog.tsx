@@ -28,6 +28,18 @@ interface Props {
    * patch on the tile.
    */
   transparent?: boolean;
+  /**
+   * Drop the 1:1 lock and export at whatever shape the admin selected, scaled so
+   * its longest edge is {@link OUTPUT_SIZE}.
+   *
+   * A square lock caps the selection at the image's shorter side, so a part that
+   * is wider than the photo is tall — a condenser, a hose — simply cannot be
+   * enclosed: its ends are always cut. Nothing downstream needs a square any
+   * more either. The tile draws the file with `object-contain`, which scales by
+   * the longest edge, so a 3:2 file and the same picture padded to 1:1 render the
+   * part at exactly the same size. Only how tightly the part is framed matters.
+   */
+  freeAspect?: boolean;
   /** Overrides the "รูปที่ n / m" line when a caller crops a single image. */
   subtitle?: string;
 }
@@ -39,6 +51,7 @@ const CropImageDialog = ({
   onCancel,
   onConfirm,
   transparent = false,
+  freeAspect = false,
   subtitle,
 }: Props) => {
   const [src, setSrc] = useState<string>("");
@@ -73,6 +86,12 @@ const CropImageDialog = ({
 
   const onImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
     const { width, height } = e.currentTarget;
+    if (freeAspect) {
+      // Start on the whole image, so confirming without dragging keeps the file
+      // as it came — the common case when the artwork is already framed well.
+      setCrop({ unit: "%", x: 0, y: 0, width: 100, height: 100 });
+      return;
+    }
     const initial = centerCrop(
       makeAspectCrop({ unit: "%", width: 90 }, ASPECT, width, height),
       width,
@@ -94,9 +113,19 @@ const CropImageDialog = ({
       const sw = completedCrop.width * scaleX;
       const sh = completedCrop.height * scaleY;
 
+      // Square mode always exports OUTPUT_SIZE²; free mode keeps the selection's
+      // own shape and scales its longest edge to OUTPUT_SIZE.
+      const longestEdge = Math.max(sw, sh);
+      const outputWidth = freeAspect
+        ? Math.max(1, Math.round((sw / longestEdge) * OUTPUT_SIZE))
+        : OUTPUT_SIZE;
+      const outputHeight = freeAspect
+        ? Math.max(1, Math.round((sh / longestEdge) * OUTPUT_SIZE))
+        : OUTPUT_SIZE;
+
       const canvas = document.createElement("canvas");
-      canvas.width = OUTPUT_SIZE;
-      canvas.height = OUTPUT_SIZE;
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("ไม่สามารถสร้าง canvas context ได้");
       ctx.imageSmoothingEnabled = true;
@@ -106,9 +135,9 @@ const CropImageDialog = ({
       // alpha channel to keep.
       if (!transparent) {
         ctx.fillStyle = FLATTENED_BACKGROUND_COLOR;
-        ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+        ctx.fillRect(0, 0, outputWidth, outputHeight);
       }
-      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+      ctx.drawImage(image, sx, sy, sw, sh, 0, 0, outputWidth, outputHeight);
 
       const mimeType = transparent ? "image/png" : "image/jpeg";
       const extension = transparent ? ".png" : ".jpg";
@@ -136,8 +165,10 @@ const CropImageDialog = ({
               ปรับขนาดรูปภาพ
             </h3>
             <p className="text-xs text-gray-500 dark:text-slate-400">
-              {subtitle ?? `รูปที่ ${index + 1} / ${total}`} • อัตราส่วน 1:1 ({OUTPUT_SIZE}×
-              {OUTPUT_SIZE})
+              {subtitle ?? `รูปที่ ${index + 1} / ${total}`} •{" "}
+              {freeAspect
+                ? `ลากกรอบได้อิสระ ด้านยาวสุด ${OUTPUT_SIZE}px`
+                : `อัตราส่วน 1:1 (${OUTPUT_SIZE}×${OUTPUT_SIZE})`}
             </p>
           </div>
           <button
@@ -157,7 +188,7 @@ const CropImageDialog = ({
               crop={crop}
               onChange={(_, percentCrop) => setCrop(percentCrop)}
               onComplete={(c) => setCompletedCrop(c)}
-              aspect={ASPECT}
+              aspect={freeAspect ? undefined : ASPECT}
               keepSelection
               minWidth={40}
             >
