@@ -113,7 +113,9 @@ const CategoryImageField = ({
       <input type="hidden" name="imageUrl" value={imageUrl} />
 
       <div className="flex items-start gap-3">
-        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-white dark:border-white/10 dark:bg-slate-950">
+        {/* Mirrors the storefront tile exactly (circle, #f7fafe, contain + padding)
+            so what the admin approves here is what customers see. */}
+        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] p-2.5 dark:border-white/10 dark:bg-slate-950">
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -121,7 +123,7 @@ const CategoryImageField = ({
               width={IMAGE_PREVIEW_SIZE_PX}
               height={IMAGE_PREVIEW_SIZE_PX}
               sizes="72px"
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />
           ) : (
             <ImageOff className="h-6 w-6 text-gray-300 dark:text-slate-600" aria-hidden="true" />
@@ -466,7 +468,7 @@ const EditableRow = ({
       <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
       <td className="px-4 py-3">
         <div className="inline-flex items-center gap-2">
-          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-slate-950">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] p-1.5 dark:border-white/10 dark:bg-slate-950">
             {category.imageUrl ? (
               <Image
                 src={category.imageUrl}
@@ -474,7 +476,7 @@ const EditableRow = ({
                 width={40}
                 height={40}
                 sizes="40px"
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
             ) : (
               <ImageOff className="h-4 w-4 text-gray-300 dark:text-slate-600" aria-hidden="true" />

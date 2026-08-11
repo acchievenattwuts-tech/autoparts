@@ -80,6 +80,10 @@ const HomeCategoryStrip = ({ categories }: Props) => {
             const imageSrc = category.imageUrl
               ? (toProductImageCdnPath(category.imageUrl) ?? category.imageUrl)
               : null;
+            // An uploaded image is a deliberate choice, so the whole part stays
+            // visible inside the circular crop. A product photo is an incidental
+            // catalogue shot and keeps filling the circle as before.
+            const isUploadedImage = category.imageSource === "category";
 
             return (
               <Link
@@ -88,15 +92,32 @@ const HomeCategoryStrip = ({ categories }: Props) => {
                 prefetch={false}
                 className="group/tile flex w-[124px] shrink-0 snap-start flex-col items-center gap-1.5 border-b border-r border-[#eef3fa] px-2 py-3 text-center transition-colors hover:bg-[#f6f9fe] sm:w-[142px]"
               >
-                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30">
+                <span
+                  className={`relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30 ${
+                    isUploadedImage ? "p-3" : ""
+                  }`}
+                >
                   {imageSrc ? (
-                    <Image
-                      src={imageSrc}
-                      alt={`หมวด ${category.name}`}
-                      fill
-                      sizes="80px"
-                      className="object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
-                    />
+                    // The inner span is what `fill` measures against: an absolutely
+                    // positioned image resolves inset-0 against the padding box, so
+                    // padding on the circle alone would not inset it.
+                    <span className="relative h-full w-full">
+                      <Image
+                        src={imageSrc}
+                        alt={`หมวด ${category.name}`}
+                        fill
+                        sizes="80px"
+                        className={
+                          isUploadedImage
+                            ? // No hover zoom here — a square subject already sits
+                              // near the circle's inner edge and scaling would clip
+                              // its corners, which is the whole thing the padding
+                              // exists to prevent.
+                              "object-contain"
+                            : "object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
+                        }
+                      />
+                    </span>
                   ) : (
                     <Icon className="h-7 w-7 text-[#1e3a5f]" />
                   )}

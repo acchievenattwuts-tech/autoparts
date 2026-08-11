@@ -716,6 +716,12 @@
   - prefetch ตอน pointerenter/focus ช่องยี่ห้อ เพื่อให้แทบไม่เห็น state "กำลังโหลดรุ่น..."; ถ้า fetch ล้มเหลว ช่องรุ่นว่างแต่ยี่ห้อ/ปี/หมวด ยังค้นได้ปกติ
   - ทดสอบจริงบน dev: โหลดหน้าแรก **ไม่มี** request ไป `/api/storefront-filters` → กดเลือก Toyota → ยิง 1 ครั้ง 200 → รุ่นขึ้นครบ (Alphard, Altis, Camry, …) ไม่มี console error
   - `/home2` (legacy, noindex) ยังใช้ `HeroFitmentFinder` แบบเดิม — ไม่ได้แตะ
+- [x] (รอบ 4 — แก้รูปโดนครอป) รูปที่แอดมินแนบเองถูกวงกลม `object-cover` เฉือนมุมทิ้ง (พบจริงกับไส้กรองอากาศทรงสี่เหลี่ยม) → แยกการแสดงผลตามที่มาของรูป ผ่านฟิลด์ใหม่ `StorefrontCategoryData.imageSource` (`"category" | "product" | null`)
+  - รูปที่แอดมินแนบ → `object-contain` + padding เห็นทั้งชิ้น และ **ตัด hover zoom ออก** (ซูมแล้วมุมจะกลับไปโดนเฉือน ซึ่งคือสิ่งที่ padding มีไว้กัน)
+  - รูปสินค้าขายดี (fallback) → คง `object-cover` + hover zoom เหมือนเดิม เพราะเป็นรูป catalog ที่ครอปเต็มวงกลมแล้วดูดีกว่า
+  - ⚠️ กับดักที่เจอ: ใส่ `p-3` บนวงกลมเฉย ๆ **ไม่มีผล** กับ `next/image` แบบ `fill` เพราะ absolute + `inset-0` อ้างอิง padding box ของ ancestor (ซึ่งรวมพื้นที่ padding เข้าไปด้วย) → ต้องมี `<span className="relative h-full w-full">` ชั้นในให้ `fill` วัดขนาดแทน
+  - พรีวิวหน้าแอดมิน (ช่องแนบไฟล์ 72px + thumbnail ในตาราง 40px) ปรับให้ตรงกับหน้าร้าน (วงกลม พื้น `#f7fafe` contain + padding) เพื่อให้สิ่งที่แอดมินเห็นตอนอนุมัติ = สิ่งที่ลูกค้าเห็น
+  - วัดจริงบน dev: รูปแนบเองเรนเดอร์ที่ 54×54 ในวงกลมรัศมี 40 → มุมภาพห่างจุดศูนย์กลาง 38.2 < 40 = ไม่โดนเฉือน แม้สินค้าจะกินเต็มกรอบสี่เหลี่ยม
 - ตรวจแล้ว: `tsc --noEmit` ผ่าน · `npm run lint` 0 error · `npm run build` ผ่าน · `check:mojibake` ผ่าน
 
 ## Header: ย้ายเมนูหมวดหลักขึ้นแถบบน + คืน internal link ให้ทุกหน้า (2026-08-10)

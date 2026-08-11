@@ -103,6 +103,12 @@ export interface StorefrontCategoryData {
    * best-selling in-stock product's photo. Null renders a name-inferred icon.
    */
   imageUrl: string | null;
+  /**
+   * Where {@link imageUrl} came from. The tile fits an uploaded image inside the
+   * circle (whole part visible, the admin chose it deliberately) but fills the
+   * circle with a product photo, which is an incidental crop of a catalogue shot.
+   */
+  imageSource: "category" | "product" | null;
 }
 
 const formatFitmentYear = (yearStart: number | null, yearEnd: number | null): string | null => {
@@ -198,15 +204,24 @@ export const getHomeCategories = unstable_cache(
         }
       }
 
-      return categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        productCount: category._count.products,
-        imageUrl: category.imageUrl ?? fallbackImageByCategoryId.get(category.id) ?? null,
-      }));
+      return categories.map((category) => {
+        const fallbackImageUrl = fallbackImageByCategoryId.get(category.id) ?? null;
+        const imageUrl = category.imageUrl ?? fallbackImageUrl;
+
+        return {
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          productCount: category._count.products,
+          imageUrl,
+          imageSource: category.imageUrl ? "category" : imageUrl ? "product" : null,
+        } satisfies StorefrontCategoryData;
+      });
     }),
-  ["home2-categories"],
+  // -v2: the entry gained `imageSource`. Data Cache entries survive deploys, so a
+  // stale v1 payload would leave every tile on the product-photo crop until it
+  // expired. A new key retires them at once.
+  ["home2-categories-v2"],
   { tags: ["storefront:categories"], revalidate: THIRTY_MINUTES_SECONDS },
 );
 
