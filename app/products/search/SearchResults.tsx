@@ -14,6 +14,7 @@ import {
   type SearchFilterInput,
 } from "./search-products-actions";
 import { PRODUCT_FILTER_COUNT_EVENT } from "@/components/shared/StorefrontFilterTrigger";
+import { resolveStorefrontSearchQuery } from "@/lib/storefront-search-query-bus";
 
 const AUTO_LOAD_PAGE_LIMIT = 5;
 
@@ -405,6 +406,8 @@ const SearchResults = ({
     const next: FiltersState = {
       ...filters,
       page: 1,
+      // ยึดข้อความล่าสุดในช่องค้นหาบน header — ลบคำค้นทิ้งแล้วกดตกลง q ต้องหายด้วย
+      q: resolveStorefrontSearchQuery(filters.q),
       categories: draft.categories,
       partsBrands: draft.partsBrands,
       carBrands: draft.carBrands,
@@ -420,7 +423,7 @@ const SearchResults = ({
   const handleClearAll = () => {
     applyFilters(
       {
-        q: filters.q,
+        q: resolveStorefrontSearchQuery(filters.q),
         brand: "",
         models: [],
         category: "",

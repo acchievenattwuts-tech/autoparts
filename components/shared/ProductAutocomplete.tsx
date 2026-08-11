@@ -21,6 +21,11 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Search, Loader2, ArrowLeft, ArrowRight, X, Store } from "lucide-react";
+import BrandLoader from "@/components/shared/BrandLoader";
+import {
+  clearStorefrontSearchQuery,
+  publishStorefrontSearchQuery,
+} from "@/lib/storefront-search-query-bus";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { HIDE_STOREFRONT_PRICE, STOREFRONT_PRICE_INQUIRY_LABEL } from "@/lib/storefront-pricing";
 
@@ -131,6 +136,19 @@ const ProductAutocomplete = ({
   const [mounted, setMounted] = useState(false);
   const [isNavigating, startNavigation] = useTransition();
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  // true ระหว่างรอผลค้นหา (Enter / ปุ่มค้นหา / คลิกคำใน dropdown) — ใช้แยกจาก
+  // pendingItemId ที่เป็นการเปิดหน้าสินค้า เพราะสอง flow แสดง loading คนละแบบ
+  const [searchPending, setSearchPending] = useState(false);
+  // ช่องค้นหาหน้าร้าน (enhanced) เท่านั้นที่ได้ loader โลโก้ + sync คำค้นให้แผงกรอง
+  // ฝั่งแอดมินคงพฤติกรรมเดิมทุกอย่าง
+  const isStorefrontSearchField = mode === "storefront" && Boolean(enhanced);
+
+  // ลูกค้าพิมพ์/ลบเอง → บอกแผงกรองด้วย เพื่อให้ปุ่ม "ตกลง" ยึดข้อความล่าสุด
+  // ไม่ใช่ q ค้างใน URL
+  const handleUserInput = (next: string) => {
+    setValue(next);
+    if (isStorefrontSearchField) publishStorefrontSearchQuery(next);
+  };
   const getDisplayUnitName = (item: AutocompleteItem) =>
     item.saleUnitName || item.reportUnitName || "หน่วย";
 
@@ -305,11 +323,26 @@ const ProductAutocomplete = ({
     }
   }, [isNavigating, pendingItemId]);
 
+  // ปิด loading ค้นหาเมื่อหน้าใหม่ render เสร็จ (transition หลุด pending)
+  useEffect(() => {
+    if (!isNavigating && searchPending) setSearchPending(false);
+  }, [isNavigating, searchPending]);
+
   const submitQuery = (overrideQuery?: string) => {
     setOpen(false);
     setModalOpen(false);
     if (onSubmit) {
-      onSubmit((overrideQuery ?? value).trim());
+      const query = (overrideQuery ?? value).trim();
+      if (isStorefrontSearchField) {
+        // ค้นหาแล้ว URL จะถือคำค้นนี้เอง — เคลียร์ override กันค่าค้างตอนกด Back
+        clearStorefrontSearchQuery();
+        // ห่อ router.push ของ parent ไว้ใน transition เพื่อให้รู้ว่ายังรอผลอยู่
+        // ระหว่างนั้นค่อยคลุมจอด้วยโลโก้ร้านหมุน แทนที่จะค้างเฉยๆ
+        setSearchPending(true);
+        startNavigation(() => onSubmit(query));
+        return;
+      }
+      onSubmit(query);
       return;
     }
     (modalInputRef.current?.form ?? inputRef.current?.form)?.requestSubmit();
@@ -548,7 +581,7 @@ const ProductAutocomplete = ({
 
   // --- Shared pending overlay (top progress bar + toast) — rendered via portal ---
   const pendingOverlay =
-    mounted && isNavigating
+    mounted && isNavigating && !searchPending
       ? createPortal(
           <>
             {/* Top progress bar — indeterminate animation, no layout shift */}
@@ -611,11 +644,28 @@ const ProductAutocomplete = ({
         )
       : null;
 
+  // --- Storefront search overlay — โลโก้ร้านหมุนกลางจอระหว่างรอผลค้นหา ---
+  // z สูงกว่า modal ค้นหามือถือ (z-100) เพื่อให้เห็นแน่นอนทั้งเดสก์ท็อปและมือถือ
+  const searchLoadingOverlay =
+    mounted && isStorefrontSearchField && isNavigating && searchPending
+      ? createPortal(
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed inset-0 z-[210] flex items-center justify-center bg-white/75 backdrop-blur-[2px] dark:bg-slate-950/75"
+          >
+            <BrandLoader size="lg" label="กำลังค้นหา..." />
+          </div>,
+          document.body,
+        )
+      : null;
+
   // --- MOBILE MODAL VARIANT ---
   if (enhanced === "mobile") {
     return (
       <>
         {pendingOverlay}
+        {searchLoadingOverlay}
         <div ref={wrapperRef} className={`relative ${className ?? ""}`}>
           <div className="relative">
             {!showSubmitButton && (
@@ -680,7 +730,7 @@ const ProductAutocomplete = ({
                     ref={modalInputRef}
                     type="text"
                     value={value}
-                    onChange={(e) => setValue(e.target.value)}
+                    onChange={(e) => handleUserInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}
                     autoComplete="off"
@@ -689,7 +739,7 @@ const ProductAutocomplete = ({
                   {value && (
                     <button
                       type="button"
-                      onClick={() => setValue("")}
+                      onClick={() => handleUserInput("")}
                       className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-white/10"
                       aria-label="ล้างคำค้น"
                     >
@@ -723,6 +773,7 @@ const ProductAutocomplete = ({
     return (
       <>
         {pendingOverlay}
+        {searchLoadingOverlay}
         <div
           ref={wrapperRef}
           onFocusCapture={handleInlineFocusCapture}
@@ -746,7 +797,7 @@ const ProductAutocomplete = ({
               type="text"
               name={inputName}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => handleUserInput(e.target.value)}
               onFocus={() => {
                 setOpen(true);
               }}

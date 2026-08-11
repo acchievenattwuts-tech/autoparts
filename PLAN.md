@@ -774,6 +774,17 @@
 - ยังไม่แตะ (รอเจ้าของสั่ง): prompt แชท AI/LINE (`lib/chat-core/*`, `lib/content-ai.ts`), บทความ `lib/knowledge-content.ts`, alt text การ์ดสินค้า, title หน้าหมวด (`${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์` — เติมแล้วยาวเกิน ~60 ตัวอักษรใน SERP)
 - ตรวจแล้ว: `npm run build` ผ่าน (Compiled successfully) ทั้งรอบข้อความและรอบ robots
 
+## ช่องค้นหาหน้าร้าน: loading โลโก้ร้าน + คำค้นค้างตอนกรอง (2026-08-11)
+- ที่มา: เจ้าของสั่งให้กด Enter แล้วค้นหาได้พร้อมมี loading เป็นโลโก้ร้าน แล้วสั่งเพิ่มให้คลิกคำใน dropdown ก็ต้องมี loading เหมือนกัน · ระหว่างทางเจอบั๊กแยก: ลบ `508` ในช่องค้นหาแล้วติ๊กหมวด "กรองอากาศ" กด "ตกลง" แต่ `q=508` ยังค้างใน URL
+- [x] ตรวจแล้วว่า Enter + คลิกคำใน dropdown **ค้นหาได้อยู่แล้ว** ([ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx) `handleKeyDown` / `selectKeyword`) ของที่ขาดจริงคือ loading — เจ้าของยืนยันตรงกัน
+- [x] loading โลโก้ร้าน: ห่อ `onSubmit` (ที่ parent ยิง `router.push`) ไว้ใน `useTransition` แล้ว portal `<BrandLoader size="lg" label="กำลังค้นหา..."/>` คลุมเต็มจอ z-210 (สูงกว่า modal ค้นหามือถือ z-100) + backdrop เบลอ light/dark · ครอบทั้ง 3 ทางเข้า (Enter, ปุ่มแว่นขยาย, คลิกคำใน dropdown) เพราะทุกทางวิ่งผ่าน `submitQuery()`
+  - เดิม `router.push` ยิงตรงไม่มี transition → ระหว่างรอเซิร์ฟเวอร์ไม่มีสัญญาณอะไรเลย ส่วน `loading.tsx` ของ `/products` ไม่ขึ้นเมื่ออยู่หน้าเดิมแล้วเปลี่ยนแค่ `?q=`
+  - เกตด้วย `mode === "storefront" && enhanced` → ฝั่งแอดมิน (รวม `MobileProductSearchForm` ที่ก็ใช้ `enhanced="mobile"`) พฤติกรรมเดิมทุกอย่าง · toast "กำลังเปิดสินค้า..." ถูกกันไม่ให้ขึ้นซ้อน (คนละ flow)
+- [x] คำค้นค้าง: [SearchResults.tsx](app/products/search/SearchResults.tsx) `handleApplyFilters` ทำ `{ ...filters }` จึงสืบทอด `q` จาก URL เสมอ — ปุ่มตกลงไม่เคยรู้จักช่องค้นหาบน header
+  - แก้ด้วย [lib/storefront-search-query-bus.ts](lib/storefront-search-query-bus.ts): ช่องค้นหาหน้าร้านประกาศข้อความที่ลูกค้า "พิมพ์เอง" เก็บไว้ในโมดูล แล้ว `handleApplyFilters` + `handleClearAll` อ่านผ่าน `resolveStorefrontSearchQuery(filters.q)` → ลบคำค้นทิ้งแล้วกดตกลง `q` หายจริง
+  - ประกาศเฉพาะตอนลูกค้าแก้ข้อความ ไม่ประกาศตอน mount/sync จาก URL เพราะ `StorefrontHeaderSearch` render `ProductAutocomplete` พร้อมกัน 2 ตัว (mobile + desktop) ถ้าประกาศตอน mount ตัวที่ไม่ได้แตะจะเขียนทับกัน · เคลียร์ override หลัง submit กันค่าค้างตอนกด Back
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน (Compiled successfully in 46s, 71/71 static pages)
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth
