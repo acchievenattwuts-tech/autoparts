@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { Check, ImageOff, Pencil, Upload, X } from "lucide-react";
+import CropImageDialog from "@/components/shared/CropImageDialog";
 import type { Category } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import {
@@ -66,11 +67,15 @@ const MATCH_MODE_LABELS: Record<CategoryAliasRow["matchMode"], string> = {
 /** Fixed square preview so the admin sees exactly the storefront tile crop. */
 const IMAGE_PREVIEW_SIZE_PX = 72;
 
+/** The colour behind the storefront tile — the crop is flattened onto it. */
+const CATEGORY_TILE_BACKGROUND = "#f7fafe";
+
 /**
- * Category thumbnail picker. Uploads immediately to Blob and carries the
- * resulting URL in a hidden input, so the enclosing form still submits as plain
- * FormData. An empty value means "no image" — the storefront then falls back to
- * the category's best-selling product photo, then to a name-inferred icon.
+ * Category thumbnail picker. The picked file goes through the shared circular
+ * crop dialog first, then uploads to Blob; the resulting URL rides in a hidden
+ * input so the enclosing form still submits as plain FormData. An empty value
+ * means "no image" — the storefront then falls back to the category's
+ * best-selling product photo, then to a name-inferred icon.
  */
 const CategoryImageField = ({
   categoryId = "",
@@ -83,16 +88,32 @@ const CategoryImageField = ({
   const [imageUrl, setImageUrl] = useState<string>(defaultImageUrl ?? "");
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const resetFileInput = () => {
+    // Let the same file be re-picked after a cancel or an error.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setError("");
+    setPendingFile(file);
+  };
 
+  const handleCropCancel = () => {
+    setPendingFile(null);
+    resetFileInput();
+  };
+
+  const handleCropConfirm = async (croppedFile: File) => {
+    setPendingFile(null);
     setError("");
     setIsUploading(true);
     try {
       const uploadData = new FormData();
-      uploadData.set("file", file);
+      uploadData.set("file", croppedFile);
       const result = await uploadCategoryImage(categoryId, uploadData);
       if (result.error) {
         setError(result.error);
@@ -103,8 +124,7 @@ const CategoryImageField = ({
       setError("อัปโหลดรูปไม่สำเร็จ กรุณาลองใหม่อีกครั้ง");
     } finally {
       setIsUploading(false);
-      // Let the same file be re-picked after an error.
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      resetFileInput();
     }
   };
 
@@ -113,9 +133,9 @@ const CategoryImageField = ({
       <input type="hidden" name="imageUrl" value={imageUrl} />
 
       <div className="flex items-start gap-3">
-        {/* Mirrors the storefront tile exactly (circle, #f7fafe, contain + padding)
-            so what the admin approves here is what customers see. */}
-        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] p-2.5 dark:border-white/10 dark:bg-slate-950">
+        {/* Mirrors the storefront tile exactly (circle filled edge to edge) so the
+            framing the admin approved in the crop dialog is what customers see. */}
+        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] dark:border-white/10 dark:bg-slate-950">
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -123,7 +143,7 @@ const CategoryImageField = ({
               width={IMAGE_PREVIEW_SIZE_PX}
               height={IMAGE_PREVIEW_SIZE_PX}
               sizes="72px"
-              className="h-full w-full object-contain"
+              className="h-full w-full object-cover"
             />
           ) : (
             <ImageOff className="h-6 w-6 text-gray-300 dark:text-slate-600" aria-hidden="true" />
@@ -136,8 +156,8 @@ const CategoryImageField = ({
               รูปหมวดหมู่บนหน้าร้าน
             </p>
             <p className="text-xs text-gray-500 dark:text-slate-400">
-              แนบได้ JPG, PNG, WebP ไม่เกิน 2MB — แนะนำรูปสี่เหลี่ยมจัตุรัส
-              ถ้าไม่แนบระบบจะใช้รูปสินค้าขายดีในหมวดนั้นให้อัตโนมัติ
+              แนบได้ JPG, PNG, WebP ไม่เกิน 2MB — เลือกไฟล์แล้วจะให้ครอปเป็นวงกลมก่อน
+              สิ่งที่อยู่ในวงกลมคือสิ่งที่ลูกค้าเห็น ถ้าไม่แนบระบบจะใช้รูปสินค้าขายดีในหมวดนั้นให้อัตโนมัติ
             </p>
           </div>
 
@@ -179,6 +199,17 @@ const CategoryImageField = ({
           {error && <p className="text-xs text-red-500 dark:text-red-300">{error}</p>}
         </div>
       </div>
+
+      <CropImageDialog
+        file={pendingFile}
+        index={0}
+        total={1}
+        subtitle="ครอปรูปหมวดหมู่"
+        circular
+        backgroundColor={CATEGORY_TILE_BACKGROUND}
+        onCancel={handleCropCancel}
+        onConfirm={handleCropConfirm}
+      />
     </div>
   );
 };
@@ -468,7 +499,7 @@ const EditableRow = ({
       <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
       <td className="px-4 py-3">
         <div className="inline-flex items-center gap-2">
-          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] p-1.5 dark:border-white/10 dark:bg-slate-950">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] dark:border-white/10 dark:bg-slate-950">
             {category.imageUrl ? (
               <Image
                 src={category.imageUrl}
@@ -476,7 +507,7 @@ const EditableRow = ({
                 width={40}
                 height={40}
                 sizes="40px"
-                className="h-full w-full object-contain"
+                className="h-full w-full object-cover"
               />
             ) : (
               <ImageOff className="h-4 w-4 text-gray-300 dark:text-slate-600" aria-hidden="true" />

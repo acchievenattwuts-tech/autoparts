@@ -13,6 +13,7 @@ import { Loader2, X } from "lucide-react";
 const OUTPUT_SIZE = 800;
 const ASPECT = 1;
 const JPEG_QUALITY = 0.9;
+const DEFAULT_BACKGROUND_COLOR = "#ffffff";
 
 interface Props {
   file: File | null;
@@ -20,9 +21,28 @@ interface Props {
   total: number;
   onCancel: () => void;
   onConfirm: (croppedFile: File) => void;
+  /**
+   * Draw the selection as a circle. The exported file stays a 1:1 square — the
+   * circle is where the consumer masks it — so this only changes what the admin
+   * sees while framing. Used by category thumbnails, which render in a circle.
+   */
+  circular?: boolean;
+  /** Flat colour painted under the crop. Match the surface the image renders on. */
+  backgroundColor?: string;
+  /** Overrides the "รูปที่ n / m" line when a caller crops a single image. */
+  subtitle?: string;
 }
 
-const CropImageDialog = ({ file, index, total, onCancel, onConfirm }: Props) => {
+const CropImageDialog = ({
+  file,
+  index,
+  total,
+  onCancel,
+  onConfirm,
+  circular = false,
+  backgroundColor = DEFAULT_BACKGROUND_COLOR,
+  subtitle,
+}: Props) => {
   const [src, setSrc] = useState<string>("");
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
@@ -83,7 +103,7 @@ const CropImageDialog = ({ file, index, total, onCancel, onConfirm }: Props) => 
       if (!ctx) throw new Error("ไม่สามารถสร้าง canvas context ได้");
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.fillStyle = "#ffffff";
+      ctx.fillStyle = backgroundColor;
       ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
       ctx.drawImage(image, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
 
@@ -111,7 +131,8 @@ const CropImageDialog = ({ file, index, total, onCancel, onConfirm }: Props) => 
               ปรับขนาดรูปภาพ
             </h3>
             <p className="text-xs text-gray-500 dark:text-slate-400">
-              รูปที่ {index + 1} / {total} • อัตราส่วน 1:1 ({OUTPUT_SIZE}×{OUTPUT_SIZE})
+              {subtitle ?? `รูปที่ ${index + 1} / ${total}`} • อัตราส่วน 1:1 ({OUTPUT_SIZE}×
+              {OUTPUT_SIZE})
             </p>
           </div>
           <button
@@ -132,6 +153,7 @@ const CropImageDialog = ({ file, index, total, onCancel, onConfirm }: Props) => 
               onChange={(_, percentCrop) => setCrop(percentCrop)}
               onComplete={(c) => setCompletedCrop(c)}
               aspect={ASPECT}
+              circularCrop={circular}
               keepSelection
               minWidth={40}
             >
