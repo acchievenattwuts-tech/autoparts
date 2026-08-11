@@ -783,7 +783,8 @@
 - [x] คำค้นค้าง: [SearchResults.tsx](app/products/search/SearchResults.tsx) `handleApplyFilters` ทำ `{ ...filters }` จึงสืบทอด `q` จาก URL เสมอ — ปุ่มตกลงไม่เคยรู้จักช่องค้นหาบน header
   - แก้ด้วย [lib/storefront-search-query-bus.ts](lib/storefront-search-query-bus.ts): ช่องค้นหาหน้าร้านประกาศข้อความที่ลูกค้า "พิมพ์เอง" เก็บไว้ในโมดูล แล้ว `handleApplyFilters` + `handleClearAll` อ่านผ่าน `resolveStorefrontSearchQuery(filters.q)` → ลบคำค้นทิ้งแล้วกดตกลง `q` หายจริง
   - ประกาศเฉพาะตอนลูกค้าแก้ข้อความ ไม่ประกาศตอน mount/sync จาก URL เพราะ `StorefrontHeaderSearch` render `ProductAutocomplete` พร้อมกัน 2 ตัว (mobile + desktop) ถ้าประกาศตอน mount ตัวที่ไม่ได้แตะจะเขียนทับกัน · เคลียร์ override หลัง submit กันค่าค้างตอนกด Back
-- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน (Compiled successfully in 46s, 71/71 static pages)
+- [x] (รอบต่อเนื่อง) หลังค้นหาเสร็จให้ `blur()` ช่องค้นหา ไม่คา cursor ไว้ — เจ้าของเลือก blur เฉยๆ ไม่ย้าย focus ไปหัวข้อผลลัพธ์ · กระทบเฉพาะเดสก์ท็อป (Enter ค้างที่ input ตามดีฟอลต์เบราว์เซอร์ · คลิกคำใน dropdown ค้างเพราะ `onMouseDown preventDefault` ที่กัน bug Safari) ฝั่งมือถือ modal ปิดแล้ว input หายอยู่แล้ว แต่ blur ช่วยปิดคีย์บอร์ดก่อน modal ปิด
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน (Compiled successfully, 71/71 static pages)
 
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ

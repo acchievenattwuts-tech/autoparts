@@ -334,6 +334,12 @@ const ProductAutocomplete = ({
     if (onSubmit) {
       const query = (overrideQuery ?? value).trim();
       if (isStorefrontSearchField) {
+        // ค้นหาแล้วไม่ต้องคา cursor ไว้ในช่อง — ลูกค้าจะได้อ่านผลลัพธ์ได้เลย
+        // (บนมือถือยังช่วยปิดคีย์บอร์ดก่อน modal ปิดด้วย)
+        inputRef.current?.blur();
+        modalInputRef.current?.blur();
+        setHasInlineFocus(false);
+        setActiveIndex(-1);
         // ค้นหาแล้ว URL จะถือคำค้นนี้เอง — เคลียร์ override กันค่าค้างตอนกด Back
         clearStorefrontSearchQuery();
         // ห่อ router.push ของ parent ไว้ใน transition เพื่อให้รู้ว่ายังรอผลอยู่
