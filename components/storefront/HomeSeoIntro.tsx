@@ -1,4 +1,6 @@
+import { Fragment } from "react";
 import Link from "next/link";
+import { getCategoryPath } from "@/lib/product-slug";
 
 /**
  * Long-form intro block at the foot of the homepage — the same shape shopee.co.th
@@ -22,18 +24,59 @@ import Link from "next/link";
 const INLINE_LINK_CLASS =
   "font-medium text-[#1e3a5f] underline decoration-[#9db8dd] underline-offset-2 transition-colors hover:text-[#2563eb] hover:decoration-[#2563eb]";
 
+/** Only what a link needs — the same rows the category strip already renders. */
+interface CategoryLink {
+  id: string;
+  name: string;
+  slug: string | null;
+}
+
 interface Props {
   /** Storefront-visible products — the same total the "สินค้ามาใหม่" header shows. */
   productCount: number;
-  /** Active categories, as counted for the category strip. */
-  categoryCount: number;
-  /** Active car brands carried by the fitment finder. */
-  carBrandCount: number;
+  /** Active categories, in the order the category strip lists them. */
+  categories: CategoryLink[];
+  /** Active car brand names, as carried by the fitment finder. */
+  carBrandNames: string[];
   shopName: string;
 }
 
-const HomeSeoIntro = ({ productCount, categoryCount, carBrandCount, shopName }: Props) => {
+/**
+ * Comma-separated run of links, the way shopee.co.th lists its categories: one
+ * flowing sentence rather than a chip grid, so the block stays compact and reads
+ * as prose to a crawler.
+ */
+const LinkRun = ({ items }: { items: { key: string; label: string; href: string }[] }) => (
+  <>
+    {items.map((item, index) => (
+      <Fragment key={item.key}>
+        {index > 0 && ", "}
+        <Link href={item.href} className={INLINE_LINK_CLASS}>
+          {item.label}
+        </Link>
+      </Fragment>
+    ))}
+  </>
+);
+
+const HomeSeoIntro = ({ productCount, categories, carBrandNames, shopName }: Props) => {
   const formatCount = (value: number) => value.toLocaleString("th-TH");
+  const categoryCount = categories.length;
+  const carBrandCount = carBrandNames.length;
+
+  const categoryLinks = categories.map((category) => ({
+    key: category.id,
+    label: category.name,
+    href: getCategoryPath(category),
+  }));
+
+  // `carBrand` is the param /products already reads for its brand filter, so a
+  // click lands on the same result set the filter drawer would produce.
+  const carBrandLinks = carBrandNames.map((name) => ({
+    key: name,
+    label: name,
+    href: `/products?carBrand=${encodeURIComponent(name)}`,
+  }));
 
   return (
     <section className="mt-3 bg-white py-8 sm:py-10">
@@ -68,6 +111,21 @@ const HomeSeoIntro = ({ productCount, categoryCount, carBrandCount, shopName }: 
             ระบุไว้บนหน้าสินค้านั้น ๆ และจัดส่งได้ทั่วประเทศ ไม่ว่าจะส่งถึงอู่หรือส่งถึงบ้าน
             ขั้นตอนสรุปรายการและยืนยันราคายังคุยกับทางร้านโดยตรง เพื่อให้แน่ใจว่าของที่ส่งออกไป
             ตรงกับรถของคุณจริง ๆ
+          </p>
+        </div>
+
+        <h2 className="mt-8 font-kanit text-xl font-bold text-[#1e3a5f] sm:text-2xl">
+          ครบทุกหมวดอะไหล่ ครอบคลุมรถทุกยี่ห้อที่ร้านมีของ
+        </h2>
+
+        <div className="mt-4 space-y-3 text-sm leading-7 text-slate-600">
+          <p>
+            เลือกดูตามชิ้นส่วนที่ต้องการได้เลย ทั้ง <LinkRun items={categoryLinks} />
+          </p>
+
+          <p>
+            หรือเริ่มจากรถของคุณก่อน ตอนนี้มีอะไหล่ให้เลือกสำหรับ{" "}
+            <LinkRun items={carBrandLinks} />
           </p>
         </div>
 

@@ -136,8 +136,8 @@ const Home = async () => {
             almost all product names and prices */}
         <HomeSeoIntro
           productCount={newArrivals.total}
-          categoryCount={categories.length}
-          carBrandCount={productFilters.carBrands.length}
+          categories={categories}
+          carBrandNames={productFilters.carBrands.map((brand) => brand.name)}
           shopName={config.shopName}
         />
 
