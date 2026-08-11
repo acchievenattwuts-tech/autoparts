@@ -67,8 +67,13 @@ const MATCH_MODE_LABELS: Record<CategoryAliasRow["matchMode"], string> = {
 /** Fixed square preview so the admin sees exactly the storefront tile crop. */
 const IMAGE_PREVIEW_SIZE_PX = 72;
 
-/** The colour behind the storefront tile — the crop is flattened onto it. */
-const CATEGORY_TILE_BACKGROUND = "#f7fafe";
+/**
+ * JPEG cannot carry an alpha channel, so a JPEG thumbnail always renders as an
+ * opaque rectangle sitting on the tile instead of a cut-out over the disc. Warn
+ * rather than block — an admin may knowingly accept it.
+ */
+const OPAQUE_UPLOAD_WARNING =
+  "ไฟล์ JPG ไม่รองรับพื้นหลังโปร่งใส รูปจะขึ้นเป็นสี่เหลี่ยมทึบทับวงกลมบนหน้าร้าน แนะนำให้ใช้ PNG ที่ลบพื้นหลังแล้ว";
 
 /**
  * Category thumbnail picker. The picked file goes through the shared circular
@@ -89,6 +94,7 @@ const CategoryImageField = ({
   const [error, setError] = useState<string>("");
   const [isUploading, setIsUploading] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [warning, setWarning] = useState<string>("");
 
   const resetFileInput = () => {
     // Let the same file be re-picked after a cancel or an error.
@@ -99,11 +105,13 @@ const CategoryImageField = ({
     const file = event.target.files?.[0];
     if (!file) return;
     setError("");
+    setWarning(file.type === "image/jpeg" ? OPAQUE_UPLOAD_WARNING : "");
     setPendingFile(file);
   };
 
   const handleCropCancel = () => {
     setPendingFile(null);
+    setWarning("");
     resetFileInput();
   };
 
@@ -133,9 +141,13 @@ const CategoryImageField = ({
       <input type="hidden" name="imageUrl" value={imageUrl} />
 
       <div className="flex items-start gap-3">
-        {/* Mirrors the storefront tile exactly (circle filled edge to edge) so the
-            framing the admin approved in the crop dialog is what customers see. */}
-        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] dark:border-white/10 dark:bg-slate-950">
+        {/* Mirrors the storefront tile: a decorative disc behind a cut-out that is
+            free to overflow it, so the admin sees the real result. */}
+        <span className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center">
+          <span
+            aria-hidden="true"
+            className="absolute h-[58px] w-[58px] rounded-full bg-[#eef3fa] dark:bg-white/10"
+          />
           {imageUrl ? (
             <Image
               src={imageUrl}
@@ -143,10 +155,13 @@ const CategoryImageField = ({
               width={IMAGE_PREVIEW_SIZE_PX}
               height={IMAGE_PREVIEW_SIZE_PX}
               sizes="72px"
-              className="h-full w-full object-cover"
+              className="relative h-full w-full object-contain"
             />
           ) : (
-            <ImageOff className="h-6 w-6 text-gray-300 dark:text-slate-600" aria-hidden="true" />
+            <ImageOff
+              className="relative h-6 w-6 text-gray-300 dark:text-slate-600"
+              aria-hidden="true"
+            />
           )}
         </span>
 
@@ -156,8 +171,9 @@ const CategoryImageField = ({
               รูปหมวดหมู่บนหน้าร้าน
             </p>
             <p className="text-xs text-gray-500 dark:text-slate-400">
-              แนบได้ JPG, PNG, WebP ไม่เกิน 2MB — เลือกไฟล์แล้วจะให้ครอปเป็นวงกลมก่อน
-              สิ่งที่อยู่ในวงกลมคือสิ่งที่ลูกค้าเห็น ถ้าไม่แนบระบบจะใช้รูปสินค้าขายดีในหมวดนั้นให้อัตโนมัติ
+              แนะนำ PNG พื้นหลังโปร่งใส (ลบพื้นหลังออกแล้ว) ไม่เกิน 2MB — หน้าร้านจะวางรูปทับวงกลมสีอ่อน
+              โดยไม่ตัดขอบ สินค้าจึงเห็นเต็มชิ้นและล้นวงกลมได้ เลือกไฟล์แล้วจะให้ครอปกรอบสี่เหลี่ยมก่อน
+              ถ้าไม่แนบระบบจะใช้รูปสินค้าขายดีในหมวดนั้นให้อัตโนมัติ
             </p>
           </div>
 
@@ -196,6 +212,7 @@ const CategoryImageField = ({
             />
           </div>
 
+          {warning && <p className="text-xs text-amber-600 dark:text-amber-300">{warning}</p>}
           {error && <p className="text-xs text-red-500 dark:text-red-300">{error}</p>}
         </div>
       </div>
@@ -205,8 +222,7 @@ const CategoryImageField = ({
         index={0}
         total={1}
         subtitle="ครอปรูปหมวดหมู่"
-        circular
-        backgroundColor={CATEGORY_TILE_BACKGROUND}
+        transparent
         onCancel={handleCropCancel}
         onConfirm={handleCropConfirm}
       />
@@ -499,7 +515,11 @@ const EditableRow = ({
       <td className="px-4 py-3 text-gray-800 dark:text-slate-100">{category.name}</td>
       <td className="px-4 py-3">
         <div className="inline-flex items-center gap-2">
-          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border border-gray-200 bg-[#f7fafe] dark:border-white/10 dark:bg-slate-950">
+          <span className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+            <span
+              aria-hidden="true"
+              className="absolute h-8 w-8 rounded-full bg-[#eef3fa] dark:bg-white/10"
+            />
             {category.imageUrl ? (
               <Image
                 src={category.imageUrl}
@@ -507,10 +527,13 @@ const EditableRow = ({
                 width={40}
                 height={40}
                 sizes="40px"
-                className="h-full w-full object-cover"
+                className="relative h-full w-full object-contain"
               />
             ) : (
-              <ImageOff className="h-4 w-4 text-gray-300 dark:text-slate-600" aria-hidden="true" />
+              <ImageOff
+                className="relative h-4 w-4 text-gray-300 dark:text-slate-600"
+                aria-hidden="true"
+              />
             )}
           </span>
           <span className="text-xs text-gray-500 dark:text-slate-400">

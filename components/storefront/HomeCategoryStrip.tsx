@@ -80,6 +80,7 @@ const HomeCategoryStrip = ({ categories }: Props) => {
             const imageSrc = category.imageUrl
               ? (toProductImageCdnPath(category.imageUrl) ?? category.imageUrl)
               : null;
+            const isUploadedImage = category.imageSource === "category";
 
             return (
               <Link
@@ -88,21 +89,40 @@ const HomeCategoryStrip = ({ categories }: Props) => {
                 prefetch={false}
                 className="group/tile flex w-[124px] shrink-0 snap-start flex-col items-center gap-1.5 border-b border-r border-[#eef3fa] px-2 py-3 text-center transition-colors hover:bg-[#f6f9fe] sm:w-[142px]"
               >
-                {/* Both image sources fill the circle. An uploaded thumbnail was
-                    framed against this exact circle in the admin's crop dialog, and
-                    a product photo is an incidental catalogue shot that reads best
-                    filled — so there is one code path, not two. */}
-                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#e3ecf8] bg-[#f7fafe] transition-colors group-hover/tile:border-[#1e3a5f]/30">
+                {/* The disc is decoration painted behind the artwork, not a mask.
+                    An uploaded cut-out is drawn over the full 80px box and may
+                    overflow the disc — that is what keeps wide parts readable
+                    instead of shaving their edges. */}
+                <span className="relative flex h-20 w-20 shrink-0 items-center justify-center">
+                  <span
+                    aria-hidden="true"
+                    className="absolute h-16 w-16 rounded-full bg-[#eef3fa] transition-colors group-hover/tile:bg-[#e3ecf8]"
+                  />
+
                   {imageSrc ? (
-                    <Image
-                      src={imageSrc}
-                      alt={`หมวด ${category.name}`}
-                      fill
-                      sizes="80px"
-                      className="object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
-                    />
+                    isUploadedImage ? (
+                      <Image
+                        src={imageSrc}
+                        alt={`หมวด ${category.name}`}
+                        fill
+                        sizes="80px"
+                        className="object-contain transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
+                      />
+                    ) : (
+                      // Opaque catalogue photo: clip it to the disc so it reads as
+                      // the same shape as every other tile.
+                      <span className="relative h-16 w-16 overflow-hidden rounded-full">
+                        <Image
+                          src={imageSrc}
+                          alt={`หมวด ${category.name}`}
+                          fill
+                          sizes="64px"
+                          className="object-cover transition-transform duration-300 group-hover/tile:scale-105 motion-reduce:transform-none"
+                        />
+                      </span>
+                    )
                   ) : (
-                    <Icon className="h-7 w-7 text-[#1e3a5f]" />
+                    <Icon className="relative h-7 w-7 text-[#1e3a5f]" />
                   )}
                 </span>
 

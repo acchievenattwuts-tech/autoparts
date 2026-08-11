@@ -13,7 +13,7 @@ import { Loader2, X } from "lucide-react";
 const OUTPUT_SIZE = 800;
 const ASPECT = 1;
 const JPEG_QUALITY = 0.9;
-const DEFAULT_BACKGROUND_COLOR = "#ffffff";
+const FLATTENED_BACKGROUND_COLOR = "#ffffff";
 
 interface Props {
   file: File | null;
@@ -22,13 +22,12 @@ interface Props {
   onCancel: () => void;
   onConfirm: (croppedFile: File) => void;
   /**
-   * Draw the selection as a circle. The exported file stays a 1:1 square — the
-   * circle is where the consumer masks it — so this only changes what the admin
-   * sees while framing. Used by category thumbnails, which render in a circle.
+   * Export a PNG that keeps the source's alpha channel instead of a JPEG
+   * flattened onto white. Category thumbnails need it: they render as a cut-out
+   * over a decorative disc, so any baked-in background would show as a square
+   * patch on the tile.
    */
-  circular?: boolean;
-  /** Flat colour painted under the crop. Match the surface the image renders on. */
-  backgroundColor?: string;
+  transparent?: boolean;
   /** Overrides the "รูปที่ n / m" line when a caller crops a single image. */
   subtitle?: string;
 }
@@ -39,8 +38,7 @@ const CropImageDialog = ({
   total,
   onCancel,
   onConfirm,
-  circular = false,
-  backgroundColor = DEFAULT_BACKGROUND_COLOR,
+  transparent = false,
   subtitle,
 }: Props) => {
   const [src, setSrc] = useState<string>("");
@@ -103,16 +101,23 @@ const CropImageDialog = ({
       if (!ctx) throw new Error("ไม่สามารถสร้าง canvas context ได้");
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
-      ctx.fillStyle = backgroundColor;
-      ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+      // A transparent export leaves the canvas cleared so the source's alpha
+      // survives; otherwise the crop is flattened onto white, as JPEG has no
+      // alpha channel to keep.
+      if (!transparent) {
+        ctx.fillStyle = FLATTENED_BACKGROUND_COLOR;
+        ctx.fillRect(0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
+      }
       ctx.drawImage(image, sx, sy, sw, sh, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE);
 
+      const mimeType = transparent ? "image/png" : "image/jpeg";
+      const extension = transparent ? ".png" : ".jpg";
       const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+        canvas.toBlob(resolve, mimeType, transparent ? undefined : JPEG_QUALITY),
       );
       if (!blob) throw new Error("แปลงรูปไม่สำเร็จ");
-      const safeName = file.name.replace(/\.[^.]+$/, "") + ".jpg";
-      const cropped = new File([blob], safeName, { type: "image/jpeg" });
+      const safeName = file.name.replace(/\.[^.]+$/, "") + extension;
+      const cropped = new File([blob], safeName, { type: mimeType });
       onConfirm(cropped);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
@@ -153,7 +158,6 @@ const CropImageDialog = ({
               onChange={(_, percentCrop) => setCrop(percentCrop)}
               onComplete={(c) => setCompletedCrop(c)}
               aspect={ASPECT}
-              circularCrop={circular}
               keepSelection
               minWidth={40}
             >

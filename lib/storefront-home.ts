@@ -103,6 +103,14 @@ export interface StorefrontCategoryData {
    * best-selling in-stock product's photo. Null renders a name-inferred icon.
    */
   imageUrl: string | null;
+  /**
+   * Where {@link imageUrl} came from, which decides how the tile draws it. An
+   * uploaded thumbnail is a transparent cut-out laid over the decorative disc and
+   * allowed to overflow it; a product photo is an opaque catalogue shot, so it is
+   * clipped to the disc instead — a rectangle floating on the tile would read as
+   * a bug.
+   */
+  imageSource: "category" | "product" | null;
 }
 
 const formatFitmentYear = (yearStart: number | null, yearEnd: number | null): string | null => {
@@ -198,15 +206,23 @@ export const getHomeCategories = unstable_cache(
         }
       }
 
-      return categories.map((category) => ({
-        id: category.id,
-        name: category.name,
-        slug: category.slug,
-        productCount: category._count.products,
-        imageUrl: category.imageUrl ?? fallbackImageByCategoryId.get(category.id) ?? null,
-      }));
+      return categories.map((category) => {
+        const imageUrl = category.imageUrl ?? fallbackImageByCategoryId.get(category.id) ?? null;
+
+        return {
+          id: category.id,
+          name: category.name,
+          slug: category.slug,
+          productCount: category._count.products,
+          imageUrl,
+          imageSource: category.imageUrl ? "category" : imageUrl ? "product" : null,
+        } satisfies StorefrontCategoryData;
+      });
     }),
-  ["home2-categories-v2"],
+  // -v3: the entry gained `imageSource`. Data Cache entries survive deploys, so a
+  // stale payload would leave every tile on the clipped product-photo treatment
+  // until it expired. A new key retires them at once.
+  ["home2-categories-v3"],
   { tags: ["storefront:categories"], revalidate: THIRTY_MINUTES_SECONDS },
 );
 
