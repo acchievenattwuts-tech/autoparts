@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, ChevronRight, Landmark, Store, Truck } from 
 
 import CopyPaymentValueButton from "@/components/liff/CopyPaymentValueButton";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
+import PaymentBillSelector from "@/components/liff/PaymentBillSelector";
 import { db } from "@/lib/db";
 import { addDays, formatLiffMoney, isBeforeToday } from "@/lib/liff-format";
 import { getLiffCustomer } from "@/lib/liff-data";
@@ -39,7 +40,6 @@ export default async function LiffOutstandingPage() {
         shippingStatus: true,
       },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-      take: 50,
     }),
     getPrimaryTransferAccount(),
   ]);
@@ -97,10 +97,21 @@ export default async function LiffOutstandingPage() {
                 ) : null}
               </div>
               {transferAccount.promptPayId ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2 dark:bg-slate-800/60">
-                  <p className="text-slate-600 dark:text-slate-300">PromptPay {transferAccount.promptPayId}</p>
-                  <CopyPaymentValueButton label="คัดลอก PromptPay" value={transferAccount.promptPayId} />
-                </div>
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-blue-50/60 px-3 py-2 dark:bg-slate-800/60">
+                    <p className="text-slate-600 dark:text-slate-300">PromptPay {transferAccount.promptPayId}</p>
+                    <CopyPaymentValueButton label="คัดลอก PromptPay" value={transferAccount.promptPayId} />
+                  </div>
+                  {totalOutstanding > 0 ? (
+                    <PaymentBillSelector
+                      bills={rows.map((sale) => ({
+                        id: sale.id,
+                        saleNo: sale.saleNo,
+                        amountRemain: Number(sale.amountRemain),
+                      }))}
+                    />
+                  ) : null}
+                </>
               ) : null}
               <p className="rounded-2xl bg-[#e9f8f0] px-3 py-2 text-xs font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                 หลังโอนแล้ว ส่งสลิปในแชท LINE OA นี้ได้เลยค่ะ
