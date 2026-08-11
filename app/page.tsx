@@ -60,10 +60,10 @@ const getStorefrontHomeData = cache(async () => {
 export async function generateMetadata(): Promise<Metadata> {
   const { config } = await getStorefrontHomeData();
   const description =
-    "ร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ ช่วยค้นหาและเช็กความตรงรุ่นก่อนสั่งซื้อจริง ค้นหาคอมแอร์ คอมเพรสเซอร์ แผงคอนเดนเซอร์ และอะไหล่ที่เกี่ยวข้อง พร้อมจัดส่งทั่วประเทศ";
+    "ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ในนครสวรรค์ ช่วยค้นหาและเช็กความตรงรุ่นก่อนสั่งซื้อจริง ค้นหาคอมแอร์ คอมเพรสเซอร์ แผงคอนเดนเซอร์ และอะไหล่ที่เกี่ยวข้อง พร้อมจัดส่งทั่วประเทศ";
 
   return {
-    title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,
+    title: `อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | ${config.shopName}`,
     description,
     keywords: LOCAL_SEO_KEYWORDS,
     alternates: {
@@ -71,12 +71,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       url: ROOT_CANONICAL_URL,
-      title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,
+      title: `อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | ${config.shopName}`,
       description,
       images: [buildOgCardImage("/opengraph-image", DEFAULT_TITLE)],
     },
     twitter: {
-      title: `อะไหล่แอร์รถยนต์ | ${config.shopName}`,
+      title: `อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | ${config.shopName}`,
       description,
       images: [absoluteUrl("/opengraph-image")],
     },

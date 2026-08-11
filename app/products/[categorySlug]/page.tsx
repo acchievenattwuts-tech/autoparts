@@ -178,7 +178,7 @@ const CategoryPage = async ({ params }: Props) => {
           <div className="relative bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.08),transparent_32%)]">
             <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8 lg:py-5">
               <div className="max-w-4xl">
-                <p className="text-xs font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์</p>
+                <p className="text-xs font-medium text-[#f97316]">หมวดสินค้าอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์</p>
                 <h1 className="mt-1 font-kanit text-xl font-bold text-white sm:text-2xl lg:text-3xl">
                   <CharRise text={category.name} stagger={32} />
                 </h1>

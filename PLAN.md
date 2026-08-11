@@ -754,6 +754,18 @@
 - ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` 0 error · `check:mojibake` ผ่าน · ทดสอบบน dev จริง: บล็อกอยู่ถัดจาก "สินค้ามาใหม่" และก่อน LINE CTA, พื้นหลัง `rgb(255,255,255)`, H2 2 ตัว / 5 ย่อหน้า / 5 ลิงก์ครบ, ตัวเลขในเนื้อความออกมาเป็น 958 รายการ / 21 หมวด / 19 ยี่ห้อ ตรงกับ hero, ข้อความรวม ~1,570 ตัวอักษร, ไม่มี horizontal overflow, ไม่มี console error
 - ตรวจแล้ว: `tsc --noEmit` ผ่าน · `eslint` 0 error · `npm run build` ผ่าน · `check:mojibake` ผ่าน · ทดสอบบน dev จริง: หน้าแรกและ `/products` มีเมนูครบ 4 ลิงก์ในแถบบน, nav 14px / สโลแกน 12px, เหลือ `<nav>` เดียวใน header, ไม่มี horizontal overflow, ไม่มี console error
 
+## Storefront copy + AEO: เติม "หม้อน้ำรถยนต์" และเปิดบอท AI answer (2026-08-11)
+- ที่มา: เจ้าของสั่งแก้สโลแกนใต้ชื่อร้านบน header จาก "อะไหล่แอร์รถยนต์" เป็น "อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์" แล้วให้ไล่แก้จุดอื่นที่ยังเขียนแค่แอร์อย่างเดียว
+- [x] ข้อความที่ผู้ใช้เห็น: `StorefrontHeader.tsx` (สโลแกน), `Hero.tsx` + `HeroLegacy.tsx` (H1), `HeroShowcase.tsx` (eyebrow), `WhyUs.tsx`, `SeoIntentSection.tsx`, `products/[categorySlug]/page.tsx` (eyebrow) + `opengraph-image.tsx`
+- [x] metadata: `app/page.tsx` (title / OG / Twitter / description), `app/products/page.tsx` (title / OG / description)
+- [x] คีย์เวิร์ด: `lib/seo.ts` เพิ่ม `ร้านหม้อน้ำรถยนต์`, `ขายหม้อน้ำรถยนต์`, `หม้อน้ำรถยนต์ นครสวรรค์`, `ฝาหม้อน้ำรถยนต์`, `อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์`
+- [x] AEO: `public/llms.txt` เพิ่มคำตอบสั้นสำหรับ intent "หม้อน้ำรถยนต์"
+- [x] `app/robots.ts` — แยก `AI_ANSWER_BOTS` (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, anthropic-ai, Claude-User, PerplexityBot, Google-Extended) ออกจาก `AGGRESSIVE_BOTS` แล้วเปิดให้เข้าเฉพาะหน้า hub (`/`, `/products`, `/about`, `/faq`, `/knowledge`, `/llms.txt`) · disallow `/product/`, `/products/*/*`, `/products/search`, `/_next/image` ซึ่งเป็นตัวกิน egress หลัก · `crawlDelay: 30`
+  - เดิมบอทกลุ่มนี้ถูกปิดรวมกับ SEO scraper ตั้งแต่คอมมิต `3d9e9be` (ลด Supabase egress) ทำให้ `llms.txt` ไม่มีใครอ่าน · `CCBot`, `Bytespider`, `Amazonbot`, `Diffbot` และกอง SEO scraper ยังปิดเหมือนเดิม
+- [ ] ติดตาม Supabase egress 1-2 สัปดาห์หลัง deploy — เป้า ≤5GB/เดือน ถ้าเกินให้ถอย allow list ของบอท AI ลง
+- ยังไม่แตะ (รอเจ้าของสั่ง): prompt แชท AI/LINE (`lib/chat-core/*`, `lib/content-ai.ts`), บทความ `lib/knowledge-content.ts`, alt text การ์ดสินค้า, title หน้าหมวด (`${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์` — เติมแล้วยาวเกิน ~60 ตัวอักษรใน SERP)
+- ตรวจแล้ว: `npm run build` ผ่าน (Compiled successfully) ทั้งรอบข้อความและรอบ robots
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

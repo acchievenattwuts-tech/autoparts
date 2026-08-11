@@ -59,7 +59,7 @@ const HeroLegacy = ({
             </div>
 
             <h1 className="font-kanit text-4xl font-bold leading-[0.98] text-white sm:text-5xl lg:text-7xl">
-              สั่งอะไหล่แอร์รถยนต์ง่าย ๆ
+              สั่งอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ง่าย ๆ
               <br />
               <span className="text-[#f97316]">ไม่แน่ใจรุ่นก็ทักมาถามได้</span>
             </h1>

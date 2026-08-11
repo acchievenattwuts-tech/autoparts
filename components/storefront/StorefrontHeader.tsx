@@ -101,7 +101,7 @@ const StorefrontHeader = ({
             </span>
             <span className="hidden leading-tight sm:block">
               <span className="block font-kanit text-base font-bold">{shopName}</span>
-              <span className="block text-[11px] text-white/70">อะไหล่แอร์รถยนต์</span>
+              <span className="block text-[11px] text-white/70">อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์</span>
             </span>
           </Link>
 

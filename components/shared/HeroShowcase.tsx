@@ -69,7 +69,7 @@ const HeroShowcase = ({
 
             <div className="mt-8">
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#f97316]">
-                ร้านอะไหล่แอร์รถยนต์
+                ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์
               </p>
               <div className="mt-3">
                 <h1 className="font-kanit text-4xl font-bold leading-[0.96] text-[#16345d] sm:text-5xl lg:text-6xl">

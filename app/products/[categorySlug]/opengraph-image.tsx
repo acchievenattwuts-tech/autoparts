@@ -27,7 +27,7 @@ export default async function CategoryOpenGraphImage({ params }: Props) {
   return new ImageResponse(
     (
       <OgImageTemplate
-        eyebrow="หมวดสินค้าอะไหล่แอร์รถยนต์"
+        eyebrow="หมวดสินค้าอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์"
         title={category.name}
         description="ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ในนครสวรรค์ พร้อมค้นหาและสอบถามร้านผ่าน LINE OA"
       />

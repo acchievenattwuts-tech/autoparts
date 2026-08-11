@@ -124,16 +124,16 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
   if (!hasFilter) {
     return {
-      title: "อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด",
+      title: "อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | สินค้าทั้งหมด",
       description:
         "รวมอะไหล่แอร์รถยนต์ คอมเพรสเซอร์ คอมแอร์ แผงคอนเดนเซอร์ หม้อน้ำ และสินค้าที่เกี่ยวข้อง พร้อมค้นหาและกรองสินค้าได้รวดเร็วก่อนส่งข้อมูลให้ร้านเช็กความตรงรุ่น",
       alternates: { canonical: absoluteUrl("/products") },
       robots: { index: true, follow: true },
       openGraph: {
         url: absoluteUrl("/products"),
-        title: "อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด",
+        title: "อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | สินค้าทั้งหมด",
         description:
-          "รวมอะไหล่แอร์รถยนต์และสินค้าที่เกี่ยวข้อง พร้อมค้นหาและกรองสินค้าได้รวดเร็วก่อนเช็กกับร้าน",
+          "รวมอะไหล่แอร์รถยนต์ หม้อน้ำรถยนต์ และสินค้าที่เกี่ยวข้อง พร้อมค้นหาและกรองสินค้าได้รวดเร็วก่อนเช็กกับร้าน",
       },
     };
   }
@@ -399,7 +399,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
       />
       {!hasFilter && (
         <CollectionPageJsonLd
-          name="อะไหล่แอร์รถยนต์ | สินค้าทั้งหมด"
+          name="อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ | สินค้าทั้งหมด"
           description="หน้ารวมอะไหล่แอร์รถยนต์และสินค้าที่เกี่ยวข้องสำหรับใช้ค้นหาและส่งข้อมูลให้ร้านเช็กความตรงรุ่นก่อนสั่งซื้อ"
           url={absoluteUrl("/products")}
           itemListElements={initialProducts.slice(0, 12).map((product) => ({

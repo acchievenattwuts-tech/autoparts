@@ -43,7 +43,7 @@ const SeoIntentSection = () => {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f97316]">
-                อะไหล่แอร์รถยนต์
+                อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์
               </p>
               <h2 className="mt-3 font-kanit text-2xl font-bold leading-tight text-[#10213d] sm:text-3xl">
                 ค้นหาอะไหล่ที่ใกล้เคียงก่อน แล้วให้ร้านช่วยเช็กความตรงรุ่นอีกครั้ง
