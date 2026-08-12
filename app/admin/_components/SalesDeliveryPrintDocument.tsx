@@ -152,7 +152,11 @@ const PRINT_GRID_COLUMN_STYLE = {
   gridTemplateColumns: "1.75rem 6rem minmax(0,1fr) 3rem 3rem 6rem 6rem",
 } as const;
 const PRINT_PROMPTPAY_CARD_SIZE = 140;
-const PRINT_PROMPTPAY_QR_SIZE = 88;
+const PRINT_PROMPTPAY_QR_SIZE = 92;
+const PRINT_THAI_QR_LOGO_WIDTH = 70;
+const PRINT_THAI_QR_LOGO_HEIGHT = 21;
+const PRINT_PROMPTPAY_LOGO_WIDTH = 58;
+const PRINT_PROMPTPAY_LOGO_HEIGHT = 20;
 
 const getPrintNoticeLines = (text?: string | null) =>
   (text ?? "")
@@ -388,20 +392,28 @@ export default function SalesDeliveryPrintDocument({
                     {promptPayQrDataUrl ? (
                       shouldUsePromptPayCard ? (
                         <div
-                          className="overflow-hidden rounded-md border border-gray-400 bg-white"
+                          className="overflow-hidden border border-gray-400 bg-white"
                           style={{ width: PRINT_PROMPTPAY_CARD_SIZE }}
                         >
-                          <div className="flex items-center gap-1 bg-[#1f4e78] px-2 py-1.5 text-white">
-                            <span className="inline-flex h-5 w-5 items-center justify-center rounded-sm border border-white/70">
-                              <span className="block h-2.5 w-2.5 rounded-[2px] border border-white/80" />
-                            </span>
-                            <div className="leading-none">
-                              <div className="text-[8px] font-semibold tracking-[0.12em]">THAI QR</div>
-                              <div className="text-[10px] font-bold tracking-[0.08em]">PAYMENT</div>
-                            </div>
+                          <div className="flex items-center justify-center bg-[#00427a] px-2 py-1">
+                            <Image
+                              src="/Thai_QR_Logo_white.svg"
+                              alt="Thai QR Payment"
+                              width={PRINT_THAI_QR_LOGO_WIDTH}
+                              height={PRINT_THAI_QR_LOGO_HEIGHT}
+                              loading="eager"
+                              unoptimized
+                            />
                           </div>
-                          <div className="flex flex-col items-center px-2 py-2">
-                            <div className="mb-1 text-center text-[8px] font-medium text-gray-700">สแกนเพื่อชำระเงิน</div>
+                          <div className="flex flex-col items-center px-2 pb-1 pt-0.5">
+                            <Image
+                              src="/PromptPay-logo-trim.png"
+                              alt="PromptPay"
+                              width={PRINT_PROMPTPAY_LOGO_WIDTH}
+                              height={PRINT_PROMPTPAY_LOGO_HEIGHT}
+                              loading="eager"
+                              unoptimized
+                            />
                             <Image
                               src={promptPayQrDataUrl}
                               alt={`PromptPay QR ${sale.saleNo}`}
@@ -409,8 +421,12 @@ export default function SalesDeliveryPrintDocument({
                               height={PRINT_PROMPTPAY_QR_SIZE}
                               loading="eager"
                               unoptimized
+                              className="mt-0.5"
                             />
-                            <div className="mt-1 text-center text-[8px] text-gray-700">{fmtNum(qrAmount)} บาท</div>
+                            <div className="text-center text-[8px] font-medium leading-tight text-gray-700">สแกนเพื่อชำระเงิน</div>
+                            <div className="text-center text-[11px] font-semibold leading-tight text-gray-900">
+                              {fmtNum(qrAmount)} บาท
+                            </div>
                           </div>
                         </div>
                       ) : (
