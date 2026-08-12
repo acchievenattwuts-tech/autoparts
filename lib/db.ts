@@ -115,8 +115,15 @@ globalForPrisma.prisma = db;
 // failure: the pooled socket died (the pooler recycled it, or a serverless
 // instance was frozen while it sat idle) and the engine rejects the query before
 // it ever reaches Postgres. Nothing was sent, so retrying is safe.
+//
+// "(EAUTHTIMEOUT) timeout while waiting for message" (SQLSTATE 08006, severity
+// FATAL) is emitted by Supavisor itself — the pooler accepted our socket but
+// could not finish the auth handshake against the upstream Postgres in time. It
+// arrives as a DriverAdapterError before any statement is sent, so it belongs to
+// the same retry-safe class even though the wording shares nothing with the
+// node-postgres messages above.
 const TRANSIENT_DB_ERROR_PATTERN =
-  /connection terminated|connection timeout|timeout exceeded when trying to connect|ECONNRESET|Connection ended|too many connections|Closed the connection|is not queryable/i;
+  /connection terminated|connection timeout|timeout exceeded when trying to connect|ECONNRESET|Connection ended|too many connections|Closed the connection|is not queryable|EAUTHTIMEOUT|timeout while waiting for message/i;
 
 // node-postgres throws exactly "timeout exceeded when trying to connect" when a
 // caller waits longer than `connectionTimeoutMillis` for a free pool slot — the
@@ -129,13 +136,24 @@ const TRANSIENT_DB_ERROR_PATTERN =
 const POOL_ACQUIRE_TIMEOUT_PATTERN = /timeout exceeded when trying to connect/i;
 const POOL_ACQUIRE_MAX_RETRIES = 1;
 
+// Prisma's DriverAdapterError carries a PLAIN OBJECT as `cause` (the decoded
+// Postgres ErrorResponse: { code, severity, message, ... }), not an Error — so an
+// `instanceof Error` check alone would drop the only place the real reason is
+// spelled out for that class of failure.
+const readMessageProperty = (value: object): string => {
+  const message = (value as { message?: unknown }).message;
+  return typeof message === "string" ? message : "";
+};
+
 const collectErrorMessages = (error: unknown, depth = 0): string => {
-  if (depth > 4 || !(error instanceof Error)) {
-    return typeof error === "string" ? error : "";
-  }
+  if (depth > 4) return "";
+  if (typeof error === "string") return error;
+  if (typeof error !== "object" || error === null) return "";
+
+  const ownMessage = readMessageProperty(error);
   const causeMessage =
-    "cause" in error ? collectErrorMessages(error.cause, depth + 1) : "";
-  return `${error.message} ${causeMessage}`;
+    "cause" in error ? collectErrorMessages((error as { cause?: unknown }).cause, depth + 1) : "";
+  return `${ownMessage} ${causeMessage}`;
 };
 
 /**
@@ -149,17 +167,29 @@ export const isTransientDbError = (error: unknown): boolean =>
 const isPoolAcquireTimeoutError = (error: unknown): boolean =>
   POOL_ACQUIRE_TIMEOUT_PATTERN.test(collectErrorMessages(error));
 
-// Base backoff, doubled per attempt (150ms → 300ms), plus random jitter up to
-// one base window. A fixed backoff makes parallel revalidations (e.g. the 3 admin
-// master-option dropdowns loaded together on /admin/products/new) retry in
-// lockstep and collide in the same pool-starvation window; jitter spreads them so
-// the second attempt lands after the transient burst has cleared.
-const RETRY_BASE_BACKOFF_MS = 150;
+// Base backoff, doubled per attempt, plus random jitter up to one base window. A
+// fixed backoff makes parallel revalidations (e.g. the 3 admin master-option
+// dropdowns loaded together on /admin/products/new) retry in lockstep and collide
+// in the same pool-starvation window; jitter spreads them so the second attempt
+// lands after the transient burst has cleared.
+//
+// 400ms base (400 → 800, +jitter, ~2s worst case across both retries): the
+// original 150ms base only covered ~450ms of downtime, and production showed a
+// car-brands revalidation burning all 3 attempts inside a single burst and still
+// failing. Supavisor hiccups last on the order of seconds, so the retry window
+// has to reach past a second to be worth anything. These failures are cheap —
+// a refused/aborted connect returns fast — so the added wait is nearly all
+// backoff, not burned connect time.
+const RETRY_BASE_BACKOFF_MS = 400;
+// Pool-acquire timeouts keep the old short base on purpose: each attempt has
+// ALREADY blocked for the full 15s connectionTimeoutMillis, so the request is
+// near its function budget and must not spend another second sleeping.
+const POOL_ACQUIRE_RETRY_BASE_BACKOFF_MS = 150;
 const DEFAULT_DB_RETRIES = 2;
 
-const computeRetryDelayMs = (attempt: number): number => {
-  const exponential = RETRY_BASE_BACKOFF_MS * 2 ** attempt;
-  const jitter = Math.random() * RETRY_BASE_BACKOFF_MS;
+const computeRetryDelayMs = (attempt: number, baseBackoffMs: number): number => {
+  const exponential = baseBackoffMs * 2 ** attempt;
+  const jitter = Math.random() * baseBackoffMs;
   return exponential + jitter;
 };
 
@@ -179,11 +209,17 @@ export async function withDbRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error;
-      const maxRetriesForError = isPoolAcquireTimeoutError(error)
+      const isPoolAcquireTimeout = isPoolAcquireTimeoutError(error);
+      const maxRetriesForError = isPoolAcquireTimeout
         ? Math.min(retries, POOL_ACQUIRE_MAX_RETRIES)
         : retries;
       if (attempt < maxRetriesForError && isTransientDbError(error)) {
-        await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs(attempt)));
+        const baseBackoffMs = isPoolAcquireTimeout
+          ? POOL_ACQUIRE_RETRY_BASE_BACKOFF_MS
+          : RETRY_BASE_BACKOFF_MS;
+        await new Promise((resolve) =>
+          setTimeout(resolve, computeRetryDelayMs(attempt, baseBackoffMs)),
+        );
         continue;
       }
       throw error;

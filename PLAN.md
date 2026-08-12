@@ -557,6 +557,19 @@
 - [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `timeout exceeded` (ควรลดลงชัดเจน) + เช็ค Supabase → Connection Pooling ว่า client count ไม่แตะ 200
 - [ ] ค้างไว้ (รอ metric): ขยาย `DB_POOL_MAX` 5 → 8–10 ให้เข้ากับ Fluid compute — ยังไม่ทำเพราะยังไม่มีข้อมูลจำนวน warm instance จริง เสี่ยงชนเพดาน Supavisor 200 clients (ตรงกับข้อค้าง "Option B" ใน §5 (4e))
 
+## Log noise — `EAUTHTIMEOUT` + `Connection terminated` ตอน revalidate cache (2026-08-12)
+- บริบท: เจ้าของส่ง Vercel log 2 เหตุการณ์ ห่างกัน ~11 ชม. — `GET /admin/products/new` (11/08 18:39 GMT+7) และ `GET /product/ford-escape-...` (12/08 05:38 GMT+7) **ตอบ HTTP 200 ทั้งคู่** (panel ยืนยัน Cache = `STALE`, Reason = `Time-based revalidation`) แต่ background revalidate ล้ม
+- **สาเหตุที่ 1 — เคส `storefront-products-landing-products`** ([lib/storefront-catalog.ts](lib/storefront-catalog.ts)): error จริงคือ `DriverAdapterError (EAUTHTIMEOUT) timeout while waiting for message`, SQLSTATE `08006`, `severity: FATAL`, `kind: postgres` → ข้อความนี้ส่งกลับมาจาก **Supavisor เอง** (pooler รับ socket เราแล้วแต่ auth กับ Postgres ต้นทางไม่ทัน) ไม่ใช่ error ของ node-postgres — ยืนยันด้วย grep ทั้ง `node_modules` ไม่พบคำว่า `EAUTHTIMEOUT` เลย · `TRANSIENT_DB_ERROR_PATTERN` ไม่ match คำนี้เลยสักข้อ → `withDbRetry` โยนทิ้งตั้งแต่ครั้งแรก ไม่ retry
+- **สาเหตุที่ 2 — เคส `admin-master-car-brands-v1`** ([lib/admin-master-options.ts](lib/admin-master-options.ts)): log มี `Connection terminated due to connection timeout` 3 บรรทัดติด = retry ครบ (1+2) แล้วยังล้ม → พิสูจน์ว่า backoff เดิม 150→300ms (+jitter) ครอบ downtime ได้แค่ ~450ms สั้นเกินไปเทียบกับ burst ระดับวินาทีของ Supavisor
+- [x] **A** — เพิ่ม `EAUTHTIMEOUT|timeout while waiting for message` เข้า `TRANSIENT_DB_ERROR_PATTERN` ใน [lib/db.ts](lib/db.ts) (ปลอดภัย: connection-level fault ที่ query ยังไม่ถึง Postgres + caller ทั้ง 25 จุดใน 9 ไฟล์เป็น read-only ล้วน)
+- [x] **A** — `collectErrorMessages()` อ่าน `cause` ที่เป็น **plain object** ได้แล้ว (เดิมเช็ค `instanceof Error` อย่างเดียว ทำให้ทิ้ง payload ของ `DriverAdapterError` ซึ่งเก็บเหตุผลจริงไว้ในนั้น)
+- [x] **B** — ขยาย `RETRY_BASE_BACKOFF_MS` 150 → 400 (400→800 +jitter ≈ 2s worst case) · แยก `POOL_ACQUIRE_RETRY_BASE_BACKOFF_MS = 150` ไว้เท่าเดิม เพราะ error กลุ่มนั้นเผาไปแล้ว 15s ต่อครั้ง ห้ามนอนเพิ่ม
+- [x] test ใหม่ [lib/__tests__/db-transient-error.test.ts](lib/__tests__/db-transient-error.test.ts) — 8 เคส ใช้ข้อความ error จาก production ตรง ๆ (match auth timeout / connect timeout / plain-object cause / ไม่ retry error ปกติ / pool-acquire retry ได้ครั้งเดียว)
+- [x] `npm run lint` 0 error · `npx tsc --noEmit` 0 error · `npm test` 753 tests pass 751 fail 0
+- [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, query, cache config หรือ business logic — ผู้ใช้ไม่เห็นความต่าง (เดิมก็ได้ cache เก่าอยู่แล้ว) ต่างแค่ revalidate สำเร็จบ่อยขึ้น + log error ลดลง
+- [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `EAUTHTIMEOUT` และ `Connection terminated` — ควรลดลงชัดเจน
+- [ ] เปิด Supabase → Database → Connection Pooling ดูกราฟ client count ย้อนหลังช่วง 11/08 18:39 และ 12/08 05:38 GMT+7 เพื่อตัดข้อสงสัยเรื่องชนเพดาน 200 (ถ้าไม่แตะ = ปัญหาฝั่ง Supavisor ล้วน ๆ ไม่ต้องขยาย pool)
+
 ## คิวจัดส่ง — ตัวกรองช่วงวันที่ + popup เลือกผู้ส่งตอนกด "ส่งแล้ว" (2026-07-30)
 - บริบท: เจ้าของสั่งเพิ่มตัวกรอง `ตั้งแต่ - ถึง` ทั้ง `/admin/delivery` และ `/admin/delivery/update` และให้ปุ่ม "ส่งแล้ว" หน้าเดสก์ท็อปเด้ง popup เลือกชื่อผู้ส่ง (เดิม stamp ผู้ล็อกอินอัตโนมัติเท่านั้น)
 - **ตัวกรองช่วงวันที่** — helper ใหม่ [lib/delivery-date-filter.ts](lib/delivery-date-filter.ts) (`resolveDeliveryDateRange` / `appendDeliveryDateParams`) ใช้ร่วมกันทั้งสองหน้า
