@@ -805,6 +805,21 @@
 - [x] (รอบต่อเนื่อง) หลังค้นหาเสร็จให้ `blur()` ช่องค้นหา ไม่คา cursor ไว้ — เจ้าของเลือก blur เฉยๆ ไม่ย้าย focus ไปหัวข้อผลลัพธ์ · กระทบเฉพาะเดสก์ท็อป (Enter ค้างที่ input ตามดีฟอลต์เบราว์เซอร์ · คลิกคำใน dropdown ค้างเพราะ `onMouseDown preventDefault` ที่กัน bug Safari) ฝั่งมือถือ modal ปิดแล้ว input หายอยู่แล้ว แต่ blur ช่วยปิดคีย์บอร์ดก่อน modal ปิด
 - ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน (Compiled successfully, 71/71 static pages)
 
+## LIFF ชำระเงิน: QR sheet หลุดตำแหน่ง + บันทึก QR ไม่สำเร็จ (2026-08-12)
+- ที่มา: เจ้าของแคปหน้าจอ LINE ให้ดู — กด "สร้าง QR สำหรับทุกบิล" แล้ว sheet ไปโผล่ล่างสุดของเนื้อหา ไม่ใช่ล่างจอ · แถบเมนูล่างทับ sheet · กดปุ่ม "บันทึก / แชร์ QR" แล้วขึ้น error
+- [x] **สาเหตุตำแหน่ง**: `.liff-page-transition` ใน [globals.css](app/globals.css) ประกาศ `will-change: transform, opacity` ค้างไว้ถาวร (ไม่ใช่แค่ตอนอนิเมชันวิ่ง) → กลายเป็น containing block ของ `position: fixed` + สร้าง stacking context → `fixed inset-0` ของ sheet อ้างอิงกล่องเนื้อหาทั้งหน้าแทน viewport และ `z-[100]` ถูกขังไว้ต่ำกว่า `.liff-bottom-nav` (z-30)
+  - แก้ด้วย `createPortal` ไปที่ `.liff-theme-root` (ไม่ใช่ `document.body`) เพราะพาเลตต์ dark ของ LIFF ผูกกับ selector `.liff-theme-root[data-liff-theme="dark"] ...` — portal ออก body แล้วสีจะหลุด · `.liff-theme-root` ไม่มี transform/will-change/z-index จึงไม่บล็อก `fixed` · ยก z เป็น `z-[1200]` (สูงกว่าปุ่มแชท LINE ที่ `z-[1100]`)
+  - ล็อกสกอร์ลพื้นหลังด้วยการเซ็ต inline `overflow:hidden` ที่ `.liff-scroll-region` (ตัวสกอร์ลจริง — document ไม่เคยสกอร์ลในแอปเชลล์นี้) แล้วลบ inline ตอนปิดเพื่อคืนค่าให้ stylesheet · เพิ่มปิดด้วย Escape + คลิก backdrop
+- [x] **จัดเนื้อหาใหม่ให้เห็นปุ่มบันทึกโดยไม่ต้องเลื่อน**: ย้ายปุ่ม "บันทึก / แชร์ QR" ขึ้นมาไว้ใต้การ์ด QR ทันที (ก่อนกล่องบัญชี) · ลด QR จาก 260 → 220px · ข้อความแนะนำ + ปุ่ม "ตรวจยอดและสร้าง QR ใหม่" ลงไปล่างสุด (เลื่อนดูได้ ไม่ใช่ปุ่มหลัก) → เนื้อหาช่วงบน ~500px พอดีจอมือถือ
+- [x] **หัว sheet ไม่ขยับตอนเลื่อน**: ทำ header เป็น `sticky top-0` พร้อม negative margin (`-mx-5 -mt-5`) ให้พื้นหลังกินทับ padding ของกล่อง + เส้นคั่นล่าง
+- [x] **สาเหตุ "บันทึก QR ไม่สำเร็จ"**: `fetch(payload.qrDataUrl)` บน data URL อยู่ใต้ CSP directive `connect-src` ซึ่งใน [next.config.ts](next.config.ts) **ไม่มี `data:`** → ถูกบล็อก throw เข้า catch ทุกครั้ง (พังทุกเบราว์เซอร์ ไม่ใช่เฉพาะ LINE)
+  - แก้โดย decode base64 เองด้วย `atob` → `Uint8Array` → `Blob` (ไม่แตะ CSP ไม่ต้องผ่อนนโยบาย) · fallback ดาวน์โหลดเปลี่ยนจาก data URL ยาวๆ เป็น `URL.createObjectURL(blob)` ซึ่ง WebView ในแอปรองรับดีกว่า · ข้อความ error สุดท้ายเปลี่ยนเป็น "กดค้างที่รูป QR แล้วเลือกบันทึกรูปภาพ" ให้ทำตามได้จริง
+- [x] **ไฮไลต์บิลเลยกำหนดในการ์ดเลือกบิล**: [outstanding/page.tsx](app/liff/outstanding/page.tsx) คำนวณ `overdue` อยู่แล้ว — ส่ง `overdue` + `dueDateLabel` เข้า [PaymentBillSelector.tsx](components/liff/PaymentBillSelector.tsx) แล้วใช้พาเลตต์ rose + `AlertCircle` ชุดเดียวกับการ์ดบิลด้านล่างของหน้าเดิม (ทั้งเคสบิลเดียวและหลายบิล) พร้อมบรรทัด "เลยกำหนด {วันที่}"
+- [x] **PICKUP ไม่ต้องขึ้น "รอจัดส่ง"**: ใบขายรับหน้าร้านคง `shippingStatus = PENDING` ไว้ ป้ายจึงอ่านว่ารอจัดส่งซึ่งไม่มีความหมายกับลูกค้า — เจ้าของเลือกให้ซ่อนบรรทัดสถานะไปเลย และเปลี่ยนหัวการ์ดเป็น "ข้อมูลการรับสินค้า" ([orders/[id]/page.tsx](app/liff/orders/[id]/page.tsx)) · โหมด DELIVERY เหมือนเดิมทุกอย่าง
+- [x] **QR เบลอ**: `buildPromptPayQrDataUrl()` gen ที่ 180px แต่แสดง 220px — เพิ่ม parameter `width` (default 180 เท่าเดิม ผู้เรียกอื่นไม่กระทบ) แล้วให้ [api/liff/payments/qr](app/api/liff/payments/qr/route.ts) ส่ง 440 (2x) · `next/image` รับ `width/height` = 440 แล้ว CSS บังคับแสดง 220
+- [ ] ตามต่อ (ยังไม่ทำ): ฟอร์มพิมพ์ใบเสร็จ/ใบแจ้งหนี้/ใบส่งของ + หน้า sale detail ยัง gen QR ที่ 180px — ถ้าอยากให้ QR บนกระดาษคมขึ้นก็ส่ง width สูงกว่านี้ได้ด้วย parameter เดียวกัน
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npx eslint` ไฟล์ที่แก้ทั้งหมดไม่มี error (เหลือ warning `ReceiptText` unused ที่มีอยู่ก่อนแล้ว) · ยังไม่ได้รัน `npm run build`
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

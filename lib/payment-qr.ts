@@ -29,9 +29,13 @@ export async function getPrimaryTransferAccount(): Promise<PrimaryTransferAccoun
   });
 }
 
+/** Intrinsic PNG width used by the print/document QR blocks. */
+const DEFAULT_QR_WIDTH = 180;
+
 export async function buildPromptPayQrDataUrl(
   promptPayId: string | null | undefined,
   amount: number,
+  width: number = DEFAULT_QR_WIDTH,
 ): Promise<string | null> {
   const normalizedPromptPayId = promptPayId?.trim();
   if (!normalizedPromptPayId) return null;
@@ -40,7 +44,7 @@ export async function buildPromptPayQrDataUrl(
   return QRCode.toDataURL(payload, {
     errorCorrectionLevel: "M",
     margin: 1,
-    width: 180,
+    width,
   });
 }
 

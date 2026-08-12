@@ -265,7 +265,11 @@ export default async function LiffOrderDetailPage({
           <div className="mb-3 flex items-center gap-2">
             <Truck className="h-5 w-5 text-blue-700 dark:text-sky-400" />
             <h2 className="font-kanit text-lg font-bold text-slate-950 dark:text-slate-100">
-              {showLiveTracking ? "ติดตามการจัดส่ง" : "ข้อมูลจัดส่ง"}
+              {showLiveTracking
+                ? "ติดตามการจัดส่ง"
+                : order.fulfillmentType === "DELIVERY"
+                  ? "ข้อมูลจัดส่ง"
+                  : "ข้อมูลการรับสินค้า"}
             </h2>
           </div>
 
@@ -280,10 +284,20 @@ export default async function LiffOrderDetailPage({
             />
           ) : (
             <>
-              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                {shippingStatusLabel[order.shippingStatus] ?? order.shippingStatus}
-              </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {/* Pickup orders keep shippingStatus at PENDING, so the shipping label would
+                  read "รอจัดส่ง" — meaningless for a customer collecting at the shop. */}
+              {order.fulfillmentType === "DELIVERY" ? (
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                  {shippingStatusLabel[order.shippingStatus] ?? order.shippingStatus}
+                </p>
+              ) : null}
+              <p
+                className={
+                  order.fulfillmentType === "DELIVERY"
+                    ? "mt-1 text-xs text-slate-500 dark:text-slate-400"
+                    : "text-sm font-semibold text-slate-800 dark:text-slate-200"
+                }
+              >
                 วิธีรับสินค้า: {order.fulfillmentType === "DELIVERY" ? "จัดส่ง" : "รับหน้าร้าน"}
               </p>
               <TrackingSmartLink shippingMethod={order.shippingMethod} trackingNo={order.trackingNo} />

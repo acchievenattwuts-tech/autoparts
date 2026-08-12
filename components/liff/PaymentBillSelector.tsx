@@ -1,5 +1,6 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import PaymentQrButton from "@/components/liff/PaymentQrButton";
@@ -8,6 +9,8 @@ type BillOption = {
   id: string;
   saleNo: string;
   amountRemain: number;
+  overdue: boolean;
+  dueDateLabel: string;
 };
 
 function formatMoney(value: number) {
@@ -35,13 +38,40 @@ export default function PaymentBillSelector({ bills }: { bills: BillOption[] }) 
   if (bills.length === 1) {
     const bill = bills[0];
     return (
-      <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+      <div
+        className={
+          bill.overdue
+            ? "rounded-2xl border border-rose-200 bg-rose-50 p-3 dark:border-rose-800 dark:bg-rose-950/40"
+            : "rounded-2xl border border-blue-100 bg-blue-50/50 p-3 dark:border-slate-700 dark:bg-slate-800/50"
+        }
+      >
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <p className="font-bold text-slate-900 dark:text-slate-100">ชำระบิล {bill.saleNo}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">มีบิลค้างชำระ 1 ใบ ระบบเลือกให้แล้ว</p>
+            <p className="flex items-center gap-1.5 font-bold text-slate-900 dark:text-slate-100">
+              {bill.overdue ? (
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-700 dark:text-rose-400" />
+              ) : null}
+              ชำระบิล {bill.saleNo}
+            </p>
+            <p
+              className={
+                bill.overdue
+                  ? "text-xs font-bold text-rose-700 dark:text-rose-400"
+                  : "text-xs text-slate-500 dark:text-slate-400"
+              }
+            >
+              {bill.overdue
+                ? `เลยกำหนดชำระ ${bill.dueDateLabel}`
+                : `ครบกำหนด ${bill.dueDateLabel} · ระบบเลือกให้แล้ว`}
+            </p>
           </div>
-          <span className="shrink-0 text-sm font-bold text-amber-700 dark:text-amber-300">
+          <span
+            className={
+              bill.overdue
+                ? "shrink-0 text-sm font-bold text-rose-700 dark:text-rose-400"
+                : "shrink-0 text-sm font-bold text-amber-700 dark:text-amber-300"
+            }
+          >
             {formatMoney(bill.amountRemain)} บาท
           </span>
         </div>
@@ -73,18 +103,42 @@ export default function PaymentBillSelector({ bills }: { bills: BillOption[] }) 
         {bills.map((bill) => (
           <label
             key={bill.id}
-            className="flex cursor-pointer items-center gap-3 rounded-xl bg-white px-3 py-2 dark:bg-slate-900"
+            className={
+              bill.overdue
+                ? "flex cursor-pointer items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 dark:border-rose-800 dark:bg-rose-950/40"
+                : "flex cursor-pointer items-center gap-3 rounded-xl border border-transparent bg-white px-3 py-2 dark:bg-slate-900"
+            }
           >
             <input
               type="checkbox"
               checked={selectedSet.has(bill.id)}
               onChange={() => toggleBill(bill.id)}
-              className="h-4 w-4 rounded border-slate-300 accent-blue-700"
+              className={`h-4 w-4 rounded border-slate-300 ${bill.overdue ? "accent-rose-700" : "accent-blue-700"}`}
             />
-            <span className="min-w-0 flex-1 font-mono text-xs font-bold text-slate-800 dark:text-slate-200">
-              {bill.saleNo}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1.5">
+                {bill.overdue ? (
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-700 dark:text-rose-400" />
+                ) : null}
+                <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200">{bill.saleNo}</span>
+              </span>
+              <span
+                className={
+                  bill.overdue
+                    ? "mt-0.5 block text-[11px] font-bold text-rose-700 dark:text-rose-400"
+                    : "mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400"
+                }
+              >
+                {bill.overdue ? `เลยกำหนด ${bill.dueDateLabel}` : `ครบกำหนด ${bill.dueDateLabel}`}
+              </span>
             </span>
-            <span className="text-xs font-bold text-amber-700 dark:text-amber-300">
+            <span
+              className={
+                bill.overdue
+                  ? "shrink-0 text-xs font-bold text-rose-700 dark:text-rose-400"
+                  : "shrink-0 text-xs font-bold text-amber-700 dark:text-amber-300"
+              }
+            >
               {formatMoney(bill.amountRemain)} บาท
             </span>
           </label>

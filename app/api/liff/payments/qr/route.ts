@@ -113,7 +113,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ไม่มียอดค้างชำระสำหรับสร้าง QR" }, { status: 409 });
     }
 
-    const qrDataUrl = await buildPromptPayQrDataUrl(transferAccount.promptPayId, amount);
+    // Rendered at 220 CSS px in the LIFF sheet; generate at 2x so the QR stays crisp on
+    // high-DPI phones and when the customer saves/zooms the image.
+    const qrDataUrl = await buildPromptPayQrDataUrl(transferAccount.promptPayId, amount, 440);
     if (!qrDataUrl) {
       return NextResponse.json({ error: "ไม่สามารถสร้าง PromptPay QR ได้" }, { status: 500 });
     }

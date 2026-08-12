@@ -108,6 +108,8 @@ export default async function LiffOutstandingPage() {
                         id: sale.id,
                         saleNo: sale.saleNo,
                         amountRemain: Number(sale.amountRemain),
+                        overdue: sale.overdue,
+                        dueDateLabel: formatDateThai(sale.dueDate),
                       }))}
                     />
                   ) : null}

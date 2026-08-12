@@ -2,7 +2,34 @@
 
 import Image from "next/image";
 import { Check, Copy, Download, Loader2, QrCode, RefreshCw, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+
+// The LIFF page wrapper (.liff-page-transition) declares `will-change: transform`,
+// which makes it a containing block for `position: fixed` descendants. Rendering the
+// sheet in place would anchor it to the bottom of the *page content* instead of the
+// viewport, and trap its z-index below the fixed bottom nav. Portalling to
+// .liff-theme-root escapes that wrapper while keeping the LIFF dark palette (which is
+// scoped to .liff-theme-root) applied to the sheet.
+const QR_DISPLAY_SIZE = 220;
+
+// `fetch()` on a data: URL is governed by the `connect-src` CSP directive, which does
+// not allow `data:` (see next.config.ts). Decoding the base64 payload by hand keeps the
+// save/share flow working without widening the policy.
+function dataUrlToBlob(dataUrl: string): Blob {
+  const separatorIndex = dataUrl.indexOf(",");
+  if (separatorIndex < 0) throw new Error("invalid data url");
+
+  const header = dataUrl.slice(0, separatorIndex);
+  const mimeType = /:(.*?);/.exec(header)?.[1] ?? "image/png";
+  const binary = atob(dataUrl.slice(separatorIndex + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
 
 type PaymentQrPayload = {
   amount: number;
@@ -33,6 +60,33 @@ export default function PaymentQrButton(props: Props) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalTarget(document.querySelector<HTMLElement>(".liff-theme-root") ?? document.body);
+  }, []);
+
+  const closeSheet = useCallback(() => setIsOpen(false), []);
+
+  // The LIFF document never scrolls (.liff-scroll-region owns the scroll), so lock
+  // that region instead of <body> while the sheet is open. Clearing the inline style
+  // hands control back to the stylesheet.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const scrollRegion = document.querySelector<HTMLElement>(".liff-scroll-region");
+    scrollRegion?.style.setProperty("overflow", "hidden");
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") closeSheet();
+    }
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      scrollRegion?.style.removeProperty("overflow");
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeSheet, isOpen]);
 
   async function prepareQr() {
     setIsOpen(true);
@@ -81,8 +135,9 @@ export default function PaymentQrButton(props: Props) {
     if (!payload) return;
 
     try {
-      const blob = await (await fetch(payload.qrDataUrl)).blob();
-      const file = new File([blob], `promptpay-${payload.label}.png`, { type: "image/png" });
+      const blob = dataUrlToBlob(payload.qrDataUrl);
+      const fileName = `promptpay-${payload.label}.png`;
+      const file = new File([blob], fileName, { type: blob.type });
       const shareData = { files: [file], title: `PromptPay ${payload.label}` };
 
       if (typeof navigator.share === "function" && navigator.canShare?.(shareData)) {
@@ -90,15 +145,19 @@ export default function PaymentQrButton(props: Props) {
         return;
       }
 
+      // Fall back to a blob: object URL — in-app WebViews handle it more reliably than a
+      // long data: URL on an <a download>.
+      const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      anchor.href = payload.qrDataUrl;
-      anchor.download = file.name;
+      anchor.href = objectUrl;
+      anchor.download = fileName;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
     } catch (saveError) {
       if (saveError instanceof DOMException && saveError.name === "AbortError") return;
-      setError("บันทึก QR ไม่สำเร็จ กรุณาจับภาพหน้าจอแทน");
+      setError("บันทึก QR ไม่สำเร็จ กรุณากดค้างที่รูป QR แล้วเลือกบันทึกรูปภาพ");
     }
   }
 
@@ -118,15 +177,20 @@ export default function PaymentQrButton(props: Props) {
           : `สร้าง QR ${props.saleIds.length} บิลที่เลือก`}
       </button>
 
-      {isOpen ? (
+      {isOpen && portalTarget ? createPortal(
         <div
           role="dialog"
           aria-modal="true"
           aria-label="PromptPay QR สำหรับชำระเงิน"
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) closeSheet();
+          }}
+          className="fixed inset-0 z-[1200] flex items-end justify-center bg-slate-950/60 p-0 sm:items-center sm:p-4"
         >
-          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-[28px] bg-white p-5 shadow-2xl sm:rounded-[28px] dark:bg-slate-900">
-            <div className="flex items-start justify-between gap-3">
+          <div className="max-h-[92dvh] w-full max-w-md overflow-y-auto overscroll-contain rounded-t-[28px] bg-white p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))] shadow-2xl sm:rounded-[28px] sm:pb-5 dark:bg-slate-900">
+            {/* The sheet body is the scroll container, so the header sticks to its top
+                edge. Negative margins let the background bleed over the p-5 padding. */}
+            <div className="sticky top-0 z-10 -mx-5 -mt-5 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-5 pb-3 pt-5 dark:border-slate-800 dark:bg-slate-900">
               <div>
                 <p className="text-sm font-semibold text-blue-700 dark:text-sky-400">ชำระด้วย PromptPay</p>
                 <h2 className="font-kanit text-xl font-bold text-slate-950 dark:text-slate-100">
@@ -135,7 +199,7 @@ export default function PaymentQrButton(props: Props) {
               </div>
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={closeSheet}
                 aria-label="ปิด"
                 className="rounded-full bg-slate-100 p-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
               >
@@ -169,15 +233,25 @@ export default function PaymentQrButton(props: Props) {
                   <Image
                     src={payload.qrDataUrl}
                     alt={`PromptPay QR ${payload.label}`}
-                    width={260}
-                    height={260}
+                    width={QR_DISPLAY_SIZE * 2}
+                    height={QR_DISPLAY_SIZE * 2}
                     unoptimized
-                    className="mx-auto mt-3 h-[260px] w-[260px] rounded-2xl bg-white"
+                    className="mx-auto mt-3 h-[220px] w-[220px] rounded-2xl bg-white"
                   />
                   <p className="mt-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                     QR นี้สร้างจากยอดคงเหลือล่าสุด ณ เวลาที่กด
                   </p>
                 </div>
+
+                {/* Primary action stays directly under the QR so it is reachable without
+                    scrolling the sheet on a phone-sized viewport. */}
+                <button
+                  type="button"
+                  onClick={() => void saveOrShareQr()}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99]"
+                >
+                  <Download size={18} /> บันทึก / แชร์ QR
+                </button>
 
                 <div className="rounded-2xl bg-slate-50 p-3 text-sm dark:bg-slate-800">
                   <p className="font-bold text-slate-900 dark:text-slate-100">
@@ -209,13 +283,6 @@ export default function PaymentQrButton(props: Props) {
 
                 {error ? <p className="text-center text-xs font-semibold text-rose-700 dark:text-rose-300">{error}</p> : null}
 
-                <button
-                  type="button"
-                  onClick={() => void saveOrShareQr()}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99]"
-                >
-                  <Download size={18} /> บันทึก / แชร์ QR
-                </button>
                 <p className="text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
                   บันทึก QR แล้วเปิดแอปธนาคาร จากนั้นเลือกสแกน QR จากรูปภาพ
                   กรุณาตรวจชื่อผู้รับและยอดก่อนยืนยันทุกครั้ง
@@ -230,7 +297,8 @@ export default function PaymentQrButton(props: Props) {
               </div>
             ) : null}
           </div>
-        </div>
+        </div>,
+        portalTarget,
       ) : null}
     </>
   );
