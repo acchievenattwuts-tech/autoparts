@@ -19,6 +19,7 @@
  */
 import { db } from "@/lib/db";
 import { normalizeSearchText } from "@/lib/search-normalization";
+import { getThailandDateKey } from "@/lib/th-date";
 
 const section = (title: string): void => {
   console.log(`\n${"=".repeat(70)}\n${title}\n${"=".repeat(70)}`);
@@ -133,7 +134,7 @@ async function main(): Promise<void> {
   console.log(`อ่าน SEARCH_QUERY_CONSOLIDATED ล่าสุด ${consolidated.length} แถว`);
   if (consolidated.length > 0) {
     const oldest = consolidated[consolidated.length - 1]?.createdAt;
-    console.log(`  ช่วงเวลา: ${oldest?.toISOString().slice(0, 10)} → ปัจจุบัน`);
+    console.log(`  ช่วงเวลา: ${oldest ? getThailandDateKey(oldest) : "-"} → ปัจจุบัน`);
   }
 
   let resolvedModel = 0;
