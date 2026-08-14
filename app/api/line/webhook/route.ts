@@ -156,7 +156,7 @@ async function processWebhookInBackground(
       replyTokenMaxAgeMs: 55_000,
       // Coalesce a burst of images/texts into ONE reply (debounce + abort-on-newer).
       coalesce: true,
-      coalesceWindowMs: 3_000,
+      coalesceWindowMs: 5_000,
       coalesceLeaseMs: 60_000,
     });
   } catch (error) {

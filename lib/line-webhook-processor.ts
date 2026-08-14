@@ -81,6 +81,8 @@ import {
   getRecentLineMessagesForAi,
   getUnansweredInboundLineMessages,
   getStoredImageClassificationsByMessageRowIds,
+  storeImageClassificationForMessage,
+  updateLineMessageIntent,
   updateLineInquiryFrame,
   hasProcessedLineEvent,
   markLineProcessedSeq,
@@ -170,7 +172,7 @@ export type LineWebhookProcessorConfig = {
    *  omitted, the legacy per-event path runs (one reply per event). */
   coalesce?: boolean;
   /** Quiet window (ms) the owner waits for the customer to stop sending before it
-   *  processes the coalesced turn. Default 3000. */
+   *  processes the coalesced turn. Default 5000. */
   coalesceWindowMs?: number;
   /** Processing-lock lease (ms); auto-reclaimed if the owner crashes. Default 60000. */
   coalesceLeaseMs?: number;
@@ -272,6 +274,11 @@ export type LineWebhookProcessorDependencies = {
   /** Reuses ingest-time vision classifications on owner re-runs / cron recovery
    *  so an image is never re-OCR'd (B2a). Keyed by inbound LineMessage row id. */
   getStoredImageClassificationsByMessageRowIds?: typeof getStoredImageClassificationsByMessageRowIds;
+  /** Writes the reuse copy of a classification the owner just computed (the
+   *  counterpart of the read above, now that vision runs in the owner loop). */
+  storeImageClassificationForMessage?: typeof storeImageClassificationForMessage;
+  /** Corrects an image row's intent once vision has classified it. */
+  updateLineMessageIntent?: typeof updateLineMessageIntent;
   findStalledCoalescedConversationIds?: typeof findStalledCoalescedConversationIds;
   getLineConversationForRecovery?: typeof getLineConversationForRecovery;
   /** Inquiry-frame (conversation slot memory) read/write. */
@@ -324,6 +331,8 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   markLineProcessedSeq,
   getUnansweredInboundLineMessages,
   getStoredImageClassificationsByMessageRowIds,
+  storeImageClassificationForMessage,
+  updateLineMessageIntent,
   findStalledCoalescedConversationIds,
   getLineConversationForRecovery,
   getLineInquiryFrame,
@@ -3809,6 +3818,11 @@ async function ingestLineEvent(
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
   imageSearchEnabled: boolean,
+  options?: {
+    /** Coalesced mode: skip the (slow) vision call here and let the owner loop
+     *  classify while it builds the merged turn. See the call site for why. */
+    deferImageClassification?: boolean;
+  },
 ): Promise<{
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
   inboundMessage: Awaited<ReturnType<typeof appendLineMessage>>;
@@ -3847,8 +3861,17 @@ async function ingestLineEvent(
     maybeStartLoadingDots(config, dependencies, { lineUserId, aiStatus: conversation.aiStatus });
   }
 
+  // Vision is deliberately NOT run here in coalesced mode. It used to be, and it
+  // blocked the row insert + seq bump for as long as Gemini took (14.8s in the
+  // 2026-08-14 incident) — during which the image was invisible to both
+  // `getUnansweredInboundLineMessages()` and abort-on-newer, so a text message
+  // arriving in the same burst got answered on its own and the customer received
+  // two replies. Persisting first makes burst grouping depend on a DB write
+  // instead of Gemini latency; the owner classifies on demand in
+  // `buildMergedTurnInput()` (which caches + persists the result, so vision
+  // still runs exactly once per image).
   let imageClassification: LineImageClassification | null = null;
-  if (event.messageType === LineMessageType.IMAGE) {
+  if (event.messageType === LineMessageType.IMAGE && !options?.deferImageClassification) {
     const classify = dependencies.classifyLineImage ?? classifyLineImage;
     imageClassification = await classify({
       channelAccessToken: config.channelAccessToken,
@@ -4069,7 +4092,13 @@ export async function processLineWebhookPayload(
 
 // ── Coalescing engine ───────────────────────────────────────────────────────
 
-const DEFAULT_COALESCE_WINDOW_MS = 3_000;
+// Quiet window before the owner starts the (expensive) pipeline. 5s, not 3s:
+// customers type a burst one short phrase at a time ("สายพานแอร" → "แอคคอต" 5.2s
+// apart in the 2026-08-14 incident), and every message that lands after the
+// window closes costs either a whole wasted pipeline pass (abort-on-newer) or a
+// second reply. Waiting is far cheaper than re-running Gemini, and the typing
+// dots are already showing, so the extra 2s is invisible to the customer.
+const DEFAULT_COALESCE_WINDOW_MS = 5_000;
 const DEFAULT_COALESCE_LEASE_MS = 60_000;
 // B2b: once this much wall-clock has elapsed since the request was received, the
 // owner stops debouncing/re-looping and does ONE forced final pass (force-send,
@@ -4150,11 +4179,15 @@ async function processCoalescedEvents(
         continue;
       }
 
-      const { conversation, inboundMessage, imageClassification, aiJob } = await ingestLineEvent(
+      // deferImageClassification: persist + bump seq FIRST, classify later in the
+      // owner loop. Keeps a slow vision call from hiding an image from its own
+      // burst (see the comment in ingestLineEvent).
+      const { conversation, inboundMessage, aiJob } = await ingestLineEvent(
         event,
         config,
         dependencies,
         imageSearchEnabled,
+        { deferImageClassification: true },
       );
       // The per-event PENDING job created during ingest is NOT the unit of work in
       // coalesced mode — the owner processes one merged job for the whole turn.
@@ -4168,9 +4201,6 @@ async function processCoalescedEvents(
           finishedAt: new Date(),
         })
         .catch(() => undefined);
-      if (imageClassification && event.lineMessageId) {
-        classByMessageId.set(event.lineMessageId, imageClassification);
-      }
       await bumpSeq(conversation.id);
       // Typing dots are fired inside ingestLineEvent (before the image vision
       // call), so they're already showing by the time we get here.
@@ -4427,6 +4457,112 @@ async function runConversationOwnerLoop(args: {
 }
 
 /**
+ * Side effects that belong to "an image was just classified for the first time".
+ * These used to live in `ingestLineEvent`; they moved here with the vision call
+ * so that ingest stays fast (see the comment there). Every step is best-effort:
+ * a failure must never cost the customer their reply, and the classification is
+ * already in hand either way.
+ */
+async function finalizeFreshImageClassification(args: {
+  conversationId: string;
+  lineUserId: string;
+  message: UnansweredLineMessage;
+  classification: LineImageClassification;
+  config: LineWebhookProcessorConfig;
+  dependencies: LineWebhookProcessorDependencies;
+  imageSearchEnabled: boolean;
+  classByMessageId: Map<string, LineImageClassification>;
+}): Promise<void> {
+  const {
+    conversationId,
+    lineUserId,
+    message,
+    classification,
+    config,
+    dependencies,
+    imageSearchEnabled,
+    classByMessageId,
+  } = args;
+
+  // In-memory reuse first (synchronous): an abort-on-newer re-loop rebuilds the
+  // turn within this same invocation and must not pay for vision again.
+  if (message.lineMessageId) {
+    classByMessageId.set(message.lineMessageId, classification);
+  }
+
+  const route = applyImageClassificationToRoute(
+    routeChatIntent({ messageType: LineMessageType.IMAGE, text: null }),
+    classification,
+    imageSearchEnabled,
+  );
+
+  fireAndForgetAudit(dependencies, {
+    conversationId,
+    action: "IMAGE_CLASSIFIED",
+    payload: {
+      lineEventId: message.lineEventId,
+      kind: classification.kind,
+      intent: route.intent,
+      confidence: classification.confidence,
+      searchHintCount: classification.searchHints.length,
+      reason: classification.reason,
+    },
+  });
+
+  const storeClassification =
+    dependencies.storeImageClassificationForMessage ?? storeImageClassificationForMessage;
+  const updateIntent = dependencies.updateLineMessageIntent ?? updateLineMessageIntent;
+
+  await Promise.all([
+    storeClassification({
+      lineMessageRowId: message.id,
+      classification: serializeClassificationForReuse(classification),
+    }).catch(() => undefined),
+    // Ingest could only record the generic image intent; correct it now that
+    // vision has spoken (a slip must not stay labelled PART_IMAGE_INQUIRY).
+    updateIntent({ id: message.id, intent: route.intent }).catch(() => undefined),
+  ]);
+
+  if (classification.kind !== "payment_slip") return;
+
+  // Slips are captured on first classification only — `createPaymentSlip` is not
+  // idempotent, and the `fresh` guard above is what keeps one image from
+  // producing two slip rows across owner re-runs.
+  try {
+    const ingestSlip = dependencies.ingestPaymentSlip ?? ingestPaymentSlip;
+    const slip = await ingestSlip({
+      channelAccessToken: config.channelAccessToken,
+      conversationId,
+      lineUserId,
+      lineMessageId: message.lineMessageId,
+      content: classification.content ?? null,
+      ocr: classification.ocr ?? null,
+    });
+
+    fireAndForgetAudit(dependencies, {
+      conversationId,
+      action: "PAYMENT_SLIP_OCR",
+      payload: {
+        lineEventId: message.lineEventId,
+        paymentSlipId: slip.slipId,
+        verificationStatus: slip.verificationStatus,
+        imageStored: slip.imageStored,
+        hasAmount: slip.ocr.amount !== null,
+        hasBank: slip.ocr.bank !== null,
+        hasReference: slip.ocr.referenceNo !== null,
+        hasTransferDatetime: slip.ocr.transferDatetimeIso !== null,
+      },
+    });
+  } catch (error) {
+    console.error("[line-webhook-processor] payment slip ingest failed", {
+      conversationId,
+      lineMessageId: message.lineMessageId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
  * Merges all unanswered inbound messages of a burst into a single turn: combined
  * text, a unified image classification (union of part-image search hints), and
  * the latest reply token. Image messages whose classification wasn't cached this
@@ -4485,20 +4621,44 @@ async function buildMergedTurnInput(args: {
     // structured-field merge below stays deterministic (e.g. brand off the plate,
     // part type off the part photo). Per-image failures degrade to null.
     const resolvedList = await Promise.all(
-      imageMessages.map((message) => {
+      imageMessages.map(async (message) => {
         const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
-        if (cached) return Promise.resolve(cached);
+        if (cached) return { classification: cached, fresh: false };
         const stored = deserializeStoredClassification(storedByRowId.get(message.id));
-        if (stored) return Promise.resolve(stored);
-        return classify({
+        if (stored) return { classification: stored, fresh: false };
+        const classification = await classify({
           channelAccessToken: config.channelAccessToken,
           lineMessageId: message.lineMessageId,
         }).catch(() => null);
+        return { classification, fresh: true };
       }),
     );
-    const classifications: LineImageClassification[] = resolvedList.filter(
-      (c): c is LineImageClassification => c !== null,
+
+    // Everything ingest used to do the moment it classified an image now happens
+    // here, exactly once per image (`fresh`): cache + persist the classification
+    // so an abort-on-newer re-loop or the cron recovery never re-OCRs it, correct
+    // the stored intent, and ingest a payment slip while its content is still in
+    // hand. A cached/stored hit means a previous pass already did all of this.
+    await Promise.all(
+      resolvedList.map((entry, index) =>
+        entry.fresh && entry.classification
+          ? finalizeFreshImageClassification({
+              conversationId: args.conversationId,
+              lineUserId: args.lineUserId,
+              message: imageMessages[index],
+              classification: entry.classification,
+              config,
+              dependencies,
+              imageSearchEnabled,
+              classByMessageId,
+            })
+          : Promise.resolve(),
+      ),
     );
+
+    const classifications: LineImageClassification[] = resolvedList
+      .map((entry) => entry.classification)
+      .filter((c): c is LineImageClassification => c !== null);
 
     // Kind priority: a real part image wins (so the turn searches); else a slip;
     // else unknown. Search hints are the union from every part image.

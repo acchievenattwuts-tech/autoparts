@@ -52,6 +52,9 @@ function createCoalesceHarness(options?: {
   lockAcquirable?: boolean;
   /** Bumps the inbound seq once during the FIRST pipeline pass to force one abort. */
   bumpDuringFirstPass?: boolean;
+  /** Holds every vision call until `releaseClassify()` is called — models a slow
+   *  Gemini response so a second webhook payload can land mid-classification. */
+  blockClassify?: boolean;
 }) {
   const state = {
     seq: 0,
@@ -70,8 +73,17 @@ function createCoalesceHarness(options?: {
     searches: [] as string[],
     statePatches: [] as string[],
     abortChecks: 0,
+    classifies: [] as (string | null)[],
+    slipIngests: [] as (string | null)[],
+    intentUpdates: [] as LineIntent[],
   };
   let firstPassBumped = false;
+  let releaseClassify = (): void => undefined;
+  const classifyGate = options?.blockClassify
+    ? new Promise<void>((resolve) => {
+        releaseClassify = resolve;
+      })
+    : null;
 
   const dependencies: LineWebhookProcessorDependencies = {
     hasProcessedLineEvent: async () => false,
@@ -160,6 +172,8 @@ function createCoalesceHarness(options?: {
     },
     startLineLoadingAnimation: async (input) => input.chatId.startsWith("U"),
     classifyLineImage: async (input) => {
+      calls.classifies.push(input.lineMessageId ?? null);
+      if (classifyGate) await classifyGate;
       const override = input.lineMessageId
         ? options?.imageClassByMessageId?.[input.lineMessageId]
         : undefined;
@@ -238,8 +252,9 @@ function createCoalesceHarness(options?: {
     markLineProcessedSeq: async ({ seq }) => {
       state.processedSeq = seq;
     },
-    ingestPaymentSlip: async () =>
-      ({
+    ingestPaymentSlip: async (input) => {
+      calls.slipIngests.push(input.lineMessageId ?? null);
+      return {
         slipId: "slip-1",
         verificationStatus: "PENDING_REVIEW",
         ocr: {
@@ -252,7 +267,8 @@ function createCoalesceHarness(options?: {
           rawText: null,
         },
         imageStored: true,
-      }) as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["ingestPaymentSlip"]>>>,
+      } as Awaited<ReturnType<NonNullable<LineWebhookProcessorDependencies["ingestPaymentSlip"]>>>;
+    },
     getLineInquiryFrame: async () => state.frame,
     updateLineInquiryFrame: async (input) => {
       state.frame = {
@@ -262,6 +278,12 @@ function createCoalesceHarness(options?: {
         year: input.year,
         updatedAt: new Date(),
       };
+    },
+    // Vision now runs in the owner loop, so the reuse copy + intent correction
+    // are written from there — stub both to keep the suite hermetic.
+    storeImageClassificationForMessage: async () => undefined,
+    updateLineMessageIntent: async ({ intent }) => {
+      calls.intentUpdates.push(intent);
     },
     getUnansweredInboundLineMessages: async (_id, withinMs = 5 * 60_000) => {
       const cutoff = Date.now() - withinMs;
@@ -283,7 +305,7 @@ function createCoalesceHarness(options?: {
     sleep: async () => undefined, // no real debounce wait in tests
   };
 
-  return { state, calls, dependencies };
+  return { state, calls, dependencies, releaseClassify: () => releaseClassify() };
 }
 
 const baseConfig: LineWebhookProcessorConfig = {
@@ -992,5 +1014,77 @@ test("coalesce: an image-only burst does let the photo's subject override the fr
   assert.ok(
     auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
     "an image-only burst is steered by what the photos show",
+  );
+});
+
+// ── A: vision must not gate burst grouping (2026-08-14 incident) ─────────────
+// Production case (conv `cmr0blzlh…`): the customer sent a photo, then "สายพานแอร",
+// then "แอคคอต". Vision took 14.8s, and because ingest classified BEFORE persisting
+// the row + bumping the seq, the photo was invisible to its own burst — the text
+// was answered alone ("รบกวนแจ้งยี่ห้อ/รุ่นรถ") and the photo got a second reply.
+// Ingest now persists first, so a slow vision call can no longer split the burst.
+test("coalescing: a slow vision call does not split the burst into two replies", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies, releaseClassify } = createCoalesceHarness({
+    imageKind: "part_image",
+    blockClassify: true,
+    imagePartType: "สายพานหน้าเครื่อง",
+    imageHints: ["สายพานหน้าเครื่อง"],
+  });
+
+  // Separate webhook payloads, exactly as LINE delivered them.
+  const imagePayload = processLineWebhookPayload(
+    { events: [imageEvent("e-img")] },
+    baseConfig,
+    dependencies,
+  );
+  const textPayload = processLineWebhookPayload(
+    { events: [textEvent("e-text", "สายพานแอร")] },
+    baseConfig,
+    dependencies,
+  );
+
+  // The photo's turn is stuck in vision; the text lands meanwhile. Nothing may be
+  // sent until the merged turn is complete.
+  await Promise.resolve();
+  releaseClassify();
+  await Promise.all([imagePayload, textPayload]);
+
+  assert.equal(calls.replies.length, 1, "one reply for the whole burst, not one per message");
+  assert.ok(
+    !calls.replies[0]?.includes("รบกวนแจ้งยี่ห้อ/รุ่นรถ"),
+    "never answers the text alone while the photo is still being classified",
+  );
+});
+
+// The cache write-back that pays for moving vision into the owner loop: an
+// abort-on-newer re-loop rebuilds the merged turn, and must reuse the
+// classification instead of re-billing Gemini for the same photo.
+test("coalescing: an aborted pass does not re-classify the same image", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({
+    imageKind: "part_image",
+    bumpDuringFirstPass: true, // forces exactly one abort + re-merge
+  });
+
+  await processLineWebhookPayload({ events: [imageEvent("e1")] }, baseConfig, dependencies);
+
+  assert.equal(calls.replies.length, 1, "still exactly one reply");
+  assert.equal(calls.classifies.length, 1, "vision ran once despite the re-merge");
+});
+
+// Slip capture moved out of ingest along with vision — it must still happen
+// exactly once, and the image row's intent must be corrected from the generic
+// PART_IMAGE_INQUIRY that ingest could only guess at.
+test("coalescing: a payment slip is still ingested exactly once and relabelled", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness({ imageKind: "payment_slip" });
+
+  await processLineWebhookPayload({ events: [imageEvent("e-slip")] }, baseConfig, dependencies);
+
+  assert.deepEqual(calls.slipIngests, ["m-e-slip"], "slip ingested once, for the right image");
+  assert.ok(
+    calls.intentUpdates.includes(LineIntent.PAYMENT_SLIP_IMAGE),
+    "the image row is relabelled as a payment slip",
   );
 });

@@ -327,6 +327,51 @@ export async function getStoredImageClassificationsByMessageRowIds(
   return result;
 }
 
+/**
+ * Persists a vision classification onto the image message's most recent job
+ * payload so a later owner re-run / cron recovery reuses it instead of paying
+ * for a second Gemini call (B2a).
+ *
+ * Needed because vision no longer runs at ingest time for coalesced turns: the
+ * owner classifies on demand, so the owner is now the one that has to write the
+ * reuse copy that ingest used to write.
+ */
+export async function storeImageClassificationForMessage(input: {
+  lineMessageRowId: string;
+  classification: JsonInput;
+}): Promise<void> {
+  const job = await db.lineAiJob.findFirst({
+    where: { lineMessageId: input.lineMessageRowId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, payload: true },
+  });
+  if (!job) return;
+  const payload =
+    job.payload && typeof job.payload === "object" && !Array.isArray(job.payload)
+      ? (job.payload as Record<string, unknown>)
+      : {};
+  await db.lineAiJob.update({
+    where: { id: job.id },
+    data: { payload: { ...payload, imageClassification: input.classification } as JsonInput },
+  });
+}
+
+/**
+ * Corrects the stored intent of an inbound image row once vision has classified
+ * it. Ingest can only record the generic `PART_IMAGE_INQUIRY` for an image (the
+ * classification hasn't run yet), so without this a payment slip would keep the
+ * wrong intent label in the admin conversation view.
+ */
+export async function updateLineMessageIntent(input: {
+  id: string;
+  intent: LineIntent;
+}): Promise<void> {
+  await db.lineMessage.update({
+    where: { id: input.id },
+    data: { intent: input.intent },
+  });
+}
+
 export async function updateLineAiJob(
   jobId: string,
   patch: {
