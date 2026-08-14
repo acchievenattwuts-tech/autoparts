@@ -22,6 +22,23 @@ export type CarModelSynonymRow = {
  */
 export type CarModelVariantLookup = Map<string, string[]>;
 
+export type CarModelGroundingEvidence = {
+  /** Display-preserving canonical term used to normalize conservative LLM prefixes. */
+  canonicalTerm: string;
+  /** Spellings that identify only this canonical SearchSynonym cluster. */
+  safeVariants: string[];
+  /** Spellings shared by two or more canonical clusters; never hard-ground on them. */
+  ambiguousVariants: string[];
+};
+
+/**
+ * A deliberately narrower lookup for hard-filter evidence. Product-search recall
+ * may use broad/overlapping synonyms, but grounding must not: a spelling such as
+ * "hiace" can belong to both Hiace and Hiace Commuter, so it is useful recall yet
+ * unsafe proof for choosing one model.
+ */
+export type CarModelGroundingLookup = Map<string, CarModelGroundingEvidence>;
+
 export const CAR_MODEL_ALIAS_CACHE_TTL_MS = 60_000;
 
 type CacheState = {
@@ -47,6 +64,57 @@ export const buildCarModelVariantLookup = (rows: CarModelSynonymRow[]): CarModel
     if (members.length === 0) continue;
     const list = Array.from(new Set(members));
     for (const member of list) lookup.set(member, list);
+  }
+  return lookup;
+};
+
+const normalizedMembers = (row: CarModelSynonymRow): string[] =>
+  Array.from(
+    new Set(
+      [row.term, ...(row.synonyms ?? [])]
+        .map((value) => value?.trim().toLowerCase())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+
+/**
+ * Builds a shadow-only evidence lookup. Case-only duplicate canonical clusters are
+ * merged first (MIRAGE/Mirage), then spellings owned by multiple different
+ * canonical terms are marked ambiguous and excluded from `safeVariants`.
+ */
+export const buildCarModelGroundingLookup = (
+  rows: CarModelSynonymRow[],
+): CarModelGroundingLookup => {
+  const clusters = new Map<string, { canonicalTerm: string; members: Set<string> }>();
+  for (const row of rows) {
+    const canonical = row.term.trim().toLowerCase();
+    if (!canonical) continue;
+    const cluster = clusters.get(canonical) ?? {
+      canonicalTerm: row.term.trim(),
+      members: new Set<string>(),
+    };
+    for (const member of normalizedMembers(row)) cluster.members.add(member);
+    clusters.set(canonical, cluster);
+  }
+
+  const owners = new Map<string, Set<string>>();
+  for (const [canonical, cluster] of clusters) {
+    for (const member of cluster.members) {
+      const memberOwners = owners.get(member) ?? new Set<string>();
+      memberOwners.add(canonical);
+      owners.set(member, memberOwners);
+    }
+  }
+
+  const lookup: CarModelGroundingLookup = new Map();
+  for (const [canonical, cluster] of clusters) {
+    const safeVariants: string[] = [];
+    const ambiguousVariants: string[] = [];
+    for (const member of cluster.members) {
+      if ((owners.get(member)?.size ?? 0) === 1) safeVariants.push(member);
+      else ambiguousVariants.push(member);
+    }
+    lookup.set(canonical, { canonicalTerm: cluster.canonicalTerm, safeVariants, ambiguousVariants });
   }
   return lookup;
 };

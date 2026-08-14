@@ -137,7 +137,10 @@ before(async () => {
     namedExports: { loadCarBrandVariantLookup: async () => new Map<string, string[]>() },
   });
   await mock.module("@/lib/car-model-alias-loader", {
-    namedExports: { loadCarModelVariantLookup: async () => new Map<string, string[]>() },
+    namedExports: {
+      loadCarModelVariantLookup: async () => new Map<string, string[]>(),
+      loadCarModelGroundingLookup: async () => new Map(),
+    },
   });
 
   await mock.module("@/lib/messenger/messenger-messaging", {

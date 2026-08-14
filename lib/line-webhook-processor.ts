@@ -40,6 +40,10 @@ import {
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
+import { correctVehicleSpelling } from "@/lib/chat-core/vehicle-llm-fallback";
+import { stageVehicleSynonymSuggestion } from "@/lib/chat-core/vehicle-synonym-staging";
+import { shouldSkipVehicleSpellingAttempt } from "@/lib/chat-core/vehicle-synonym-attempt-cache";
+import { logChatProductSearchTelemetry } from "@/lib/chat-core/search-telemetry";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import {
   detectChatMultiSubjects,
@@ -50,7 +54,10 @@ import {
   filterChatProductsByVehicleCompatibility,
 } from "@/lib/chat-core/product-compatibility";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
+import {
+  loadCarModelGroundingLookup,
+  loadCarModelVariantLookup,
+} from "@/lib/car-model-alias-loader";
 import { groupToRoute, intentToGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 import {
   resolveMixedProductAdminTurn,
@@ -232,6 +239,15 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; LLM spell-correction fallback used only when the
    *  deterministic resolver cannot map a category. Injected so tests can stub it. */
   correctPartSpelling?: typeof correctPartSpelling;
+  /** Optional override; the VEHICLE twin of correctPartSpelling — proposes the car
+   *  model a customer misspelled so it can be staged for admin approval. */
+  correctVehicleSpelling?: typeof correctVehicleSpelling;
+  /** Optional override; stages an AI vehicle-spelling proposal in the existing
+   *  search-review queue (after verifying it against real master data). */
+  stageVehicleSynonymSuggestion?: typeof stageVehicleSynonymSuggestion;
+  /** Optional override; records the turn in ProductSearchLog so chat misses reach
+   *  the no-result quality report. */
+  logChatProductSearchTelemetry?: typeof logChatProductSearchTelemetry;
   /** Optional override; loads the DB-backed Thai↔English brand spelling lookup
    *  (cached) so the search guard can ground a Thai-typed brand. */
   loadCarBrandVariantLookup?: typeof loadCarBrandVariantLookup;
@@ -239,6 +255,8 @@ export type LineWebhookProcessorDependencies = {
    *  (SearchSynonym, cached) so the guard can ground a Thai-typed model
    *  ("สตาด้า"→"Strada"). */
   loadCarModelVariantLookup?: typeof loadCarModelVariantLookup;
+  /** Optional shadow-only, ambiguity-aware model evidence lookup. */
+  loadCarModelGroundingLookup?: typeof loadCarModelGroundingLookup;
   /** Optional override; AI-generates a scoped จูน-voiced reply for the
    *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
    *  scope and steers back to parts). */
@@ -296,6 +314,7 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   resolveChatFitmentFilters,
   loadCarBrandVariantLookup,
   loadCarModelVariantLookup,
+  loadCarModelGroundingLookup,
   generateScopedConversationalReply,
   acquireLineConversationLock,
   releaseLineConversationLock,
@@ -1385,6 +1404,23 @@ export async function processLineAiReply(
       ? routeChatIntent({ messageType: LineMessageType.TEXT, text: processText })
       : input.route;
     const layer1Group = intentToGroup(baseRoute.intent);
+    // The edit-distance backstop reclassified a message the literal rules missed
+    // (e.g. "เครม" → เคลม). Routing is identical to a literal hit by design, so this
+    // audit row is the ONLY signal that it fired — needed to measure the false-
+    // positive rate and to spot a keyword that should be added to the real regex.
+    if (baseRoute.matchedVia === "typo") {
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "INTENT_TYPO_GUARD",
+        payload: {
+          lineEventId: input.lineEventId,
+          text: input.text ?? null,
+          keyword: baseRoute.matchedTypoKeyword ?? null,
+          intent: baseRoute.intent,
+          reason: baseRoute.reason,
+        },
+      });
+    }
     const quotationRequest = baseRoute.reason === "QUOTATION_REQUEST_KEYWORD";
     // Price/purchase keyword hits are NO LONGER a hard skip — a message like
     // "หม้อน้ำ d-max ราคาเท่าไหร่" must be classified so it can route to product
@@ -1646,15 +1682,28 @@ export async function processLineAiReply(
     const isNonProductTurn = group !== "product";
     // DB-backed Thai↔English brand spellings (cached, best-effort) so the guard can
     // ground a brand the customer typed in Thai ("โตโยต้า" → "Toyota").
-    const [brandLookup, modelLookup] = isNonProductTurn
-      ? [null, null]
+    const [brandLookup, modelLookup, modelGroundingLookup] = isNonProductTurn
+      ? [null, null, null]
       : await Promise.all([
           (dependencies.loadCarBrandVariantLookup ?? loadCarBrandVariantLookup)().catch(() => null),
           (dependencies.loadCarModelVariantLookup ?? loadCarModelVariantLookup)().catch(() => null),
+          (dependencies.loadCarModelGroundingLookup ?? loadCarModelGroundingLookup)().catch(() => null),
         ]);
     const guardedSearch = isNonProductTurn
-      ? { intent: effectiveSearchIntent, forceLiteralQuery: false, requiredTokens: [] }
-      : guardChatSearchIntent({ intent: effectiveSearchIntent, latestText: processText, history, brandLookup, modelLookup });
+      ? {
+          intent: effectiveSearchIntent,
+          forceLiteralQuery: false,
+          requiredTokens: [] as string[],
+          modelGroundingShadow: null,
+        }
+      : guardChatSearchIntent({
+          intent: effectiveSearchIntent,
+          latestText: processText,
+          history,
+          brandLookup,
+          modelLookup,
+          modelGroundingLookup,
+        });
     const guardedSearchIntent = guardedSearch.intent;
     const classifierQuery = isNonProductTurn
       ? null
@@ -1939,6 +1988,21 @@ export async function processLineAiReply(
           namedUnreadableVehicle,
         },
       });
+      if (guardedSearch.modelGroundingShadow) {
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action: "MODEL_GROUNDING_SHADOW",
+          payload: {
+            channel: "line",
+            lineEventId: input.lineEventId,
+            ...guardedSearch.modelGroundingShadow,
+            requiredTokens: guardedSearch.requiredTokens,
+            downstreamFrameModel: inquiryFrame.carModel,
+            sessionStale,
+            topicShift: frameTopicShift,
+          },
+        });
+      }
 
       // ── Image subject contradicts the carried frame (Option C) ──────────────
       // An image-only turn has no text classifier, so the frame keeps the part
@@ -2601,6 +2665,99 @@ export async function processLineAiReply(
       !vehicleUnresolvedGuard &&
       !isAccessoryAnchored &&
       (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
+
+    // ── Closed loop: make this turn's miss reviewable, and propose a fix ───────
+    // Everything above has decided what the customer will actually SEE. That is the
+    // number worth recording — the engine's raw total hides the cases most worth
+    // reviewing, where the search "worked" but a guard suppressed every row because
+    // we could not confirm the vehicle or the relevance.
+    if (productSearch.searched && !isNonProductTurn) {
+      const suppressedByGuard = vehicleUnresolvedGuard || weakCategoryMatchGuard;
+      const shownCount = suppressedByGuard ? 0 : products.length;
+
+      // Fire-and-forget, like every audit write in this file: a LINE turn has to
+      // land inside the free reply-token window, and telemetry must never spend any
+      // of that budget. The pipeline awaits seconds of Gemini work after this point,
+      // so the upsert has ample time to settle before the handler returns.
+      void (dependencies.logChatProductSearchTelemetry ?? logChatProductSearchTelemetry)({
+        source: "line",
+        // The customer's own words — a reviewer needs to see what was typed, not
+        // the classifier's rewrite of it.
+        query: processText ?? input.text,
+        shownCount,
+        filters: {
+          categoryName: fitmentFilters.categoryName ?? null,
+          carBrandName: fitmentFilters.carBrandName ?? null,
+          carModelName: fitmentFilters.carModelName ?? null,
+          fitmentYear: frameYear,
+        },
+      }).catch(() => undefined);
+
+      // The customer named a car this turn that never became a hard model filter.
+      // Ask the LLM which model they meant, verify the answer against real master
+      // data, and stage it for admin approval. Approving it writes a SearchSynonym
+      // row, which every resolution path already reads — so the same misspelling
+      // resolves deterministically from then on, with no LLM call at all.
+      //
+      // Gated on the customer having named a model IN THIS TURN (evidence-grounded,
+      // so never a hallucination) and on the reply actually being degraded — a turn
+      // that answered fine has nothing to fix.
+      const vehicleNeedsRepair =
+        isTextTurn &&
+        Boolean(guardedSearchIntent?.carModel) &&
+        !fitmentFilters.carModelName &&
+        (shownCount === 0 || vehicleUnresolvedGuard) &&
+        // Customers retype the same message constantly; without this a repeat buys
+        // another Gemini call to reach a conclusion already staged in the DB.
+        !shouldSkipVehicleSpellingAttempt(processText);
+
+      if (vehicleNeedsRepair) {
+        void (async () => {
+          try {
+            const correction = await (
+              dependencies.correctVehicleSpelling ?? correctVehicleSpelling
+            )(processText, { partType: inquiryFrame?.partType ?? null });
+            if (!correction?.corrected) return;
+
+            // The thing to stage is what the CUSTOMER typed ("ฟอจูเนอ"), never the
+            // classifier's `carModel` — that is normally the canonical English name
+            // ("Fortuner"), which the guardrails would (correctly) reject as an
+            // already-known spelling, so the loop would silently never stage
+            // anything. `correction.original` is the LLM's echo of the customer's
+            // own word, and like every other LLM-reported quote in this pipeline it
+            // is VERIFIED against the real text before it is trusted (same rule as
+            // `carMentionInLatest`); an unverifiable echo is dropped rather than
+            // guessed at.
+            const misspelling = correction.original?.trim() ?? "";
+            const misspellingVerified =
+              Boolean(misspelling) && chatCarMentionOccursInLatest(misspelling, processText);
+
+            const staged = misspellingVerified
+              ? await (dependencies.stageVehicleSynonymSuggestion ?? stageVehicleSynonymSuggestion)({
+                  misspelling,
+                  corrected: correction.corrected,
+                })
+              : ({ staged: false, reason: "ORIGINAL_NOT_IN_CUSTOMER_TEXT" } as const);
+
+            fireAndForgetAudit(dependencies, {
+              conversationId: input.conversation.id,
+              action: "VEHICLE_SYNONYM_SUGGESTED",
+              payload: {
+                lineEventId: input.lineEventId,
+                latestText: input.text ?? null,
+                classifierModel: guardedSearchIntent?.carModel ?? null,
+                misspelling: misspelling || null,
+                corrected: correction.corrected,
+                staged: staged.staged,
+                reason: staged.staged ? staged.canonicalTerm : staged.reason,
+              },
+            });
+          } catch {
+            // A suggestion is a nice-to-have; it must never affect the reply.
+          }
+        })();
+      }
+    }
 
     // ── Evidence-based promotion of an image subject (Option B) ───────────────
     // The contradiction guard above lets a MEDIUM photo steer its own turn, but the

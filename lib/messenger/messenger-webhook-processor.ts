@@ -34,6 +34,7 @@ import {
 } from "@/lib/chat-core/search-gate";
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import { logMessengerModelGroundingShadow } from "@/lib/chat-core/model-grounding-shadow-telemetry";
 import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
 import {
   buildChatProductSpecSubject,
@@ -42,8 +43,12 @@ import {
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
+import { logChatProductSearchTelemetry } from "@/lib/chat-core/search-telemetry";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
-import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
+import {
+  loadCarModelGroundingLookup,
+  loadCarModelVariantLookup,
+} from "@/lib/car-model-alias-loader";
 import {
   applyChatPriceTier,
   buildUnlinkedPriceNote,
@@ -792,7 +797,7 @@ async function replyToMessengerTurn(params: {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
     const { fitmentPartHeadNoun, shouldHandoffUncertain, vehicleNamedButUnresolved, ...fitmentHints } =
-      await resolveMessengerFitmentHints(processText, history, classifiedIntent);
+      await resolveMessengerFitmentHints(processText, history, classifiedIntent, conversationId);
     if (shouldHandoffUncertain) {
       await handoffUncertainMessengerProduct({
         pageAccessToken,
@@ -962,6 +967,7 @@ async function resolveMessengerFitmentHints(
   processText: string,
   history: ChatHistoryItem[],
   classifiedIntent: ChatSearchIntent | null,
+  conversationId: string,
 ): Promise<{
   categoryName: string | null;
   carBrandName: string | null;
@@ -990,11 +996,19 @@ async function resolveMessengerFitmentHints(
     if (!rawIntent) {
       return { ...empty, shouldHandoffUncertain: true };
     }
-    const [brandLookup, modelLookup] = await Promise.all([
+    const [brandLookup, modelLookup, modelGroundingLookup] = await Promise.all([
       loadCarBrandVariantLookup().catch(() => null),
       loadCarModelVariantLookup().catch(() => null),
+      loadCarModelGroundingLookup().catch(() => null),
     ]);
-    const guarded = guardChatSearchIntent({ intent: rawIntent, latestText: processText, history, brandLookup, modelLookup });
+    const guarded = guardChatSearchIntent({
+      intent: rawIntent,
+      latestText: processText,
+      history,
+      brandLookup,
+      modelLookup,
+      modelGroundingLookup,
+    });
     const gi = guarded.intent;
     const productSpecs = resolveChatProductSpecs(processText);
 
@@ -1016,6 +1030,11 @@ async function resolveMessengerFitmentHints(
       isBroadChatPartType(processText) ||
       gateDecision?.reason === "BROAD_PART_TYPE"
     ) {
+      void logMessengerModelGroundingShadow({
+        messengerConversationId: conversationId,
+        shadow: guarded.modelGroundingShadow,
+        requiredTokens: guarded.requiredTokens,
+      });
       return { ...empty, shouldHandoffUncertain: true };
     }
 
@@ -1074,6 +1093,13 @@ async function resolveMessengerFitmentHints(
     const vehicleNamedButUnresolved =
       Boolean(gi?.carModel) && !filters.carModelName;
 
+    void logMessengerModelGroundingShadow({
+      messengerConversationId: conversationId,
+      shadow: guarded.modelGroundingShadow,
+      requiredTokens: guarded.requiredTokens,
+      downstreamResolvedModel: filters.carModelName ?? null,
+    });
+
     return {
       categoryName: filters.categoryName ?? null,
       carBrandName: filters.carBrandName ?? null,
@@ -1116,7 +1142,7 @@ async function replyWithMessengerMultiSubject(input: {
         shouldHandoffUncertain,
         vehicleNamedButUnresolved,
         ...fitmentHints
-      } = await resolveMessengerFitmentHints(query, input.history, subjectIntent);
+      } = await resolveMessengerFitmentHints(query, input.history, subjectIntent, input.conversationId);
 
       if (shouldHandoffUncertain || vehicleNamedButUnresolved) {
         await handoffUncertainMessengerProduct({
@@ -1183,11 +1209,25 @@ async function replyWithProductSearch(params: {
   const productSearch = await searchChatProductInquiry(params.bridgeInput);
   if (!productSearch.searched) return "not_searched";
 
+  // Records the turn in ProductSearchLog so Messenger misses reach the no-result
+  // quality report and its review → SearchSynonym loop, exactly like LINE. Called
+  // at every exit with the number of products the customer ACTUALLY saw: the
+  // engine's raw total would hide the cases most worth reviewing, where a guard
+  // suppressed every row because the fit could not be confirmed.
+  const logSearchTelemetry = (shownCount: number): Promise<void> =>
+    logChatProductSearchTelemetry({
+      source: "messenger",
+      query: params.bridgeInput.customerText ?? params.bridgeInput.text ?? params.originalText,
+      shownCount,
+      filters: params.bridgeInput.fitmentHints,
+    }).catch(() => undefined);
+
   if (
     shouldDirectNoMatchHandoff({
       productSearch,
     })
   ) {
+    await logSearchTelemetry(0);
     await escalateMessengerConversationToAdmin(params.conversationId);
     await safeNotify(
       notifyMessengerNeedsAdmin({
@@ -1253,6 +1293,7 @@ async function replyWithProductSearch(params: {
   // reply with an empty carousel and no admin notified is a silent dead-end, so
   // hand off to a human instead.
   if (productSearch.result.total > 0 && products.length === 0) {
+    await logSearchTelemetry(0);
     await escalateMessengerConversationToAdmin(params.conversationId);
     await safeNotify(
       notifyMessengerNeedsAdmin({
@@ -1293,6 +1334,7 @@ async function replyWithProductSearch(params: {
     const weakCategoryMatchGuard =
       !isAccessoryAnchored && (isAccessoryFallback || (!hasStrongShownMatch && !trigramExceptionShow));
     if (weakCategoryMatchGuard) {
+      await logSearchTelemetry(0);
       await escalateMessengerConversationToAdmin(params.conversationId);
       await safeNotify(
         notifyMessengerNeedsAdmin({
@@ -1312,6 +1354,8 @@ async function replyWithProductSearch(params: {
       return "handoff";
     }
   }
+
+  await logSearchTelemetry(products.length);
 
   const generatedSuggestion = await generateChatSuggestion({
     intent: params.route.intent,

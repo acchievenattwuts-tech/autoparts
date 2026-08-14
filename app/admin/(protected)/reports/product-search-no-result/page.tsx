@@ -44,8 +44,11 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { VEHICLE_SYNONYM_CANDIDATE_ACTION } from "@/lib/chat-core/vehicle-synonym-staging";
 import {
+  applySearchSynonymCandidate,
   autoApplySearchSynonymCandidates,
+  markProductSearchReviewOutcome,
   refreshProductSearchClusterCache,
 } from "./actions";
 import { FlashMessage } from "./FlashMessage";
@@ -87,9 +90,14 @@ const getActionLabel = (action: ProductSearchCandidateAction): string => {
     "product-alias-oem": "ตรวจ ProductAlias/OEM",
     "fitment-year": "ตรวจ fitment/year",
     "review-noise": "ตรวจว่าเป็น noise",
+    "vehicle-synonym": "AI เสนอชื่อรุ่นรถ",
   };
   return labels[action];
 };
+
+/** Pending AI vehicle-spelling suggestions shown at once. A backlog larger than
+ *  this means the chat is hitting a systemic gap, not individual typos. */
+const VEHICLE_SUGGESTION_LIMIT = 25;
 
 const outcomeStatusOptions = ["all", "pending", "applied", "ignored", "needs-investigation", "duplicate"] as const;
 
@@ -355,6 +363,18 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
   const outcomeMap = new Map(
     outcomes.map((outcome) => [`${outcome.normalizedQuery}\u0000${outcome.candidateAction}`, outcome]),
   );
+  // AI-staged car-model spellings from the chat pipeline. They live in their own
+  // candidateAction lane rather than attaching to a text-derived cluster, because
+  // the suggestion comes from the LLM reading the customer's whole conversation —
+  // which no analysis of the query STRING alone can reproduce. Always shown and
+  // never date-filtered, so a pending suggestion cannot hide behind whatever window
+  // the admin happens to be looking at.
+  const pendingVehicleSuggestions = await db.productSearchReviewOutcome.findMany({
+    where: { candidateAction: VEHICLE_SYNONYM_CANDIDATE_ACTION, status: "PENDING" },
+    orderBy: { updatedAt: "desc" },
+    take: VEHICLE_SUGGESTION_LIMIT,
+    select: { normalizedQuery: true, note: true, appliedRef: true, updatedAt: true },
+  });
   const filteredClusters = rawClusters
     .filter((cluster) => {
       if (outcomeStatus === "all") return true;
@@ -796,6 +816,92 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         </div>
       </details>
 
+      {pendingVehicleSuggestions.length > 0 ? (
+        <AdminSectionCard
+          title="AI เสนอชื่อรุ่นรถที่ลูกค้าพิมพ์ผิด (รออนุมัติ)"
+          description="มาจากแชท LINE/Messenger — ระบบหารุ่นรถที่ลูกค้าพิมพ์ไม่เจอ แล้ว AI เดาว่าน่าจะหมายถึงรุ่นไหน โดยตรวจกับข้อมูลรุ่นรถจริงแล้วว่าตรงกับรุ่นเดียวเท่านั้น · กด &quot;อนุมัติ&quot; จะเพิ่มเป็นคำพ้อง (SearchSynonym) ให้ครั้งต่อไปค้นเจอเองโดยไม่ต้องใช้ AI"
+          bodyClassName="p-0"
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10 bg-[#1e3a5f] text-white dark:bg-slate-800">
+                <tr>
+                  <th className="px-3 py-2.5 text-left font-medium">ลูกค้าพิมพ์ว่า</th>
+                  <th className="px-3 py-2.5 text-left font-medium">AI เสนอว่าคือรุ่น</th>
+                  <th className="px-3 py-2.5 text-left font-medium">ล่าสุด</th>
+                  <th className="px-3 py-2.5 text-left font-medium">ดำเนินการ</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-white/10">
+                {pendingVehicleSuggestions.map((suggestion) => (
+                  <tr
+                    key={suggestion.normalizedQuery}
+                    className="hover:bg-gray-50 dark:hover:bg-white/5"
+                  >
+                    <td className="px-3 py-2 font-medium text-gray-900 dark:text-slate-100">
+                      {suggestion.normalizedQuery}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="font-medium text-sky-800 dark:text-sky-300">
+                        {suggestion.appliedRef ?? "-"}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-slate-400">
+                      {formatDateTimeThai(suggestion.updatedAt)}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {/* Approve → writes the SearchSynonym row through the SAME
+                            action the storefront review flow uses, and flips this
+                            outcome to APPLIED so it leaves the queue. */}
+                        <form action={applySearchSynonymCandidate} className="inline">
+                          <input type="hidden" name="term" value={suggestion.appliedRef ?? ""} />
+                          <input type="hidden" name="candidate" value={suggestion.normalizedQuery} />
+                          <input
+                            type="hidden"
+                            name="normalizedQuery"
+                            value={suggestion.normalizedQuery}
+                          />
+                          <input
+                            type="hidden"
+                            name="candidateAction"
+                            value={VEHICLE_SYNONYM_CANDIDATE_ACTION}
+                          />
+                          <input type="hidden" name="returnTo" value={returnTo} />
+                          <FormSubmitButton
+                            className="h-8 rounded-md bg-[#1e3a5f] px-3 text-xs font-medium text-white hover:bg-[#163055] disabled:opacity-60 dark:bg-sky-700 dark:hover:bg-sky-600"
+                            disabled={!suggestion.appliedRef}
+                          >
+                            อนุมัติ
+                          </FormSubmitButton>
+                        </form>
+                        <form action={markProductSearchReviewOutcome} className="inline">
+                          <input
+                            type="hidden"
+                            name="normalizedQuery"
+                            value={suggestion.normalizedQuery}
+                          />
+                          <input
+                            type="hidden"
+                            name="candidateAction"
+                            value={VEHICLE_SYNONYM_CANDIDATE_ACTION}
+                          />
+                          <input type="hidden" name="status" value="ignored" />
+                          <input type="hidden" name="returnTo" value={returnTo} />
+                          <FormSubmitButton className="h-8 rounded-md border border-gray-300 px-3 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5">
+                            ไม่ใช่
+                          </FormSubmitButton>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </AdminSectionCard>
+      ) : null}
+
       <AdminSectionCard
         title="Top normalized query clusters"
         description={`รวม query ที่สะกด/เว้นวรรค/เครื่องหมายต่างกันให้อยู่กลุ่มเดียวกัน แสดงสูงสุด ${CLUSTER_LIMIT} กลุ่ม${useCache ? ` จาก cache "${matchedWindow?.label ?? ""}" (${cachedRows.length} clusters ทั้งหมด)` : `จากรายการล่าสุด ${ANALYSIS_LIMIT} รายการ (live aggregation)`}`}
@@ -875,7 +981,11 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                           rawQueries: cluster.rawQueries,
                           candidateAction: cluster.candidateAction as "search-synonym" | "product-alias-oem" | "fitment-year" | "review-noise",
                         }}
-                        outcome={outcome ? { status: outcome.status, note: outcome.note ?? null } : null}
+                        outcome={
+                          outcome
+                            ? { status: outcome.status, note: outcome.note ?? null, suggestedTerm: null }
+                            : null
+                        }
                         products={products}
                         carBrands={carBrands}
                         fitmentYearHint={fitmentYearHint}

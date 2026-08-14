@@ -127,6 +127,7 @@ test(
       namedExports: {
         loadCarModelVariantLookup: async () =>
           new Map<string, string[]>([["odyssey", ["odyssey", "ออดิซี่", "honda odyssey"]]]),
+        loadCarModelGroundingLookup: async () => new Map(),
       },
     });
 

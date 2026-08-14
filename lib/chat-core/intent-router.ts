@@ -1,5 +1,6 @@
 import { LineIntent, LineMessageType } from "@/lib/generated/prisma";
-import { detectAdminOnlyKnowledgeTopic } from "@/lib/chat-core/admin-only-knowledge";
+import { detectAdminOnlyKnowledgeMatch } from "@/lib/chat-core/admin-only-knowledge";
+import { detectChatIntentTypo } from "@/lib/chat-core/intent-typo-guard";
 
 const SERVICE_INQUIRY_SAFE_RE = new RegExp(
   [
@@ -30,6 +31,19 @@ export type ChatIntentRouteResult = {
   requiresImageAnalysis: boolean;
   requiresMoreInfo: boolean;
   reason: string;
+  /**
+   * How the rule fired. `"literal"` (the default, and what every pre-existing
+   * branch produces) means a regex matched the text as typed. `"typo"` means every
+   * literal rule missed and the edit-distance backstop
+   * ({@link detectChatIntentTypo}) recognised a mis-keyed high-stakes keyword.
+   *
+   * `reason` is deliberately IDENTICAL for both, so downstream routing logic in the
+   * channel processors needs no change; this field exists purely so the audit trail
+   * can measure how often the backstop fires and on what.
+   */
+  matchedVia?: "literal" | "typo";
+  /** The canonical keyword the typo backstop matched. Only set when matchedVia = "typo". */
+  matchedTypoKeyword?: string;
 };
 
 const GREETING_RE = /^(สวัสดี|หวัดดี|ดีครับ|ดีค่ะ|hello\b|hi\b)/i;
@@ -143,8 +157,9 @@ function routeText(text: string): ChatIntentRouteResult {
   // Warranty/returns and every shipping-related question are business operations
   // owned by an admin. Keep this deterministic and ahead of FAQ/shop-info routing
   // so neither the intent LLM nor Knowledge RAG can auto-answer these topics.
-  const adminOnlyKnowledgeTopic = detectAdminOnlyKnowledgeTopic(normalized);
-  if (adminOnlyKnowledgeTopic) {
+  const adminOnlyKnowledgeMatch = detectAdminOnlyKnowledgeMatch(normalized);
+  if (adminOnlyKnowledgeMatch) {
+    const adminOnlyKnowledgeTopic = adminOnlyKnowledgeMatch.topic;
     return {
       intent:
         adminOnlyKnowledgeTopic === "warranty_return"
@@ -158,6 +173,12 @@ function routeText(text: string): ChatIntentRouteResult {
         adminOnlyKnowledgeTopic === "warranty_return"
           ? "WARRANTY_RETURN_ADMIN_ONLY"
           : "SHIPPING_ADMIN_ONLY",
+      ...(adminOnlyKnowledgeMatch.matchedVia === "typo"
+        ? {
+            matchedVia: "typo" as const,
+            matchedTypoKeyword: adminOnlyKnowledgeMatch.keyword ?? undefined,
+          }
+        : {}),
     };
   }
 
@@ -269,6 +290,25 @@ function routeText(text: string): ChatIntentRouteResult {
       requiresImageAnalysis: false,
       requiresMoreInfo: false,
       reason: "SHOP_INFO_KEYWORD",
+    };
+  }
+
+  // Typo backstop — LAST rule before the product default, so it can only ever
+  // reclassify a message that would otherwise have been assumed to be a product
+  // question. Catches an INTERNAL misspelling of a high-stakes operational keyword
+  // ("เครม" for เคลม, "สลิบ" for สลิป) that the literal rules above cannot see.
+  // Reuses the literal rule's own `reason`, so routing downstream is identical.
+  const typoMatch = detectChatIntentTypo(normalized);
+  if (typoMatch) {
+    return {
+      intent: typoMatch.intent,
+      allowsSearch: false,
+      requiresAdmin: typoMatch.intent !== LineIntent.SHOP_INFO,
+      requiresImageAnalysis: false,
+      requiresMoreInfo: false,
+      reason: typoMatch.reason,
+      matchedVia: "typo",
+      matchedTypoKeyword: typoMatch.keyword,
     };
   }
 

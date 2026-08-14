@@ -1,5 +1,7 @@
 import {
+  buildCarModelGroundingLookup,
   buildCarModelVariantLookup,
+  type CarModelGroundingLookup,
   type CarModelVariantLookup,
 } from "@/lib/car-model-alias-cache";
 import { loadActiveSynonymRows } from "@/lib/search-synonyms";
@@ -13,6 +15,15 @@ import { loadActiveSynonymRows } from "@/lib/search-synonyms";
 export const loadCarModelVariantLookup = async (): Promise<CarModelVariantLookup> => {
   try {
     return buildCarModelVariantLookup(await loadActiveSynonymRows());
+  } catch {
+    return new Map();
+  }
+};
+
+/** Shadow-only hard-grounding evidence. Kept separate from the broad recall map. */
+export const loadCarModelGroundingLookup = async (): Promise<CarModelGroundingLookup> => {
+  try {
+    return buildCarModelGroundingLookup(await loadActiveSynonymRows());
   } catch {
     return new Map();
   }

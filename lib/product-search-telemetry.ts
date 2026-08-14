@@ -21,7 +21,15 @@ type ProductSearchTelemetryInput = {
   order?: string | null;
 };
 
-type ProductSearchLogSource = "storefront" | "admin";
+/**
+ * Where the search came from. `line` / `messenger` were added so CHAT traffic
+ * feeds the same no-result quality report the storefront already feeds — until
+ * then the report only ever saw storefront + admin searches, while chat (the
+ * shop's busiest channel) was invisible to it and its misses were never reviewed.
+ * The column is used as a filter everywhere, so the existing reports can still be
+ * read per channel.
+ */
+type ProductSearchLogSource = "storefront" | "admin" | "line" | "messenger";
 
 type ProductSearchLogInputArgs = {
   input: ProductSearchTelemetryInput;
@@ -29,6 +37,15 @@ type ProductSearchLogInputArgs = {
   source: ProductSearchLogSource;
   path: string;
   isBot?: boolean;
+  /**
+   * How the write is scheduled.
+   *  - `"after"` (default) defers via `next/server`'s `after()`, keeping it off the
+   *    response path. Requires a request scope.
+   *  - `"await"` writes inline. Used by the chat pipeline, which runs inside a
+   *    queue worker / coalescing loop where a request scope is not guaranteed —
+   *    there `after()` throws and the row would be silently dropped.
+   */
+  flush?: "after" | "await";
 };
 
 const MAX_QUERY_LENGTH = 200;
@@ -149,7 +166,7 @@ export async function logProductSearchTelemetry(args: ProductSearchLogInputArgs)
     //
     // Repeated identical searches inside the same hourly bucket upsert into a
     // single row (incrementing hitCount) instead of bloating the table.
-    after(async () => {
+    const write = async (): Promise<void> => {
       try {
         await db.productSearchLog.upsert({
           where: { dedupeKey },
@@ -164,7 +181,14 @@ export async function logProductSearchTelemetry(args: ProductSearchLogInputArgs)
       } catch (error) {
         console.error("Product search telemetry logging failed.", error);
       }
-    });
+    };
+
+    if (args.flush === "await") {
+      await write();
+      return;
+    }
+
+    after(write);
   } catch (error) {
     console.error("Product search telemetry logging failed.", error);
   }

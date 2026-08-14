@@ -87,6 +87,11 @@ test("warranty, returns and shipping are admin-only with June-style replies", ()
     ["ประกันสินค้ากี่เดือน", "warranty_return"],
     ["ค่าจัดส่งเท่าไร", "shipping"],
     ["ส่งต่างจังหวัดไหม", "shipping"],
+    ["ค่าสงเท่าไหร", "shipping"],
+    ["สงตจวมั้ย", "shipping"],
+    ["จัดสงได้ไหม", "shipping"],
+    ["รหัสไปรสนี 60000", "shipping"],
+    ["ของเครมได้ไหม", "warranty_return"],
   ] as const;
   for (const [question, topic] of cases) {
     assert.equal(detectAdminOnlyKnowledgeTopic(question), topic);

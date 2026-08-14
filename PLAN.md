@@ -437,6 +437,88 @@
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront
 
+## AI chat model grounding shadow — Option B (2026-08-14)
+- สถานะ: **IMPLEMENTED SHADOW / ยังไม่ flip hard filter** — production reply/search/filter เหมือน baseline ทุกกรณี
+- ที่มา: `guardChatSearchIntent` ground `carModel` เฉพาะเทิร์นที่มี numeric required token ทำให้ model ที่ classifier แต่งในข้อความไทยล้วนมีโอกาสหลุดเป็น hard filter
+- แยก lookup 2 หน้าที่:
+  - recall lookup เดิมยังใช้ SearchSynonym แบบกว้างตามเดิม
+  - grounding lookup ใหม่ merge canonical ที่ต่างแค่ตัวพิมพ์ และตัด spelling ที่เป็นเจ้าของร่วมหลาย model ออกจาก safe evidence (`hiace`, `ปาเจโร`, `altis` ฯลฯ)
+- candidate policy ทุกเทิร์นคืนเหตุผล `LITERAL_CANONICAL / SAFE_SYNONYM / LATEST_MENTION_TYPO / NO_EVIDENCE / LOOKUP_UNAVAILABLE`; typo fallback ใช้ได้เฉพาะ `carMentionInLatest` ที่ตรวจว่ามีในข้อความล่าสุดจริง และ model cluster ต้องไม่กำกวม
+- observability ทั้ง LINE + Messenger ใช้ action `MODEL_GROUNDING_SHADOW` ใน `LineAiAuditLog`; LINE เก็บ downstream inquiry-frame model, Messenger เก็บ downstream resolved model; ไม่เก็บข้อความลูกค้าซ้ำใน payload
+- failure isolation: lookup/telemetry ล้ม → candidate เป็น unavailable และ production behavior ไม่เปลี่ยน
+- golden แยกเรื่องใหม่: [scripts/test-model-grounding-shadow-golden.ts](scripts/test-model-grounding-shadow-golden.ts) (`npm run test:model-grounding-shadow-golden`)
+  - persona อู่ baseline `3/5` → candidate `5/5`
+  - persona ช่าง baseline `5/6` → candidate `6/6`
+  - persona เจ้าของรถ baseline `2/4` → candidate `4/4`
+  - รวม baseline `10/15` → candidate `15/15`; direct canonical model `144/144`; production delivery delta = 0
+- report rollout: `npm run report:model-grounding-shadow` — รออย่างน้อย 200 event/ช่องทาง, lookup unavailable = 0, LINE different-model frame carry risk = 0 และต้อง manual-review candidate DROP ก่อน flip จริง
+- เคสแปลกที่ suite ล็อกไว้: `tida→Tiida`, `มาร์ค→March`, `คัมรี่→Camry`, classifier คืน `Nissan March` แทน canonical `March`, ambiguous `ไฮเอซ`, recall-only `all new/spark`, LLM เติม Vios/Altis/Mega 500 เอง, follow-up ที่รุ่นอยู่ใน history
+
+## AI chat robustness — พิมพ์ผิด/พิมพ์ตกหล่น ให้เข้าใจมากขึ้นโดยไม่ตอบมั่ว (2026-08-13)
+- ที่มา: เจ้าของสั่งตรวจ logic แชท AI ทั้งหมดว่ามีวิธีทำให้ครอบคลุมกว่านี้ไหม รองรับลูกค้าพิมพ์ตกหล่น/พิมพ์ผิด/พิมพ์ไม่ครบ โดยห้ามตอบผิดหรือตอบมั่ว · เงื่อนไขที่ตกลง: **ผลลัพธ์ต้องดีกว่าเดิม แย่สุดต้องเท่าเดิม**
+- ผลตรวจ: pipeline เดิม 9 ชั้นแน่นอยู่แล้ว (normalize → regex router → rule fast-path → LLM classifier → evidence guard → slot frame → completeness gate → alias/LLM resolution → relevance gate) · ช่องโหว่ที่เจอ 5 ข้อ ทำไปแล้ว 3 (+cache) เหลือข้อใหญ่สุดรอยืนยัน schema
+
+### ข้อ 3 — typo backstop สำหรับเจตนากลุ่มเสี่ยงสูง
+- ปัญหา: กฎ router เป็น regex ตรงตัว และ branch สุดท้ายเดาว่าเป็น "คำถามสินค้า" → พิมพ์ผิดกลางคำ ("เครม", "สลิบ", "โอนเงืน") ตกไปเป็นการค้นสินค้า ทั้งที่ลูกค้ากำลังจะเคลม/แจ้งโอน
+- [x] แยก `osaDistance` + `typoMaxEdits` ออกจาก `search-guards.ts` → [lib/chat-core/typo-distance.ts](lib/chat-core/typo-distance.ts) (pure, เทสต์เดิม 10 ตัวผ่านครบ ไม่เปลี่ยนพฤติกรรม)
+- [x] [lib/chat-core/intent-typo-guard.ts](lib/chat-core/intent-typo-guard.ts) — 28 คำสำคัญ 6 กลุ่ม, งบแก้ **1 edit คงที่** (ไม่ scale ตามความยาว), fold วรรณยุกต์ทั้งสองฝั่งก่อนเทียบ
+- [x] ต่อใน [intent-router.ts](lib/chat-core/intent-router.ts) เป็น**กฎสุดท้ายก่อน branch default product** → ข้อความที่กฎเดิมจับได้อยู่แล้วไม่ถูกแตะเลย · ใช้ `reason` เดิมของกฎ literal เป๊ะ ๆ เพื่อให้ `hardGuard`/`quotationRequest` ใน processor ทำงานเหมือนเดิม แล้วแยก observability ไปที่ฟิลด์ใหม่ `matchedVia: "typo"` + `matchedTypoKeyword`
+- [x] audit `INTENT_TYPO_GUARD` ใน [line-webhook-processor.ts](lib/line-webhook-processor.ts) — เป็นสัญญาณเดียวที่บอกว่า backstop ทำงาน (ใช้วัด false positive) · Messenger ใช้ `routeChatIntent` ตัวเดียวกันจึงได้ผลด้วย แต่ยังไม่มี audit row
+- [x] **golden suite จับ false positive จริง**: `เคลม` ห่างจาก `แคลมป์รัดท่อ` (สินค้าจริงในคลัง) แค่ 1 edit → ถ้าใส่ไว้ ลูกค้าหาแคลมป์จะถูกเด้งเป็นงานเคลม · **ถอด `เคลม` เดี่ยวออก** ใช้รูปประสมแทน (`เคลมของ`/`เคลมสินค้า`/`ขอเคลม`) ซึ่งยังจับ "เครมของ" ได้ · กฎ literal เดิมยังจับ `เคลม` ที่สะกดถูกตามปกติ
+
+### ข้อ 4 — ซ่อมการพิมพ์ไทย (ไม่ใช่ fold) ในชั้น recall
+- [x] [lib/thai-spelling-fold.ts](lib/thai-spelling-fold.ts) แยกเป็น **2 สัญญา ห้ามสลับกัน**:
+  - `foldThaiSpelling` — lossy/symmetric ตัดวรรณยุกต์ ใช้เทียบใน memory เท่านั้น (typo backstop)
+  - `repairThaiTyping` — **non-lossy** ซ่อม `ํา` → `ำ` และยุบตัวซ้ำ 3+ ตัว ได้ภาษาไทยที่สะกดถูก จึงส่งเข้า search index ได้
+- [x] **บทเรียนจาก golden suite**: ตอนแรกใช้ fold ยิงค้นหา → วัดได้ **26 → 0 รายการ** เพราะ index เก็บข้อความดิบ การ fold ฝั่งเดียวยิ่งแย่ · แก้เป็น repair แล้ววัดได้ **26 → 127** (เท่ากับคำที่สะกดถูกเป๊ะ)
+- [x] ต่อใน [product-search-bridge.ts](lib/chat-core/product-search-bridge.ts) เป็น retry ก่อน did-you-mean · ยิงเฉพาะตอน `total === 0` และเฉพาะข้อความที่มีรอยพิมพ์จริง (`needsThaiTypingRepair`) · **คงตัวกรองครบทุกตัวรวมทั้งปีรถ + required token** ต่างจาก did-you-mean ที่ต้องทิ้งปี จึงไม่ต้องมีคำเตือนต่อท้ายให้ลูกค้า · หาไม่เจอ = ผลเดิมไม่ถูกแตะ
+- [x] **ไม่แตะ `buildSearchVariants`/`normalizeSearchText`** ทั้งที่แผนแรกจะแตะ — เพราะ evidence guard (`lineValueHasCustomerEvidence`, `lineQueryContainsRequiredTokens`) ใช้อยู่ การขยายนิยาม "เท่ากัน" จะทำให้ guard **หลวมลง** (ยี่ห้อที่ LLM แต่งขึ้นจะผ่าน evidence ได้) ซึ่งขัดเงื่อนไข "แย่สุดต้องเท่าเดิม"
+- [x] ไม่ retry กรณีวรรณยุกต์หายเฉย ๆ — engine กู้ได้เองอยู่แล้ว (วัดไว้แล้วใน § 2026-08-03 `ไดรเออร์↔ไดเออร์` = 100%) การ retry จะเสีย query ฟรีบนเทิร์นที่ช้าที่สุด
+
+### ข้อ 5 — cache ผล classifier
+- [x] [lib/chat-core/search-intent-cache.ts](lib/chat-core/search-intent-cache.ts) — LRU+TTL ในหน่วยความจำ (5 นาที / 300 entry), key = ข้อความล่าสุด + **ประวัติทั้งชุด** (classifier อ่านประวัติด้วย ถ้า key เฉพาะข้อความล่าสุดจะ replay หัวข้อเก่า)
+- [x] **ห้าม cache ค่า `null`** — null = Gemini timeout/พัง การ cache จะตรึงปัญหาชั่วคราวไว้อีก 5 นาที
+- [x] คืนค่าเป็น copy — processor เขียนทับ intent จริง (`stock_availability` → `product`) ต้องไม่รั่วไปเทิร์นถัดไป
+- ผล: ตัด Gemini call แรกจาก 3 call ที่ยิงเรียงกันในเทิร์นสินค้า เมื่อลูกค้าพิมพ์ซ้ำ (พฤติกรรม "ส่งไปแล้วหรือยัง" ที่พบบ่อย) และทำให้คำตอบคงเส้นคงวาขึ้น
+
+### Golden test
+- [x] [scripts/test-chat-robustness-golden.ts](scripts/test-chat-robustness-golden.ts) (`npm run test:chat-robustness-golden`) — **39/39 ผ่าน** เทียบกับแคตตาล็อกจริง 4,825 คำ:
+  - A: คำใน typo backstop ทั้ง 28 คำ ต้องไม่อยู่ในรัศมี 1 edit ของ Product/Category/CarModel/CarBrand/CarBrandAlias/SearchKeyword/CategoryAlias ใด ๆ
+  - A': ชื่อสินค้าจริง 400 รายการ + คำถาม "หมวด+รุ่นรถ+ราคา" 40 แบบ ต้องไม่ถูก backstop จับ
+  - B: fold ต้องไม่รวมคำที่ระบบยังแยกอยู่ (เทียบกับ baseline `normalizeSearchText` ไม่ใช่ข้อความดิบ)
+  - C: repair ต้องคืนคำที่สะกดถูกเป๊ะ และผลค้นต้องเท่ากับคำที่สะกดถูก
+  - C': คำค้นที่สะกดถูก 51 คำ ต้องไม่ยิง query เพิ่มเลย
+- [x] ไม่ถอยหลัง: `npm test` 780 ตัว (778 ผ่าน / 0 fail / 2 skip เดิม) · `test:search-recall-golden` 43/43 · `test:semantic-golden` 12/12 · `npm run build` ผ่าน · `check:mojibake` ผ่าน
+- [x] เทสต์ยูนิตใหม่: [line-intent-typo-guard.test.ts](lib/__tests__/line-intent-typo-guard.test.ts), [thai-spelling-fold.test.ts](lib/__tests__/thai-spelling-fold.test.ts), [chat-search-intent-cache.test.ts](lib/__tests__/chat-search-intent-cache.test.ts) + 4 เคสใหม่ใน [line-product-search-bridge.test.ts](lib/__tests__/line-product-search-bridge.test.ts)
+
+### ข้อ 2 — วงจรซ่อมชื่อรถ (ทำแล้ว **ไม่แก้ schema เลย**)
+- ตรวจ production ก่อนออกแบบ (`npm run diagnose:car-model-alias`, read-only) แล้ว**ล้มข้อเสนอเดิมที่จะสร้างตาราง `CarModelAlias`**:
+  - `matchMode` **ไม่ต้องมี** — รุ่นรถ 144 แถว มีคู่ที่ชื่อหนึ่งอยู่ในอีกชื่อ **14 คู่** (ยี่ห้อเดียวกัน 8 คู่ เช่น `Corolla ⊂ Corolla Cross`, `Altis ⊂ Altis Limo`, `Pajero ⊂ Pajero Sport`) · รุ่นยาว 2 ตัวอักษร 5 รุ่น โดย **`IS` (Lexus) อยู่ใน Yaris/Altis/Wish/GRANDIS** · การสะกดที่มีอยู่ 25 จาก 1,041 แบบจะกลืนรุ่นอื่นถ้าตั้ง CONTAINS → **EXACT อย่างเดียว** ตรงกับ `CarBrandAlias` (45 แถว ไม่มี matchMode) และ model cluster ใน `SearchSynonym`
+  - **ไม่ต้องมีตารางใหม่** — `SearchSynonym` เก็บรุ่นรถอยู่แล้ว 137 รุ่น / 1,041 การสะกด และต่ออยู่ใน resolution 3 จุด (`resolveCanonicalCarModelHint`, model-synonym evidence ใน guard, synonym promotion ใน `resolveKnownQueryIntent`) · ตารางใหม่จะเป็นแหล่งความจริงที่ 2 ของเรื่องเดียวกัน
+  - **วงจร closed-loop มีครบอยู่แล้ว**: `ProductSearchLog` → `ProductSearchClusterCache` → `ProductSearchReviewOutcome` → หน้ารีวิว `/admin/reports/product-search-no-result` → auto-apply เข้า `SearchSynonym`
+- **ช่องโหว่จริง**: แชทไม่เคยส่งข้อมูลเข้าวงจรนี้เลย — `ProductSearchLog` มี `admin` 2,211 + `storefront` 330 + **แชท 0 แถว** · `ClusterCache` ว่าง · `ReviewOutcome` 2 แถว · ขณะที่แชทมี 314 เทิร์นค้นหาตั้งแต่ 15 มิ.ย. และ **44.9% resolve รุ่นรถไม่ได้**
+- [x] `ProductSearchLogSource` เพิ่ม `"line" | "messenger"` + ตัวเลือก `flush: "await"` ใน [product-search-telemetry.ts](lib/product-search-telemetry.ts) — แชทรันใน queue worker/coalescing loop ที่ไม่มี request scope ซึ่ง `after()` จะ throw แล้วแถวหายเงียบ
+- [x] [lib/chat-core/search-telemetry.ts](lib/chat-core/search-telemetry.ts) — บันทึก **จำนวนที่ลูกค้าเห็นจริงหลังผ่าน guard ทุกตัว** ไม่ใช่ยอดดิบจาก engine (ถ้าใช้ยอดดิบ เคสที่สำคัญที่สุดจะหาย: search เจอแต่ guard กรองทิ้งหมดเพราะยืนยันรุ่นไม่ได้)
+- [x] ต่อทั้ง 2 ช่องทาง: LINE เป็น `void` (ห้ามกินงบ reply-token) · Messenger `await` ที่ทางออกทั้ง 4 จุดพร้อมจำนวนจริง
+- [x] [vehicle-llm-fallback.ts](lib/chat-core/vehicle-llm-fallback.ts) `correctVehicleSpelling` — ฝาแฝดฝั่งรถของ `correctPartSpelling` · ไม่เลือกรถเอง แค่เสนอคำที่ถูก
+- [x] [vehicle-synonym-staging.ts](lib/chat-core/vehicle-synonym-staging.ts) — re-resolve ผ่าน `CarModel`/`CarBrand` จริง ใช้ต่อเมื่อ **ตรงรุ่นเดียว** (2 แถว = กำกวม → ทิ้ง) แล้ว stage เป็น `ProductSearchReviewOutcome` `status=PENDING` `candidateAction="vehicle-synonym"` (คอลัมน์เป็น `VarChar(50)` + TS union → เพิ่มค่าใหม่ = แก้โค้ดอย่างเดียว) · `appliedRef` เก็บรุ่นที่เสนอไว้ให้ฟอร์ม prefill
+- [x] [vehicle-synonym-guardrails.ts](lib/chat-core/vehicle-synonym-guardrails.ts) — กัน 3 ชั้น: รูปแบบคำ (ยอมให้มีตัวเลข/`-` ต่างจากกฎหมวดที่ห้ามตัวเลข เพราะชื่อรุ่นมีจริง), คำที่**เป็นชื่อรถจริงอยู่แล้ว** (ไม่ใช่คำผิด), คำอะไหล่ (ห้ามกลายเป็นคำพ้องรุ่นรถ)
+- [x] Idempotent: ไม่เขียนทับแถวที่แอดมินตัดสินไปแล้ว (status ≠ PENDING) และไม่ทับ note ที่แอดมินพิมพ์เอง
+- [x] หน้ารีวิวเดิมเพิ่มพาเนล "AI เสนอชื่อรุ่นรถที่ลูกค้าพิมพ์ผิด (รออนุมัติ)" — ปุ่ม "อนุมัติ" ใช้ `applySearchSynonymCandidate` ตัวเดิม (เขียน `SearchSynonym` + ปิดคิวเป็น APPLIED) · ปุ่ม "ไม่ใช่" ใช้ `markProductSearchReviewOutcome` เดิม · ไม่แตะ auto-apply (กรอง `!== "search-synonym"` อยู่แล้ว จึงไม่ยุ่งกับ lane ใหม่)
+- [x] audit `VEHICLE_SYNONYM_SUGGESTED`
+- [x] **แก้บั๊กที่ทบทวนเจอเองหลังส่งมอบรอบแรก** — เดิม stage ด้วย `guardedSearchIntent.carModel` ซึ่งเป็นชื่ออังกฤษมาตรฐานจาก classifier ("Fortuner") ไม่ใช่คำที่ลูกค้าพิมพ์ ("ฟอจูเนอ") → guardrail `ALREADY_KNOWN_SPELLING` จะปัดทิ้งทุกครั้ง **วงจรจะไม่เคยทำงานเลย** · เปลี่ยนไปใช้ `correction.original` และ**ตรวจว่ามีอยู่ในข้อความลูกค้าจริง**ด้วย `chatCarMentionOccursInLatest` (กฎเดียวกับ `carMentionInLatest` — คำที่ LLM อ้างว่าลูกค้าพิมพ์ ต้องตรวจก่อนเชื่อเสมอ) · ตรวจไม่ผ่าน = ไม่ stage ไม่เดา
+- [x] [vehicle-synonym-attempt-cache.ts](lib/chat-core/vehicle-synonym-attempt-cache.ts) — กันยิง Gemini ซ้ำเมื่อลูกค้าพิมพ์ข้อความเดิม (audit จริงพบพิมพ์ซ้ำ 2–3 ครั้งติดกันเป็นปกติ) · แยกเป็นโมดูลไม่มี DB import ตามแบบ `category-alias-guardrails` จะได้ unit-test โดยไม่ต้องมีฐานข้อมูล
+- [x] golden suite เพิ่มหมวด D (**45/45 ผ่าน**): ชื่อรุ่น/ยี่ห้อจริง 163 ชื่อ + การสะกดที่รู้จัก 1,556 แบบ ต้องถูกกันไม่ให้กลายเป็นคำผิด · คำอะไหล่ 277 คำ ต้องไม่หลุดไปเป็นชื่อรุ่น · รุ่นที่ไม่มีจริงต้อง resolve ไม่ได้ · **ชื่อกำกวม `MIRAGE / Mirage` ต้อง resolve เป็น null** (ห้ามเดาข้างใดข้างหนึ่ง)
+- ⚠️ ผลข้างเคียงที่ต้องรู้: พอแชทเริ่มเขียน `ProductSearchLog` ตัวเลขในรายงานค้นหาจะสูงขึ้นทันที เทียบย้อนหลังตรง ๆ ไม่ได้ (แบบเดียวกับหมายเหตุ 7 ส.ค.) — ฟิลด์ `source` แยกให้กรองได้
+
+### พบระหว่างทาง (ยังไม่แก้ รอเจ้าของสั่ง)
+- [ ] **`CarModel` มีแถวซ้ำต่างกันแค่ตัวพิมพ์: `MIRAGE` กับ `Mirage`** (144 ชื่อ → ระบบเห็นเป็น 143 คำ) · ทั้งระบบ normalize เป็นตัวเล็กอยู่แล้วจึงไม่ทำให้ค้นผิด แต่แยก fitment ออกเป็น 2 รุ่นในข้อมูล ควรรวมเป็นแถวเดียว
+- [ ] Messenger ยังไม่มี audit row สำหรับ `INTENT_TYPO_GUARD` (ใช้ router ตัวเดียวกันจึงได้พฤติกรรม แต่วัดผลไม่ได้)
+
+### ยังไม่ได้ทำ — รอเจ้าของสั่ง
+- [ ] **ข้อ 1: หน้าแอดมินคุณภาพแชท** สรุป `LineAiAuditLog` (เจ้าของเลือกทำ 2+3+4+5 ยังไม่รวมข้อ 1) — ตอนนี้ audit ที่เพิ่มไว้ (`INTENT_TYPO_GUARD`, `VEHICLE_SYNONYM_SUGGESTED`) ยังต้องเปิดดูราย conversation
+- [ ] เก็บสถิติ 1–2 สัปดาห์ว่าพาเนล "AI เสนอชื่อรุ่นรถ" มีของเข้ากี่รายการ/อนุมัติกี่ % ก่อนตัดสินใจว่าจะเปิด auto-apply ให้ lane นี้ไหม
+
 ## Code review ทั้ง repo — test infra, security, กฎวันที่, rate limit (2026-08-07)
 
 - บริบท: รีวิวทั้ง repo (1,306 ไฟล์, 113 models, 279 indexes) แล้วไล่แก้ตามรายการที่เจ้าของร้านยืนยันทีละข้อ · ผลรวม: `npm test` **728 tests / 0 fail** · `tsc --noEmit` 0 error · `eslint` **0 error** (จากเดิม 1) · `npm run build` ผ่าน

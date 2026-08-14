@@ -1,5 +1,25 @@
 export type AdminOnlyKnowledgeTopic = "warranty_return" | "shipping";
 
+export type AdminOnlyKnowledgeMatch = {
+  topic: AdminOnlyKnowledgeTopic;
+  matchedVia: "literal" | "typo";
+  keyword: string | null;
+};
+
+/**
+ * High-risk customer spellings that must never fall through to Knowledge RAG.
+ * Exported so the deterministic intent typo guard and the RAG policy use one
+ * source of truth. Keep this list curated: broad Thai fuzzy replacement can
+ * collide with real product vocabulary.
+ */
+export const ADMIN_ONLY_KNOWLEDGE_TYPO_PHRASES: Record<
+  AdminOnlyKnowledgeTopic,
+  readonly string[]
+> = {
+  shipping: ["ค่าสง", "จัดสง", "สงตจว", "รหัสไปรสนี"],
+  warranty_return: ["ของเครม"],
+};
+
 type KnowledgePolicySection = {
   heading: string;
   body: string[];
@@ -28,12 +48,36 @@ const WARRANTY_RETURN_RE =
 const SHIPPING_RE =
   /(ค่าจัดส่ง|ค่าส่ง|ส่งต่างจังหวัด|ส่งทั่วประเทศ|มีบริการ(?:จัด)?ส่ง|จัดส่ง|การส่ง(?:สินค้า|ของ)|ขนส่ง|ส่งของ|ส่งกี่วัน|ส่งนาน|ส่งถึง|ระยะเวลาส่ง|delivery|shipping)/i;
 
-export function detectAdminOnlyKnowledgeTopic(text?: string | null): AdminOnlyKnowledgeTopic | null {
+const compactThaiText = (value: string): string =>
+  value
+    .normalize("NFKC")
+    .replace(/[่้๊๋์]/g, "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+
+export function detectAdminOnlyKnowledgeMatch(text?: string | null): AdminOnlyKnowledgeMatch | null {
   const normalized = text?.trim();
   if (!normalized) return null;
-  if (WARRANTY_RETURN_RE.test(normalized)) return "warranty_return";
-  if (SHIPPING_RE.test(normalized)) return "shipping";
+  if (WARRANTY_RETURN_RE.test(normalized)) {
+    return { topic: "warranty_return", matchedVia: "literal", keyword: null };
+  }
+  if (SHIPPING_RE.test(normalized)) {
+    return { topic: "shipping", matchedVia: "literal", keyword: null };
+  }
+
+  const compact = compactThaiText(normalized);
+  for (const topic of ["warranty_return", "shipping"] as const) {
+    for (const phrase of ADMIN_ONLY_KNOWLEDGE_TYPO_PHRASES[topic]) {
+      if (compact.includes(compactThaiText(phrase))) {
+        return { topic, matchedVia: "typo", keyword: phrase };
+      }
+    }
+  }
   return null;
+}
+
+export function detectAdminOnlyKnowledgeTopic(text?: string | null): AdminOnlyKnowledgeTopic | null {
+  return detectAdminOnlyKnowledgeMatch(text)?.topic ?? null;
 }
 
 export function findKnowledgeRagPolicyViolations(

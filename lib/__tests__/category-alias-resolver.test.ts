@@ -189,6 +189,27 @@ test("a compound alias suppresses a higher-priority alias nested inside it (long
   );
 });
 
+test("curated English compounds fix cabin-filter and fan-motor typos without changing controls", () => {
+  const category = (id: string, name: string) => ({ id, name, isActive: true });
+  const rows: CategoryAliasResolverRow[] = [
+    { alias: "air filter", kind: "MATCH", matchMode: "CONTAINS", priority: 230, isActive: true, category: category("air", "กรองอากาศ (Air Filter)") },
+    { alias: "cabin filter", kind: "MATCH", matchMode: "CONTAINS", priority: 220, isActive: true, category: category("cabin", "กรองแอร์ (Cabin air filter)") },
+    { alias: "cabin air filter", kind: "MATCH", matchMode: "CONTAINS", priority: 240, isActive: true, category: category("cabin", "กรองแอร์ (Cabin air filter)") },
+    { alias: "blower motor", kind: "MATCH", matchMode: "CONTAINS", priority: 230, isActive: true, category: category("blower", "โบเวอร์ พัดลมแอร์ (Blower Motor)") },
+    { alias: "blower moter", kind: "MATCH", matchMode: "CONTAINS", priority: 240, isActive: true, category: category("blower", "โบเวอร์ พัดลมแอร์ (Blower Motor)") },
+    { alias: "condensor", kind: "MATCH", matchMode: "CONTAINS", priority: 230, isActive: true, category: category("condenser", "คอยล์ร้อน (Condenser)") },
+    { alias: "condensor fan", kind: "MATCH", matchMode: "CONTAINS", priority: 240, isActive: true, category: category("fan", "มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)") },
+  ];
+
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["cabin air filter Honda City"], rows)), "กรองแอร์ (Cabin air filter)");
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["blower moter Hoda Jass 2009"], rows)), "โบเวอร์ พัดลมแอร์ (Blower Motor)");
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["condensor fan moter Toyta Vioz"], rows)), "มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)");
+
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["air filter Honda City"], rows)), "กรองอากาศ (Air Filter)");
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["blower motor Honda Jazz"], rows)), "โบเวอร์ พัดลมแอร์ (Blower Motor)");
+  assert.equal(matchedCategoryName(matchCategoryAliasRows(["condensor Camry"], rows)), "คอยล์ร้อน (Condenser)");
+});
+
 test("non-overlapping matches in one text keep the priority ordering", () => {
   const rows: CategoryAliasResolverRow[] = [
     {

@@ -2,6 +2,7 @@ import { LineIntent } from "@/lib/generated/prisma";
 import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import { repairThaiTyping, needsThaiTypingRepair } from "@/lib/thai-spelling-fold";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import {
   buildChatProductSpecRequiredTokenGroups,
@@ -132,6 +133,12 @@ export type ChatProductSearchBridgeResult =
        *  vehicle filters were dropped (see the rescue in the search body). Surfaced
        *  for the audit trail so the rescue rate is measurable. */
       accessoryVehicleDropped?: boolean;
+      /** True when the rows were found only after repairing the customer's Thai
+       *  typing slips (the decomposed ำ spelling, repeated characters). The filters
+       *  and anchors were IDENTICAL to the primary search, so these are not "near
+       *  matches" and need no customer-facing caveat — the flag exists so the audit
+       *  trail can measure how much recall the repair actually recovers. */
+      thaiFoldRecovered?: boolean;
     };
 
 export type ChatMatchedProductSummary = {
@@ -630,6 +637,50 @@ export async function searchChatProductInquiry(
     });
   }
 
+  // ── Thai typing-repair recovery ───────────────────────────────────────────
+  // Still nothing. Retry once with the customer's typing slips REPAIRED — the
+  // decomposed `ํา` spelling of ำ recomposed, and 3+ character repeats collapsed.
+  // Both are cases the trigram layer provably cannot bridge (see
+  // needsThaiTypingRepair); a plain dropped tone mark is NOT retried because the
+  // engine already recovers those on its own.
+  //
+  // Critically this REPAIRS rather than folds: the output is ordinary, correctly
+  // spelled Thai, because the search index stores raw catalog text. A lossy fold
+  // here would match folded text against unfolded data and score strictly worse.
+  //
+  // Strictly additive by construction:
+  //  - runs ONLY on a zero-result search, so no turn that already found rows is
+  //    touched;
+  //  - keeps EVERY filter including the year, and every required-token anchor —
+  //    so the recovery is exactly as constrained as the primary search and cannot
+  //    drift to another car/part (unlike the did-you-mean retry, which must drop
+  //    the year and therefore owes the customer a caveat);
+  //  - if it finds nothing the result object is untouched → behaviour identical to
+  //    before this block existed.
+  // Placed BEFORE did-you-mean because it is one deterministic query rather than up
+  // to two trigram-suggestion round-trips.
+  let thaiFoldRecovered = false;
+  if (result.total === 0 && needsThaiTypingRepair(query)) {
+    const repairedQuery = normalizeSearchSeed(repairThaiTyping(query));
+    if (repairedQuery) {
+      const folded = await resolvedSearchFn({
+        query: repairedQuery,
+        isActive: true,
+        isStorefrontVisible: true,
+        ...baseFilters,
+        ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
+        ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
+        skip: 0,
+        take: input.take ?? 5,
+        cacheProfile: "storefront",
+      });
+      if (folded.total > 0) {
+        result = folded;
+        thaiFoldRecovered = true;
+      }
+    }
+  }
+
   // No hits → try a "did you mean" spelling/synonym correction and re-search once.
   if (result.total === 0) {
     const resolvedSuggestFn =
@@ -731,5 +782,6 @@ export async function searchChatProductInquiry(
     // SKUs that carry no fitment rows at all, which no year can contradict.
     yearMismatch: null,
     accessoryVehicleDropped,
+    thaiFoldRecovered,
   };
 }

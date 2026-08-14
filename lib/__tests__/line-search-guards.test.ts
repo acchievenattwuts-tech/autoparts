@@ -1,7 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { guardChatSearchIntent, lineValueHasCustomerTypoEvidence } from "@/lib/chat-core/search-guards";
+import {
+  evaluateChatModelGroundingCandidate,
+  guardChatSearchIntent,
+  lineValueHasCustomerTypoEvidence,
+  resolveLatestExplicitCarModelEvidence,
+} from "@/lib/chat-core/search-guards";
+import { buildCarModelGroundingLookup } from "@/lib/car-model-alias-cache";
 import type { ChatSearchIntent } from "@/lib/chat-core/ai-service";
 
 test("typo evidence: a misspelled part word in the customer text counts as evidence", () => {
@@ -149,4 +155,201 @@ test("model synonym lookup grounds a Thai model glued to a cc anchor (Strada cas
     history: [],
   });
   assert.equal(withoutLookup.intent?.carModel, null);
+});
+
+const groundingLookup = buildCarModelGroundingLookup([
+  { term: "Vios", synonyms: ["วีออส", "Toyota Vios"] },
+  { term: "Tiida", synonyms: ["ทีด้า", "ทีดา"] },
+  { term: "March", synonyms: ["มาร์ช", "นิสสันมาร์ช"] },
+  { term: "Jazz", synonyms: ["แจ๊ส", "Honda Jazz"] },
+  { term: "Camry", synonyms: ["แคมรี่", "แคมรี"] },
+  { term: "Hiace", synonyms: ["ไฮเอซ"] },
+  { term: "Hiace Commuter", synonyms: ["ไฮเอซ", "Commuter"] },
+  { term: "D-Max", synonyms: ["ดีแม็ก", "all new", "spark"] },
+  { term: "AVEO", synonyms: ["อาวีโอ", "Chevrolet AVEO"] },
+  { term: "AVEO CNG", synonyms: ["อาวีโอซีเอ็นจี", "AVOE CNG", "Chevrolet AVEO CNG"] },
+  { term: "Spin", synonyms: ["สปิน", "spni", "Chevrolet Spin"] },
+  { term: "Sonic", synonyms: ["โซนิค", "Chevrolet Sonic"] },
+  { term: "DECA", synonyms: ["เดก้า", "deac", "Isuzu DECA"] },
+]);
+
+test("explicit evidence keeps the longest nested model (AVEO CNG, not AVEO)", () => {
+  const evidence = resolveLatestExplicitCarModelEvidence({
+    latestText: "Need radiator for Chevrolet AVEO CNG 2013",
+    groundingLookup,
+  });
+  assert.equal(evidence?.canonicalModel, "AVEO CNG");
+
+  const result = guardChatSearchIntent({
+    intent: baseIntent({
+      query: "radiator Chevrolet AVEO 2013",
+      carBrand: "Chevrolet",
+      carModel: "AVEO",
+      year: 2013,
+    }),
+    latestText: "Need radiator for Chevrolet AVEO CNG 2013",
+    history: [],
+    modelGroundingLookup: groundingLookup,
+  });
+  assert.equal(result.intent?.carModel, "AVEO CNG");
+});
+
+test("explicit transposed AVEO CNG evidence also beats the broader AVEO classification", () => {
+  const result = guardChatSearchIntent({
+    intent: baseIntent({
+      query: "radiator Chevrolet AVEO CNG",
+      carBrand: "Chevrolet",
+      carModel: "AVEO",
+      year: null,
+    }),
+    latestText: "Need radiator for Chevrolet AVOE CNG",
+    history: [],
+    modelGroundingLookup: groundingLookup,
+  });
+  assert.equal(result.intent?.carModel, "AVEO CNG");
+  assert.equal(result.forceLiteralQuery, true);
+});
+
+test("explicit safe typo aliases override a wrong classifier model", () => {
+  for (const [latestText, wrongModel, expectedModel] of [
+    ["Need evaporator for Chevrolet Spni 2013", "Sonic", "Spin"],
+    ["หาคอยล์เย็น Isuzu DEAC 2014", "D-Max", "DECA"],
+  ] as const) {
+    const result = guardChatSearchIntent({
+      intent: baseIntent({
+        query: latestText,
+        carBrand: latestText.includes("Isuzu") ? "Isuzu" : "Chevrolet",
+        carModel: wrongModel,
+        year: latestText.includes("2014") ? 2014 : 2013,
+      }),
+      latestText,
+      history: [],
+      modelGroundingLookup: groundingLookup,
+    });
+    assert.equal(result.intent?.carModel, expectedModel, latestText);
+    assert.equal(result.forceLiteralQuery, true, `${latestText} must not reuse the wrong-model query`);
+  }
+});
+
+test("explicit evidence does not choose between two unrelated vehicles", () => {
+  assert.equal(
+    resolveLatestExplicitCarModelEvidence({
+      latestText: "เทียบคอยเย็น Vios กับ Jazz",
+      groundingLookup,
+    }),
+    null,
+  );
+});
+
+test("Latin model evidence is word-bounded (City must not match velocity)", () => {
+  assert.equal(
+    resolveLatestExplicitCarModelEvidence({
+      latestText: "need high velocity condenser fan for Vios",
+      groundingLookup,
+    })?.canonicalModel,
+    "Vios",
+  );
+});
+
+test("shadow candidate drops a hallucinated no-anchor model without changing live intent", () => {
+  const result = guardChatSearchIntent({
+    intent: baseIntent({ query: "คอยเย็น", carBrand: null, carModel: "Vios", year: null }),
+    latestText: "คอยเย็น",
+    history: [],
+    modelGroundingLookup: groundingLookup,
+  });
+
+  assert.equal(result.intent?.carModel, "Vios", "live Option-B behavior must remain unchanged");
+  assert.equal(result.modelGroundingShadow?.candidateModel, null);
+  assert.equal(result.modelGroundingShadow?.wouldChange, true);
+  assert.equal(result.modelGroundingShadow?.evidenceSource, "NO_EVIDENCE");
+});
+
+test("shadow candidate keeps a real Thai synonym on a no-anchor turn", () => {
+  const result = guardChatSearchIntent({
+    intent: baseIntent({ query: "คอยเย็นวีออส", carBrand: null, carModel: "Vios", year: null }),
+    latestText: "คอยเย็นวีออส",
+    history: [],
+    modelGroundingLookup: groundingLookup,
+  });
+
+  assert.equal(result.intent?.carModel, "Vios");
+  assert.equal(result.modelGroundingShadow?.candidateModel, "Vios");
+  assert.equal(result.modelGroundingShadow?.wouldChange, false);
+  assert.equal(result.modelGroundingShadow?.evidenceSource, "SAFE_SYNONYM");
+});
+
+test("shadow candidate recovers a one-edit model spelling only from a verified latest mention", () => {
+  for (const [model, mention, text] of [
+    ["Tiida", "tida", "คอยเย็น tida"],
+    ["March", "มาร์ค", "คอยเย็นนิสสันมาร์ค"],
+    ["Camry", "คัมรี่", "คอมแอร์คัมรี่"],
+  ] as const) {
+    const result = evaluateChatModelGroundingCandidate({
+      model,
+      carMentionInLatest: mention,
+      latestText: text,
+      history: [],
+      groundingLookup,
+    });
+    assert.equal(result?.candidateModel, model, `${mention} → ${model}`);
+    assert.equal(result?.evidenceSource, "LATEST_MENTION_TYPO", mention);
+  }
+
+  const unverified = evaluateChatModelGroundingCandidate({
+    model: "Tiida",
+    carMentionInLatest: "tida",
+    latestText: "คอยเย็น",
+    history: [],
+    groundingLookup,
+  });
+  assert.equal(unverified?.candidateModel, null);
+});
+
+test("shadow candidate normalizes a unique brand-prefixed classifier model", () => {
+  const result = evaluateChatModelGroundingCandidate({
+    model: "Nissan March",
+    carMentionInLatest: "นิสสันมาร์ค",
+    latestText: "คอยเย็นนิสสันมาร์ค",
+    history: [],
+    groundingLookup,
+  });
+
+  assert.equal(result?.candidateModel, "March");
+  assert.equal(result?.evidenceSource, "LATEST_MENTION_TYPO");
+});
+
+test("shadow candidate rejects ambiguous and broad recall-only spellings", () => {
+  const ambiguous = evaluateChatModelGroundingCandidate({
+    model: "Hiace Commuter",
+    carMentionInLatest: "ไฮเอซ",
+    latestText: "คอยเย็นไฮเอซ",
+    history: [],
+    groundingLookup,
+  });
+  assert.equal(ambiguous?.candidateModel, null);
+  assert.ok((ambiguous?.ambiguousVariantCount ?? 0) > 0);
+
+  for (const text of ["คอยเย็น all new", "คอยเย็น spark"]) {
+    const broad = evaluateChatModelGroundingCandidate({
+      model: "D-Max",
+      carMentionInLatest: text.split(" ").slice(1).join(" "),
+      latestText: text,
+      history: [],
+      groundingLookup,
+    });
+    assert.equal(broad?.candidateModel, null, text);
+  }
+});
+
+test("shadow lookup outage is observable and never proposes a behavior change", () => {
+  const result = guardChatSearchIntent({
+    intent: baseIntent({ query: "คอยเย็น", carBrand: null, carModel: "Vios", year: null }),
+    latestText: "คอยเย็น",
+    history: [],
+    modelGroundingLookup: new Map(),
+  });
+  assert.equal(result.modelGroundingShadow?.evaluated, false);
+  assert.equal(result.modelGroundingShadow?.evidenceSource, "LOOKUP_UNAVAILABLE");
+  assert.equal(result.modelGroundingShadow?.wouldChange, false);
 });

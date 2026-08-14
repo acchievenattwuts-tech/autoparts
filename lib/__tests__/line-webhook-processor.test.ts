@@ -736,7 +736,7 @@ test("shipping questions use June-style admin handoff and never call FAQ or prod
   };
 
   const result = await processLineWebhookPayload(
-    textPayload("ค่าจัดส่งเท่าไร ส่งต่างจังหวัดไหม"),
+    textPayload("ค่าสงเท่าไหร สงตจวมั้ย"),
     { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
     dependencies,
   );

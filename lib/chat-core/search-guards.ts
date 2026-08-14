@@ -2,6 +2,31 @@ import { buildSearchVariants, normalizeSearchText, tokenizeSearchVariants } from
 import type { ChatReplyHistoryItem, ChatSearchIntent } from "@/lib/chat-core/ai-service";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
+import { containsWithinEditDistance, typoMaxEdits } from "@/lib/chat-core/typo-distance";
+import type { CarModelGroundingLookup } from "@/lib/car-model-alias-cache";
+
+export type ChatModelGroundingEvidenceSource =
+  | "LITERAL_CANONICAL"
+  | "SAFE_SYNONYM"
+  | "LATEST_MENTION_TYPO"
+  | "NO_EVIDENCE"
+  | "LOOKUP_UNAVAILABLE";
+
+export type ChatModelGroundingShadow = {
+  evaluated: boolean;
+  rawModel: string;
+  currentModel: string | null;
+  candidateModel: string | null;
+  wouldChange: boolean;
+  evidenceSource: ChatModelGroundingEvidenceSource;
+  matchedEvidence: string | null;
+  ambiguousVariantCount: number;
+};
+
+export type ChatExplicitModelEvidence = {
+  canonicalModel: string;
+  matchedEvidence: string;
+};
 
 /**
  * Tokens with 3+ chars and a digit are usually model codes / part fragments in
@@ -75,33 +100,6 @@ export function lineValueHasCustomerEvidence(
 }
 
 /**
- * Optimal String Alignment (Damerau-Levenshtein with adjacent transpositions)
- * distance. Common Thai typos are a single edit or an adjacent character swap
- * ("คอล์ย" for "คอยล์"), so a transposition-aware distance is what recognises them.
- */
-function osaDistance(a: string, b: string): number {
-  const m = a.length;
-  const n = b.length;
-  if (m === 0) return n;
-  if (n === 0) return m;
-  const d: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
-  for (let i = 0; i <= m; i += 1) d[i][0] = i;
-  for (let j = 0; j <= n; j += 1) d[0][j] = j;
-  for (let i = 1; i <= m; i += 1) {
-    for (let j = 1; j <= n; j += 1) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
-      }
-    }
-  }
-  return d[m][n];
-}
-
-const typoMaxEdits = (len: number): number => Math.max(1, Math.floor(len / 4));
-
-/**
  * Typo-tolerant evidence: the customer's text contains a MISSPELLING of `value`
  * (single edit / adjacent transposition), so a part word the customer really typed
  * but mis-keyed ("คอล์ยเย็น" for "คอยล์เย็น") still counts as evidence and is NOT
@@ -126,15 +124,7 @@ export function lineValueHasCustomerTypoEvidence(
   ).replace(/\s+/g, "");
   if (!haystack) return false;
 
-  const maxEdits = typoMaxEdits(target.length);
-  const lo = Math.max(1, target.length - maxEdits);
-  const hi = target.length + maxEdits;
-  for (let start = 0; start < haystack.length; start += 1) {
-    for (let len = lo; len <= hi && start + len <= haystack.length; len += 1) {
-      if (osaDistance(target, haystack.slice(start, start + len)) <= maxEdits) return true;
-    }
-  }
-  return false;
+  return containsWithinEditDistance(target, haystack, typoMaxEdits(target.length));
 }
 
 function lineModelHasCustomerAliasEvidence(
@@ -198,6 +188,254 @@ function lineModelHasCustomerSynonymEvidence(
   return false;
 }
 
+const LATIN_ONLY_MODEL_VARIANT_RE = /^[a-z0-9\s-]+$/;
+
+function customerContainsExactModelSpelling(
+  customerText: string,
+  customerCompact: string,
+  customerTokens: ReadonlySet<string>,
+  spelling: string,
+): boolean {
+  if (customerTokens.has(spelling)) return true;
+  const compact = spelling.replace(/\s+/g, "");
+  if (!compact || compact.length < 4) return false;
+  if (!LATIN_ONLY_MODEL_VARIANT_RE.test(spelling)) return customerCompact.includes(compact);
+
+  // Latin model names need word boundaries: "City" must not match the tail of
+  // "velocity". Allow common separators inside compound names (BT-50 Pro).
+  const escaped = spelling
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/[\s-]+/g, "[\\s\\-_/\\.,]*");
+  return new RegExp(`(^|[^a-z0-9])${escaped}(?=$|[^a-z0-9])`, "i").test(customerText);
+}
+
+/**
+ * Broad search aliases are not automatically safe hard-filter evidence. A Latin
+ * word that neither contains the canonical model nor resembles it by one edit
+ * (e.g. D-Max aliases "all new" / "spark") stays recall-only. Thai
+ * transliterations and model-code-like spellings remain eligible.
+ */
+function isStructurallySafeModelEvidence(variant: string, canonicalModel: string): boolean {
+  const compact = normalizeSearchText(variant).replace(/\s+/g, "");
+  const canonical = normalizeSearchText(canonicalModel).replace(/\s+/g, "");
+  if (!compact || !canonical) return false;
+  if (!LATIN_ONLY_MODEL_VARIANT_RE.test(compact)) return true;
+  if (/\d|-/.test(compact)) return true;
+  if (compact.includes(canonical) || canonical.includes(compact)) return true;
+  return containsWithinEditDistance(canonical, compact, 1);
+}
+
+/**
+ * Finds an unambiguous model spelling that the customer explicitly typed in the
+ * latest turn. This is deliberately exact (after the existing normalization),
+ * latest-turn-only, and limited to variants owned by one synonym cluster.
+ *
+ * When a specific model contains a broader model name ("AVEO CNG" contains
+ * "AVEO"), the longest evidence wins. If the turn really mentions two unrelated
+ * vehicles ("Vios or Jazz"), no model is selected and the existing flow remains
+ * untouched.
+ */
+export function resolveLatestExplicitCarModelEvidence(input: {
+  latestText?: string | null;
+  groundingLookup?: CarModelGroundingLookup | null;
+}): ChatExplicitModelEvidence | null {
+  const customerText = normalizeSearchText(input.latestText);
+  const lookup = input.groundingLookup;
+  if (!customerText || !lookup || lookup.size === 0) return null;
+
+  const customerCompact = customerText.replace(/\s+/g, "");
+  const customerTokens = new Set(tokenizeSearchVariants(customerText));
+  const byCanonical = new Map<
+    string,
+    { canonicalModel: string; matchedEvidence: string; compactEvidence: string }
+  >();
+
+  for (const [canonicalKey, evidence] of lookup) {
+    let best: { canonicalModel: string; matchedEvidence: string; compactEvidence: string } | null = null;
+    for (const variant of evidence.safeVariants) {
+      if (!isStructurallySafeModelEvidence(variant, canonicalKey)) continue;
+      for (const spelling of buildSearchVariants(variant)) {
+        const compact = spelling.replace(/\s+/g, "");
+        // Very short Latin model names (IS/GS/HS) overlap ordinary English words.
+        // They still resolve through the existing classifier path, but are never
+        // allowed to override a different model without brand-scoped evidence.
+        if (compact.length < 4) continue;
+        if (!customerContainsExactModelSpelling(customerText, customerCompact, customerTokens, spelling)) continue;
+        if (!best || compact.length > best.compactEvidence.length) {
+          best = {
+            canonicalModel: evidence.canonicalTerm,
+            matchedEvidence: variant,
+            compactEvidence: compact,
+          };
+        }
+      }
+    }
+    if (best) byCanonical.set(canonicalKey, best);
+  }
+
+  const matches = Array.from(byCanonical.values()).sort(
+    (a, b) => b.compactEvidence.length - a.compactEvidence.length,
+  );
+  const winner = matches[0];
+  if (!winner) return null;
+
+  // A shorter match is safe to ignore only when it is literally nested inside
+  // the most-specific spelling (AVEO inside AVEO CNG). Independent mentions mean
+  // the customer named multiple vehicles, so choosing either would be unsafe.
+  if (
+    matches.slice(1).some(
+      (match) => !winner.compactEvidence.includes(match.compactEvidence),
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    canonicalModel: winner.canonicalModel,
+    matchedEvidence: winner.matchedEvidence,
+  };
+}
+
+function resolveGroundingCanonicalKey(
+  model: string | null | undefined,
+  lookup?: CarModelGroundingLookup | null,
+): string | null {
+  const normalized = normalizeSearchText(model);
+  if (!normalized || !lookup || lookup.size === 0) return null;
+  if (lookup.has(normalized)) return normalized;
+  const suffixMatches = Array.from(lookup.keys()).filter(
+    (canonical) => canonical.length >= 3 && normalized.endsWith(` ${canonical}`),
+  );
+  return suffixMatches.length === 1 ? suffixMatches[0] : null;
+}
+
+/**
+ * Candidate policy for Option B. This is intentionally SHADOW-ONLY: callers
+ * observe what an every-turn hard-grounding policy would do, while the live intent
+ * keeps today's behaviour until telemetry proves the candidate has no regression.
+ */
+export function evaluateChatModelGroundingCandidate(input: {
+  model: string | null | undefined;
+  carMentionInLatest?: string | null;
+  latestText?: string | null;
+  history: ChatReplyHistoryItem[];
+  groundingLookup?: ReadonlyMap<
+    string,
+    { canonicalTerm?: string; safeVariants: string[]; ambiguousVariants: string[] }
+  > | null;
+}): Omit<ChatModelGroundingShadow, "currentModel" | "wouldChange"> | null {
+  const rawModel = input.model?.trim();
+  if (!rawModel) return null;
+
+  const literal = lineValueHasCustomerEvidence(rawModel, input.latestText, input.history);
+  if (literal) {
+    return {
+      evaluated: true,
+      rawModel,
+      candidateModel: rawModel,
+      evidenceSource: "LITERAL_CANONICAL",
+      matchedEvidence: rawModel,
+      ambiguousVariantCount: 0,
+    };
+  }
+
+  const lookup = input.groundingLookup;
+  if (!lookup || lookup.size === 0) {
+    return {
+      evaluated: false,
+      rawModel,
+      candidateModel: rawModel,
+      evidenceSource: "LOOKUP_UNAVAILABLE",
+      matchedEvidence: null,
+      ambiguousVariantCount: 0,
+    };
+  }
+
+  const normalizedRawModel = normalizeSearchText(rawModel);
+  let resolvedModelKey = normalizedRawModel;
+  let evidence = lookup.get(resolvedModelKey);
+  if (!evidence) {
+    // Gemini occasionally prefixes a canonical model with the brand even though
+    // `carBrand` is a separate field ("Nissan March" vs SearchSynonym "March").
+    // Accept only one unambiguous canonical suffix; never fuzzy-match the model
+    // key itself, which could turn a hallucinated near-name into a hard filter.
+    const suffixMatches = Array.from(lookup.entries()).filter(
+      ([canonical]) => canonical.length >= 3 && normalizedRawModel.endsWith(` ${canonical}`),
+    );
+    if (suffixMatches.length === 1) {
+      [resolvedModelKey, evidence] = suffixMatches[0];
+    }
+  }
+  const candidateModel = evidence?.canonicalTerm ?? (resolvedModelKey === normalizedRawModel ? rawModel : resolvedModelKey);
+  const ambiguousVariantCount = evidence?.ambiguousVariants.length ?? 0;
+  const safeVariants = (evidence?.safeVariants ?? []).filter((variant) =>
+    isStructurallySafeModelEvidence(variant, resolvedModelKey),
+  );
+  const customerText = normalizeSearchText(
+    [
+      ...input.history.filter((turn) => turn.role === "customer").map((turn) => turn.text),
+      input.latestText ?? "",
+    ].join(" "),
+  );
+  const customerCompact = customerText.replace(/\s+/g, "");
+  const customerTokens = new Set(tokenizeSearchVariants(customerText));
+
+  for (const variant of safeVariants) {
+    for (const spelling of buildSearchVariants(variant)) {
+      const compact = spelling.replace(/\s+/g, "");
+      if (!compact) continue;
+      const exactToken = customerTokens.has(spelling);
+      const safeSubstring = compact.length >= 4 && customerCompact.includes(compact);
+      if (exactToken || safeSubstring) {
+        return {
+          evaluated: true,
+          rawModel,
+          candidateModel,
+          evidenceSource: "SAFE_SYNONYM",
+          matchedEvidence: variant,
+          ambiguousVariantCount,
+        };
+      }
+    }
+  }
+
+  const latestMention = input.carMentionInLatest?.trim() ?? "";
+  if (latestMention && chatCarMentionOccursInLatest(latestMention, input.latestText)) {
+    const mentionCompact = normalizeSearchText(latestMention).replace(/\s+/g, "");
+    for (const variant of safeVariants) {
+      const variantCompact = normalizeSearchText(variant).replace(/\s+/g, "");
+      // Thai vowel/mark substitutions often count as two Unicode edits even when
+      // a human sees one mistyped syllable ("คัมรี่" vs "แคมรี่"). This fallback
+      // is gated by a verbatim latest-message mention and an unambiguous model
+      // cluster, so two edits are acceptable for Thai while Latin stays at one.
+      const maxMentionEdits = /[ก-๙]/.test(mentionCompact) ? 2 : 1;
+      if (
+        mentionCompact.length >= 4 &&
+        variantCompact.length >= 4 &&
+        containsWithinEditDistance(variantCompact, mentionCompact, maxMentionEdits)
+      ) {
+        return {
+          evaluated: true,
+          rawModel,
+          candidateModel,
+          evidenceSource: "LATEST_MENTION_TYPO",
+          matchedEvidence: latestMention,
+          ambiguousVariantCount,
+        };
+      }
+    }
+  }
+
+  return {
+    evaluated: true,
+    rawModel,
+    candidateModel: null,
+    evidenceSource: "NO_EVIDENCE",
+    matchedEvidence: null,
+    ambiguousVariantCount,
+  };
+}
+
 /**
  * Year-specific evidence check. The customer's own words rarely contain the exact
  * 4-digit C.E. year the classifier reports — they type shorthand ("ปี 03" for
@@ -242,10 +480,17 @@ export function guardChatSearchIntent(input: {
   /** DB-backed model spelling lookup (SearchSynonym); grounds Thai↔English model
    *  transliterations ("สตาด้า"↔"Strada"). Omitted → English-only evidence. */
   modelLookup?: ReadonlyMap<string, string[]> | null;
+  /** Narrow, ambiguity-aware evidence lookup used by the every-turn SHADOW policy. */
+  modelGroundingLookup?: CarModelGroundingLookup | null;
 }) {
-  const { intent, latestText, history, brandLookup, modelLookup } = input;
+  const { intent, latestText, history, brandLookup, modelLookup, modelGroundingLookup } = input;
   if (!intent || !intent.isProductQuery) {
-    return { intent, forceLiteralQuery: false, requiredTokens: [] as string[] };
+    return {
+      intent,
+      forceLiteralQuery: false,
+      requiredTokens: [] as string[],
+      modelGroundingShadow: null as ChatModelGroundingShadow | null,
+    };
   }
 
   const carModelGrounded =
@@ -257,6 +502,23 @@ export function guardChatSearchIntent(input: {
     (carModelGrounded && Boolean(intent.carBrand) && Boolean(intent.carModel));
   const carYearGrounded =
     intent.year !== null && lineYearHasCustomerEvidence(intent.year, latestText, history);
+
+  const explicitModelEvidence = resolveLatestExplicitCarModelEvidence({
+    latestText,
+    groundingLookup: modelGroundingLookup,
+  });
+  const classifiedModelKey = resolveGroundingCanonicalKey(intent.carModel, modelGroundingLookup);
+  const evidenceModelKey = normalizeSearchText(explicitModelEvidence?.canonicalModel);
+  const modelEvidenceChanged = Boolean(
+    intent.carModel &&
+      explicitModelEvidence &&
+      evidenceModelKey &&
+      evidenceModelKey !== classifiedModelKey,
+  );
+  const reconciledModel =
+    modelEvidenceChanged && explicitModelEvidence
+      ? explicitModelEvidence.canonicalModel
+      : intent.carModel;
 
   const requiredTokens = extractChatRequiredSearchTokens(latestText);
 
@@ -277,22 +539,56 @@ export function guardChatSearchIntent(input: {
   const groundedIntent: ChatSearchIntent = {
     ...intent,
     carBrand: carBrandGrounded ? intent.carBrand : null,
-    carModel: requiredTokens.length === 0 ? intent.carModel : carModelGrounded ? intent.carModel : null,
+    carModel:
+      requiredTokens.length === 0
+        ? reconciledModel
+        : explicitModelEvidence
+          ? reconciledModel
+          : carModelGrounded
+            ? intent.carModel
+            : null,
     year: carYearGrounded ? intent.year : null,
   };
+  const candidate = evaluateChatModelGroundingCandidate({
+    model: intent.carModel,
+    carMentionInLatest: intent.carMentionInLatest,
+    latestText,
+    history,
+    groundingLookup: modelGroundingLookup,
+  });
+  const modelGroundingShadow: ChatModelGroundingShadow | null = candidate
+    ? {
+        ...candidate,
+        currentModel: groundedIntent.carModel,
+        wouldChange:
+          candidate.evaluated &&
+          normalizeSearchText(candidate.candidateModel) !== normalizeSearchText(groundedIntent.carModel),
+      }
+    : null;
 
   if (requiredTokens.length === 0) {
     // No model-code/year anchor to enforce a literal query, but the brand/year are
     // already grounded above so a hallucinated brand/year can't hard-filter here.
-    return { intent: groundedIntent, forceLiteralQuery: false, requiredTokens };
+    return {
+      intent: groundedIntent,
+      // If the deterministic evidence corrected the classifier's model, its
+      // generated query may still contain the wrong name. Searching the raw
+      // customer text avoids a contradictory wrong-model query while the hard
+      // fitment filter uses the corrected canonical model.
+      forceLiteralQuery: modelEvidenceChanged,
+      requiredTokens,
+      modelGroundingShadow,
+    };
   }
 
   const queryHasRequiredTokens = lineQueryContainsRequiredTokens(intent.query, requiredTokens);
-  const forceLiteralQuery = !queryHasRequiredTokens || !carBrandGrounded || !carModelGrounded;
+  const forceLiteralQuery =
+    modelEvidenceChanged || !queryHasRequiredTokens || !carBrandGrounded || !carModelGrounded;
 
   return {
     intent: groundedIntent,
     forceLiteralQuery,
     requiredTokens,
+    modelGroundingShadow,
   };
 }

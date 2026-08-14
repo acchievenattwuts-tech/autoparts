@@ -6,7 +6,14 @@ export type ProductSearchCandidateAction =
   | "search-synonym"
   | "product-alias-oem"
   | "fitment-year"
-  | "review-noise";
+  | "review-noise"
+  // Staged by the chat pipeline when an LLM proposed the car model a customer
+  // misspelled AND that proposal resolved to exactly one active vehicle in master
+  // data (see chat-core/vehicle-synonym-staging). It is NEVER produced by
+  // classifyProductSearchCandidateAction below — that function reads a query's text
+  // alone and cannot know a vehicle was meant. Kept separate from `search-synonym`
+  // so the two sources stay distinguishable in the review queue.
+  | "vehicle-synonym";
 
 export type ProductSearchLogAnalysisInput = {
   query: string;

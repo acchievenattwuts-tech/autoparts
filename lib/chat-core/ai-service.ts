@@ -4,6 +4,11 @@ import { hasGeminiKeysConfigured } from "@/lib/google-ai-keys";
 import type { ChatProductSearchBridgeResult } from "@/lib/chat-core/product-search-bridge";
 import { isChatMessageGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 import { toGregorianCarYear } from "@/lib/car-year-shorthand";
+import {
+  buildChatSearchIntentCacheKey,
+  readChatSearchIntentCache,
+  writeChatSearchIntentCache,
+} from "@/lib/chat-core/search-intent-cache";
 
 export type ChatAiSuggestionDraft = {
   suggestedReply: string;
@@ -410,6 +415,14 @@ export async function extractChatSearchIntent(input: {
     return null;
   }
 
+  // Same message + same conversation context → same classification (temperature 0).
+  // Serving it from the short-TTL cache removes the FIRST of several sequential
+  // Gemini calls on a repeat turn, and stops a retyped message from being split a
+  // different way than it was a minute ago. Failures are never cached.
+  const cacheKey = buildChatSearchIntentCacheKey(input);
+  const cached = readChatSearchIntentCache(cacheKey);
+  if (cached) return cached;
+
   try {
     const history = input.history ?? [];
     const lines: string[] = [
@@ -431,7 +444,9 @@ export async function extractChatSearchIntent(input: {
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
 
-    return parseChatSearchIntent(text);
+    const parsed = parseChatSearchIntent(text);
+    writeChatSearchIntentCache(cacheKey, parsed);
+    return parsed;
   } catch {
     return null;
   }

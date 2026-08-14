@@ -119,6 +119,8 @@ const categoryAliasSeeds: CategoryAliasSeed[] = [
       { alias: "ฟิลเตอร์แอร์", priority: 220 },
       { alias: "cabin", priority: 180, matchMode: "TOKEN" },
       { alias: "cabin filter", priority: 220 },
+      // Compound must outrank the nested engine-filter alias "air filter".
+      { alias: "cabin air filter", priority: 240 },
     ],
   },
   {
@@ -165,6 +167,8 @@ const categoryAliasSeeds: CategoryAliasSeed[] = [
       { alias: "พัดลมโบ", priority: 220 },
       { alias: "โบลเวอร์มอเตอร์", priority: 230 },
       { alias: "blower motor", priority: 230 },
+      // Common customer typo; keep exact/curated instead of broad fuzzy matching.
+      { alias: "blower moter", priority: 240 },
       { alias: "blower", priority: 200, matchMode: "TOKEN" },
     ],
   },
@@ -180,6 +184,9 @@ const categoryAliasSeeds: CategoryAliasSeed[] = [
       { alias: "พัดลมคอนเดนเซอร์", priority: 225 },
       { alias: "condenser fan", priority: 220 },
       { alias: "condenser fan motor", priority: 225 },
+      // Covers "condensor fan moter" while the longer compound suppresses
+      // the nested generic "condensor" → Condenser alias.
+      { alias: "condensor fan", priority: 240 },
     ],
   },
   {

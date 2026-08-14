@@ -234,7 +234,10 @@ test(
     namedExports: { loadCarBrandVariantLookup: async () => new Map<string, string[]>() },
   });
   await mock.module("@/lib/car-model-alias-loader", {
-    namedExports: { loadCarModelVariantLookup: async () => new Map<string, string[]>() },
+    namedExports: {
+      loadCarModelVariantLookup: async () => new Map<string, string[]>(),
+      loadCarModelGroundingLookup: async () => new Map(),
+    },
   });
 
   await mock.module("@/lib/chat-core/multi-subject-detector", {
@@ -440,7 +443,7 @@ test(
   calls.escalations.length = 0;
   calls.notifications.length = 0;
   calls.outboundMessages.length = 0;
-  currentText = "ค่าจัดส่งเท่าไร ส่งต่างจังหวัดไหม";
+  currentText = "ค่าสงเท่าไหร สงตจวมั้ย";
 
   await processMessengerBatch(
     [

@@ -913,3 +913,110 @@ test("accessory rescue leaves a non-accessory (fitment) turn untouched", async (
   assert.equal(result.searched && result.accessoryVehicleDropped, false);
   assert.equal(result.searched && result.result.total, 0);
 });
+
+// ── Thai-fold recovery ───────────────────────────────────────────────────────
+
+test("Thai-fold recovery rescues a zero-result query and keeps every filter", async () => {
+  // "นํ้ายาล้างคอยล์" — the nikhahit spelling of ำ. Byte-different from the catalog
+  // wording, so the primary search finds nothing; the REPAIRED query is ordinary
+  // Thai that the raw index can match.
+  const calls: Array<{ query: string; fitmentYear: number | null; carModelName: string | null }> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "นํ้ายาล้างคอยล์ vios",
+      customerText: "นํ้ายาล้างคอยล์ vios",
+      fitmentHints: { carModelName: "Vios", fitmentYear: 2015 },
+      take: 3,
+    },
+    async (input) => {
+      calls.push({
+        query: input.query ?? "",
+        fitmentYear: input.fitmentYear ?? null,
+        carModelName: input.carModelName ?? null,
+      });
+      // Only the FOLDED spelling matches.
+      return input.query === "น้ำยาล้างคอยล์ vios"
+        ? { ids: ["p9"], total: 1, mode: "v2" as const }
+        : { ids: [], total: 0, mode: "v2" as const };
+    },
+    async () => [],
+  );
+
+  assert.equal(result.searched, true);
+  if (!result.searched) return;
+  assert.equal(result.result.total, 1);
+  assert.equal(result.thaiFoldRecovered, true);
+  assert.equal(result.needsMoreInfo, false);
+  // The recovery must be exactly as constrained as the primary search — unlike the
+  // did-you-mean retry it never drops the year, so no caveat is owed the customer.
+  assert.equal(result.didYouMean, null);
+  assert.equal(result.yearMismatch, null);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].fitmentYear, 2015);
+  assert.equal(calls[1].carModelName, "Vios");
+});
+
+test("Thai-fold recovery never runs when the primary search already found rows", async () => {
+  let searchCount = 0;
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "น้ำยาล้างคอยล์",
+      take: 3,
+    },
+    async () => {
+      searchCount += 1;
+      return { ids: ["p1"], total: 1, mode: "v2" as const };
+    },
+    async () => [],
+  );
+
+  assert.equal(searchCount, 1, "a successful turn must not pay for a second search");
+  assert.equal(result.searched && result.thaiFoldRecovered, false);
+});
+
+test("Thai-fold recovery finding nothing leaves the result untouched", async () => {
+  // Worst case must be byte-identical to the pre-fold behaviour: still zero rows,
+  // still needsMoreInfo, still no didYouMean. The query DOES carry a decomposed ำ,
+  // so the retry really runs here — this pins the failed-recovery path, not a skip.
+  let searchCount = 0;
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "นํ้ายาที่ไม่มีในคลัง",
+      take: 3,
+    },
+    async () => {
+      searchCount += 1;
+      return { ids: [], total: 0, mode: "v2" as const };
+    },
+    async () => [],
+  );
+  assert.equal(searchCount, 2, "primary + fold retry both ran");
+
+  assert.equal(result.searched, true);
+  if (!result.searched) return;
+  assert.equal(result.result.total, 0);
+  assert.equal(result.needsMoreInfo, true);
+  assert.equal(result.thaiFoldRecovered, false);
+  assert.equal(result.didYouMean, null);
+});
+
+test("a query with no foldable slip skips the extra search entirely", async () => {
+  let searchCount = 0;
+  await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "compressor vios",
+      take: 3,
+    },
+    async () => {
+      searchCount += 1;
+      return { ids: [], total: 0, mode: "v2" as const };
+    },
+    async () => [],
+  );
+  // One primary search only — no fold retry, because Latin text has nothing to fold.
+  assert.equal(searchCount, 1);
+});

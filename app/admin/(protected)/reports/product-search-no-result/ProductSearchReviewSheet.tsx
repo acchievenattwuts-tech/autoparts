@@ -28,7 +28,12 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type CandidateAction = "search-synonym" | "product-alias-oem" | "fitment-year" | "review-noise";
+type CandidateAction =
+  | "search-synonym"
+  | "product-alias-oem"
+  | "fitment-year"
+  | "review-noise"
+  | "vehicle-synonym";
 
 type ClusterProps = {
   normalizedQuery: string;
@@ -39,6 +44,14 @@ type ClusterProps = {
 type OutcomeProps = {
   status: string;
   note: string | null;
+  /**
+   * For an AI-staged `vehicle-synonym` row this carries the canonical vehicle the
+   * chat pipeline proposed — already verified against master data, so it names
+   * exactly one active CarModel/CarBrand. Used to pre-fill the synonym term so the
+   * reviewer confirms a suggestion instead of retyping it. Null for every other
+   * candidate action.
+   */
+  suggestedTerm: string | null;
 } | null;
 
 type ProductOption = { code: string; name: string };
@@ -224,7 +237,10 @@ export const ProductSearchReviewSheet = ({
                       Term (canonical)
                       <input
                         name="term"
-                        defaultValue=""
+                        // Pre-filled ONLY from an AI vehicle suggestion that already
+                        // resolved to exactly one active vehicle in master data. The
+                        // reviewer can still edit or clear it before applying.
+                        defaultValue={outcome?.suggestedTerm ?? ""}
                         placeholder="เช่น compressor"
                         className={`${inputCls} w-48`}
                       />
