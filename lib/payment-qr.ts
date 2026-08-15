@@ -48,4 +48,25 @@ export async function buildPromptPayQrDataUrl(
   });
 }
 
+/**
+ * PNG bytes for the same QR, used by the public image endpoint that LINE's servers
+ * fetch when a PromptPay QR is pushed into a customer chat. A data URL cannot be used
+ * there — LINE image messages only accept HTTPS URLs.
+ */
+export async function buildPromptPayQrPngBuffer(
+  promptPayId: string | null | undefined,
+  amount: number,
+  width: number = DEFAULT_QR_WIDTH,
+): Promise<Buffer | null> {
+  const normalizedPromptPayId = promptPayId?.trim();
+  if (!normalizedPromptPayId) return null;
+
+  const payload = generatePromptPayPayload(normalizedPromptPayId, { amount });
+  return QRCode.toBuffer(payload, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width,
+  });
+}
+
 export { getTransferDocumentState };

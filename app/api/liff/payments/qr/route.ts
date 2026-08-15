@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
-import {
-  parseLiffPaymentQrRequest,
-  type LiffPaymentQrRequest,
-} from "@/lib/liff-payment-qr-request";
+import { parseLiffPaymentQrRequest } from "@/lib/liff-payment-qr-request";
+import { resolveLiffPaymentTarget } from "@/lib/liff-payment-qr-target";
 import { getLiffCustomerSession } from "@/lib/liff-session";
+import { buildPaymentQrImageUrl } from "@/lib/payment-qr-image-token";
 import { buildPromptPayQrDataUrl, getPrimaryTransferAccount } from "@/lib/payment-qr";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -13,45 +12,6 @@ export const dynamic = "force-dynamic";
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 20;
-
-function toPaymentAmount(value: unknown): number {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return 0;
-  return Math.round(amount * 100) / 100;
-}
-
-async function resolvePaymentTarget(input: LiffPaymentQrRequest, customerId: string) {
-  const commonWhere = {
-    customerId,
-    status: "ACTIVE" as const,
-    paymentType: "CREDIT_SALE" as const,
-    amountRemain: { gt: 0 },
-  };
-
-  if (input.mode === "selected") {
-    const sales = await db.sale.findMany({
-      where: { ...commonWhere, id: { in: input.saleIds } },
-      select: { id: true, amountRemain: true },
-    });
-    if (sales.length !== input.saleIds.length) return null;
-
-    return {
-      amount: toPaymentAmount(
-        sales.reduce((sum, sale) => sum + Number(sale.amountRemain), 0),
-      ),
-      label: `บิลที่เลือก ${sales.length} บิล`,
-    };
-  }
-
-  const result = await db.sale.aggregate({
-    where: commonWhere,
-    _sum: { amountRemain: true },
-  });
-  return {
-    amount: toPaymentAmount(result._sum.amountRemain),
-    label: "ยอดค้างชำระทั้งหมด",
-  };
-}
 
 export async function POST(request: Request) {
   const session = await getLiffCustomerSession();
@@ -94,7 +54,7 @@ export async function POST(request: Request) {
 
     const [transferAccount, paymentTarget] = await Promise.all([
       getPrimaryTransferAccount(),
-      resolvePaymentTarget(input, customer.id),
+      resolveLiffPaymentTarget(input, customer.id),
     ]);
 
     if (!transferAccount?.promptPayId?.trim()) {
@@ -125,6 +85,9 @@ export async function POST(request: Request) {
         amount,
         label: paymentTarget.label,
         qrDataUrl,
+        // Null when DOC_VERIFY_SECRET is unset — the client then hides the
+        // open-in-browser action instead of offering a link that cannot work.
+        imageUrl: buildPaymentQrImageUrl(amount),
         account: {
           name: transferAccount.name,
           bankName: transferAccount.bankName,
