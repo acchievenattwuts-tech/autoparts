@@ -149,6 +149,29 @@ const ProductAutocomplete = ({
     setValue(next);
     if (isStorefrontSearchField) publishStorefrontSearchQuery(next);
   };
+
+  // --- ปุ่ม X ล้างคำค้น (เฉพาะช่องค้นหาหน้าร้าน) ---
+  const showClearButton = isStorefrontSearchField && value.length > 0;
+  // ปุ่ม X ต้องหลบปุ่มค้นหาที่อยู่ในกรอบ ซึ่งมี 2 ขนาด: แบบ header ร้าน
+  // (submitButtonClassName — w-12 ที่ right-1) กับปุ่มกลมค่าเริ่มต้น (w-7 ที่ right-1.5)
+  const hasWideSubmitButton = Boolean(showSubmitButton && submitButtonClassName);
+  const clearButtonInsetClass = hasWideSubmitButton ? "right-14" : "right-9";
+  // ส่ง pr-* ได้ครั้งละคลาสเดียวเท่านั้น — ถ้าใส่ซ้อนกัน Tailwind จะสลับลำดับเอง
+  const clearButtonInputPadding = hasWideSubmitButton ? "pr-[5.5rem]" : "pr-[4.5rem]";
+  const clearButtonClass =
+    "absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full " +
+    "text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 " +
+    "dark:text-slate-500 dark:hover:bg-white/10 dark:hover:text-slate-200";
+
+  // กด X = ลบข้อความในช่องอย่างเดียว ไม่ค้นหาใหม่และไม่แตะ URL
+  // (ผลลัพธ์ที่เปิดค้างอยู่บนหน้าจึงยังอยู่เหมือนเดิม)
+  // refocus: เดสก์ท็อปคืน focus ให้พิมพ์ต่อได้ทันที · มือถือห้ามคืน เพราะ input
+  // ตัวนอกเป็นแค่ตัวเปิด modal — พอ focus แล้ว modal จะเด้งขึ้นมา
+  const clearQuery = ({ refocus }: { refocus: boolean }) => {
+    handleUserInput("");
+    setActiveIndex(-1);
+    if (refocus) inputRef.current?.focus();
+  };
   const getDisplayUnitName = (item: AutocompleteItem) =>
     item.saleUnitName || item.reportUnitName || "หน่วย";
 
@@ -691,9 +714,27 @@ const ProductAutocomplete = ({
                 e.target.blur();
                 setModalOpen(true);
               }}
-              className={`${showSubmitButton ? "px-4 pr-12" : "pl-9 pr-3"} ${inputBase} ${inputClassName ?? ""} cursor-pointer`}
+              className={`${showSubmitButton ? "px-4" : "pl-9"} ${
+                showClearButton
+                  ? clearButtonInputPadding
+                  : showSubmitButton
+                    ? "pr-12"
+                    : "pr-3"
+              } ${inputBase} ${inputClassName ?? ""} cursor-pointer`}
               aria-label="เปิดช่องค้นหา"
             />
+            {showClearButton && (
+              <button
+                type="button"
+                // กัน focus ไปตกที่ input (readOnly) ซึ่งจะเปิด modal ขึ้นมาทันที
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => clearQuery({ refocus: false })}
+                className={`${clearButtonClass} ${clearButtonInsetClass}`}
+                aria-label="ล้างคำค้น"
+              >
+                <X size={14} />
+              </button>
+            )}
             {showSubmitButton && (
               <button
                 type="button"
@@ -811,12 +852,32 @@ const ProductAutocomplete = ({
               placeholder={placeholder}
               autoComplete="off"
               autoFocus={autoFocus}
-              className={`${showSubmitButton ? "px-4 pr-12" : "pl-9 pr-10"} ${inputBase} ${inputClassName ?? ""}`}
+              className={`${showSubmitButton ? "px-4" : "pl-9"} ${
+                showClearButton
+                  ? clearButtonInputPadding
+                  : showSubmitButton
+                    ? "pr-12"
+                    : "pr-10"
+              } ${inputBase} ${inputClassName ?? ""}`}
               aria-autocomplete="list"
               aria-controls={`${id}-listbox`}
               aria-expanded={open}
               role="combobox"
             />
+            {showClearButton && (
+              <button
+                type="button"
+                // preventDefault บน mousedown = focus ไม่หลุดจาก input
+                // (Safari ไม่ focus ปุ่มตอนคลิก → onBlurCapture ของ wrapper
+                //  จะปิด dropdown ทิ้งก่อน onClick ทำงาน)
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => clearQuery({ refocus: true })}
+                className={`${clearButtonClass} ${clearButtonInsetClass}`}
+                aria-label="ล้างคำค้น"
+              >
+                <X size={14} />
+              </button>
+            )}
             {loading && !showSubmitButton && (
               <Loader2
                 size={14}

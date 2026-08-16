@@ -940,6 +940,15 @@
 - [ ] ตามต่อ (ยังไม่ได้ทดสอบบนเครื่องจริง): Android คาดว่าลง Downloads/แกลเลอรี · **iOS Safari จะเซฟลงแอป Files ไม่ใช่คลังรูป** — ถ้าลูกค้า iOS ต้องสแกน QR จากคลังรูปแล้วหาไม่เจอ ให้กลับมาคุยเรื่องทางเลือกอีกครั้ง
 - ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npx eslint` 4 ไฟล์ที่แก้ไม่มี error · `npm run build` ผ่าน (Compiled successfully, 71/71 static pages)
 
+## ช่องค้นหาหน้าร้าน: ปุ่ม X ล้างคำค้น (2026-08-16)
+- ที่มา: เจ้าของแคปช่อง autocomplete หน้าบ้านมาให้ดู — ขอปุ่ม X "ทำหน้าที่แค่ลบข้อความออกเท่านั้น" · ยืนยันขอบเขต = **หน้าบ้านทั้ง desktop + mobile** (ฝั่งแอดมินไม่แตะ)
+- [x] [ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx): ปุ่ม X gate ด้วย `isStorefrontSearchField && value.length > 0` → ขึ้นเฉพาะ `mode="storefront"` + `enhanced` เท่านั้น · `ProductFilterForm` / `MobileProductSearchForm` (admin) ไม่มีอะไรเปลี่ยน · ช่องใน modal มือถือมี X อยู่ก่อนแล้ว คงไว้เหมือนเดิม
+- [x] `clearQuery()` ทำแค่ `handleUserInput("")` + `setActiveIndex(-1)` — ไม่ยิงค้นหาใหม่ ไม่แตะ URL (อยู่หน้า `?q=508` ผลลัพธ์เดิมยังอยู่) · เพราะผ่าน `handleUserInput` จึง publish ค่าว่างเข้า `storefront-search-query-bus` ให้ปุ่ม "ตกลง" ในแผงกรองไม่ยึด q เก่า (พฤติกรรมเดียวกับ X ใน modal มือถือ)
+- [x] desktop คืน focus ให้ช่องเพื่อพิมพ์ต่อได้ทันที + `onMouseDown preventDefault` กัน Safari ปิด dropdown ทิ้งก่อน `onClick` ทำงาน · mobile **ห้าม**คืน focus เพราะ input ตัวนอกเป็นแค่ตัวเปิด modal (focus แล้ว modal จะเด้ง)
+- [x] ตำแหน่ง: X `right-14` (h-7 w-7) หลบปุ่มค้นหา header (`right-1`, w-12) เหลือช่องไฟ 4px · input เผื่อ `pr-[5.5rem]` **เฉพาะตอนมีข้อความ** (ยังไม่พิมพ์ = padding เดิม placeholder ไม่ถูกตัดสั้นลง) · ส่ง `pr-*` คลาสเดียวเสมอ กัน Tailwind สลับลำดับกันเอง · dark mode ทำมาพร้อมกันในรอบเดียว
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน · `scripts/test-storefront-autocomplete-focus-regression.ts` ผ่าน · วัด DOM จริงบน dev server: X = 28×28 ที่ right 56px, ปุ่มค้นหา 48×32 ที่ right 4px, `padding-right` 88px → ไม่ทับกัน
+- [ ] ยังไม่ได้ทดสอบ "กดจริง" ในเบราว์เซอร์ (browser pane ของ session นี้ไม่ render → React ไม่ hydrate จึงคลิกทดสอบไม่ได้) — รบกวนเจ้าของกดยืนยันบนหน้าจริงอีกรอบ
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth
