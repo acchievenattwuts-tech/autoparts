@@ -2,7 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createSale, loadSaleProductsByIds, searchSaleProducts, updateSale } from "../actions";
-import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap, Printer } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -1484,14 +1485,11 @@ const SaleForm = ({
             <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
           </div>
           {canPrint && persistedSaleId && (
-            <a
+            <PrintCopyModeLink
               href={`/admin/sales/${persistedSaleId}?print=1`}
-              target="_blank"
-              rel="noopener noreferrer"
+              label="พิมพ์แบบฟอร์ม"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900"
-            >
-              <Printer size={16} /> พิมพ์แบบฟอร์ม
-            </a>
+            />
           )}
         </div>
       )}
@@ -1500,7 +1498,7 @@ const SaleForm = ({
         <p className="text-xs text-gray-500 dark:text-slate-400">
           {draftStatus || "Draft จะถูกเก็บเฉพาะในเครื่องนี้ ยังไม่กระทบข้อมูลจริงจนกว่าจะกดบันทึก"}
         </p>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={addItem}
@@ -1509,14 +1507,11 @@ const SaleForm = ({
             <Plus size={14} /> เพิ่มรายการ
           </button>
         {canPrint && persistedSaleId && (
-          <a
+          <PrintCopyModeLink
             href={`/admin/sales/${persistedSaleId}?print=1`}
-            target="_blank"
-            rel="noopener noreferrer"
+            label="พิมพ์"
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-[#1e3a5f] hover:bg-blue-900 text-white text-sm font-medium rounded-lg transition-colors"
-          >
-            <Printer size={16} /> พิมพ์
-          </a>
+          />
         )}
         <button
           type="submit"

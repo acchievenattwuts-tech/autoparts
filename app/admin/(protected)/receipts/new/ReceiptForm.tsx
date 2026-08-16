@@ -2,7 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Printer } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
@@ -538,14 +539,11 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               <span className="text-sm text-green-700 dark:text-green-400">{successMsg}</span>
               <div className="flex items-center gap-2">
                 {canPrint && printReceiptId && (
-                  <a
+                  <PrintCopyModeLink
                     href={`/admin/receipts/${printReceiptId}?print=1`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                    label="พิมพ์ใบเสร็จ"
                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600"
-                  >
-                    <Printer size={16} /> พิมพ์ใบเสร็จ
-                  </a>
+                  />
                 )}
                 <button
                   type="button"
@@ -584,16 +582,13 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               <span className="ml-1 text-sm font-normal text-gray-500 dark:text-slate-400">บาท</span>
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {canPrint && isEdit && printReceiptId && (
-              <a
+              <PrintCopyModeLink
                 href={`/admin/receipts/${printReceiptId}?print=1`}
-                target="_blank"
-                rel="noopener noreferrer"
+                label="พิมพ์"
                 className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600"
-              >
-                <Printer size={16} /> พิมพ์
-              </a>
+              />
             )}
             <button
               type="button"

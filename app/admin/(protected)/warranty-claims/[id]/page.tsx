@@ -1,9 +1,10 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ChevronLeft, CreditCard, Printer } from "lucide-react";
+import { ChevronLeft, CreditCard } from "lucide-react";
 import { notFound } from "next/navigation";
 
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
@@ -196,12 +197,12 @@ const ClaimDetailPage = async ({ params }: Props) => {
                 suppliers={suppliers}
               />
             )}
-            <Link
+            <PrintCopyModeLink
               href={`/admin/warranty-claims/${id}/print?print=1`}
+              label="พิมพ์"
+              iconSize={14}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/10 dark:text-slate-300 dark:hover:border-sky-300/60 dark:hover:text-sky-200"
-            >
-              <Printer size={14} /> พิมพ์
-            </Link>
+            />
             {canUpdate && claim.supplierId && (
               <Link
                 href={`/admin/purchase-returns/new?claimId=${id}`}

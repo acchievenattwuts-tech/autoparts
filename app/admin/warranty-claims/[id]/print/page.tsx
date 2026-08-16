@@ -7,6 +7,13 @@ import { ChevronLeft } from "lucide-react";
 
 import AutoPrint from "@/components/shared/AutoPrint";
 import WarrantyClaimPrintDocument from "@/app/admin/_components/WarrantyClaimPrintDocument";
+import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
+import {
+  PRINT_COPY_LABEL_DUPLICATE,
+  PRINT_COPY_LABEL_ORIGINAL,
+  PRINT_COPY_VISIBILITY_CSS,
+  PRINT_SLIP_COPY_CLASS,
+} from "@/app/admin/_components/print/shared";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
@@ -16,6 +23,8 @@ interface Props {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ print?: string }>;
 }
+
+const CLAIM_PRINT_SLIP_CLASS = "claim-form mx-auto bg-white p-8 text-[13px] leading-snug";
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFT: "รอส่งเคลม",
@@ -100,15 +109,17 @@ const PrintClaimPage = async ({ params, searchParams }: Props) => {
             box-shadow: 0 1px 4px rgba(0,0,0,0.1);
           }
         }
+${PRINT_COPY_VISIBILITY_CSS}
       `}</style>
 
-      <div className="no-print mb-6 flex items-center gap-3">
+      <div className="no-print mb-6 flex flex-wrap items-center gap-3">
         <Link
           href={`/admin/warranty-claims/${id}`}
           className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f]"
         >
           <ChevronLeft size={16} /> กลับ
         </Link>
+        <PrintCopyModeToggle />
         <PrintButton />
       </div>
 
@@ -118,13 +129,25 @@ const PrintClaimPage = async ({ params, searchParams }: Props) => {
         </Suspense>
       ) : null}
 
+      {/* ต้นฉบับ + สำเนา render ไว้ล่วงหน้าทั้งคู่ แล้วให้ print stylesheet
+          เป็นคนเลือกว่าจะพิมพ์กี่ชุดตามที่ผู้ใช้เลือกใน PrintCopyModeToggle */}
       <WarrantyClaimPrintDocument
         claim={claim}
         shopConfig={config}
         statusLabel={STATUS_LABEL}
         claimTypeLabel={CLAIM_TYPE_LABEL}
         outcomeLabel={OUTCOME_LABEL}
-        rootClassName="claim-form mx-auto bg-white p-8 text-[13px] leading-snug"
+        copyLabel={PRINT_COPY_LABEL_ORIGINAL}
+        rootClassName={CLAIM_PRINT_SLIP_CLASS}
+      />
+      <WarrantyClaimPrintDocument
+        claim={claim}
+        shopConfig={config}
+        statusLabel={STATUS_LABEL}
+        claimTypeLabel={CLAIM_TYPE_LABEL}
+        outcomeLabel={OUTCOME_LABEL}
+        copyLabel={PRINT_COPY_LABEL_DUPLICATE}
+        rootClassName={`${CLAIM_PRINT_SLIP_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
       />
     </>
   );

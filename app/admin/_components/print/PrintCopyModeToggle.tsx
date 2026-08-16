@@ -1,60 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
-type PrintCopyMode = "ORIGINAL" | "WITH_COPY";
+import PrintCopyModeSwitch from "./PrintCopyModeSwitch";
+import {
+  PRINT_COPIES_PARAM,
+  parsePrintCopyMode,
+  printCopyModeToAttributeValue,
+  type PrintCopyMode,
+} from "./print-copies";
 
-const MODE_OPTIONS: { value: PrintCopyMode; label: string }[] = [
-  { value: "ORIGINAL", label: "ต้นฉบับ" },
-  { value: "WITH_COPY", label: "ต้นฉบับ+สำเนา" },
-];
-
-/**
- * สลับจำนวนชุดที่จะพิมพ์ โดยเขียนค่าไว้ที่ `data-print-copies` บน <html>
- * ให้ print stylesheet ของแต่ละหน้าเป็นคนตัดสินใจว่าจะโชว์ใบสำเนาหรือไม่
- *
- * ค่าเริ่มต้นคือต้นฉบับอย่างเดียว และถ้า attribute ไม่ถูกตั้งเลย (เช่น กด Ctrl+P
- * ก่อน hydrate) print stylesheet จะ fallback เป็นต้นฉบับอย่างเดียวเช่นกัน
- */
-const PrintCopyModeToggle = () => {
-  const [mode, setMode] = useState<PrintCopyMode>("ORIGINAL");
+const PrintCopyModeToggleInner = () => {
+  const searchParams = useSearchParams();
+  // อ่านค่าเริ่มต้นตอน render (ไม่ใช่ใน effect) เพื่อให้ server กับ client ตรงกัน
+  // และไม่เกิด cascading render
+  const [mode, setMode] = useState<PrintCopyMode>(() =>
+    parsePrintCopyMode(searchParams.get(PRINT_COPIES_PARAM)),
+  );
 
   useEffect(() => {
     const root = document.documentElement;
-    root.dataset.printCopies = mode === "WITH_COPY" ? "2" : "1";
+    root.dataset.printCopies = printCopyModeToAttributeValue(mode);
 
     return () => {
       delete root.dataset.printCopies;
     };
   }, [mode]);
 
-  return (
-    <div
-      role="group"
-      aria-label="จำนวนชุดที่พิมพ์"
-      className="no-print inline-flex items-center gap-0.5 rounded-lg border border-gray-300 p-0.5 dark:border-white/20"
-    >
-      {MODE_OPTIONS.map((option) => {
-        const isActive = option.value === mode;
-
-        return (
-          <button
-            key={option.value}
-            type="button"
-            aria-pressed={isActive}
-            onClick={() => setMode(option.value)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-              isActive
-                ? "bg-[#1e3a5f] text-white dark:bg-sky-500 dark:text-slate-900"
-                : "text-gray-600 hover:bg-gray-100 hover:text-[#1e3a5f] dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-sky-300"
-            }`}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
-  );
+  return <PrintCopyModeSwitch value={mode} onChange={setMode} />;
 };
+
+/**
+ * สำหรับ "หน้าพิมพ์" (sales/receipts detail, delivery batch print, warranty claim print)
+ * เขียนค่าไว้ที่ `data-print-copies` บน <html> ให้ print stylesheet เป็นคนตัดสินใจ
+ *
+ * ค่าเริ่มต้นคือต้นฉบับอย่างเดียว แต่ถ้าเข้ามาด้วย `?copies=2` (มาจากปุ่มพิมพ์ของ
+ * หน้าอื่นที่นำทางมา หรือ iframe ของ PrintFromListButton) จะ sync ให้ตรงกับที่
+ * ผู้ใช้เลือกไว้ก่อนหน้า
+ *
+ * ครอบ Suspense ไว้ในตัวเอง เพื่อให้หน้าที่เรียกใช้ไม่ต้องจัดการ boundary เอง
+ */
+const PrintCopyModeToggle = () => (
+  <Suspense fallback={null}>
+    <PrintCopyModeToggleInner />
+  </Suspense>
+);
 
 export default PrintCopyModeToggle;

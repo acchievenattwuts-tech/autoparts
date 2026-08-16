@@ -1,3 +1,4 @@
+import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocumentCopyWatermark";
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
@@ -50,6 +51,8 @@ type WarrantyClaimPrintDocumentProps = {
   statusLabel: Record<string, string>;
   claimTypeLabel: Record<string, string>;
   outcomeLabel: Record<string, string>;
+  /** ข้อความลายน้ำกลางหน้า เช่น "ต้นฉบับ" / "สำเนา" — ไม่ส่งมา = ไม่มีลายน้ำ */
+  copyLabel?: string | null;
   rootId?: string;
   rootClassName?: string;
 };
@@ -60,6 +63,7 @@ const WarrantyClaimPrintDocument = ({
   statusLabel,
   claimTypeLabel,
   outcomeLabel,
+  copyLabel,
   rootId,
   rootClassName,
 }: WarrantyClaimPrintDocumentProps) => {
@@ -76,6 +80,8 @@ const WarrantyClaimPrintDocument = ({
 
   return (
     <PrintDocumentRoot rootId={rootId} rootClassName={rootClassName}>
+      {copyLabel ? <PrintDocumentCopyWatermark label={copyLabel} /> : null}
+
       <PrintDocumentHeader shopConfig={shopConfig} title="ใบเคลมสินค้า" />
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs">

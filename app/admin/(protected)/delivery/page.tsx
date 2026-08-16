@@ -6,6 +6,7 @@ import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL, ge
 import NavLink from "@/components/shared/NavLink";
 import { ExternalLink, Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -136,7 +137,7 @@ const DeliveryPage = async ({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">คิวจัดส่ง</h1>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-3">
           <span className="text-sm text-gray-500 dark:text-slate-400">{sales.length} รายการ</span>
           <NavLink
             href={mobileViewHref}
@@ -145,14 +146,12 @@ const DeliveryPage = async ({
             <Smartphone size={14} /> มุมมองมือถือ
           </NavLink>
           {printAllUrl && (
-            <a
+            <PrintCopyModeLink
               href={printAllUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              label={`พิมพ์ทั้งหมด (${sales.length})`}
+              iconSize={14}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e3a5f] text-white rounded-lg hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600 transition-colors"
-            >
-              พิมพ์ทั้งหมด ({sales.length})
-            </a>
+            />
           )}
         </div>
       </div>
