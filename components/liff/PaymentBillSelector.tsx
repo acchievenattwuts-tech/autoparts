@@ -76,9 +76,6 @@ export default function PaymentBillSelector({ bills }: { bills: BillOption[] }) 
           </span>
         </div>
         <PaymentQrButton mode="selected" saleIds={[bill.id]} />
-        <p className="mt-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
-          ยอดใน QR จะตรวจใหม่จาก server อีกครั้งก่อนสร้าง
-        </p>
       </div>
     );
   }
@@ -156,9 +153,6 @@ export default function PaymentBillSelector({ bills }: { bills: BillOption[] }) 
           ) : (
             <PaymentQrButton mode="selected" saleIds={selectedIds} />
           )}
-          <p className="mt-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
-            ยอดใน QR จะตรวจใหม่จาก server อีกครั้งก่อนสร้าง
-          </p>
         </div>
       ) : null}
     </div>
