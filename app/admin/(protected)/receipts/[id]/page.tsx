@@ -10,6 +10,13 @@ import { Suspense } from "react";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
+import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
+import {
+  PRINT_COPY_LABEL_DUPLICATE,
+  PRINT_COPY_LABEL_ORIGINAL,
+  PRINT_COPY_VISIBILITY_CSS,
+  PRINT_SLIP_COPY_CLASS,
+} from "@/app/admin/_components/print/shared";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
@@ -24,6 +31,10 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   TRANSFER: "โอนเงิน",
   CREDIT: "เครดิต",
 };
+
+/** เท่ากับ default rootClassName ของ SharedReceiptSettlementPrintDocument + class ของ slip */
+const RECEIPT_PRINT_SLIP_CLASS =
+  "print-slip mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
@@ -130,8 +141,29 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const verify = await buildPrintDocumentVerifyBadge({
     type: "receipt",
     docNo: receipt.receiptNo,
-    variant: "ORIGINAL",
   });
+  const receiptPrintDocumentProps = {
+    receipt: { ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl },
+    shopConfig: {
+      shopName: cfg.shopName,
+      shopAddress: cfg.shopAddress,
+      shopPhone: cfg.shopPhone,
+      shopLogoUrl: cfg.shopLogoUrl,
+      shopWebsiteUrl: cfg.shopWebsiteUrl,
+      shopLineId: cfg.shopLineId,
+      printNoticeText: cfg.printNoticeText,
+    },
+    signerDisplayName,
+    receivedTransferAccount,
+    payments: receiptPayments.map((payment) => ({
+      accountName: payment.cashBankAccount.name,
+      accountType: payment.cashBankAccount.type,
+      bankName: payment.cashBankAccount.bankName,
+      accountNo: payment.cashBankAccount.accountNo,
+      amount: Number(payment.amount),
+    })),
+    verify,
+  };
 
   return (
     <>
@@ -149,6 +181,8 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             left: 0;
             top: 0;
             width: 100%;
+          }
+          .print-slip {
             display: flex;
             flex-direction: column;
             min-height: 100vh;
@@ -156,6 +190,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }
+${PRINT_COPY_VISIBILITY_CSS}
       `}</style>
 
       <div className="no-print">
@@ -191,6 +226,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
                   <Pencil size={14} /> แก้ไข
                 </NavLink>
               ) : null}
+              <PrintCopyModeToggle />
               <PrintButton />
             </div>
           </div>
@@ -293,29 +329,18 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <DocumentActivityTimeline events={activityEvents} variant="compact" className="mb-0" />
         </div>
 
-        <div className="min-w-0">
+        {/* ต้นฉบับ + สำเนา render ไว้ล่วงหน้าทั้งคู่ (ไม่ query ซ้ำ) แล้วให้ print stylesheet
+            เป็นคนเลือกว่าจะพิมพ์กี่ชุดตามที่ผู้ใช้เลือกใน PrintCopyModeToggle */}
+        <div className="min-w-0" id="receipt">
           <SharedReceiptSettlementPrintDocument
-            receipt={{ ...receipt, customerName: customerDisplay, signerSignatureUrl: receiptSignatureUrl }}
-            shopConfig={{
-              shopName: cfg.shopName,
-              shopAddress: cfg.shopAddress,
-              shopPhone: cfg.shopPhone,
-              shopLogoUrl: cfg.shopLogoUrl,
-              shopWebsiteUrl: cfg.shopWebsiteUrl,
-              shopLineId: cfg.shopLineId,
-              printNoticeText: cfg.printNoticeText,
-            }}
-            signerDisplayName={signerDisplayName}
-            receivedTransferAccount={receivedTransferAccount}
-            payments={receiptPayments.map((payment) => ({
-              accountName: payment.cashBankAccount.name,
-              accountType: payment.cashBankAccount.type,
-              bankName: payment.cashBankAccount.bankName,
-              accountNo: payment.cashBankAccount.accountNo,
-              amount: Number(payment.amount),
-            }))}
-            verify={verify}
-            rootId="receipt"
+            {...receiptPrintDocumentProps}
+            copyLabel={PRINT_COPY_LABEL_ORIGINAL}
+            rootClassName={RECEIPT_PRINT_SLIP_CLASS}
+          />
+          <SharedReceiptSettlementPrintDocument
+            {...receiptPrintDocumentProps}
+            copyLabel={PRINT_COPY_LABEL_DUPLICATE}
+            rootClassName={`${RECEIPT_PRINT_SLIP_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
           />
         </div>
       </div>

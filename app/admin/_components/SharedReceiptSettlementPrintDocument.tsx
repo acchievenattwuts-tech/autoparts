@@ -1,3 +1,4 @@
+import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocumentCopyWatermark";
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
@@ -83,6 +84,7 @@ const SharedReceiptSettlementPrintDocument = ({
   receivedTransferAccount,
   payments,
   verify,
+  copyLabel,
   rootId,
   rootClassName,
 }: {
@@ -92,6 +94,8 @@ const SharedReceiptSettlementPrintDocument = ({
   receivedTransferAccount: TransferAccount;
   payments?: ReceiptSettlementPayment[];
   verify?: PrintDocumentVerifyBadge | null;
+  /** ข้อความลายน้ำกลางหน้า เช่น "ต้นฉบับ" / "สำเนา" — ไม่ส่งมา = ไม่มีลายน้ำ */
+  copyLabel?: string | null;
   rootId?: string;
   rootClassName?: string;
 }) => {
@@ -118,6 +122,7 @@ const SharedReceiptSettlementPrintDocument = ({
       rootClassName={rootClassName ?? "mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug"}
       rootStyle={undefined}
     >
+      {copyLabel ? <PrintDocumentCopyWatermark label={copyLabel} /> : null}
       {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
 
       {isCancelled ? <PrintDocumentStatusStamp label="เอกสารถูกยกเลิกแล้ว" tone="cancelled" /> : null}

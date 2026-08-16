@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import { PRINT_COPY_LABEL_LIFF } from "@/app/admin/_components/print/shared";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 import { getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
@@ -139,7 +140,6 @@ export default async function LiffOrderInvoicePage({
   const verify = await buildPrintDocumentVerifyBadge({
     type: "sale",
     docNo: sale.saleNo,
-    variant: "LIFF_COPY",
   });
   const externalPrintUrl = buildLiffPrintDocumentUrl({
     kind: "invoice",
@@ -252,6 +252,7 @@ export default async function LiffOrderInvoicePage({
           promptPayQrDataUrl={promptPayQrDataUrl}
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
+          copyLabel={PRINT_COPY_LABEL_LIFF}
           rootId="receipt"
           rootClassName={LIFF_A4_PRINT_ROOT_CLASS}
         />

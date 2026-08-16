@@ -1,9 +1,16 @@
 export const dynamic = "force-dynamic";
 
-import { Suspense } from "react";
+import { Fragment, Suspense } from "react";
 import { notFound } from "next/navigation";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
+import {
+  PRINT_COPY_LABEL_DUPLICATE,
+  PRINT_COPY_LABEL_ORIGINAL,
+  PRINT_COPY_VISIBILITY_CSS,
+  PRINT_SLIP_COPY_CLASS,
+} from "@/app/admin/_components/print/shared";
 import AutoPrint from "@/components/shared/AutoPrint";
 import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
@@ -12,6 +19,8 @@ import { requirePermission } from "@/lib/require-auth";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import { addThailandDays } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
+
+const DELIVERY_SLIP_CLASS = "slip mx-auto bg-white p-8 text-[13px] leading-snug md:flex md:min-h-[100vh] md:flex-col";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
@@ -173,13 +182,14 @@ const DeliveryPrintPage = async ({
             print-color-adjust: exact !important;
           }
           .slip {
-            page-break-after: always;
             width: 100%;
             display: flex;
             flex-direction: column;
             min-height: 100vh;
           }
-          .slip:last-child { page-break-after: avoid; }
+          /* ขึ้นหน้าใหม่ "ก่อน" ทุกใบยกเว้นใบแรก — ใช้แทน page-break-after + :last-child
+             เพราะใบสำเนาที่ถูกซ่อนยังนับเป็น :last-child อยู่ ทำให้เกิดหน้าว่างท้ายเอกสาร */
+          .slip:not(.print-slip-lead) { page-break-before: always; break-before: page; }
           .receipt-footer { margin-top: auto; }
         }
         @media screen {
@@ -196,11 +206,15 @@ const DeliveryPrintPage = async ({
             box-shadow: 0 1px 4px rgba(0,0,0,0.1);
           }
         }
+${PRINT_COPY_VISIBILITY_CSS}
       `}</style>
 
-      <div className="no-print sticky top-0 z-10 flex items-center justify-between border-b bg-white p-4">
+      <div className="no-print sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-white p-4">
         <span className="font-medium text-gray-700">ใบส่งของ {sales.length} ใบ</span>
-        <PrintButton />
+        <div className="flex items-center gap-2">
+          <PrintCopyModeToggle />
+          <PrintButton />
+        </div>
       </div>
 
       <Suspense fallback={null}>
@@ -208,7 +222,7 @@ const DeliveryPrintPage = async ({
       </Suspense>
 
       {await Promise.all(
-        sales.map(async (sale) => {
+        sales.map(async (sale, index) => {
           const transferDocumentState = getTransferDocumentState({
             paymentType: sale.paymentType,
             netAmount: Number(sale.netAmount),
@@ -228,31 +242,42 @@ const DeliveryPrintPage = async ({
             buildPrintDocumentVerifyBadge({
               type: "sale",
               docNo: sale.saleNo,
-              variant: "ORIGINAL",
             }),
           ]);
+          const slipProps = {
+            sale: { ...sale, signerSignatureUrl: sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null },
+            shopConfig,
+            dueDate,
+            signerDisplayName,
+            transferPrimaryAccount,
+            receivedTransferAccount,
+            payments: (paymentsBySaleId.get(sale.id) ?? []).map((payment) => ({
+              accountName: payment.cashBankAccount.name,
+              accountType: payment.cashBankAccount.type,
+              bankName: payment.cashBankAccount.bankName,
+              accountNo: payment.cashBankAccount.accountNo,
+              amount: Number(payment.amount),
+            })),
+            promptPayQrDataUrl,
+            qrAmount: transferDocumentState.qrAmount,
+            verify,
+          };
 
+          // เรียงแบบสลับคู่ต่อบิล: A-ต้นฉบับ, A-สำเนา, B-ต้นฉบับ, B-สำเนา
+          // ใบแรกสุดของทั้งชุดได้ class `print-slip-lead` เพื่อไม่ให้ขึ้นหน้าใหม่ก่อนหน้าแรก
           return (
-            <SharedSalesDeliveryPrintDocument
-              key={sale.id}
-              sale={{ ...sale, signerSignatureUrl: sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null }}
-              shopConfig={shopConfig}
-              dueDate={dueDate}
-              signerDisplayName={signerDisplayName}
-              transferPrimaryAccount={transferPrimaryAccount}
-              receivedTransferAccount={receivedTransferAccount}
-              payments={(paymentsBySaleId.get(sale.id) ?? []).map((payment) => ({
-                accountName: payment.cashBankAccount.name,
-                accountType: payment.cashBankAccount.type,
-                bankName: payment.cashBankAccount.bankName,
-                accountNo: payment.cashBankAccount.accountNo,
-                amount: Number(payment.amount),
-              }))}
-              promptPayQrDataUrl={promptPayQrDataUrl}
-              qrAmount={transferDocumentState.qrAmount}
-              verify={verify}
-              rootClassName="slip mx-auto bg-white p-8 text-[13px] leading-snug md:flex md:min-h-[100vh] md:flex-col"
-            />
+            <Fragment key={sale.id}>
+              <SharedSalesDeliveryPrintDocument
+                {...slipProps}
+                copyLabel={PRINT_COPY_LABEL_ORIGINAL}
+                rootClassName={index === 0 ? `${DELIVERY_SLIP_CLASS} print-slip-lead` : DELIVERY_SLIP_CLASS}
+              />
+              <SharedSalesDeliveryPrintDocument
+                {...slipProps}
+                copyLabel={PRINT_COPY_LABEL_DUPLICATE}
+                rootClassName={`${DELIVERY_SLIP_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
+              />
+            </Fragment>
           );
         }),
       )}

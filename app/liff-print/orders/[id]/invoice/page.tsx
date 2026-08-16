@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import { PRINT_COPY_LABEL_LIFF } from "@/app/admin/_components/print/shared";
 import ExternalPrintShell, { EXTERNAL_A4_PRINT_ROOT_CLASS } from "@/components/liff/ExternalPrintShell";
 import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
@@ -117,7 +118,6 @@ export default async function ExternalLiffOrderInvoicePage({
   const verify = await buildPrintDocumentVerifyBadge({
     type: "sale",
     docNo: sale.saleNo,
-    variant: "LIFF_COPY",
   });
 
   return (
@@ -145,6 +145,7 @@ export default async function ExternalLiffOrderInvoicePage({
         promptPayQrDataUrl={promptPayQrDataUrl}
         qrAmount={transferDocumentState.qrAmount}
         verify={verify}
+        copyLabel={PRINT_COPY_LABEL_LIFF}
         rootId="receipt"
         rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
       />

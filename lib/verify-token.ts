@@ -2,11 +2,9 @@ import crypto from "node:crypto";
 import QRCode from "qrcode";
 
 export type VerifyDocumentType = "sale" | "receipt";
-export type PrintDocumentVerifyVariant = "ORIGINAL" | "LIFF_COPY";
 export type LiffPrintDocumentKind = "invoice" | "receipt";
 
 export type PrintDocumentVerifyBadge = {
-  variant: PrintDocumentVerifyVariant;
   verifyUrl: string;
   qrSvg: string;
 };
@@ -139,11 +137,9 @@ export function buildLiffPrintDocumentUrl({
 export async function buildPrintDocumentVerifyBadge({
   type,
   docNo,
-  variant,
 }: {
   type: VerifyDocumentType;
   docNo: string;
-  variant: PrintDocumentVerifyVariant;
 }): Promise<PrintDocumentVerifyBadge | null> {
   const token = signDocumentVerifyToken({ type, docNo });
   if (!token) return null;
@@ -157,7 +153,6 @@ export async function buildPrintDocumentVerifyBadge({
   });
 
   return {
-    variant,
     verifyUrl,
     qrSvg,
   };

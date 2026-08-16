@@ -13,6 +13,13 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
+import {
+  PRINT_COPY_LABEL_DUPLICATE,
+  PRINT_COPY_LABEL_ORIGINAL,
+  PRINT_COPY_VISIBILITY_CSS,
+  PRINT_SLIP_COPY_CLASS,
+} from "@/app/admin/_components/print/shared";
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
@@ -79,6 +86,9 @@ const fmtNum = (n: number) =>
   n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const DELIVERY_PROOF_HISTORY_LIMIT = 20;
+
+/** เท่ากับ default rootClassName ของ PrintDocumentRoot + class ของ slip สำหรับ print stylesheet */
+const SALE_PRINT_SLIP_CLASS = "print-slip mx-auto bg-white p-8 text-[13px] leading-snug";
 
 const saleTypeLabel: Record<SaleType, string> = {
   RETAIL: "ปลีก",
@@ -201,8 +211,25 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const verify = await buildPrintDocumentVerifyBadge({
     type: "sale",
     docNo: sale.saleNo,
-    variant: "ORIGINAL",
   });
+  const salePrintDocumentProps = {
+    sale: { ...sale, signerSignatureUrl },
+    shopConfig: cfg,
+    dueDate,
+    signerDisplayName,
+    transferPrimaryAccount,
+    receivedTransferAccount,
+    payments: salePayments.map((payment) => ({
+      accountName: payment.cashBankAccount.name,
+      accountType: payment.cashBankAccount.type,
+      bankName: payment.cashBankAccount.bankName,
+      accountNo: payment.cashBankAccount.accountNo,
+      amount: Number(payment.amount),
+    })),
+    promptPayQrDataUrl,
+    qrAmount: transferDocumentState.qrAmount,
+    verify,
+  };
   const trackingHref = sale.trackingNo
     ? getShippingTrackingUrl(sale.shippingMethod ?? "NONE", sale.trackingNo)
     : null;
@@ -223,6 +250,8 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             left: 0;
             top: 0;
             width: 100%;
+          }
+          .print-slip {
             display: flex;
             flex-direction: column;
             min-height: 100vh;
@@ -230,6 +259,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }
+${PRINT_COPY_VISIBILITY_CSS}
       `}</style>
 
       <div className="no-print">
@@ -263,6 +293,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
                   <Pencil size={14} /> แก้ไข
                 </NavLink>
               ) : null}
+              <PrintCopyModeToggle />
               <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "พิมพ์ใบแจ้งหนี้" : "พิมพ์ใบเสร็จ"} />
             </div>
           </div>
@@ -448,25 +479,18 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
           <DocumentActivityTimeline events={activityEvents} variant="compact" className="mb-0" />
         </div>
 
-        <div className="min-w-0">
+        {/* ต้นฉบับ + สำเนา render ไว้ล่วงหน้าทั้งคู่ (ไม่ query ซ้ำ) แล้วให้ print stylesheet
+            เป็นคนเลือกว่าจะพิมพ์กี่ชุดตามที่ผู้ใช้เลือกใน PrintCopyModeToggle */}
+        <div className="min-w-0" id="receipt">
           <SharedSalesDeliveryPrintDocument
-            sale={{ ...sale, signerSignatureUrl }}
-            shopConfig={cfg}
-            dueDate={dueDate}
-            signerDisplayName={signerDisplayName}
-            transferPrimaryAccount={transferPrimaryAccount}
-            receivedTransferAccount={receivedTransferAccount}
-            payments={salePayments.map((payment) => ({
-              accountName: payment.cashBankAccount.name,
-              accountType: payment.cashBankAccount.type,
-              bankName: payment.cashBankAccount.bankName,
-              accountNo: payment.cashBankAccount.accountNo,
-              amount: Number(payment.amount),
-            }))}
-            promptPayQrDataUrl={promptPayQrDataUrl}
-            qrAmount={transferDocumentState.qrAmount}
-            verify={verify}
-            rootId="receipt"
+            {...salePrintDocumentProps}
+            copyLabel={PRINT_COPY_LABEL_ORIGINAL}
+            rootClassName={SALE_PRINT_SLIP_CLASS}
+          />
+          <SharedSalesDeliveryPrintDocument
+            {...salePrintDocumentProps}
+            copyLabel={PRINT_COPY_LABEL_DUPLICATE}
+            rootClassName={`${SALE_PRINT_SLIP_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
           />
         </div>
       </div>

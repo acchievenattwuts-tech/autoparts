@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import { PRINT_COPY_LABEL_LIFF } from "@/app/admin/_components/print/shared";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 import { getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
@@ -156,7 +157,6 @@ export default async function LiffOrderReceiptPage({
     const verify = await buildPrintDocumentVerifyBadge({
       type: "sale",
       docNo: sale.saleNo,
-      variant: "LIFF_COPY",
     });
     const externalPrintUrl = buildLiffPrintDocumentUrl({
       kind: "receipt",
@@ -206,6 +206,7 @@ export default async function LiffOrderReceiptPage({
           promptPayQrDataUrl={promptPayQrDataUrl}
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
+          copyLabel={PRINT_COPY_LABEL_LIFF}
           rootId="receipt"
           rootClassName={LIFF_A4_PRINT_ROOT_CLASS}
         />
@@ -262,7 +263,6 @@ export default async function LiffOrderReceiptPage({
   const verify = await buildPrintDocumentVerifyBadge({
     type: "receipt",
     docNo: receipt.receiptNo,
-    variant: "LIFF_COPY",
   });
   const externalPrintUrl = buildLiffPrintDocumentUrl({
     kind: "receipt",
@@ -319,6 +319,7 @@ export default async function LiffOrderReceiptPage({
           amount: Number(payment.amount),
         }))}
         verify={verify}
+        copyLabel={PRINT_COPY_LABEL_LIFF}
         rootId="receipt"
         rootClassName={LIFF_A4_PRINT_ROOT_CLASS}
       />

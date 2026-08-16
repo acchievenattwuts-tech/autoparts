@@ -22,6 +22,35 @@ export const PRINT_SECTION_BORDER_CLASS = `border ${PRINT_BODY_BORDER_CLASS}`;
 export const PRINT_SECTION_BOTTOM_BORDER_CLASS = `border-b ${PRINT_BODY_BORDER_CLASS}`;
 export const PRINT_SECTION_TOP_BORDER_CLASS = `border-t ${PRINT_BODY_BORDER_CLASS}`;
 
+/** ข้อความลายน้ำมาตรฐานของเอกสารพิมพ์ฝั่งแอดมิน (ส่งเข้า prop `copyLabel`) */
+export const PRINT_COPY_LABEL_ORIGINAL = "ต้นฉบับ";
+export const PRINT_COPY_LABEL_DUPLICATE = "สำเนา";
+/** ลายน้ำของเอกสารที่ลูกค้าเปิดเองผ่าน LIFF — คงข้อความเดิมก่อนแยกลายน้ำออกจาก verify */
+export const PRINT_COPY_LABEL_LIFF = "สำเนา (LIFF)";
+
+/** class ของ "ใบสำเนา" ที่ทุกหน้าพิมพ์ใช้ร่วมกัน — ผูกกับ PRINT_COPY_VISIBILITY_CSS */
+export const PRINT_SLIP_COPY_CLASS = "print-slip-copy";
+
+/**
+ * CSS ที่ทุกหน้าพิมพ์ต้องมีเหมือนกัน เพื่อให้ใบสำเนา
+ * - ไม่แสดงบนจอ (preview เห็นใบเดียวเหมือนเดิม ไม่เพิ่ม CLS)
+ * - แสดงตอนพิมพ์เฉพาะเมื่อผู้ใช้เลือก "ต้นฉบับ+สำเนา" ใน `PrintCopyModeToggle`
+ * - ขึ้นหน้าใหม่เสมอเมื่อถูกแสดง
+ *
+ * ใช้ `break-before` แทน `page-break-after` โดยตั้งใจ เพื่อไม่ให้เกิดหน้าว่างท้ายเอกสาร
+ * ตอนพิมพ์ต้นฉบับอย่างเดียว และถ้า `data-print-copies` ไม่ถูกตั้งเลยจะ fallback
+ * เป็นต้นฉบับอย่างเดียวโดยอัตโนมัติ
+ */
+export const PRINT_COPY_VISIBILITY_CSS = `
+        @media screen {
+          .${PRINT_SLIP_COPY_CLASS} { display: none !important; }
+        }
+        @media print {
+          html:not([data-print-copies="2"]) .${PRINT_SLIP_COPY_CLASS} { display: none !important; }
+          .${PRINT_SLIP_COPY_CLASS} { page-break-before: always; break-before: page; }
+        }
+`;
+
 const THAI_DIGITS = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"] as const;
 const THAI_POSITIONS = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"] as const;
 

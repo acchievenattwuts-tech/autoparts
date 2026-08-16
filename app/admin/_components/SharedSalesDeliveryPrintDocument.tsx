@@ -1,3 +1,4 @@
+import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocumentCopyWatermark";
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
@@ -120,6 +121,7 @@ const SharedSalesDeliveryPrintDocument = ({
   promptPayQrDataUrl,
   qrAmount,
   verify,
+  copyLabel,
   rootId,
   rootClassName,
 }: {
@@ -133,6 +135,8 @@ const SharedSalesDeliveryPrintDocument = ({
   promptPayQrDataUrl: string | null;
   qrAmount: number;
   verify?: PrintDocumentVerifyBadge | null;
+  /** ข้อความลายน้ำกลางหน้า เช่น "ต้นฉบับ" / "สำเนา" — ไม่ส่งมา = ไม่มีลายน้ำ */
+  copyLabel?: string | null;
   rootId?: string;
   rootClassName?: string;
 }) => {
@@ -162,6 +166,7 @@ const SharedSalesDeliveryPrintDocument = ({
 
   return (
     <PrintDocumentRoot rootId={rootId} rootClassName={rootClassName}>
+      {copyLabel ? <PrintDocumentCopyWatermark label={copyLabel} /> : null}
       {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
 
       {isCancelled ? (

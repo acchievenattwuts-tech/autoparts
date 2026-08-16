@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import { PRINT_COPY_LABEL_LIFF } from "@/app/admin/_components/print/shared";
 import ExternalPrintShell, { EXTERNAL_A4_PRINT_ROOT_CLASS } from "@/components/liff/ExternalPrintShell";
 import { db } from "@/lib/db";
 import { PaymentMethod, SalePaymentType } from "@/lib/generated/prisma";
@@ -135,7 +136,6 @@ export default async function ExternalLiffOrderReceiptPage({
     const verify = await buildPrintDocumentVerifyBadge({
       type: "sale",
       docNo: sale.saleNo,
-      variant: "LIFF_COPY",
     });
 
     return (
@@ -163,6 +163,7 @@ export default async function ExternalLiffOrderReceiptPage({
           promptPayQrDataUrl={promptPayQrDataUrl}
           qrAmount={transferDocumentState.qrAmount}
           verify={verify}
+          copyLabel={PRINT_COPY_LABEL_LIFF}
           rootId="receipt"
           rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
         />
@@ -219,7 +220,6 @@ export default async function ExternalLiffOrderReceiptPage({
   const verify = await buildPrintDocumentVerifyBadge({
     type: "receipt",
     docNo: receipt.receiptNo,
-    variant: "LIFF_COPY",
   });
 
   return (
@@ -252,6 +252,7 @@ export default async function ExternalLiffOrderReceiptPage({
           amount: Number(payment.amount),
         }))}
         verify={verify}
+        copyLabel={PRINT_COPY_LABEL_LIFF}
         rootId="receipt"
         rootClassName={EXTERNAL_A4_PRINT_ROOT_CLASS}
       />
