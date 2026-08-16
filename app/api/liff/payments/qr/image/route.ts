@@ -9,6 +9,10 @@ export const dynamic = "force-dynamic";
 // app scans it from the photo, still far below LINE's 1MB preview-image cap.
 const CHAT_QR_WIDTH = 720;
 
+// ASCII only: browsers drop a non-ASCII filename in Content-Disposition unless it is
+// RFC 5987 encoded, which would leave the saved file with a random name.
+const QR_FILE_NAME = "promptpay-qr.png";
+
 /**
  * Public on purpose: LINE's servers fetch this URL when a QR is pushed into a customer
  * chat, and the external browser that opens it for "save image" carries no LIFF cookie.
@@ -17,7 +21,11 @@ const CHAT_QR_WIDTH = 720;
  */
 export async function GET(request: Request) {
   try {
-    const token = new URL(request.url).searchParams.get("token");
+    const searchParams = new URL(request.url).searchParams;
+    const token = searchParams.get("token");
+    // `?download=1` is what the LIFF "บันทึก QR" button opens in the external browser:
+    // an attachment disposition makes Chrome/Safari save the PNG without any further tap.
+    const asAttachment = searchParams.get("download") === "1";
     const payload = verifyPaymentQrImageToken(token);
     // Same response for missing, tampered, and expired tokens so the endpoint cannot be
     // used to probe which links were ever valid.
@@ -46,7 +54,7 @@ export async function GET(request: Request) {
         // The token already bounds the lifetime; let LINE's media proxy and the browser
         // keep the bytes so a saved chat image never re-hits the database.
         "Cache-Control": "public, max-age=1800, immutable",
-        "Content-Disposition": 'inline; filename="promptpay-qr.png"',
+        "Content-Disposition": `${asAttachment ? "attachment" : "inline"}; filename="${QR_FILE_NAME}"`,
         "X-Content-Type-Options": "nosniff",
       },
     });

@@ -75,9 +75,19 @@ export function verifyPaymentQrImageToken(
   }
 }
 
-export function buildPaymentQrImageUrl(amount: number): string | null {
+/**
+ * `download` switches the image response to `Content-Disposition: attachment`, which is
+ * what makes the external browser save the PNG straight to the device instead of just
+ * displaying it. Leave it off for the LINE chat push — LINE's media proxy expects an
+ * inline image.
+ */
+export function buildPaymentQrImageUrl(
+  amount: number,
+  options?: { download?: boolean },
+): string | null {
   const token = signPaymentQrImageToken(amount);
   if (!token) return null;
 
-  return `${getAppBaseUrl()}/api/liff/payments/qr/image?token=${encodeURIComponent(token)}`;
+  const url = `${getAppBaseUrl()}/api/liff/payments/qr/image?token=${encodeURIComponent(token)}`;
+  return options?.download ? `${url}&download=1` : url;
 }

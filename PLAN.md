@@ -927,6 +927,19 @@
 - [ ] ตามต่อ (ยังไม่ได้ทดสอบ): เจ้าของทดสอบบน Android แล้ว · **iOS ยังไม่ได้เทสจริง** — โค้ดรองรับไว้แล้ว (WKWebView เข้าทาง `isInClient()` เหมือนกัน) แต่ต้องยืนยันบนเครื่องจริงว่า `openWindow({external:true})` เด้ง Safari และเซฟรูปได้
 - ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npx eslint` ไฟล์ที่แก้ทั้งหมดไม่มี error · `npm run build` ผ่าน (Compiled successfully, 71/71 static pages, route ใหม่ขึ้นครบทั้ง `/api/liff/payments/qr/image` และ `/api/liff/payments/qr/send`)
 
+## LIFF ชำระเงิน: เหลือปุ่มเดียว "บันทึก QR" + header Thai QR Payment (2026-08-16)
+- ที่มา: เจ้าของแคปหน้า QR sheet มาให้ดู — ขอ (1) เอาปุ่ม "เปิดรูป QR เพื่อบันทึกเอง" ออก (2) เปลี่ยนปุ่ม "ส่ง QR เข้าแชท LINE" เป็น "บันทึก QR" ที่บันทึกรูปลงเครื่องอัตโนมัติ (3) เปลี่ยน header เป็นแถบ Thai QR Payment พื้นน้ำเงินแบบสลิป ThaiQR แต่คงปุ่ม X ไว้
+- ยืนยันกับเจ้าของก่อนลงมือ (เพราะชนข้อจำกัดจริงของ LINE WebView ที่บันทึกไว้ตั้งแต่รอบ 2026-08-15): **เลือกทาง "เปิดเบราว์เซอร์นอกแล้วดาวน์โหลดอัตโนมัติ"** · header เอา**โลโก้อย่างเดียว + ปุ่ม X** (ตัดข้อความ "ชำระด้วย PromptPay / QR พร้อมยอดชำระ" ออก) · **คง route `/send` ไว้ ไม่ลบ**
+- [x] **ปุ่มเดียว "บันทึก QR"** ใน [PaymentQrButton.tsx](components/liff/PaymentQrButton.tsx): อยู่ใน LINE → `liff.openWindow({ external: true })` ไปที่ URL รูป QR ที่ตอบ `Content-Disposition: attachment` → Chrome/Safari ดาวน์โหลดเองทันที ลูกค้าไม่ต้องกดค้างหรือแตะซ้ำ · อยู่นอก LINE → `blob:` + `<a download>` เซฟลงเครื่องในหน้าเลย
+  - ตัด `navigator.share` ทิ้ง (share sheet ต้องให้ลูกค้าเลือกเมนูเอง = ไม่ใช่ "อัตโนมัติ" ตามที่ขอ) · ตัดปุ่ม "เปิดรูป QR เพื่อบันทึกเอง" + บล็อก "ส่ง QR เข้าแชทแล้ว / เปิดแชท LINE" ออกทั้งชุด
+  - เพิ่มบรรทัดยืนยันใต้ปุ่ม 6 วินาที ("บันทึกรูป QR ลงเครื่องแล้ว" / "เปิดเบราว์เซอร์เพื่อบันทึกรูป QR ลงเครื่องแล้ว") — ปุ่มจะไม่เงียบเหมือนรอบก่อน · เคสไม่มี `DOC_VERIFY_SECRET` ใน LINE ยังขึ้นข้อความให้กดค้างที่รูปเหมือนเดิม
+- [x] **`?download=1` ที่ endpoint รูป**: [payment-qr-image-token.ts](lib/payment-qr-image-token.ts) รับ `options.download` แล้วต่อท้าย query · [api/liff/payments/qr/image](app/api/liff/payments/qr/image/route.ts) สลับ `Content-Disposition` เป็น `attachment` เมื่อ `download=1` · **การ push เข้าแชทยังใช้ URL แบบ `inline` เหมือนเดิม** เพราะ media proxy ของ LINE ต้องการรูปแบบ inline
+- [x] `/api/liff/payments/qr` เปลี่ยน field `imageUrl` → `downloadUrl` (สร้างด้วย `{ download: true }`) · ผู้เรียกมีแค่ `PaymentQrButton.tsx` ตัวเดียว ไม่มีที่อื่นกระทบ
+- [x] **header Thai QR Payment**: แถบพื้น `#00427a` (สีเดียวกับใบพิมพ์) + `public/Thai_QR_Logo_white.svg` (`unoptimized` เพราะ next.config ไม่ได้เปิด `dangerouslyAllowSVG`) + ปุ่ม X พื้น `bg-white/15` สีขาว · สีแถบคงที่ทั้ง light/dark ตามอัตลักษณ์ ThaiQR · กล่อง sheet มี `overflow-hidden` อยู่แล้วมุมบนจึงโค้งตาม
+- [x] **คง `/api/liff/payments/qr/send` ไว้เฉยๆ** ตามที่เจ้าของเลือก — UI ไม่เรียกแล้ว แต่ route + rate limit + `resolveLiffPaymentTarget()` ยังใช้ได้ทันทีถ้าจะกลับมาเปิดใช้
+- [ ] ตามต่อ (ยังไม่ได้ทดสอบบนเครื่องจริง): Android คาดว่าลง Downloads/แกลเลอรี · **iOS Safari จะเซฟลงแอป Files ไม่ใช่คลังรูป** — ถ้าลูกค้า iOS ต้องสแกน QR จากคลังรูปแล้วหาไม่เจอ ให้กลับมาคุยเรื่องทางเลือกอีกครั้ง
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npx eslint` 4 ไฟล์ที่แก้ไม่มี error · `npm run build` ผ่าน (Compiled successfully, 71/71 static pages)
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

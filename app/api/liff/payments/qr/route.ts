@@ -85,9 +85,9 @@ export async function POST(request: Request) {
         amount,
         label: paymentTarget.label,
         qrDataUrl,
-        // Null when DOC_VERIFY_SECRET is unset — the client then hides the
-        // open-in-browser action instead of offering a link that cannot work.
-        imageUrl: buildPaymentQrImageUrl(amount),
+        // Null when DOC_VERIFY_SECRET is unset — the client then falls back to an
+        // in-page save instead of opening a link that cannot work.
+        downloadUrl: buildPaymentQrImageUrl(amount, { download: true }),
         account: {
           name: transferAccount.name,
           bankName: transferAccount.bankName,

@@ -1,19 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import {
-  Check,
-  CheckCircle2,
-  Copy,
-  Download,
-  ExternalLink,
-  Loader2,
-  MessageCircle,
-  QrCode,
-  RefreshCw,
-  Send,
-  X,
-} from "lucide-react";
+import { Check, Copy, Download, Loader2, QrCode, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -25,13 +13,21 @@ import { createPortal } from "react-dom";
 // scoped to .liff-theme-root) applied to the sheet.
 const QR_DISPLAY_SIZE = 220;
 
+// Matches the Thai QR Payment header band used on the printed documents.
+const THAI_QR_HEADER_COLOR = "#00427a";
+const THAI_QR_LOGO_WIDTH = 132;
+const THAI_QR_LOGO_HEIGHT = 40;
+
+// How long the post-save confirmation line stays under the button.
+const SAVE_NOTE_TIMEOUT_MS = 6000;
+
 // ASCII only: a Thai filename in an `<a download>` attribute is dropped by several
 // browsers, which turns a working download into a silent no-op.
 const QR_FILE_NAME = "promptpay-qr.png";
 
 // `fetch()` on a data: URL is governed by the `connect-src` CSP directive, which does
 // not allow `data:` (see next.config.ts). Decoding the base64 payload by hand keeps the
-// save/share flow working without widening the policy.
+// save flow working without widening the policy.
 function dataUrlToBlob(dataUrl: string): Blob {
   const separatorIndex = dataUrl.indexOf(",");
   if (separatorIndex < 0) throw new Error("invalid data url");
@@ -51,7 +47,7 @@ type PaymentQrPayload = {
   amount: number;
   label: string;
   qrDataUrl: string;
-  imageUrl: string | null;
+  downloadUrl: string | null;
   account: {
     name: string;
     bankName: string | null;
@@ -75,8 +71,8 @@ export default function PaymentQrButton(props: Props) {
   const [payload, setPayload] = useState<PaymentQrPayload | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSending, setIsSending] = useState(false);
-  const [isSentToChat, setIsSentToChat] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [portalTarget, setPortalTarget] = useState<HTMLElement | null>(null);
@@ -116,7 +112,7 @@ export default function PaymentQrButton(props: Props) {
   async function prepareQr() {
     setIsOpen(true);
     setIsLoading(true);
-    setIsSentToChat(false);
+    setSaveNote(null);
     setError(null);
 
     try {
@@ -153,71 +149,40 @@ export default function PaymentQrButton(props: Props) {
     }
   }
 
-  // Primary path. Pushing the QR as a real LINE image message hands the customer the
-  // native image viewer, where LINE's own save + share buttons work — something a web
-  // page inside the LIFF WebView cannot offer by itself.
-  async function sendQrToChat() {
-    if (isSending) return;
+  function noteSaved(message: string) {
+    setSaveNote(message);
+    window.setTimeout(
+      () => setSaveNote((current) => (current === message ? null : current)),
+      SAVE_NOTE_TIMEOUT_MS,
+    );
+  }
 
-    setIsSending(true);
+  // Saves the QR straight to the device. LINE's in-app browser implements neither half
+  // of the usual save flow — the Android System WebView ships no download manager and
+  // iOS WKWebView ignores the `download` attribute, both failing silently — so inside
+  // LINE the only working path is to hand the signed image URL to the system browser.
+  // That URL answers with `Content-Disposition: attachment`, which makes Chrome/Safari
+  // download the file on their own without the customer having to long-press anything.
+  function saveQrImage() {
+    if (!payload || isSaving) return;
+
+    setIsSaving(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/liff/payments/qr/send", {
-        method: "POST",
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildRequestBody()),
-      });
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-
-      if (!response.ok || result.ok !== true) {
-        throw new Error(result.error ?? "ส่ง QR เข้าแชทไม่สำเร็จ");
-      }
-      setIsSentToChat(true);
-    } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "ส่ง QR เข้าแชทไม่สำเร็จ");
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  function openChat() {
-    if (typeof window.liff?.closeWindow === "function") {
-      window.liff.closeWindow();
-    }
-  }
-
-  async function saveQrImage() {
-    if (!payload) return;
-
-    // LINE's in-app browser implements neither half of the usual save flow: the Android
-    // System WebView ships no Web Share API and no download manager, and iOS WKWebView
-    // ignores the `download` attribute. Both fail without throwing, which is why the
-    // button used to look dead. Inside LINE, hand the image to the external browser —
-    // long-press → "Save image" works natively there.
-    if (window.liff?.isInClient?.() === true) {
-      if (payload.imageUrl && typeof window.liff.openWindow === "function") {
-        window.liff.openWindow({ url: payload.imageUrl, external: true });
+      if (window.liff?.isInClient?.() === true) {
+        if (payload.downloadUrl && typeof window.liff.openWindow === "function") {
+          window.liff.openWindow({ url: payload.downloadUrl, external: true });
+          noteSaved("เปิดเบราว์เซอร์เพื่อบันทึกรูป QR ลงเครื่องแล้ว");
+          return;
+        }
+        setError("บันทึกอัตโนมัติไม่รองรับในแอป LINE กรุณากดค้างที่รูป QR แล้วเลือกบันทึกรูปภาพ");
         return;
       }
-      setError("บันทึกอัตโนมัติไม่รองรับในแอป LINE กรุณากดค้างที่รูป QR แล้วเลือกบันทึกรูปภาพ");
-      return;
-    }
 
-    try {
+      // Regular browser: a blob: object URL on an `<a download>` saves without any
+      // extra tap, and it is handled far more reliably than a long data: URL.
       const blob = dataUrlToBlob(payload.qrDataUrl);
-      const file = new File([blob], QR_FILE_NAME, { type: blob.type });
-      const shareData = { files: [file], title: `PromptPay ${payload.label}` };
-
-      if (typeof navigator.share === "function" && navigator.canShare?.(shareData)) {
-        await navigator.share(shareData);
-        return;
-      }
-
-      // Fall back to a blob: object URL — regular browsers handle it more reliably than
-      // a long data: URL on an <a download>.
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
@@ -226,9 +191,11 @@ export default function PaymentQrButton(props: Props) {
       anchor.click();
       anchor.remove();
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
-    } catch (saveError) {
-      if (saveError instanceof DOMException && saveError.name === "AbortError") return;
+      noteSaved("บันทึกรูป QR ลงเครื่องแล้ว");
+    } catch {
       setError("บันทึก QR ไม่สำเร็จ กรุณากดค้างที่รูป QR แล้วเลือกบันทึกรูปภาพ");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -264,18 +231,27 @@ export default function PaymentQrButton(props: Props) {
               scrolled straight over the header instead of under it. A separate scroll
               area removes that whole class of bug: content simply cannot leave it. */}
           <div className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-[28px] dark:bg-slate-900">
-            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 bg-white px-5 pb-3 pt-5 dark:border-slate-800 dark:bg-slate-900">
-              <div>
-                <p className="text-sm font-semibold text-blue-700 dark:text-sky-400">ชำระด้วย PromptPay</p>
-                <h2 className="font-kanit text-xl font-bold text-slate-950 dark:text-slate-100">
-                  QR พร้อมยอดชำระ
-                </h2>
-              </div>
+            {/* Thai QR Payment band — the same identity customers see in their bank
+                app, so the sheet reads as an official payment screen. The colour is
+                fixed brand navy in both themes; only the close button adapts. */}
+            <div
+              className="flex shrink-0 items-center justify-between gap-3 px-5 py-3"
+              style={{ backgroundColor: THAI_QR_HEADER_COLOR }}
+            >
+              <Image
+                src="/Thai_QR_Logo_white.svg"
+                alt="Thai QR Payment"
+                width={THAI_QR_LOGO_WIDTH}
+                height={THAI_QR_LOGO_HEIGHT}
+                unoptimized
+                priority
+                className="h-10 w-auto"
+              />
               <button
                 type="button"
                 onClick={closeSheet}
                 aria-label="ปิด"
-                className="rounded-full bg-slate-100 p-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                className="rounded-full bg-white/15 p-2 text-white transition active:scale-95 dark:bg-white/20"
               >
                 <X size={18} />
               </button>
@@ -318,45 +294,23 @@ export default function PaymentQrButton(props: Props) {
                     </p>
                   </div>
 
-                  {/* Primary actions stay directly under the QR so they are reachable
+                  {/* Primary action stays directly under the QR so it is reachable
                       without scrolling the sheet on a phone-sized viewport. */}
-                  {isSentToChat ? (
-                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center dark:border-emerald-800 dark:bg-emerald-950">
-                      <CheckCircle2 className="mx-auto h-7 w-7 text-emerald-700 dark:text-emerald-300" />
-                      <p className="mt-2 text-sm font-bold text-emerald-800 dark:text-emerald-200">
-                        ส่ง QR เข้าแชทแล้ว
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-emerald-800/80 dark:text-emerald-300/80">
-                        เปิดแชท LINE แล้วแตะที่รูป QR เพื่อบันทึกลงเครื่องหรือแชร์ต่อได้เลย
-                      </p>
-                      <button
-                        type="button"
-                        onClick={openChat}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99]"
-                      >
-                        <MessageCircle size={18} /> เปิดแชท LINE
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void sendQrToChat()}
-                      disabled={isSending}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99] disabled:opacity-70"
-                    >
-                      {isSending ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Send size={18} />}
-                      {isSending ? "กำลังส่ง..." : "ส่ง QR เข้าแชท LINE"}
-                    </button>
-                  )}
-
                   <button
                     type="button"
-                    onClick={() => void saveQrImage()}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-blue-200 px-4 py-2.5 text-sm font-bold text-blue-800 transition active:scale-[0.99] dark:border-slate-600 dark:text-sky-300"
+                    onClick={saveQrImage}
+                    disabled={isSaving}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition active:scale-[0.99] disabled:opacity-70"
                   >
-                    {payload.imageUrl ? <ExternalLink size={16} /> : <Download size={16} />}
-                    เปิดรูป QR เพื่อบันทึกเอง
+                    {isSaving ? <Loader2 className="h-[18px] w-[18px] animate-spin" /> : <Download size={18} />}
+                    {isSaving ? "กำลังบันทึก..." : "บันทึก QR"}
                   </button>
+
+                  {saveNote ? (
+                    <p className="flex items-center justify-center gap-1.5 text-center text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                      <Check size={14} /> {saveNote}
+                    </p>
+                  ) : null}
 
                   <div className="rounded-2xl bg-slate-50 p-3 text-sm dark:bg-slate-800">
                     <p className="font-bold text-slate-900 dark:text-slate-100">
