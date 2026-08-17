@@ -972,6 +972,23 @@
 - ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · เพิ่มเทสต์ ✅/🔴 ใน [telegram-format.test.ts](lib/__tests__/telegram-format.test.ts) · `telegram-format` + `notifications-handoff` ผ่านทั้งหมด
 - [ ] รอยืนยันของจริง: เย็นวันที่ยังไม่มีสินค้าหมด ต้องเห็นข้อความ ✅ เข้า Telegram เวลา 18:30
 
+## Backup อัตโนมัติเข้า Google Drive สัปดาห์ละครั้ง (2026-08-17)
+- ที่มา: เจ้าของขอ backup DB + ไฟล์รูปสัปดาห์ละ 1 ครั้งเข้า Google Drive · ตรวจของเดิมแล้วพบว่า Backup Center ทำ auto ไม่ได้ — `pg_dump` ไม่มีใน Vercel runtime (`PG_DUMP_NOT_AVAILABLE`) จึงใช้ได้เฉพาะตอนรัน dev บนเครื่อง · เจ้าของไม่มีเครื่องเปิดตลอด → Windows Task Scheduler ตกไป → เลือก **GitHub Actions** ที่ให้ทั้ง cron อัตโนมัติและปุ่มสั่งเอง
+- [x] [.github/workflows/backup.yml](.github/workflows/backup.yml): cron `0 19 * * 0` (จันทร์ 02:00 ไทย) + `workflow_dispatch` · ติดตั้ง `postgresql-client-17` จาก PGDG (Ubuntu ให้ 16 ซึ่ง dump server 17 ไม่ได้) + `rclone` จาก apt · timeout 120 นาที, concurrency group กันรันซ้อน
+- [x] **RLS guard**: role อ่านอย่างเดียวไม่ bypass row-level security → ถ้าตารางใน `public` เปิด RLS `pg_dump` จะได้ข้อมูลไม่ครบแบบเงียบ ๆ workflow จึงเช็ก `pg_class.relrowsecurity` แล้ว fail พร้อมชื่อตาราง (ตอนนี้ตาราง Prisma ไม่เปิด RLS จึงผ่าน)
+- [x] verify dump ด้วย `pg_restore --list` + เช็กขนาดขั้นต่ำ 10KB — dump ที่อ่านไม่ออกแย่กว่าไม่มี dump เพราะดูเหมือนสำเร็จ
+- [x] [scripts/backup-blob-sync.ts](scripts/backup-blob-sync.ts): mirror Vercel Blob แบบ incremental · rclone อ่าน Vercel Blob ตรงไม่ได้ (ไม่ใช่ S3-compatible) จึง diff กับ `state/blob-index.json` ที่เก็บบน Drive แล้วโหลดเฉพาะไฟล์ที่ `etag` เปลี่ยน → รอบแรกหนักครั้งเดียว หลังจากนั้น egress เกือบศูนย์ (คุมตามเป้า ≤5GB/เดือน)
+- [x] ลำดับอัปโหลดสำคัญ: `blob-mirror` → `db` → `reports` → `state` ท้ายสุด · ถ้าเขียน state ก่อนไฟล์ขึ้นจริง รอบหน้าจะข้ามไฟล์ที่ยังไม่เคยถูก backup
+- [x] `blob-mirror` เก็บสะสม **ไม่เคยลบ** (ใช้ `rclone copy` ไม่ใช่ `sync`) — เป็นด่านเดียวที่กันไฟล์ถูกลบพลาด · manifest บันทึก `removedSinceLastRun` ไว้ให้ตรวจ · dump + report retention 90 วัน
+- [x] แจ้ง Telegram `if: always()` ทั้งสำเร็จและล้มเหลว — ยิงตรงจาก workflow ไม่ผ่าน `createNotification()` เพราะเป็นงาน CLI นอกแอป ไม่ใช่ business flow ของ admin (เจ้าของเลือกทางนี้ เพื่อไม่ต้องแตะ schema)
+- [x] ปุ่ม one-click ในแอป: [lib/github-backup.ts](lib/github-backup.ts) (dispatch + อ่านสถานะ run, parse ด้วย zod, timeout 10 วิ) · [route.ts](app/api/admin/backup-center/github-backup/route.ts) GET/POST หลัง `requirePermission("system.backup")` + เขียน AuditLog `EXPORT` entityType `BackupWorkflow` · [BackupCenterClient.tsx](app/admin/(protected)/backup-center/BackupCenterClient.tsx) panel ใหม่บนสุด แสดง 5 run ล่าสุด poll ทุก 10 วิเฉพาะตอนมีงานค้าง · dark mode ทำพร้อมกันในรอบเดียว
+- [x] ของเดิมไม่แตะตามที่เจ้าของสั่ง — ปุ่ม Blob Manifest / Blob Archive / PostgreSQL Download และ Backup Job แบบ copy เข้า prefix `backups/` ยังอยู่ครบ ใช้เป็น backup เฉพาะกิจก่อนงานใหญ่ได้เหมือนเดิม (สคริปต์ใหม่ข้าม prefix นี้)
+- [x] [docs/backup-automation-runbook.md](docs/backup-automation-runbook.md): SQL สร้าง role `backup_reader`, ตั้ง rclone + `root_folder_id` ล็อกโฟลเดอร์เดียว, GitHub Secrets 6 ตัว, PAT สิทธิ์ Actions เท่านั้น, ขั้นตอน restore ทั้ง DB และไฟล์รูป, troubleshooting
+- ตรวจแล้ว: `npm run typecheck` ไม่มี error · `npm run lint` ไม่มี error/warning ในไฟล์ใหม่ · `npm test` 803 ผ่าน 0 fail · `npm run check:mojibake` ผ่าน · YAML parse ได้ ภาษาไทยใน workflow ไม่เพี้ยน
+- [ ] **รอเจ้าของตั้งค่าก่อนใช้งานจริง** — สร้าง role, ตั้ง rclone, ใส่ Secrets, ใส่ env ใน Vercel ตามคู่มือ แล้วกดปุ่มทดสอบ 1 ครั้ง (รอบแรกช้าที่สุดเพราะโหลดรูปทั้งหมด)
+- [ ] ยังไม่มีสคริปต์ restore ไฟล์รูปกลับเข้า Blob (`backup-blob-restore.ts`) — จงใจ เพราะการอัปโหลดทับ Blob store ต้องคุมมือ จะเขียนตอนที่ต้องใช้จริง
+- [ ] ตั้งรอบซ้อม restore เข้า Supabase project ใหม่ไตรมาสละครั้ง
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

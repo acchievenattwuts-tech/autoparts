@@ -17,6 +17,7 @@ import {
   Prisma,
 } from "@/lib/generated/prisma";
 import { getAuditActorFromSession, safeWriteAuditLog } from "@/lib/audit-log";
+import { isGithubBackupConfigured } from "@/lib/github-backup";
 import type { Session } from "next-auth";
 
 const BACKUP_ROOT = path.join(os.tmpdir(), "backup-center");
@@ -137,6 +138,7 @@ export async function getBackupCenterEnvStatus() {
   return {
     blobToken: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
     databaseUrl: Boolean(process.env.BACKUP_DATABASE_URL || process.env.DIRECT_URL || process.env.DATABASE_URL),
+    githubBackup: isGithubBackupConfigured(),
   };
 }
 
