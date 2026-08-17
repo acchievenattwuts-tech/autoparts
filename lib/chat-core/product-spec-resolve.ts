@@ -129,16 +129,91 @@ const PUSH_FAN_RE = /(?:พัดลม\s*(?:แบบ\s*)?เป่า|แบ�
 const PULL_FAN_RE = /(?:พัดลม\s*(?:แบบ\s*)?ดูด|แบบ\s*ดูด|pull(?:er)?\s*fan|fan\s*pull|suction\s*fan)/iu;
 const FAN_CONTEXT_RE = /(?:พัดลม|ใบพัด|\bfan\b)/iu;
 
+/**
+ * Thai spellings of "โวลต์" that real customers type. Curated, never fuzzy — the
+ * same approach as the existing "blower moter" alias — so a mis-keyed unit still
+ * grounds the voltage while an unrelated word can never become a hard filter.
+ * Seen in production: "พัดลม10 24โว้นแผงคอยร้อน" (LINE, 2026-08-17).
+ * Longest spellings first so alternation cannot match a shorter prefix.
+ */
+const VOLT_UNIT_VARIANTS = [
+  "โวลต์",
+  "โวลท์",
+  "โวล์ท",
+  "โวลต",
+  "โวลท",
+  "โว้น",
+  "โวน",
+  "โวล",
+] as const;
+
+const VOLT_UNIT_PATTERN = `v(?:olt)?s?|${VOLT_UNIT_VARIANTS.join("|")}`;
+
+/**
+ * Units/counters that give a bare number a meaning OTHER than a diameter, so the
+ * head-noun fallback below must not claim it: "พัดลม10ใบ" is a blade count and
+ * "พัดลม 24V" is a voltage.
+ */
+const BARE_DIAMETER_BLOCKING_SUFFIX = [
+  "ใบ",
+  "ชิ้น",
+  "ตัว",
+  "อัน",
+  "แผ่น",
+  "นิ้ว",
+  "มม",
+  "ซม",
+  "mm",
+  "cm",
+  "watt",
+  "วัตต์",
+  "w",
+  "volts?",
+  "v",
+  "p",
+  ...VOLT_UNIT_VARIANTS,
+].join("|");
+
+/**
+ * A bare number counts as a diameter only when it sits IMMEDIATELY after the fan
+ * head noun ("พัดลม10", "พัดลม 10"). Customers routinely drop the unit; the
+ * adjacency plus the blocked suffixes keep this from swallowing a blade count, a
+ * voltage, or a model year ("พัดลมรถปี 2014" — the year is not adjacent).
+ */
+const BARE_FAN_DIAMETER_RE = new RegExp(
+  `(?:พัดลม|ใบพัด|\\bfan)\\s*(\\d{1,2})(?!\\s*(?:\\.\\d|${BARE_DIAMETER_BLOCKING_SUFFIX}))`,
+  "iu",
+);
+
+/** Fan diameters this catalog family actually sells; guards the unit-less path. */
+const BARE_FAN_DIAMETER_MIN_INCHES = 7;
+const BARE_FAN_DIAMETER_MAX_INCHES = 20;
+
 const extractDiameterInches = (text: string): number | null => {
-  // Require an explicit inch unit. A bare number may be a model year, blade
-  // count, product code, or voltage and must never become a size hard-filter.
+  // Prefer an explicit inch unit. A bare number elsewhere in the text may be a
+  // model year, blade count, product code, or voltage and must never become a
+  // size hard-filter.
   const match = text.match(/(\d{1,2}(?:\.\d+)?)\s*(?:นิ้ว|inches?|in\.?|")/iu);
-  if (!match?.[1]) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) && value > 0 && value <= 50 ? value : null;
+  if (match?.[1]) {
+    const value = Number(match[1]);
+    return Number.isFinite(value) && value > 0 && value <= 50 ? value : null;
+  }
+
+  // Unit-less fallback, allowed only directly on the fan head noun.
+  const bare = text.match(BARE_FAN_DIAMETER_RE);
+  if (!bare?.[1]) return null;
+  const value = Number(bare[1]);
+  return Number.isInteger(value) &&
+    value >= BARE_FAN_DIAMETER_MIN_INCHES &&
+    value <= BARE_FAN_DIAMETER_MAX_INCHES
+    ? value
+    : null;
 };
 
-const VOLTAGE_RE = /(?:^|[^\d])(12|24)\s*(?:v(?:olt)?s?|โวลต์)(?=$|[^a-z0-9])/giu;
+const VOLTAGE_RE = new RegExp(
+  `(?:^|[^\\d])(12|24)\\s*(?:${VOLT_UNIT_PATTERN})(?=$|[^a-z0-9])`,
+  "giu",
+);
 
 /**
  * Returns every explicit 12V/24V value grounded in the supplied text. Multiple

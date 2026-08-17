@@ -408,3 +408,52 @@ test("arbitrary words after a model are still rejected", async () => {
     assert.equal(resolveCanonicalCarModelHint(input, lookup), null, input);
   }
 });
+
+test("a leading fan head noun outranks a later non-fan panel alias", async () => {
+  const { fanHeadNounOutranksAlias } = await import("@/lib/chat-core/fitment-resolve");
+
+  // Production case, LINE 2026-08-17: the customer asked for the CONDENSER'S FAN
+  // but "คอยร้อน" matched inside "แผงคอยร้อน" and hard-filtered the search into
+  // the แผงแอร์ (Condenser) category.
+  assert.equal(
+    fanHeadNounOutranksAlias("พัดลม10 24โว้นแผงคอยร้อน", "คอยร้อน", "คอยล์ร้อน (Condenser)"),
+    true,
+  );
+  assert.equal(
+    fanHeadNounOutranksAlias("ใบพัดลมแผงแอร์", "แผงแอร์", "คอยล์ร้อน (Condenser)"),
+    true,
+  );
+});
+
+test("fan head-noun anchor stays dormant where the alias is the real subject", async () => {
+  const { fanHeadNounOutranksAlias } = await import("@/lib/chat-core/fitment-resolve");
+
+  // Panel named FIRST — the alias is the subject, the fan is a second item.
+  assert.equal(
+    fanHeadNounOutranksAlias("แผงแอร์กับพัดลมโบ", "แผงแอร์", "คอยล์ร้อน (Condenser)"),
+    false,
+  );
+  // The alias already resolves to a FAN category — nothing to correct.
+  assert.equal(
+    fanHeadNounOutranksAlias(
+      "มอเตอร์พัดลมหน้าแผง วีออส",
+      "มอเตอร์พัดลม",
+      "มอเตอร์พัดลมหน้าเครื่อง / หน้าแผงแอร์ (Condenser Fan Motor)",
+    ),
+    false,
+  );
+  assert.equal(
+    fanHeadNounOutranksAlias("พัดลมโบซิ้ตี้ปี12", "พัดลมโบ", "โบเวอร์ พัดลมแอร์ (Blower Motor)"),
+    false,
+  );
+  // No fan word at all — the ordinary condenser question is untouched.
+  assert.equal(
+    fanHeadNounOutranksAlias("แผงคอยร้อนฮอนด้าแจ็ค03", "คอยร้อน", "คอยล์ร้อน (Condenser)"),
+    false,
+  );
+  // Alias present only in the AI-rewritten partType, not in the customer's words.
+  assert.equal(
+    fanHeadNounOutranksAlias("พัดลม 10 นิ้ว", "แผงแอร์", "คอยล์ร้อน (Condenser)"),
+    false,
+  );
+});

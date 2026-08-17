@@ -67,6 +67,42 @@ test("voltage extraction requires explicit V wording and preserves dual-voltage 
   assert.deepEqual(extractChatProductVoltages("ใช้ได้ทั้ง 12V / 24 volts"), [12, 24]);
 });
 
+test("mis-keyed Thai volt spellings still ground the voltage", () => {
+  // Real LINE message, 2026-08-17: "โว้น" instead of "โวลต์".
+  assert.equal(extractChatProductVoltage("พัดลม10 24โว้นแผงคอยร้อน"), 24);
+  assert.equal(extractChatProductVoltage("มอเตอร์ 12 โวลท์"), 12);
+  assert.equal(extractChatProductVoltage("พัดลม 24 โวล"), 24);
+  // A number with no volt unit at all must still stay unresolved.
+  assert.equal(extractChatProductVoltage("พัดลม 24 ใบ"), null);
+});
+
+test("a bare size written onto the fan head noun resolves to Cooling Fan Blade", () => {
+  // "พัดลม10 24โว้นแผงคอยร้อน" — no "นิ้ว", no correct volt spelling.
+  const specs = resolveChatProductSpecs("พัดลม10 24โว้นแผงคอยร้อน");
+
+  assert.deepEqual(specs, {
+    categoryHint: COOLING_FAN_BLADE_CATEGORY_HINT,
+    diameterInches: 10,
+    fanDirection: null,
+    voltage: 24,
+  });
+  assert.deepEqual(buildChatProductSpecRequiredTokenGroups(specs), [
+    ["10 นิ้ว", "10นิ้ว", "10 inch", "10inch", '10"'],
+    ["24v", "24 v", "24 โวลต์"],
+  ]);
+});
+
+test("the head-noun size fallback never swallows a count, voltage, or oversize number", () => {
+  // Adjacent-but-counted / measured numbers keep their own meaning.
+  assert.equal(resolveChatProductSpecs("พัดลม10ใบ").diameterInches, null);
+  assert.equal(resolveChatProductSpecs("พัดลม 24V").diameterInches, null);
+  assert.equal(resolveChatProductSpecs("พัดลม 24 โวลต์").diameterInches, null);
+  // Outside the sizes this catalog family sells.
+  assert.equal(resolveChatProductSpecs("พัดลม99").diameterInches, null);
+  // Not adjacent to the head noun at all.
+  assert.equal(resolveChatProductSpecs("พัดลมโบ ซิตี้ ปี12").diameterInches, null);
+});
+
 test("bare or unrelated numbers never become an inch hard-filter", () => {
   assert.deepEqual(resolveChatProductSpecs("พัดลม"), {
     categoryHint: null,

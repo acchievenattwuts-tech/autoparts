@@ -448,6 +448,42 @@ export const matchPartTypeToCategoryHint = (partType: string | null | undefined)
   return null;
 };
 
+/** Head nouns that make the customer's subject a FAN rather than a panel. */
+const FAN_HEAD_NOUN_RE = /(?:พัดลม|ใบพัด|\bfan\b)/iu;
+/** Category names that already name a fan — those aliases are never overridden. */
+const FAN_CATEGORY_NAME_RE = /(?:พัดลม|ใบพัด|fan)/iu;
+
+/**
+ * True when the customer LED with a fan head noun and the winning alias points at
+ * a NON-fan category that appears LATER in the same text — i.e. the alias is the
+ * modifier, not the subject: "พัดลม10 24โว้นแผงคอยร้อน" is the condenser's fan,
+ * not a condenser. Letting that alias stand turns the search into a hard filter on
+ * the wrong category (the แผงแอร์ answer seen in production on 2026-08-17), so the
+ * caller drops it and lets the spec / part-type path decide instead.
+ *
+ * Position is what separates the two readings, so it is checked explicitly:
+ * "แผงแอร์กับพัดลม" names the panel FIRST, so there the alias IS the subject and
+ * keeps winning. Only the customer's own words are searched (raw + consolidated
+ * query); when the alias matched solely via the AI-rewritten `partType` it is not
+ * found here and the alias stands unchanged.
+ *
+ * Pure + exported for unit testing.
+ */
+export const fanHeadNounOutranksAlias = (
+  customerText: string | null | undefined,
+  alias: string | null | undefined,
+  categoryName: string | null | undefined,
+): boolean => {
+  const haystack = customerText?.toLowerCase() ?? "";
+  const needle = alias?.trim().toLowerCase() ?? "";
+  if (!haystack || !needle) return false;
+  if (FAN_CATEGORY_NAME_RE.test(categoryName ?? "")) return false;
+  const fanAt = haystack.search(FAN_HEAD_NOUN_RE);
+  if (fanAt < 0) return false;
+  const aliasAt = haystack.indexOf(needle);
+  return aliasAt > fanAt;
+};
+
 /**
  * Resolves a car model name to its brand when the name UNAMBIGUOUSLY identifies a
  * single active model in the catalog (exact, case-insensitive). Returns null when
@@ -514,7 +550,18 @@ export async function resolveChatFitmentFilters(
 
   // Prefer the colloquial→category alias (e.g. "วาล์วแอร์" → "(Expansion Valve)");
   // fall back to a direct equals/contains on the spoken part-type.
-  const categoryFromAlias = aliasMatch?.kind === "MATCH" ? aliasMatch.categoryName : null;
+  // A fan head noun the customer typed BEFORE the alias outranks it — see
+  // `fanHeadNounOutranksAlias`. Dropping the alias here also re-enables the
+  // part-type lookup below, so the fan spec/part-type path gets to decide.
+  const aliasOutrankedByFanHeadNoun =
+    aliasMatch?.kind === "MATCH" &&
+    fanHeadNounOutranksAlias(
+      [rawText, queryText].filter(Boolean).join(" "),
+      aliasMatch.alias,
+      aliasMatch.categoryName,
+    );
+  const categoryFromAlias =
+    aliasMatch?.kind === "MATCH" && !aliasOutrankedByFanHeadNoun ? aliasMatch.categoryName : null;
   const contextualCategoryHint = resolveChatProductSpecs(
     [rawText, queryText, partType].filter(Boolean).join(" "),
   ).categoryHint;
