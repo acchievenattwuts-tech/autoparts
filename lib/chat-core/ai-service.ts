@@ -185,7 +185,12 @@ export async function generateChatSuggestion(input: {
   }
 }
 
-const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
+/**
+ * Exported read-only so the Option-2 evaluation harness can run this EXACT
+ * instruction as its baseline and diff a prompt variant against it. Nothing in
+ * the app reads it other than {@link extractChatSearchIntent}.
+ */
+export const SEARCH_INTENT_SYSTEM_INSTRUCTION = [
   "คุณคือตัวจัดกลุ่มข้อความลูกค้าในแชทร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ (ศรีวรรณอะไหล่แอร์)",
   "อ่านบทสนทนาทั้งหมด โฟกัสที่ 'ข้อความล่าสุด' แล้วตอบเป็น JSON object บรรทัดเดียวเท่านั้น (ไม่มีคำอธิบาย ไม่มี markdown):",
   "",
