@@ -60,6 +60,8 @@ import {
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
+  CHAT_PRODUCT_DISPLAY_LIMIT,
+  CHAT_PRODUCT_FETCH_LIMIT,
   type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
@@ -1234,7 +1236,12 @@ async function replyWithProductSearch(params: {
   originalText: string;
   history: ChatHistoryItem[];
 }): Promise<MessengerProductReplyOutcome> {
-  const productSearch = await searchChatProductInquiry(params.bridgeInput);
+  // Over-fetch so the compatibility filter below has spares to backfill from —
+  // sliced back to CHAT_PRODUCT_DISPLAY_LIMIT after filtering, exactly as LINE does.
+  const productSearch = await searchChatProductInquiry({
+    ...params.bridgeInput,
+    take: params.bridgeInput.take ?? CHAT_PRODUCT_FETCH_LIMIT,
+  });
   if (!productSearch.searched) return "not_searched";
 
   // Records the turn in ProductSearchLog so Messenger misses reach the no-result
@@ -1302,19 +1309,23 @@ async function replyWithProductSearch(params: {
     carBrandName: params.bridgeInput.fitmentHints?.carBrandName,
     carModelName: params.bridgeInput.fitmentHints?.carModelName,
   });
-  const products: ChatMatchedProductSummary[] = applyChatPriceTier(compatibility.products, priceTier);
-  const displayProductSearch =
-    compatibility.suppressed.length > 0
-      ? {
-          ...productSearch,
-          result: {
-            ...productSearch.result,
-            ids: products.map((product) => product.id),
-            total: products.length,
-          },
-          needsMoreInfo: products.length === 0,
-        }
-      : productSearch;
+  const compatibleProducts: ChatMatchedProductSummary[] = applyChatPriceTier(
+    compatibility.products,
+    priceTier,
+  );
+  // Cut to the display limit only AFTER filtering, so a suppressed product is
+  // replaced by the next ranked one instead of leaving an empty slot.
+  const products = compatibleProducts.slice(0, CHAT_PRODUCT_DISPLAY_LIMIT);
+  const displayProductSearch = {
+    ...productSearch,
+    result: {
+      ...productSearch.result,
+      ids: products.map((product) => product.id),
+      // `total` stays the real match count unless suppression removed something.
+      ...(compatibility.suppressed.length > 0 ? { total: products.length } : {}),
+    },
+    ...(compatibility.suppressed.length > 0 ? { needsMoreInfo: products.length === 0 } : {}),
+  };
 
   // The search matched rows but none are showable (all filtered out by
   // getChatProductSummaries — product inactive / hidden / fetch failed). Sending a

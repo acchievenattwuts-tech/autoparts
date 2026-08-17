@@ -106,6 +106,8 @@ import { pushLineMessages, replyLineMessage, startLineLoadingAnimation } from "@
 import {
   applyChatPriceTier,
   buildUnlinkedPriceNote,
+  CHAT_PRODUCT_DISPLAY_LIMIT,
+  CHAT_PRODUCT_FETCH_LIMIT,
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
@@ -2440,6 +2442,7 @@ export async function processLineAiReply(
             contextHints: [],
             fitmentHints: null,
             accessoryHeadNoun: null,
+            take: CHAT_PRODUCT_FETCH_LIMIT,
           })
         : await dependencies.searchChatProductInquiry({
           route,
@@ -2459,6 +2462,9 @@ export async function processLineAiReply(
           },
           accessoryHeadNoun,
           fitmentPartHeadNoun: unresolvedFitmentPartHeadNoun,
+          // Over-fetch so suppressed rows can be backfilled — sliced back to
+          // CHAT_PRODUCT_DISPLAY_LIMIT after the compatibility filter runs.
+          take: CHAT_PRODUCT_FETCH_LIMIT,
         });
 
     if (directProductCode && productSearch.searched) {
@@ -2619,19 +2625,25 @@ export async function processLineAiReply(
       carBrandName: fitmentFilters.carBrandName,
       carModelName: fitmentFilters.carModelName,
     });
-    const products = applyChatPriceTier(compatibility.products, priceTier);
-    const displayProductSearch =
-      productSearch.searched && compatibility.suppressed.length > 0
-        ? {
-            ...productSearch,
-            result: {
-              ...productSearch.result,
-              ids: products.map((product) => product.id),
-              total: products.length,
-            },
-            needsMoreInfo: products.length === 0,
-          }
-        : productSearch;
+    // The search fetched CHAT_PRODUCT_FETCH_LIMIT rows so the compatibility filter
+    // has spares; cut back to the display limit only AFTER filtering, so a removed
+    // product is replaced by the next ranked one instead of leaving an empty slot.
+    const compatibleProducts = applyChatPriceTier(compatibility.products, priceTier);
+    const products = compatibleProducts.slice(0, CHAT_PRODUCT_DISPLAY_LIMIT);
+    const displayProductSearch = productSearch.searched
+      ? {
+          ...productSearch,
+          result: {
+            ...productSearch.result,
+            ids: products.map((product) => product.id),
+            // `total` stays the real match count unless suppression actually
+            // removed something — that override is what tells the reply layer the
+            // shown set is narrower than what the search found.
+            ...(compatibility.suppressed.length > 0 ? { total: products.length } : {}),
+          },
+          ...(compatibility.suppressed.length > 0 ? { needsMoreInfo: products.length === 0 } : {}),
+        }
+      : productSearch;
 
     if (compatibility.suppressed.length > 0) {
       fireAndForgetAudit(dependencies, {

@@ -11,6 +11,29 @@ import {
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 
+/**
+ * How many products a customer-facing reply may list. Mirrored by
+ * `formatProductListBlock`, which is the last line of defence on the text side.
+ */
+export const CHAT_PRODUCT_DISPLAY_LIMIT = 5;
+
+/**
+ * How many products the SEARCH fetches, so the vehicle-compatibility filter has
+ * spares to backfill from.
+ *
+ * Before this existed the page was cut to the display limit FIRST and filtered
+ * second, so every suppressed product cost the customer a display slot for good.
+ * Production 2026-08-17 (conv cmr3dp2uf): 7 matches → page cut to 5 → 2 removed
+ * as `wrong_engine` → the customer saw 3, while two perfectly valid Cool Gear
+ * evaporators sat at rank 6 and 7 with nothing to do.
+ *
+ * Set to twice the display limit so a full page of suppressions can still be
+ * refilled. Callers MUST slice back to {@link CHAT_PRODUCT_DISPLAY_LIMIT} after
+ * filtering — a turn with nothing suppressed then produces byte-identical output
+ * to before.
+ */
+export const CHAT_PRODUCT_FETCH_LIMIT = CHAT_PRODUCT_DISPLAY_LIMIT * 2;
+
 type ProductSearchInput = {
   query?: string | null;
   isActive?: boolean;
@@ -568,7 +591,7 @@ export async function searchChatProductInquiry(
     ...(primaryRequiredTokens.length > 0 ? { requiredTokens: primaryRequiredTokens } : {}),
     ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
     skip: 0,
-    take: input.take ?? 5,
+    take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
     cacheProfile: "storefront",
   });
 
@@ -606,7 +629,7 @@ export async function searchChatProductInquiry(
       ...(primaryRequiredTokens.length > 0 ? { requiredTokens: primaryRequiredTokens } : {}),
       ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
       skip: 0,
-      take: input.take ?? 5,
+      take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
       cacheProfile: "storefront",
     });
     if (carless.total > 0) {
@@ -632,7 +655,7 @@ export async function searchChatProductInquiry(
       ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
       ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
       skip: 0,
-      take: input.take ?? 5,
+      take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
       cacheProfile: "storefront",
     });
   }
@@ -671,7 +694,7 @@ export async function searchChatProductInquiry(
         ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
         ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
         skip: 0,
-        take: input.take ?? 5,
+        take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
         cacheProfile: "storefront",
       });
       if (folded.total > 0) {
@@ -710,7 +733,7 @@ export async function searchChatProductInquiry(
         ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
         ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
         skip: 0,
-        take: input.take ?? 5,
+        take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
         cacheProfile: "storefront",
       });
 
