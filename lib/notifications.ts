@@ -487,12 +487,34 @@ export function buildOutOfStockDigestBody(products: OutOfStockProduct[], at: Dat
 }
 
 /**
+ * Builds the "all clear" heartbeat body sent when nothing is out of stock, so a
+ * silent day is distinguishable from a cron that never ran. Deliberately a
+ * SINGLE line without the `รวม N รายการ` marker: the bell only renders the
+ * digest summary for bodies carrying that marker, so the heartbeat falls back to
+ * the plain one-line body render with no UI change needed.
+ */
+export function buildOutOfStockHeartbeatBody(at: Date): string {
+  return `📅 ${formatDateThai(at)} · 18:30 น. — ไม่มีสินค้าหมดสต๊อก ระบบตรวจสอบครบทุกรายการแล้ว`;
+}
+
+/**
  * Daily digest of ACTIVE products at zero (or negative) stock, so the shop can
  * reorder. Routes through `createNotification()` → bell + Telegram together
- * (iron rule §8). Caller must wrap in try/catch. No-op when the list is empty.
+ * (iron rule §8). Caller must wrap in try/catch.
+ *
+ * An empty list is NOT a no-op: it sends the all-clear heartbeat (INFO, no
+ * product link) so admins can tell "nothing is out of stock today" apart from
+ * "the cron failed / never fired".
  */
 export async function notifyOutOfStockDaily(products: OutOfStockProduct[], at: Date = new Date()): Promise<number> {
-  if (products.length === 0) return 0;
+  if (products.length === 0) {
+    return createNotification({
+      type: NotificationType.STOCK_OUT_DAILY,
+      severity: NotificationSeverity.INFO,
+      title: "ตรวจสอบสต๊อกประจำวัน (ไม่มีสินค้าหมด)",
+      body: buildOutOfStockHeartbeatBody(at),
+    });
+  }
 
   return createNotification({
     type: NotificationType.STOCK_OUT_DAILY,

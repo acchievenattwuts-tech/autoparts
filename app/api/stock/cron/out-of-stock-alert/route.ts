@@ -14,6 +14,9 @@ import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
  * (in-app bell + Telegram) so the shop can reorder. Lists every ACTIVE product
  * whose stock is at or below zero, grouped by category (design A).
  *
+ * When nothing is out of stock it still sends an "all clear" heartbeat, so a
+ * quiet evening is distinguishable from a cron that silently stopped firing.
+ *
  * Vercel Cron triggers this with a GET request and automatically attaches
  * `Authorization: Bearer ${CRON_SECRET}` (when the CRON_SECRET env var is set).
  * The schedule (18:30 Thailand = 11:30 UTC) is declared in `vercel.json`.

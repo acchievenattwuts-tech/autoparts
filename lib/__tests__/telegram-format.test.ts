@@ -97,6 +97,27 @@ describe("buildTelegramNotificationText", () => {
     assert.ok(!text.includes("🟡"));
     assert.ok(!text.includes("🔴"));
   });
+
+  it("fronts the daily stock all-clear heartbeat with ✅ instead of the alert 🔴", () => {
+    const heartbeat = buildTelegramNotificationText({
+      type: NotificationType.STOCK_OUT_DAILY,
+      severity: NotificationSeverity.INFO,
+      title: "ตรวจสอบสต๊อกประจำวัน (ไม่มีสินค้าหมด)",
+      body: "📅 16/08/2026 · 18:30 น. — ไม่มีสินค้าหมดสต๊อก ระบบตรวจสอบครบทุกรายการแล้ว",
+    });
+
+    assert.match(heartbeat, /^✅ ตรวจสอบสต๊อกประจำวัน/);
+    assert.ok(!heartbeat.includes("🔴"));
+
+    const alert = buildTelegramNotificationText({
+      type: NotificationType.STOCK_OUT_DAILY,
+      severity: NotificationSeverity.WARNING,
+      title: "สินค้าหมดสต๊อก (Stock = 0)",
+      body: "รวม 2 รายการ ที่ต้องสั่งเพิ่ม",
+    });
+
+    assert.match(alert, /^🔴 สินค้าหมดสต๊อก/);
+  });
 });
 
 describe("sendTelegramMessage retry policy", () => {

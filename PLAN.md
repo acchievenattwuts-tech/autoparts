@@ -962,6 +962,16 @@
 - ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · `npm run build` ผ่าน · `scripts/test-storefront-autocomplete-focus-regression.ts` ผ่าน · วัด DOM จริงบน dev server: X = 28×28 ที่ right 56px, ปุ่มค้นหา 48×32 ที่ right 4px, `padding-right` 88px → ไม่ทับกัน
 - [ ] ยังไม่ได้ทดสอบ "กดจริง" ในเบราว์เซอร์ (browser pane ของ session นี้ไม่ render → React ไม่ hydrate จึงคลิกทดสอบไม่ได้) — รบกวนเจ้าของกดยืนยันบนหน้าจริงอีกรอบ
 
+## แจ้งเตือนสินค้าหมดสต๊อก: heartbeat เมื่อไม่มีของหมด (2026-08-17)
+- ที่มา: เจ้าของแจ้งว่า Telegram "สินค้าหมดสต๊อก (Stock = 0)" ของวันที่ 16/08 เวลา 18:30 ไม่มีส่งมา
+- ตรวจแล้วไม่ใช่บั๊ก: cron `30 11 * * *` UTC = 18:30 ไทย ทำงานปกติ (มี `STOCK_OUT_DAILY` ครบทุกวัน 06–15/08) แต่ `notifyOutOfStockDaily()` เดิม `return 0` ทันทีเมื่อ list ว่าง → 16/08 ไม่มีสินค้า TRACKED ที่ stock ≤ 0 (P0460 + P0486 จากรอบ 15/08 เติมสต๊อกแล้ว) จึงเงียบ · `P0000 "อื่นๆ"` stock 0 แต่เป็น `NON_TRACKED` ถูกกรองออกตามเจตนา
+- ปัญหาจริงคือ "เงียบ" แยกไม่ออกระหว่าง *ไม่มีของหมด* กับ *cron ตาย* → เจ้าของเลือกให้ส่ง heartbeat
+- [x] [lib/notifications.ts](lib/notifications.ts): เพิ่ม `buildOutOfStockHeartbeatBody()` + `notifyOutOfStockDaily()` เคส list ว่างส่ง `createNotification()` severity INFO title "ตรวจสอบสต๊อกประจำวัน (ไม่มีสินค้าหมด)" ไม่มี `link` (ไม่มีอะไรให้กดดู) → เข้ากระดิ่ง + Telegram พร้อมกันตามกฎเหล็ก §8 · ใช้ `NotificationType.STOCK_OUT_DAILY` เดิม **ไม่แตะ schema**
+- [x] body เป็น **บรรทัดเดียว** และจงใจไม่มีคำว่า `รวม N รายการ` → `parseOutOfStockCount()` ใน [use-admin-system-notification-source.tsx](components/shared/use-admin-system-notification-source.tsx) คืน `null` กระดิ่งจึง render body ธรรมดา ไม่ต้องแก้ UI และไม่โชว์ "ต้องสั่งเพิ่ม 0 รายการ"
+- [x] [lib/telegram.ts](lib/telegram.ts): `resolveNotificationEmoji()` + `INFO_VARIANT_EMOJI` — `STOCK_OUT_DAILY` severity INFO ขึ้นหัวด้วย ✅ แทน 🔴 (ข้อความ all-clear ต้องไม่ดูเหมือนเตือนภัย) · เคส WARNING ยังเป็น 🔴 เหมือนเดิม
+- ตรวจแล้ว: `npx tsc --noEmit` ไม่มี error · เพิ่มเทสต์ ✅/🔴 ใน [telegram-format.test.ts](lib/__tests__/telegram-format.test.ts) · `telegram-format` + `notifications-handoff` ผ่านทั้งหมด
+- [ ] รอยืนยันของจริง: เย็นวันที่ยังไม่มีสินค้าหมด ต้องเห็นข้อความ ✅ เข้า Telegram เวลา 18:30
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

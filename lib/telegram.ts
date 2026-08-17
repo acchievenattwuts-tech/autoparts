@@ -120,8 +120,22 @@ function severityTag(severity: NotificationSeverity): string | null {
   }
 }
 
+/** Alert types that also send a routine INFO "all clear" message. The type emoji
+ *  signals a problem (🔴), so the calm variant must not wear it. */
+const INFO_VARIANT_EMOJI: Partial<Record<NotificationType, string>> = {
+  [NotificationType.STOCK_OUT_DAILY]: "✅",
+};
+
+function resolveNotificationEmoji(payload: TelegramNotificationPayload): string {
+  if (payload.severity === NotificationSeverity.INFO) {
+    const calm = INFO_VARIANT_EMOJI[payload.type];
+    if (calm) return calm;
+  }
+  return notificationTypeEmoji[payload.type] ?? "📢";
+}
+
 export function buildTelegramNotificationText(payload: TelegramNotificationPayload, appBaseUrl?: string | null): string {
-  const emoji = notificationTypeEmoji[payload.type] ?? "📢";
+  const emoji = resolveNotificationEmoji(payload);
   const lines: (string | null)[] = [
     `${emoji} ${payload.title}`,
     TELEGRAM_DIVIDER,
