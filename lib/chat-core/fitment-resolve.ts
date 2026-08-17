@@ -297,7 +297,12 @@ export function resolveColloquialCarModelAlias(input: {
   return null;
 }
 
-async function matchDbCategoryAlias(texts: Array<string | null | undefined>) {
+/**
+ * Shared alias lookup against the cached CategoryAlias rows. Exported so the
+ * part-type conflict check can reuse the SAME cache and the SAME matcher instead
+ * of issuing its own query — the check runs on every product turn.
+ */
+export async function matchDbCategoryAlias(texts: Array<string | null | undefined>) {
   try {
     const rows = await getCachedCategoryAliasRows(() =>
       db.categoryAlias.findMany({

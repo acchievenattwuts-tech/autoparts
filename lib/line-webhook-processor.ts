@@ -39,7 +39,12 @@ import {
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
-import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
+import {
+  CATEGORY_LLM_FALLBACK_AUDIT_ACTION,
+  expireStaleAiCategoryAliases,
+  stageAiCategoryAlias,
+} from "@/lib/chat-core/category-alias-staging";
+import { resolveChatCategoryPartTypeConflict } from "@/lib/chat-core/category-conflict";
 import { correctVehicleSpelling } from "@/lib/chat-core/vehicle-llm-fallback";
 import { stageVehicleSynonymSuggestion } from "@/lib/chat-core/vehicle-synonym-staging";
 import { shouldSkipVehicleSpellingAttempt } from "@/lib/chat-core/vehicle-synonym-attempt-cache";
@@ -2251,6 +2256,40 @@ export async function processLineAiReply(
     );
     const directProductCode = hasCurrentTurnFitmentEvidence ? null : directProductCodeCandidate;
 
+    // ── Category / part-type disagreement ──────────────────────────────────
+    // The resolver produced a category that the customer's own part word cannot
+    // justify (2026-08-17: "พัดลม…" hard-filtered into Condenser because an alias
+    // matched inside "แผงคอยร้อน"). Drop the filter BEFORE the LLM fallback below:
+    // that fallback only runs when no category is set and can only ADD one, so
+    // without this a wrong category is never reconsidered. Deterministic — it
+    // still protects the turn when Gemini is unavailable.
+    //
+    // TEXT turns only, matching the fallback it feeds. On an image turn the part
+    // word comes from vision OCR as a free-form phrase ("พัดลมโบลเวอร์") whose
+    // relationship to the category is established by the image pipeline, not by
+    // the alias table — judging it here would drop correct filters.
+    if (!isNonProductTurn && isTextTurn && fitmentFilters.categoryName) {
+      const categoryConflict = await resolveChatCategoryPartTypeConflict({
+        partType: inquiryFrame?.partType ?? null,
+        categoryName: fitmentFilters.categoryName,
+      });
+      if (categoryConflict.disagrees) {
+        const droppedCategoryName = fitmentFilters.categoryName;
+        const { categoryName: _dropped, ...rest } = fitmentFilters;
+        fitmentFilters = rest;
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action: "CATEGORY_PARTTYPE_CONFLICT",
+          payload: {
+            lineEventId: input.lineEventId,
+            partType: inquiryFrame?.partType ?? null,
+            droppedCategoryName,
+            partTypeCategoryName: categoryConflict.partTypeCategoryName,
+          },
+        });
+      }
+    }
+
     // ── LLM category fallback ──────────────────────────────────────────────
     // The deterministic resolver could not map a category (often a misspelled
     // part word, e.g. "วาว์ล" → "วาล์วแอร์"). Only on a text product turn that
@@ -2292,7 +2331,7 @@ export async function processLineAiReply(
           };
           fireAndForgetAudit(dependencies, {
             conversationId: input.conversation.id,
-            action: "CATEGORY_LLM_FALLBACK",
+            action: CATEGORY_LLM_FALLBACK_AUDIT_ACTION,
             payload: {
               lineEventId: input.lineEventId,
               original: correction.original,
@@ -2301,12 +2340,16 @@ export async function processLineAiReply(
             },
           });
           // Stage the misspelling for admin review — never block the reply on it.
+          // Staging itself now requires a repeat sighting, so a one-off typo does
+          // not create a review row.
           void stageAiCategoryAlias({
             alias: correction.original,
             categoryName: remapped.categoryName,
             correctedTerm: correction.corrected,
             originalText: correction.original,
           }).catch(() => undefined);
+          // Keep the review queue bounded without a scheduled job.
+          void expireStaleAiCategoryAliases().catch(() => undefined);
         }
       }
     }

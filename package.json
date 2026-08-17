@@ -40,6 +40,7 @@
     "test:semantic-golden": "tsx --env-file=.env.local scripts/test-semantic-search-golden.ts",
     "test:search-recall-golden": "tsx --env-file=.env.local scripts/test-search-recall-golden.ts",
     "test:chat-robustness-golden": "tsx --env-file=.env.local scripts/test-chat-robustness-golden.ts",
+    "test:chat-category-conflict-golden": "tsx --env-file=.env.local scripts/test-chat-category-conflict-golden.ts",
     "test:model-grounding-shadow-golden": "tsx --env-file=.env.local scripts/test-model-grounding-shadow-golden.ts",
     "test:all-thailand-car-models": "tsx --env-file=.env.local scripts/test-all-thailand-car-models-golden.ts",
     "test:all-thailand-car-models:live": "tsx --env-file=.env.local scripts/test-all-thailand-car-models-golden.ts --live --concurrency=1 --delay-ms=1500",

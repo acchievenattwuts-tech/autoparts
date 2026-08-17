@@ -32,3 +32,17 @@ test("aliasCollidesWithVehicle: flags a term that shadows a car model/brand", ()
   assert.equal(aliasCollidesWithVehicle("altis", vehicles), true); // equals a model
   assert.equal(aliasCollidesWithVehicle("วาว์ล", vehicles), false); // safe part word
 });
+
+test("staging policy: a typo must repeat before it earns a review row", async () => {
+  const { MIN_MISSPELLING_SIGHTINGS_BEFORE_STAGING, STAGED_ALIAS_EXPIRY_DAYS, CATEGORY_LLM_FALLBACK_AUDIT_ACTION } =
+    await import("@/lib/chat-core/category-alias-staging");
+
+  // A one-off misspelling must never create a row an admin has to review —
+  // that is what made the alias table grow faster than it could be approved.
+  assert.ok(MIN_MISSPELLING_SIGHTINGS_BEFORE_STAGING >= 2);
+  // Unreviewed suggestions expire, so the queue stays bounded on its own.
+  assert.ok(STAGED_ALIAS_EXPIRY_DAYS > 0);
+  // Both channels count into the SAME audit action; changing it silently would
+  // reset every sighting counter to zero.
+  assert.equal(CATEGORY_LLM_FALLBACK_AUDIT_ACTION, "CATEGORY_LLM_FALLBACK");
+});

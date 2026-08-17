@@ -42,7 +42,12 @@ import {
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
-import { stageAiCategoryAlias } from "@/lib/chat-core/category-alias-staging";
+import {
+  expireStaleAiCategoryAliases,
+  logMessengerCategoryLlmFallback,
+  stageAiCategoryAlias,
+} from "@/lib/chat-core/category-alias-staging";
+import { resolveChatCategoryPartTypeConflict } from "@/lib/chat-core/category-conflict";
 import { logChatProductSearchTelemetry } from "@/lib/chat-core/search-telemetry";
 import { loadCarBrandVariantLookup } from "@/lib/car-brand-alias-loader";
 import {
@@ -1047,6 +1052,20 @@ async function resolveMessengerFitmentHints(
       modelLookup,
     }).catch((): ChatFitmentFilters => ({}));
 
+    // Category / part-type disagreement — same deterministic guard as LINE, run
+    // BEFORE the fallback below so a wrong hard filter is dropped rather than kept
+    // (the fallback only fires when no category is set and can only ADD one).
+    if (filters.categoryName) {
+      const categoryConflict = await resolveChatCategoryPartTypeConflict({
+        partType: gi?.partType ?? null,
+        categoryName: filters.categoryName,
+      });
+      if (categoryConflict.disagrees) {
+        const { categoryName: _dropped, ...rest } = filters;
+        filters = rest;
+      }
+    }
+
     // LLM category fallback + auto-stage (same helpers/behaviour as LINE).
     if (!filters.categoryName) {
       const correction = await correctPartSpelling(processText, {
@@ -1069,12 +1088,21 @@ async function resolveMessengerFitmentHints(
             carBrandName: filters.carBrandName ?? remapped.carBrandName,
             carModelName: filters.carModelName ?? remapped.carModelName,
           };
+          // Recording the correction is what makes a repeated Messenger typo
+          // count toward the shared staging threshold.
+          void logMessengerCategoryLlmFallback({
+            messengerConversationId: conversationId,
+            original: correction.original,
+            corrected: correction.corrected,
+            categoryName: remapped.categoryName,
+          });
           void stageAiCategoryAlias({
             alias: correction.original,
             categoryName: remapped.categoryName,
             correctedTerm: correction.corrected,
             originalText: correction.original,
           }).catch(() => undefined);
+          void expireStaleAiCategoryAliases().catch(() => undefined);
         }
       }
     }
