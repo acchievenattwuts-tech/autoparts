@@ -29,6 +29,9 @@ export type ChatSearchGateDecision =
 export const CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY =
   "จูนขอส่งเรื่องให้แอดมินช่วยเช็กสินค้าและรายละเอียดรถให้ชัดเจนก่อนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊";
 
+export const CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY =
+  "จูนขอส่งให้แอดมินช่วยตรวจสอบสินค้าให้อีกครั้งนะคะ เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊";
+
 /**
  * Sent when the customer opens with a BROAD parts inquiry — "สอบถามอะไหล่รถครับ",
  * "หาอะไหล่แอร์" — that names no part and no vehicle. This is the start of a

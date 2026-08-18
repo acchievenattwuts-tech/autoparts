@@ -26,6 +26,7 @@ import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildChatSearchAskReply,
   buildDidYouMeanNote,
+  CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
   CHAT_WEAK_MATCH_HANDOFF_REPLY,
@@ -40,8 +41,11 @@ import {
   buildChatProductSpecSubject,
   COOLING_FAN_BLADE_CATEGORY_HINT,
   isVehicleFreeChatCategory,
+  isVehicleFreeChatPartType,
+  resolveChatGatePartKind,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
+import { resolveChatImageSearchPolicy } from "@/lib/chat-core/image-search-policy";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import {
   expireStaleAiCategoryAliases,
@@ -535,6 +539,23 @@ async function replyToMessengerTurn(params: {
         requiresMoreInfo: false,
         reason: "MESSENGER_PART_IMAGE",
       };
+      const conf = classification.confidence;
+      const imageSearchPolicy = resolveChatImageSearchPolicy({
+        confidence: conf,
+        partType: classification.partType,
+        modelPartKind: classification.partKind ?? null,
+      });
+      if (imageSearchPolicy.action === "handoff_admin") {
+        await handoffUncertainMessengerProduct({
+          pageAccessToken,
+          conversationId,
+          psid,
+          originalText: mergedText || "(ลูกค้าส่งรูปสินค้า)",
+          intent: LineIntent.PART_IMAGE_INQUIRY,
+          text: CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
+        });
+        return;
+      }
       // Product-code fast-path is allowed only when this image turn has no
       // explicit fitment evidence. If category / brand / model / year exists,
       // the fitment search path wins and code-like fragments stay as search tokens.
@@ -549,38 +570,47 @@ async function replyToMessengerTurn(params: {
         mergedText || null,
       ]);
       const directImageCode = imageHasExplicitFitmentFilter ? null : imageValidatedCode;
-      const conf = classification.confidence;
       // Completeness gate (parity with LINE + the text path): a fitment part image
       // that only identifies the part type but no vehicle (no brand/model/year) must
       // ASK for the car — a bare compressor photo must never be answered with
       // mismatched compressors. Bypassed only when the photo carries a validated
       // catalog SKU. Applied to image-ONLY turns (an image sent WITH text is driven
-      // by that text) and only when the read was confident enough to trust its
-      // partType ("ห้ามเดา" — a LOW read falls through to the generic ack below).
-      const imageGate = classification.partKind
+      // by that text). MEDIUM/LOW have already returned to the admin-review path;
+      // a HIGH model claim of `universal` still cannot bypass this gate unless the
+      // shared deterministic vehicle-free policy confirms the subject.
+      const imageGatePartKind =
+        imageSearchPolicy.action === "search_without_vehicle"
+          ? "universal"
+          : classification.partType
+            ? "fitment"
+            : null;
+      const accompanyingTextFitment = mergedText
+        ? await resolveChatFitmentFilters({
+            partType: null,
+            carBrand: null,
+            carModel: null,
+            queryText: mergedText,
+            rawText: mergedText,
+          }).catch((): ChatFitmentFilters => ({}))
+        : {};
+      const imageGate = imageGatePartKind
         ? decideChatSearchGate({
             partType: classification.partType ?? null,
-            carBrand: classification.carBrand ?? null,
-            carModel: classification.carModel ?? null,
+            carBrand: classification.carBrand ?? accompanyingTextFitment.carBrandName ?? null,
+            carModel: classification.carModel ?? accompanyingTextFitment.carModelName ?? null,
             year: classification.year ?? null,
-            partKind: classification.partKind,
+            partKind: imageGatePartKind,
             tooBroad: false,
           })
         : null;
-      if (!mergedText && conf !== "LOW" && imageGate?.action === "ask" && !imageValidatedCode) {
+      if (imageGate?.action === "ask" && !imageValidatedCode) {
         const ask = buildChatSearchAskReply(imageGate.ask);
         await sendMessengerText({ pageAccessToken, psid, text: ask });
         await persistOutbound(conversationId, psid, ask, { intent: LineIntent.PART_IMAGE_INQUIRY });
         return;
       }
-      // Confidence gating (parity with LINE, "ห้ามเดา"):
-      //  - HIGH  → the classifier's part/car/year become hard fitment filters.
-      //  - MEDIUM → usable only as SOFT search hints (no hard filter that could
-      //    pin the search to a wrong, uncertain car/part).
-      //  - LOW   → guesses dropped entirely; if there's nothing else to search on
-      //    (no resolved code, no accompanying text) we ask for details below
-      //    rather than search blindly.
-      const canSearchImage = Boolean(directImageCode) || conf !== "LOW" || Boolean(mergedText);
+      // MEDIUM/LOW returned above for admin review, so only HIGH reaches search.
+      const canSearchImage = Boolean(directImageCode) || conf === "HIGH";
       if (canSearchImage) {
         const useHardFilters = conf === "HIGH";
         const useHints = conf !== "LOW";
@@ -598,9 +628,9 @@ async function replyToMessengerTurn(params: {
               extractedImageHints: useHints ? imageHints : null,
               fitmentHints: useHardFilters
                 ? {
-                    categoryName: classification.partType ?? null,
-                    carBrandName: classification.carBrand ?? null,
-                    carModelName: classification.carModel ?? null,
+                   categoryName: classification.partType ?? null,
+                    carBrandName: classification.carBrand ?? accompanyingTextFitment.carBrandName ?? null,
+                    carModelName: classification.carModel ?? accompanyingTextFitment.carModelName ?? null,
                     fitmentYear: classification.year ?? null,
                   }
                 : undefined,
@@ -878,6 +908,7 @@ async function replyToMessengerTurn(params: {
         // Decided from CATALOG evidence, never from the classifier's `partKind`.
         vehicleFilterOptional:
           isVehicleFreeChatCategory(fitmentHints.categoryName) ||
+          isVehicleFreeChatPartType(classifiedIntent?.partType) ||
           resolveChatProductSpecs(processText).categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT,
       },
       originalText: mixedIntentPlan?.productText ?? mergedText,
@@ -1033,10 +1064,11 @@ async function resolveMessengerFitmentHints(
           carBrand: gi.carBrand,
           carModel: gi.carModel,
           year: gi.year,
-          partKind:
-            productSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
-              ? "universal"
-              : gi.partKind,
+          partKind: resolveChatGatePartKind({
+            partType: gi.partType,
+            resolvedCategoryName: productSpecs.categoryHint,
+            fallbackPartKind: gi.partKind,
+          }),
           tooBroad: gi.tooBroad,
         })
       : null;
@@ -1202,6 +1234,7 @@ async function replyWithMessengerMultiSubject(input: {
           customerText: query,
           fitmentHints,
           fitmentPartHeadNoun,
+          vehicleFilterOptional: isVehicleFreeChatPartType(subject.partType),
         },
         originalText: input.originalText,
         history: input.history,

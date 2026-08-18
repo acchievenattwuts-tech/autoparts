@@ -35,6 +35,54 @@ export const isVehicleFreeChatCategory = (categoryName: string | null | undefine
   return VEHICLE_FREE_CATEGORY_HINTS.some((hint) => name.includes(hint.toLowerCase()));
 };
 
+/**
+ * Product subjects that are intrinsically selected by their own chemical/spec
+ * identity rather than a vehicle model. These exact, deterministic patterns are
+ * intentionally narrower than Gemini's `partKind=universal`: phrases such as
+ * "สายน้ำยาแอร์", "หม้อน้ำ", "ตู้แอร์", and "คอมแอร์" must not match.
+ *
+ * Keep this policy beside VEHICLE_FREE_CATEGORY_HINTS so LINE and Messenger use
+ * one reviewed source of truth. Add a term only when the shop confirms that the
+ * subject never needs vehicle fitment.
+ */
+const VEHICLE_FREE_PART_TYPE_PATTERNS = [
+  /^(?:น้ำยา\s*แอร์|สาร\s*ทำความเย็น|refrigerant)(?:\s+.*)?$/iu,
+  /^(?:น้ำมัน\s*คอม(?:แอร์)?|compressor\s*oil)(?:\s+.*)?$/iu,
+  /^(?:น้ำยา\s*หล่อเย็น(?:\s*หม้อน้ำ)?|radiator\s*coolant|coolant)(?:\s+.*)?$/iu,
+  /^(?:ใบ\s*พัดลม|fan\s*blade)(?:\s+.*)?$/iu,
+  /^(?:น้ำยา\s*ล้าง\s*(?:คอยล์|ระบบ\s*แอร์)|coil\s*cleaner)(?:\s+.*)?$/iu,
+  /^(?:เทป\s*(?:กาว\s*)?(?:ละลาย|ขี้หมา)|เทป\s*(?:โฟม\s*)?ฉนวน|aerotape|แอโรเทป|cock\s*taper)(?:\s+.*)?$/iu,
+  /^(?:หัว\s*คอปเปอร์(?:\s*(?:เติม\s*น้ำยา(?:แอร์รถยนต์)?|สาย\s*เกจ(?:แอร์รถยนต์)?))?|หัว\s*เติม\s*น้ำยา(?:แอร์รถยนต์)?)(?:\s+.*)?$/iu,
+  /^(?:ชุด\s*เกจ์\s*วัด\s*น้ำยา\s*แอร์(?:รถยนต์)?|manifold\s*gauge(?:\s*set)?)(?:\s+.*)?$/iu,
+  /^(?:น[็๊]อต\s*(?:วาล์ว|หัว\s*จม(?:หกเหลี่ยม)?(?:แบบ(?:กลาง|ยาว))?))(?:\s+.*)?$/iu,
+  /^(?:(?:ตัว|เครื่องมือ)\s*ถอด\s*(?:ไส้ศร(?:แอร์รถยนต์)?|วาล์ว))(?:\s+.*)?$/iu,
+  /^(?:ฝา\s*ปิด\s*วาล์ว\s*เติม\s*น้ำยา(?:แอร์รถยนต์)?)(?:\s+.*)?$/iu,
+  /^(?:วาล์ว\s*ลูกศร(?:แอร์)?|ไส้ศร\s*แอร์)(?:\s+.*)?$/iu,
+  /^(?:ฟองน้ำ\s*เส้น\s*ตู้\s*แอร์)(?:\s+.*)?$/iu,
+  /^(?:เข็มขัด\s*รัด\s*ท่อ\s*ยาง)(?:\s+.*)?$/iu,
+  /^(?:ท่อ\s*ส่ง\s*ลม\s*แอร์(?:รถยนต์)?\s*แบบ\s*ยืด)(?:\s+.*)?$/iu,
+] as const;
+
+export const isVehicleFreeChatPartType = (partType: string | null | undefined): boolean => {
+  const value = partType?.trim() ?? "";
+  return Boolean(value) && VEHICLE_FREE_PART_TYPE_PATTERNS.some((pattern) => pattern.test(value));
+};
+
+/**
+ * Promotes only catalog-reviewed vehicle-free subjects to `universal`.
+ * Everything outside the deterministic allow-list returns the classifier's
+ * original value unchanged, preserving the legacy text/image fallback.
+ */
+export const resolveChatGatePartKind = <T extends "fitment" | "universal" | null>(input: {
+  partType: string | null | undefined;
+  resolvedCategoryName?: string | null;
+  fallbackPartKind: T;
+}): T | "universal" =>
+  isVehicleFreeChatPartType(input.partType) ||
+  isVehicleFreeChatCategory(input.resolvedCategoryName)
+    ? "universal"
+    : input.fallbackPartKind;
+
 export type ChatFanDirection = "push" | "pull";
 export type ChatProductVoltage = 12 | 24;
 

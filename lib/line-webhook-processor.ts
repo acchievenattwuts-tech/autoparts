@@ -37,8 +37,11 @@ import {
   buildChatProductSpecSubject,
   COOLING_FAN_BLADE_CATEGORY_HINT,
   isVehicleFreeChatCategory,
+  isVehicleFreeChatPartType,
+  resolveChatGatePartKind,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
+import { resolveChatImageSearchPolicy } from "@/lib/chat-core/image-search-policy";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
 import {
   CATEGORY_LLM_FALLBACK_AUDIT_ACTION,
@@ -151,6 +154,7 @@ import {
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
   CHAT_BROAD_PART_INQUIRY_ASK_REPLY,
+  CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
   CHAT_WEAK_MATCH_HANDOFF_REPLY,
@@ -2116,14 +2120,29 @@ export async function processLineAiReply(
     // Image-only turns have no text classifier — gate from the structured OCR
     // fields instead, but only when vision was confident enough to label the
     // part kind (otherwise degrade to legacy search-on-hints, never blocking).
+    const imageSearchPolicy =
+      input.imageClassification?.kind === "part_image"
+        ? resolveChatImageSearchPolicy({
+            confidence: input.imageClassification.confidence,
+            partType: input.imageClassification.partType,
+            resolvedCategoryName: currentProductSpecs.categoryHint,
+            modelPartKind: input.imageClassification.partKind ?? null,
+          })
+        : null;
+    const imageGatePartKind =
+      imageSearchPolicy?.action === "search_without_vehicle"
+        ? "universal"
+        : input.imageClassification?.partType
+          ? "fitment"
+          : null;
     const imageGateDecision =
-      input.imageClassification?.kind === "part_image" && input.imageClassification.partKind
+      input.imageClassification?.kind === "part_image" && imageGatePartKind
         ? decideChatSearchGate({
             partType: input.imageClassification.partType ?? null,
             carBrand: input.imageClassification.carBrand ?? null,
             carModel: input.imageClassification.carModel ?? null,
             year: input.imageClassification.year ?? null,
-            partKind: input.imageClassification.partKind,
+            partKind: imageGatePartKind,
             tooBroad: false,
           })
         : null;
@@ -2136,10 +2155,14 @@ export async function processLineAiReply(
             carBrand: inquiryFrame.carBrand,
             carModel: inquiryFrame.carModel,
             year: frameYear,
-            partKind:
-              currentProductSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT
-                ? "universal"
-                : guardedSearchIntent?.partKind ?? null,
+            partKind: resolveChatGatePartKind({
+              partType: inquiryFrame.partType,
+              resolvedCategoryName: currentProductSpecs.categoryHint,
+              fallbackPartKind:
+                imageSearchPolicy?.action === "search_without_vehicle"
+                  ? "universal"
+                  : guardedSearchIntent?.partKind ?? null,
+            }),
             tooBroad: guardedSearchIntent?.tooBroad ?? false,
           })
         : imageGateDecision;
@@ -2226,13 +2249,10 @@ export async function processLineAiReply(
     // "tell me more" reply BEFORE searching throws that away. Run the search
     // regardless — the delivery step sends on the reply token if it's still open,
     // otherwise PUSHes the result afterward.
-    // "ห้ามเดา": a lone image whose OCR came back low-confidence is too uncertain
-    // to search blindly — ask the customer to confirm instead of guessing. (An
-    // image sent WITH text is driven by the text, so this only fires image-only.)
-    const imageOnlyLowConfidence =
-      !isTextTurn &&
-      input.imageClassification?.kind === "part_image" &&
-      input.imageClassification.confidence === "LOW";
+    // Owner-confirmed policy: every MEDIUM/LOW part-image read goes to an admin,
+    // even when the same burst also contains generic text such as "มีแบบนี้ไหม".
+    // Only HIGH may drive product search or the vehicle completeness gate.
+    const imageRequiresAdminReview = imageSearchPolicy?.action === "handoff_admin";
 
     // ── Product-code fast-path (Option A) ─────────────────────────────────────
     // A customer who browsed the shop site/app often sends the product's code
@@ -2321,7 +2341,7 @@ export async function processLineAiReply(
       !fitmentFilters.categoryName &&
       !directProductCode &&
       !gateBlocksSearch &&
-      !imageOnlyLowConfidence &&
+      !imageRequiresAdminReview &&
       !isBroadChatPartType(inquiryFrame?.partType) &&
       !isBroadChatPartType(consolidatedQuery ?? processText) &&
       Boolean(consolidatedQuery ?? processText)
@@ -2390,6 +2410,7 @@ export async function processLineAiReply(
       inquiryFrame?.partType &&
       (guardedSearchIntent?.partKind === "universal" ||
         input.imageClassification?.partKind === "universal" ||
+        isVehicleFreeChatPartType(inquiryFrame.partType) ||
         isAccessoryOrChemicalIntent(
           [inquiryFrame.partType, consolidatedQuery, processText].filter(Boolean).join(" "),
         ))
@@ -2422,16 +2443,16 @@ export async function processLineAiReply(
     // excluded from codeCandidates via hardGuard / payment-slip above.
     const productSearch =
       isNonProductTurn ||
+      imageRequiresAdminReview ||
       (!directProductCode &&
         (classifierUncertain ||
           gateBlocksSearch ||
-          imageOnlyLowConfidence ||
           stockAvailabilityDirect ||
           multiUnsafeHandoff))
       ? ({
           searched: false,
-          reason: imageOnlyLowConfidence
-            ? "IMAGE_LOW_CONFIDENCE"
+          reason: imageRequiresAdminReview
+            ? "IMAGE_CONFIDENCE_ADMIN_REVIEW"
             : classifierUncertain
               ? "CLASSIFIER_UNCERTAIN"
             // "มีของไหม" ล้วน — จะจบที่ handoff แอดมินเสมอ ไม่ต้องเสีย search
@@ -2482,6 +2503,7 @@ export async function processLineAiReply(
           // brand/model can only zero the search.
           vehicleFilterOptional:
             isVehicleFreeChatCategory(fitmentFilters.categoryName) ||
+            isVehicleFreeChatPartType(inquiryFrame?.partType) ||
             currentProductSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT,
           // Over-fetch so suppressed rows can be backfilled — sliced back to
           // CHAT_PRODUCT_DISPLAY_LIMIT after the compatibility filter runs.
@@ -3097,15 +3119,18 @@ export async function processLineAiReply(
           auditPayload?: Record<string, string | number | null>;
         }
       | null =
-      // Lone image with low-confidence OCR — ask for confirmation instead of
-      // guessing ("ห้ามเดา"). Never a hand-off; the AI stays active.
-      liveMode && imageOnlyLowConfidence
+      // MEDIUM/LOW image reads are never used to search or ask for a vehicle.
+      // Send the uncertain image to an admin for visual review.
+      liveMode && imageRequiresAdminReview
         ? {
-            message: CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
-            reason: "IMAGE_LOW_CONFIDENCE_HANDOFF",
+            message: CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
+            reason: "IMAGE_CONFIDENCE_ADMIN_REVIEW",
             handoff: true,
             audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
-            auditPayload: { lineEventId: input.lineEventId, confidence: "LOW" },
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              confidence: input.imageClassification?.confidence ?? "LOW",
+            },
           }
       // Never a hand-off — the AI stays active and waits for the answer.
       : liveMode && classifierUncertain

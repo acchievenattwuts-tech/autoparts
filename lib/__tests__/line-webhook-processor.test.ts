@@ -1226,7 +1226,7 @@ test("part-image turn near the reply-token deadline still searches (no pre-searc
   assert.equal(calls.replies[0]?.replyToken, "reply-event-img-deadline");
 });
 
-test("lone low-confidence part image hands off instead of guessing a search", async () => {
+test("low-confidence part image hands off to admin instead of guessing a search", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     imageKind: "part_image",
@@ -1248,9 +1248,41 @@ test("lone low-confidence part image hands off instead of guessing a search", as
   );
 
   assert.equal(result.repliedCount, 1);
-  // Never guesses — no search runs, and the AI stays active (no admin handoff).
+  // Never guesses — no search runs and a human admin receives the room.
   assert.deepEqual(calls.searches, []);
   assert.equal(calls.replies.length, 1);
+  assert.ok(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+});
+
+test("medium-confidence part image hands off to admin instead of using soft hints", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "MEDIUM",
+    imageHints: ["น้ำยาแอร์ R32"],
+    imagePartType: "น้ำยาแอร์",
+    imagePartKind: "universal",
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-medium-admin"),
+    {
+      channelAccessToken: "token",
+      autoReplyEnabled: true,
+      dryRun: false,
+      imageSearchEnabled: true,
+    },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searches, []);
+  assert.equal(
+    calls.replies[0]?.text,
+    "จูนขอส่งให้แอดมินช่วยตรวจสอบสินค้าให้อีกครั้งนะคะ เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊",
+  );
   assert.ok(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"));
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 1);
@@ -1555,6 +1587,69 @@ test("part image searches the catalog when image-search flag is on and hints exi
   assert.equal(calls.searches.length, 1);
 });
 
+test("HIGH refrigerant image searches directly without asking for a vehicle", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "HIGH",
+    imageHints: ["น้ำยาแอร์", "น้ำยาแอร์ R32", "Refrigerant R32"],
+    imagePartType: "น้ำยาแอร์",
+    imagePartKind: "universal",
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-r32-high"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, imageSearchEnabled: true },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "R32 is searched without vehicle fitment");
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /รุ่นรถ/);
+});
+
+test("HIGH reviewed-safe accessory image searches even when the model labels it fitment", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "HIGH",
+    imageHints: ["ไส้ศรแอร์", "R134a"],
+    imagePartType: "ไส้ศรแอร์ R134a",
+    imagePartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-safe-valve-core-high"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, imageSearchEnabled: true },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1, "deterministic safe policy overrides a wrong fitment label");
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /รุ่นรถ/);
+});
+
+test("HIGH radiator image mislabeled universal still asks for a vehicle", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    imageKind: "part_image",
+    imageConfidence: "HIGH",
+    imageHints: ["หม้อน้ำ"],
+    imagePartType: "หม้อน้ำ",
+    imagePartKind: "universal",
+  });
+
+  const result = await processLineWebhookPayload(
+    imagePayload("event-img-radiator-false-universal"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, imageSearchEnabled: true },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searches, [], "model partKind=universal is not trusted by itself");
+  assert.match(calls.replies[0]?.text ?? "", /รุ่นรถ/);
+});
+
 test("part image does not search when image-search flag is off even with hints", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
@@ -1657,6 +1752,25 @@ test("gate: fitment part with no car/year blocks search and asks for the vehicle
   assert.equal(calls.searches.length, 0, "search is gated off until we have a car");
   assert.ok(calls.replies[0]?.text.includes("ยี่ห้อ"), "asks for the vehicle");
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "AI stays active, room not frozen");
+});
+
+test("gate: reviewed-safe text searches without a vehicle even when classifier says fitment", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "ไส้ศรแอร์ R134a",
+    intentPartType: "ไส้ศรแอร์ R134a",
+    intentPartKind: "fitment",
+  });
+
+  const result = await processLineWebhookPayload(
+    textPayload("มีไส้ศรแอร์ R134a ไหมครับ", "event-safe-valve-core-text"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 1);
+  assert.doesNotMatch(calls.replies[0]?.text ?? "", /รุ่นรถ/);
 });
 
 test("broad aircon truck inquiry hands off immediately instead of guessing compressor products", async () => {
@@ -3579,7 +3693,7 @@ test("admin-owned conversation: draft is stored without spending Gemini generate
 // self-contradictory "มูเล่หน้าครัช Honda City มอเตอร์ปรับอากาศ …" (zero results)
 // and จูน replied "จูนเห็นรูปมูเล่หน้าครัชสำหรับ Honda Cityที่ส่งมา", naming a part
 // that was not in the photo at all.
-test("part image whose subject contradicts the carried frame drives the turn (not the stale part)", async () => {
+test("MEDIUM image whose subject contradicts the frame hands off without searching the stale part", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({
     storedFrame: { partType: "มูเล่หน้าครัช", carBrand: "Honda", carModel: "City", year: 1996 },
@@ -3607,21 +3721,13 @@ test("part image whose subject contradicts the carried frame drives the turn (no
     calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"),
     "the contradiction between the photo and the carried part is audited",
   );
-  assert.match(
-    calls.searches.at(-1) ?? "",
-    /มอเตอร์ปรับอากาศ/,
-    "the search runs on the part actually shown in the photo",
-  );
-  assert.doesNotMatch(
-    calls.searches.at(-1) ?? "",
-    /มูเล่/,
-    "the carried part is not merged into the query",
-  );
+  assert.deepEqual(calls.searches, [], "MEDIUM vision never drives a product search");
 
   const reply = calls.replies[0]?.text ?? "";
-  assert.match(reply, /มอเตอร์ปรับอากาศ/, "จูน acknowledges the part in the photo");
-  assert.doesNotMatch(reply, /มูเล่/, "จูน never names the previous turn's part back");
-  assert.doesNotMatch(reply, /Cityที่ส่งมา/, "a Latin car name is spaced off the following Thai word");
+  assert.match(reply, /แอดมิน/, "จูน sends the uncertain image to a human");
+  assert.doesNotMatch(reply, /มูเล่|มอเตอร์ปรับอากาศ/, "จูน names neither an uncertain read nor the stale part");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
 
   assert.equal(
     calls.savedFrames.at(-1)?.partType,
@@ -3661,12 +3767,12 @@ test("part image whose subject matches the carried frame leaves the frame alone"
   );
 });
 
-// ── Golden suite: evidence-based promotion of an image subject (Option B) ─────
-// The contradiction guard (Option C) lets a MEDIUM photo steer its OWN turn. B is
-// the follow-up question: may that photo also become the session's standing
-// subject? Only when the catalog corroborates the read — never on vision
-// confidence alone. These cases pin every branch of that decision, so a future
-// change cannot quietly widen (or silence) the promotion.
+// ── Historical promotion guard + new confidence policy ───────────────────────
+// MEDIUM images previously could steer a turn and promote their subject after a
+// catalog match. The owner-confirmed policy now hands every MEDIUM/LOW image to an
+// admin, so even catalog corroboration must not search or mutate the standing
+// subject. The remaining cases keep the old promotion boundary pinned in case the
+// confidence policy is changed deliberately in the future.
 
 /** A MEDIUM photo showing a DIFFERENT part from the one carried in the frame. */
 const contradictingImageTurn = {
@@ -3696,7 +3802,7 @@ const runImageTurn = async (
   );
 };
 
-test("B promotes the image subject when the catalog corroborates it (category + shown rows)", async () => {
+test("MEDIUM image never promotes its subject even when catalog rows would corroborate it", async () => {
   const { calls, dependencies } = createProcessorTestDeps({
     ...contradictingImageTurn,
     searchTotal: 2,
@@ -3710,17 +3816,16 @@ test("B promotes the image subject when the catalog corroborates it (category + 
 
   await runImageTurn(dependencies, "event-img-b-promote");
 
-  assert.ok(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), "guard C still fires");
-  assert.ok(
-    calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"),
-    "corroborated read is promoted",
-  );
+  assert.ok(calls.auditActions.includes("IMAGE_SUBJECT_OVERRIDES_FRAME"), "the contradiction is still observable");
+  assert.equal(calls.auditActions.includes("IMAGE_SUBJECT_PROMOTED_TO_FRAME"), false);
+  assert.deepEqual(calls.searches, [], "catalog search is skipped before it can corroborate a MEDIUM read");
   assert.deepEqual(
     calls.savedFrames.at(-1),
-    { partType: "มอเตอร์ปรับอากาศ", carBrand: "Honda", carModel: "City", year: 1996 },
-    "the photo's part becomes the standing subject; the vehicle slots are untouched",
+    { partType: "มูเล่หน้าครัช", carBrand: "Honda", carModel: "City", year: 1996 },
+    "the standing frame remains unchanged for the admin",
   );
-  assert.equal(calls.savedFrames.length, 2, "exactly one extra frame write, never more");
+  assert.equal(calls.savedFrames.length, 1, "no promotion frame write occurs");
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
 });
 
 test("B does not promote when the search found nothing (the real 2026-08-01 turn)", async () => {

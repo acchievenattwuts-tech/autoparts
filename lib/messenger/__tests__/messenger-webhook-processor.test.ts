@@ -23,7 +23,11 @@ test(
   { skip: moduleMocksUnavailable },
   async () => {
   const calls = {
-    searches: [] as Array<{ text?: string | null; customerText?: string | null }>,
+    searches: [] as Array<{
+      text?: string | null;
+      customerText?: string | null;
+      vehicleFilterOptional?: boolean;
+    }>,
     textReplies: [] as string[],
     escalations: [] as string[],
     notifications: [] as Array<{ text?: string | null }>,
@@ -117,9 +121,16 @@ test(
         text?: string | null;
         customerText?: string | null;
         fitmentHints?: { categoryName?: string | null } | null;
+        vehicleFilterOptional?: boolean;
       }) => {
-        calls.searches.push({ text: input.text, customerText: input.customerText });
-        const expectedCategory = input.text?.includes("คอมแอร์")
+        calls.searches.push({
+          text: input.text,
+          customerText: input.customerText,
+          ...(input.vehicleFilterOptional ? { vehicleFilterOptional: true } : {}),
+        });
+        const expectedCategory = input.text?.includes("ไส้ศร")
+          ? null
+          : input.text?.includes("คอมแอร์")
           ? "คอมแอร์ (Compressor)"
           : input.text?.includes("วาล์ว")
           ? "วาล์ว (Expansion Valve)"
@@ -175,6 +186,18 @@ test(
               partKind: null,
               tooBroad: false,
             }
+          : input.latestText.includes("ไส้ศร")
+          ? {
+              group: "product",
+              query: "ไส้ศรแอร์ R134a",
+              isProductQuery: true,
+              partType: "ไส้ศรแอร์ R134a",
+              carBrand: null,
+              carModel: null,
+              year: null,
+              partKind: "fitment",
+              tooBroad: false,
+            }
           : input.latestText.includes("508")
           ? {
               group: "product",
@@ -218,7 +241,9 @@ test(
   await mock.module("@/lib/chat-core/fitment-resolve", {
     namedExports: {
       resolveChatFitmentFilters: async (input: { partType?: string | null; queryText?: string | null }) => ({
-        categoryName: input.partType?.includes("คอมแอร์") || input.queryText?.includes("คอมแอร์")
+        categoryName: input.partType?.includes("ไส้ศร") || input.queryText?.includes("ไส้ศร")
+          ? null
+          : input.partType?.includes("คอมแอร์") || input.queryText?.includes("คอมแอร์")
           ? "คอมแอร์ (Compressor)"
           : input.partType?.includes("วาล์ว") || input.queryText?.includes("วาล์ว")
           ? "วาล์ว (Expansion Valve)"
@@ -314,6 +339,40 @@ test(
     /ไม่มีสินค้า|ไม่มีของ|หาไม่เจอ|ไม่พบสินค้า|ยังไม่พบ/,
   );
   assert.deepEqual(calls.processedSeqs, [1]);
+
+  calls.searches.length = 0;
+  calls.textReplies.length = 0;
+  calls.escalations.length = 0;
+  calls.notifications.length = 0;
+  calls.outboundMessages.length = 0;
+  currentTexts = null;
+  currentText = "มีไส้ศรแอร์ R134a ไหมครับ";
+  searchHasResults = true;
+  detectedSubjects = null;
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-safe-valve-core",
+        fbEventId: "event-safe-valve-core",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searches[0]?.text, "มีไส้ศรแอร์ R134a ไหมครับ");
+  assert.equal(
+    calls.searches[0]?.vehicleFilterOptional,
+    true,
+    "reviewed-safe Messenger text uses the shared vehicle-free retry policy",
+  );
+  assert.deepEqual(calls.escalations, []);
 
   calls.searches.length = 0;
   calls.textReplies.length = 0;

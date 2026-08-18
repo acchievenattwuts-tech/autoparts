@@ -5,7 +5,6 @@ import {
   LineAiConfidence,
   LineConversationAiStatus,
   LineIntent,
-  LineMessageDirection,
   LineMessageType,
 } from "@/lib/generated/prisma";
 
@@ -34,6 +33,7 @@ type ImageTurnOptions = {
   searchHints: string[];
   partNumber: string | null;
   catalogCodes: string[];
+  accompanyingText?: string | null;
 };
 
 let opts: ImageTurnOptions = {
@@ -48,6 +48,8 @@ let opts: ImageTurnOptions = {
 const calls = {
   searches: [] as Array<{ text?: string | null }>,
   textReplies: [] as string[],
+  adminHandoffs: 0,
+  adminNotifications: 0,
 };
 let inboundSeq = 0;
 
@@ -63,7 +65,9 @@ before(async () => {
         inboundSeq += 1;
         return inboundSeq;
       },
-      escalateMessengerConversationToAdmin: async () => undefined,
+      escalateMessengerConversationToAdmin: async () => {
+        calls.adminHandoffs += 1;
+      },
       findStalledMessengerConversationIds: async () => [],
       getMessengerCoalesceState: async () => ({
         lastInboundSeq: inboundSeq,
@@ -76,17 +80,36 @@ before(async () => {
         created: false,
       }),
       getRecentMessengerMessagesForAi: async () => [],
-      // Image-only burst: no text (mergedText empty), one attachment.
-      getUnansweredMessengerMessages: async () => [
-        {
+      getUnansweredMessengerMessages: async () => {
+        const rows: Array<{
+          id: string;
+          text: string | null;
+          messageType: LineMessageType;
+          imageUrl: string | null;
+          intent: LineIntent | null;
+          createdAt: Date;
+        }> = [
+          {
           id: "inbound-img",
           text: null,
           messageType: LineMessageType.IMAGE,
           imageUrl: "https://cdn.example/part.jpg",
           intent: null,
           createdAt: new Date(),
-        },
-      ],
+          },
+        ];
+        if (opts.accompanyingText) {
+          rows.push({
+            id: "inbound-text",
+            text: opts.accompanyingText,
+            messageType: LineMessageType.TEXT,
+            imageUrl: null,
+            intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+            createdAt: new Date(),
+          });
+        }
+        return rows;
+      },
       markMessengerProcessedSeq: async () => undefined,
       releaseMessengerConversationLock: async () => undefined,
       resolveMessengerPriceTier: async () => "RETAIL",
@@ -97,6 +120,9 @@ before(async () => {
   await mock.module("@/lib/chat-core/product-search-bridge", {
     namedExports: {
       applyChatPriceTier: <T,>(products: T[]) => products,
+      buildUnlinkedPriceNote: () => "",
+      CHAT_PRODUCT_DISPLAY_LIMIT: 5,
+      CHAT_PRODUCT_FETCH_LIMIT: 10,
       getChatProductSummaries: async (ids: string[]) =>
         ids.map((id) => ({ id, code: id, name: `product ${id}`, salePrice: 100, imageUrl: null })),
       resolveCatalogCodes: async (codes: string[]) => codes.filter((code) => opts.catalogCodes.includes(code)),
@@ -156,7 +182,9 @@ before(async () => {
 
   await mock.module("@/lib/notifications", {
     namedExports: {
-      notifyMessengerNeedsAdmin: async () => undefined,
+      notifyMessengerNeedsAdmin: async () => {
+        calls.adminNotifications += 1;
+      },
       notifyMessengerNewConversation: async () => undefined,
       notifyMessengerPaymentSlip: async () => undefined,
     },
@@ -190,6 +218,8 @@ async function runImageTurn(next: ImageTurnOptions, fbEventId: string) {
   opts = next;
   calls.searches.length = 0;
   calls.textReplies.length = 0;
+  calls.adminHandoffs = 0;
+  calls.adminNotifications = 0;
   const { processMessengerBatch } = await import("@/lib/messenger/messenger-webhook-processor");
   await processMessengerBatch(
     [
@@ -229,6 +259,123 @@ test(
     assert.match(calls.textReplies[0] ?? "", /รุ่นรถ/, "asks the customer for the vehicle");
   },
 );
+
+test(
+  "Messenger image gate: HIGH refrigerant searches without asking for a vehicle",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    await runImageTurn(
+      {
+        partType: "น้ำยาแอร์",
+        partKind: "universal",
+        confidence: "HIGH",
+        searchHints: ["น้ำยาแอร์ R32", "Refrigerant R32"],
+        partNumber: null,
+        catalogCodes: [],
+      },
+      "event-img-r32-high",
+    );
+
+    assert.equal(calls.searches.length, 1);
+    assert.doesNotMatch(calls.textReplies[0] ?? "", /รุ่นรถ/);
+    assert.equal(calls.adminHandoffs, 0);
+  },
+);
+
+test(
+  "Messenger image gate: HIGH reviewed-safe accessory searches even when model says fitment",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    await runImageTurn(
+      {
+        partType: "ไส้ศรแอร์ R134a",
+        partKind: "fitment",
+        confidence: "HIGH",
+        searchHints: ["ไส้ศรแอร์", "R134a"],
+        partNumber: null,
+        catalogCodes: [],
+      },
+      "event-img-safe-valve-core-high",
+    );
+
+    assert.equal(calls.searches.length, 1);
+    assert.doesNotMatch(calls.textReplies[0] ?? "", /รุ่นรถ/);
+    assert.equal(calls.adminHandoffs, 0);
+  },
+);
+
+test(
+  "Messenger image gate: HIGH radiator mislabeled universal still asks for the vehicle",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    await runImageTurn(
+      {
+        partType: "หม้อน้ำ",
+        partKind: "universal",
+        confidence: "HIGH",
+        searchHints: ["หม้อน้ำ"],
+        partNumber: null,
+        catalogCodes: [],
+      },
+      "event-img-radiator-false-universal",
+    );
+
+    assert.equal(calls.searches.length, 0);
+    assert.match(calls.textReplies[0] ?? "", /รุ่นรถ/);
+    assert.equal(calls.adminHandoffs, 0);
+  },
+);
+
+test(
+  "Messenger image gate: generic text accompanying a false-universal fitment image still asks for the vehicle",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    await runImageTurn(
+      {
+        partType: "หม้อน้ำ",
+        partKind: "universal",
+        confidence: "HIGH",
+        searchHints: ["หม้อน้ำ"],
+        partNumber: null,
+        catalogCodes: [],
+        accompanyingText: "มีแบบนี้ขายไหมครับ",
+      },
+      "event-img-radiator-generic-text",
+    );
+
+    assert.equal(calls.searches.length, 0);
+    assert.match(calls.textReplies[0] ?? "", /รุ่นรถ/);
+    assert.equal(calls.adminHandoffs, 0);
+  },
+);
+
+for (const confidence of ["MEDIUM", "LOW"] as const) {
+  test(
+    `Messenger image gate: ${confidence} image is handed to admin without searching`,
+    { skip: moduleMocksUnavailable },
+    async () => {
+      await runImageTurn(
+        {
+          partType: "น้ำยาแอร์",
+          partKind: "universal",
+          confidence,
+          searchHints: ["น้ำยาแอร์ R32"],
+          partNumber: null,
+          catalogCodes: [],
+        },
+        `event-img-${confidence.toLowerCase()}-admin`,
+      );
+
+      assert.equal(calls.searches.length, 0);
+      assert.equal(
+        calls.textReplies[0],
+        "จูนขอส่งให้แอดมินช่วยตรวจสอบสินค้าให้อีกครั้งนะคะ เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊",
+      );
+      assert.equal(calls.adminHandoffs, 1);
+      assert.equal(calls.adminNotifications, 1);
+    },
+  );
+}
 
 test(
   "Messenger image gate: a photo carrying a validated catalog SKU searches without asking the car",
