@@ -70,29 +70,87 @@ postgresql://backup_reader:<PASSWORD>@db.<PROJECT-REF>.supabase.co:5432/postgres
 
 ทำบนเครื่องตัวเองครั้งเดียว เพื่อสร้างไฟล์ config แล้วค่อยยกไปใส่ GitHub
 
+#### 2.1 ติดตั้ง rclone
+
+```powershell
+winget install Rclone.Rclone
+```
+
+ปิด PowerShell แล้วเปิดใหม่ (ให้ PATH อัปเดต) จากนั้นเช็ก:
+
+```powershell
+rclone version
+```
+
+#### 2.2 สร้าง OAuth client ของตัวเองใน Google Cloud
+
+ข้ามขั้นนี้ได้ (กด Enter ผ่าน `client_id` / `client_secret` ตอน config) แต่ **ไม่แนะนำ** เพราะจะไปใช้ client id กลางที่ผู้ใช้ rclone ทั้งโลกใช้ร่วมกัน Google จะจำกัดอัตราการเรียกจนอัปโหลดช้าหรือหลุดกลางคัน ใช้เวลาทำประมาณ 5 นาที
+
+1. เข้า [Google Cloud Console](https://console.cloud.google.com/) → สร้าง project ใหม่ ตั้งชื่อเช่น `autoparts-backup`
+2. `APIs & Services > Library` → ค้น **Google Drive API** → กด **Enable**
+3. `APIs & Services > OAuth consent screen` → เลือก **External** → กรอกชื่อแอป, email ผู้ติดต่อ, email นักพัฒนา
+4. **สำคัญที่สุด** — ไปที่หน้า Audience แล้วกด **Publish app** เปลี่ยนสถานะจาก `Testing` เป็น `In production`
+
+   ถ้าปล่อยไว้ที่ `Testing` **refresh token ของ Google จะหมดอายุใน 7 วัน** แล้ว backup จะพังเงียบ ๆ ตั้งแต่สัปดาห์ที่สองเป็นต้นไป นี่คือสาเหตุอันดับหนึ่งที่ backup ผ่าน rclone หยุดทำงานเอง
+
+   scope `drive.file` ที่เราจะใช้ไม่ใช่ restricted scope จึงกด publish ได้เลยโดยไม่ต้องส่งให้ Google ตรวจสอบ (ถ้าเจอหน้าให้ยื่นขอ verification แปลว่าเลือก scope ผิด)
+5. `APIs & Services > Credentials` → `Create Credentials` → `OAuth client ID` → Application type เลือก **Desktop app** → กด Create
+6. เก็บ **Client ID** และ **Client secret** ไว้ใช้ขั้นถัดไป
+
+#### 2.3 รัน rclone config
+
 ```powershell
 rclone config
 ```
 
-- เลือก `n` (New remote) → ตั้งชื่อว่า **`gdrive`**
-- storage: `drive`
-- client_id / client_secret: กด Enter ข้ามได้ (แนะนำให้สร้างของตัวเองใน Google Cloud Console ถ้าอยากได้ความเร็วเต็มที่)
-- scope: เลือก **`1` (Full access)** หรือ `drive.file` ถ้าต้องการให้เข้าถึงได้เฉพาะไฟล์ที่ rclone สร้างเอง
-- ที่ `root_folder_id` ให้ใส่ ID ของโฟลเดอร์ที่จะใช้เก็บ backup เท่านั้น — เปิดโฟลเดอร์นั้นบนเว็บ Drive แล้วดู URL ส่วนท้าย `.../folders/<ID>` **ขั้นตอนนี้สำคัญ** เพราะจะล็อกให้ workflow แตะได้แค่โฟลเดอร์เดียว ไม่เห็นไฟล์อื่นใน Drive
-- ทำ OAuth ในเบราว์เซอร์ให้เสร็จ → ตอบ `n` ตรง Team Drive (ถ้าไม่ได้ใช้)
+ตอบตามนี้:
 
-ทดสอบ:
+| คำถาม | ตอบ |
+|---|---|
+| `e/n/d/r/c/s/q>` | `n` (New remote) |
+| `name>` | `gdrive` |
+| `Storage>` | `drive` |
+| `client_id>` | Client ID จากข้อ 2.2 |
+| `client_secret>` | Client secret จากข้อ 2.2 |
+| `scope>` | **`3`** = `drive.file` |
+| `service_account_file>` | Enter (ปล่อยว่าง) |
+| `Edit advanced config?` | `n` |
+| `Use web browser to automatically authenticate?` | `y` |
+| หน้าเบราว์เซอร์ | เลือกบัญชี Google → กด Continue → อนุญาต |
+| `Configure this as a Shared Drive?` | `n` |
+| `y/e/d>` | `y` (ยืนยัน) |
+| `e/n/d/r/c/s/q>` | `q` (ออก) |
+
+**ทำไมต้องเป็น scope `drive.file`** — scope นี้ให้ rclone เห็นเฉพาะไฟล์ที่ rclone สร้างเองเท่านั้น ไฟล์อื่นทั้งหมดใน Google Drive ของคุณมองไม่เห็นและแตะไม่ได้เลย ต่อให้ token หลุดออกไป ความเสียหายก็จำกัดอยู่แค่โฟลเดอร์ backup
+
+ผลข้างเคียงที่ต้องรู้: **ห้ามสร้างโฟลเดอร์ `autoparts-backup` เองผ่านหน้าเว็บ Drive** เพราะ rclone จะมองไม่เห็นโฟลเดอร์ที่ตัวเองไม่ได้สร้าง ต้องให้ rclone สร้างด้วยคำสั่งในข้อถัดไป และด้วยเหตุผลเดียวกันจึง**ไม่ต้องตั้ง `root_folder_id`**
+
+#### 2.4 ให้ rclone สร้างโฟลเดอร์แล้วทดสอบ
 
 ```powershell
-rclone lsd gdrive:
 rclone mkdir gdrive:autoparts-backup
+rclone lsd gdrive:
 ```
 
-แปลง config เป็น base64 เพื่อเอาไปใส่ GitHub Secret:
+ต้องเห็น `autoparts-backup` ในรายการ จากนั้นลองเขียนไฟล์จริง:
+
+```powershell
+"test" | Out-File -Encoding utf8 test.txt
+rclone copy test.txt gdrive:autoparts-backup
+rclone ls gdrive:autoparts-backup
+rclone delete gdrive:autoparts-backup/test.txt
+Remove-Item test.txt
+```
+
+ถ้าเห็น `test.txt` ในผลลัพธ์ `rclone ls` แปลว่าใช้งานได้แล้ว
+
+#### 2.5 แปลง config เป็น base64
 
 ```powershell
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("$env:APPDATA\rclone\rclone.conf")) | Set-Clipboard
 ```
+
+ค่าอยู่ใน clipboard แล้ว เอาไปวางใน GitHub Secret `RCLONE_CONFIG_BASE64` ในขั้นตอนถัดไป
 
 > ไฟล์ `rclone.conf` มี refresh token ของ Google Drive อยู่ข้างใน ปฏิบัติกับมันเหมือนรหัสผ่าน อย่า commit ลง git เด็ดขาด
 
@@ -198,6 +256,10 @@ rclone copy "gdrive:autoparts-backup/blob-mirror/products/AB123/main.webp" D:\re
 ### ปุ่มขึ้นว่า token ไม่มีสิทธิ์
 
 PAT หมดอายุ หรือไม่ได้ให้สิทธิ์ `Actions: Read and write` — สร้างใหม่แล้วอัปเดต env ใน Vercel
+
+### rclone แจ้ง `token expired` หรือ `invalid_grant`
+
+refresh token ของ Google หมดอายุ สาเหตุที่พบบ่อยที่สุดคือ OAuth consent screen ยังค้างสถานะ `Testing` ซึ่ง Google ให้ token อายุแค่ 7 วัน — เข้า Google Cloud Console กด Publish app ให้เป็น `In production` แล้วรัน `rclone config reconnect gdrive:` บนเครื่อง จากนั้นอัปเดต Secret `RCLONE_CONFIG_BASE64` ใหม่
 
 ### ตารางอัตโนมัติหยุดไปเอง
 
