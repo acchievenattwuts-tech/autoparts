@@ -4,6 +4,7 @@
  * Read-only diagnostic page showing which active products lack data that
  * makes them findable/sellable:
  *   - Thai keyword
+ *   - Vehicle fitment
  *   - Image
  *   - Sale price (still 0 = not priced yet)
  */
@@ -25,7 +26,13 @@ import { getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 import { requirePermission } from "@/lib/require-auth";
 
 const PAGE_SIZE = 20;
-const FILTER_OPTIONS = ["all", "missing_keyword", "missing_image", "missing_price"] as const;
+const FILTER_OPTIONS = [
+  "all",
+  "missing_keyword",
+  "missing_fitment",
+  "missing_image",
+  "missing_price",
+] as const;
 
 type FilterOption = (typeof FILTER_OPTIONS)[number];
 
@@ -39,6 +46,7 @@ type PageProps = {
 type TotalsRow = {
   total: number;
   missingKeyword: number;
+  missingFitment: number;
   missingImage: number;
   missingPrice: number;
   fullyCovered: number;
@@ -50,6 +58,7 @@ type CoverageRow = {
   name: string;
   isActive: boolean;
   missingKeyword: boolean;
+  missingFitment: boolean;
   missingImage: boolean;
   missingPrice: boolean;
   missingCount: number;
@@ -69,6 +78,11 @@ const buildCoverageCte = (includeCancelled: boolean) => Prisma.sql`
           AND pa.kind IN (${AliasKind.KEYWORD}, ${AliasKind.TH}, ${AliasKind.MISSPELL}, ${AliasKind.ALIAS})
           AND pa.alias ~ '[ก-๙]'
       ) AS "missingKeyword",
+      NOT EXISTS (
+        SELECT 1
+        FROM "ProductCarModel" pf
+        WHERE pf."productId" = p.id
+      ) AS "missingFitment",
       COALESCE(NULLIF(BTRIM(p."imageUrl"), ''), NULL) IS NULL AS "missingImage",
       (p."salePrice" = 0) AS "missingPrice",
       (
@@ -78,6 +92,11 @@ const buildCoverageCte = (includeCancelled: boolean) => Prisma.sql`
           WHERE pa."productId" = p.id
             AND pa.kind IN (${AliasKind.KEYWORD}, ${AliasKind.TH}, ${AliasKind.MISSPELL}, ${AliasKind.ALIAS})
             AND pa.alias ~ '[ก-๙]'
+        ))::int +
+        (NOT EXISTS (
+          SELECT 1
+          FROM "ProductCarModel" pf
+          WHERE pf."productId" = p.id
         ))::int +
         (COALESCE(NULLIF(BTRIM(p."imageUrl"), ''), NULL) IS NULL)::int +
         (p."salePrice" = 0)::int
@@ -91,6 +110,8 @@ const getFilterWhereSql = (filter: FilterOption) => {
   switch (filter) {
     case "missing_keyword":
       return Prisma.sql`"missingKeyword" = true`;
+    case "missing_fitment":
+      return Prisma.sql`"missingFitment" = true`;
     case "missing_image":
       return Prisma.sql`"missingImage" = true`;
     case "missing_price":
@@ -117,10 +138,12 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
       SELECT
         COUNT(*)::int AS total,
         COUNT(*) FILTER (WHERE "missingKeyword")::int AS "missingKeyword",
+        COUNT(*) FILTER (WHERE "missingFitment")::int AS "missingFitment",
         COUNT(*) FILTER (WHERE "missingImage")::int AS "missingImage",
         COUNT(*) FILTER (WHERE "missingPrice")::int AS "missingPrice",
         COUNT(*) FILTER (
           WHERE NOT "missingKeyword"
+            AND NOT "missingFitment"
             AND NOT "missingImage"
             AND NOT "missingPrice"
         )::int AS "fullyCovered"
@@ -137,6 +160,7 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
   const totals = totalsResult[0] ?? {
     total: 0,
     missingKeyword: 0,
+    missingFitment: 0,
     missingImage: 0,
     missingPrice: 0,
     fullyCovered: 0,
@@ -153,6 +177,7 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
       name,
       "isActive",
       "missingKeyword",
+      "missingFitment",
       "missingImage",
       "missingPrice",
       "missingCount"
@@ -172,10 +197,10 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
     <div className="space-y-4">
       <AdminPageHeader
         title="Search Coverage Audit"
-        description="ตรวจสอบสินค้าที่ขาดข้อมูลซึ่งทำให้ค้นหายากหรือขายไม่ได้ เช่น คำค้นภาษาไทย, รูป, ราคาขาย"
+        description="ตรวจสอบสินค้าที่ขาดข้อมูลซึ่งทำให้ค้นหายากหรือขายไม่ได้ เช่น คำค้นภาษาไทย, ความเข้ากันได้กับรถยนต์, รูป, ราคาขาย"
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <AdminSectionCard title="ครอบคลุมเต็ม">
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{coveragePct}%</p>
           <p className="text-xs text-gray-500 dark:text-slate-400">
@@ -184,6 +209,10 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
         </AdminSectionCard>
         <AdminSectionCard title="ขาดคำค้น TH">
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{totals.missingKeyword}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">รายการ</p>
+        </AdminSectionCard>
+        <AdminSectionCard title="ขาดความเข้ากันได้กับรถยนต์">
+          <p className="text-2xl font-bold text-sky-600 dark:text-sky-400">{totals.missingFitment}</p>
           <p className="text-xs text-gray-500 dark:text-slate-400">รายการ</p>
         </AdminSectionCard>
         <AdminSectionCard title="ขาดรูป">
@@ -207,6 +236,7 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
             >
               <option value="all">ทั้งหมดที่ขาดข้อมูล</option>
               <option value="missing_keyword">ขาดคำค้นภาษาไทย</option>
+              <option value="missing_fitment">ขาดความเข้ากันได้กับรถยนต์</option>
               <option value="missing_image">ขาดรูป</option>
               <option value="missing_price">ยังไม่ตั้งราคาขาย</option>
             </select>
@@ -266,6 +296,11 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
                         {row.missingKeyword ? (
                           <span className="inline-flex items-center rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                             คำค้น TH
+                          </span>
+                        ) : null}
+                        {row.missingFitment ? (
+                          <span className="inline-flex items-center rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-xs text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
+                            ความเข้ากันได้กับรถยนต์
                           </span>
                         ) : null}
                         {row.missingImage ? (
