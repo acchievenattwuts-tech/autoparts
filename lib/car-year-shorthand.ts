@@ -49,6 +49,22 @@ const expandYear = (raw: string): number | null => {
 // the Thai word "ปี" (e.g. "ปี12-15"). Anchored so it only matches a whole token.
 const YEAR_RANGE_TOKEN_RE = /^(?:ปี)?(\d{2}|\d{4})-(\d{2}|\d{4})$/u;
 
+// A single car year, optionally prefixed by the Thai word "ปี" ("ปี13", "ปี2017",
+// "2017"). Anchored so it only matches a whole token.
+const YEAR_TOKEN_RE = /^(?:ปี)?(\d{2}|\d{4})$/u;
+
+/**
+ * True when the token is a single car-year shorthand. Mirrors
+ * {@link isCarYearRangeToken} for the one-sided case, including the "ปี" prefix
+ * customers routinely glue on — "ปี2017" describes the CAR, never the part, so
+ * callers that ask "did this turn carry product detail?" must not count it.
+ */
+export const isCarYearToken = (token: string): boolean => {
+  const match = token.match(YEAR_TOKEN_RE);
+  if (!match) return false;
+  return expandYear(match[1]) !== null;
+};
+
 /**
  * True when the token is a car-year *range* shorthand ("12-15", "2012-2015",
  * "ปี12-15") whose two ends are both plausible car years and non-descending.

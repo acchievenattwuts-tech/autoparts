@@ -109,6 +109,20 @@ export type ChatProductSearchBridgeInput = {
    * accessoryHeadNoun.
    */
   fitmentPartHeadNoun?: string | null;
+  /**
+   * True when the vehicle filters carry no meaning for this part — a UNIVERSAL
+   * SKU (a 10" fan blade, a cleaner, an o-ring) has no fitment rows at all, so a
+   * carried brand/model/year can only ever force the search to zero.
+   *
+   * Used solely to widen the existing retry-on-empty below to parts that DID
+   * resolve a category (which the accessory rescue deliberately excludes). The
+   * category still anchors the retry, so results cannot drift.
+   *
+   * Production 2026-08-17 (conv cmq4ziq6l): "พัดลม10 24โว้นแผงคอยร้อน" right
+   * after a D-Max question resolved the right category (Cooling Fan Blade) but
+   * kept Isuzu/D-Max as a hard filter → total 0 → hand-off, for a fan in stock.
+   */
+  vehicleFilterOptional?: boolean;
   take?: number;
 };
 
@@ -614,7 +628,11 @@ export async function searchChatProductInquiry(
     baseFilters.carBrandName || baseFilters.carModelName || baseFilters.fitmentYear !== null,
   );
   let effectiveFilters = baseFilters;
-  if (result.total === 0 && accessoryHeadNoun && vehicleScoped) {
+  // The rescue fires for an accessory head noun (no category to anchor on) OR for
+  // a part the caller marked as universal — in that case the CATEGORY is the
+  // anchor, so dropping the meaningless vehicle scope cannot let results drift.
+  const vehicleScopeIsMeaningless = Boolean(accessoryHeadNoun) || input.vehicleFilterOptional === true;
+  if (result.total === 0 && vehicleScopeIsMeaningless && vehicleScoped) {
     const carlessFilters = {
       categoryName: baseFilters.categoryName,
       carBrandName: null,

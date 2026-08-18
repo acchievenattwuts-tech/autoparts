@@ -2,6 +2,39 @@ export const COOLING_FAN_BLADE_CATEGORY_HINT = "Cooling Fan Blade";
 export const BLOWER_MOTOR_CATEGORY_HINT = "Blower Motor)";
 export const CONDENSER_FAN_MOTOR_CATEGORY_HINT = "Condenser Fan Motor";
 
+/**
+ * Categories whose products carry NO vehicle fitment rows at all, verified
+ * against the live catalog (2026-08-17): a universal fan blade, compressor oil,
+ * and radiator coolant fit anything, so nobody ever tags them to a car.
+ *
+ * A brand/model filter can therefore only ever SUBTRACT from these — measured:
+ * every one of them returns 0 the moment any car is applied. That makes the
+ * vehicle scope meaningless here, which is what licenses the search bridge to
+ * drop it on an empty result.
+ *
+ * Deliberately a fixed list rather than the classifier's `partKind`, which is an
+ * LLM field this codebase has never logged or measured. These three reflect what
+ * the PRODUCT is, not how completely its fitment data happens to be filled in —
+ * and the golden suite asserts they still have zero fitment rows, so the day the
+ * shop tags one of them the test fails instead of the customer.
+ */
+export const VEHICLE_FREE_CATEGORY_HINTS = [
+  COOLING_FAN_BLADE_CATEGORY_HINT,
+  "Compressor Oil",
+  "Radiator Coolant",
+] as const;
+
+/**
+ * True when a RESOLVED category name belongs to a vehicle-free category. Matches
+ * on the distinctive English fragment the catalog names embed, e.g.
+ * "ใบพัดลม (Cooling Fan Blade)". Pure + exported for unit testing.
+ */
+export const isVehicleFreeChatCategory = (categoryName: string | null | undefined): boolean => {
+  const name = categoryName?.toLowerCase() ?? "";
+  if (!name) return false;
+  return VEHICLE_FREE_CATEGORY_HINTS.some((hint) => name.includes(hint.toLowerCase()));
+};
+
 export type ChatFanDirection = "push" | "pull";
 export type ChatProductVoltage = 12 | 24;
 

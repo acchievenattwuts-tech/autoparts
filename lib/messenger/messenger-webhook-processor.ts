@@ -39,6 +39,7 @@ import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-c
 import {
   buildChatProductSpecSubject,
   COOLING_FAN_BLADE_CATEGORY_HINT,
+  isVehicleFreeChatCategory,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
@@ -871,6 +872,13 @@ async function replyToMessengerTurn(params: {
         customerText: processText,
         fitmentHints,
         fitmentPartHeadNoun,
+        // Parity with LINE. Messenger has no inquiry frame, so a carried vehicle
+        // cannot arise here — but a customer naming a car alongside a UNIVERSAL
+        // part hits the same dead end, and the rescue is retry-on-empty either way.
+        // Decided from CATALOG evidence, never from the classifier's `partKind`.
+        vehicleFilterOptional:
+          isVehicleFreeChatCategory(fitmentHints.categoryName) ||
+          resolveChatProductSpecs(processText).categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT,
       },
       originalText: mixedIntentPlan?.productText ?? mergedText,
       history,

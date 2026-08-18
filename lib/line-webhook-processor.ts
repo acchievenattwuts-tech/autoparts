@@ -36,6 +36,7 @@ import {
 import {
   buildChatProductSpecSubject,
   COOLING_FAN_BLADE_CATEGORY_HINT,
+  isVehicleFreeChatCategory,
   resolveChatProductSpecs,
 } from "@/lib/chat-core/product-spec-resolve";
 import { correctPartSpelling } from "@/lib/chat-core/category-llm-fallback";
@@ -139,7 +140,10 @@ import {
   lineValueHasCustomerEvidence,
   lineValueHasCustomerTypoEvidence,
 } from "@/lib/chat-core/search-guards";
-import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
+import {
+  extractProductSpecificityTokens,
+  isDirectProductCodeToken,
+} from "@/lib/product-search-required-tokens";
 import { parseCarYearRangeStart } from "@/lib/car-year-shorthand";
 import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
@@ -1786,10 +1790,18 @@ export async function processLineAiReply(
           imageFields?.carModel ||
           imageFields?.year,
       );
+      // "Did THIS turn carry its own product detail?" — a question about the
+      // customer's message, not about the catalog. It used to be answered with the
+      // hard-anchor list, whose regex omits Thai combining marks, so glued Thai
+      // like "พัดลม10" counted as no detail at all and the stale-vehicle guards
+      // below never fired (conv cmq4ziq6l, 2026-08-17). The dedicated extractor
+      // accepts those marks; it is a SIGNAL only and never reaches the search.
+      const latestSpecificityTokens = extractProductSpecificityTokens(processText);
       const latestHasProductSpecificity = Boolean(
         imageFields ||
           guardedSearch.requiredTokens.length > 0 ||
-          imageRequiredTokens.length > 0,
+          imageRequiredTokens.length > 0 ||
+          latestSpecificityTokens.length > 0,
       );
       // Finer than `latestHasVehicleEvidence`: did THIS turn pin a specific car
       // (model/year), or only name a bare brand? A brand-only mention with a new
@@ -2092,6 +2104,9 @@ export async function processLineAiReply(
     const currentProductSpecs = resolveChatProductSpecs(
       [consolidatedQuery, processText].filter(Boolean).join(" "),
     );
+    // A universal SKU has no fitment rows, so a carried brand/model can only zero
+    // the search. Surfaced to the bridge so its retry-on-empty may drop the
+    // meaningless vehicle scope (the category still anchors the retry).
 
     // Pre-search completeness gate: only when the classifier gave structured
     // fields (text turns). Decides whether we have enough to search, and if so
@@ -2462,6 +2477,12 @@ export async function processLineAiReply(
           },
           accessoryHeadNoun,
           fitmentPartHeadNoun: unresolvedFitmentPartHeadNoun,
+          // Vehicle-free by CATALOG evidence, not by the classifier's unmeasured
+          // `partKind`: these categories have no fitment rows, so the carried
+          // brand/model can only zero the search.
+          vehicleFilterOptional:
+            isVehicleFreeChatCategory(fitmentFilters.categoryName) ||
+            currentProductSpecs.categoryHint === COOLING_FAN_BLADE_CATEGORY_HINT,
           // Over-fetch so suppressed rows can be backfilled — sliced back to
           // CHAT_PRODUCT_DISPLAY_LIMIT after the compatibility filter runs.
           take: CHAT_PRODUCT_FETCH_LIMIT,
