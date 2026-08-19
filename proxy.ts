@@ -2,6 +2,7 @@ import { auth } from "./auth";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/client-ip";
+import { shouldRejectRootPost } from "@/lib/root-request-guard";
 import {
   extractProductIdFromSlug,
   getLegacyThaiProductPathRedirectTarget,
@@ -72,6 +73,16 @@ export const proxy = auth(async (req) => {
   const { pathname } = req.nextUrl;
   const userAgent = req.headers.get("user-agent") ?? "";
   const method = req.method.toUpperCase();
+
+  if (shouldRejectRootPost(pathname, method)) {
+    return new NextResponse("Method Not Allowed", {
+      status: 405,
+      headers: {
+        Allow: "GET, HEAD",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
 
   // Admin paths — leave entirely to auth session logic (no bot check needed)
   if (pathname.startsWith("/admin")) {

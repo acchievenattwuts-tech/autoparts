@@ -50,6 +50,12 @@ Default routine: implement and verify the first affected platform, then continue
 
 If the requested scope is ambiguous or the equivalent change is not obvious, ask the user before guessing. Do not silently assume single-platform scope.
 
+# Root POST Guard Sync Rule
+
+The public root path is intentionally GET/HEAD-only. `proxy.ts` rejects `POST /` with `405 Method Not Allowed` before Next.js can misclassify malformed multipart traffic as a Server Action and fail while parsing `FormData`.
+
+If a future change adds a Server Action rendered on `/`, a webhook targeting `/`, or any other legitimate `POST /` workflow, you must review this guard in the same round and either remove it or add the narrowest safe exception. Update the guard regression tests at the same time. Do not ship a legitimate root POST workflow while the unconditional root POST guard remains active. Prefer a dedicated `/api/...` route for new webhooks and integrations whenever practical.
+
 # Bug Investigation Approval Rule
 
 When the user asks to investigate, inspect, review, diagnose, analyze, check, or verify a bug or problem, including Thai requests such as `ตรวจสอบ`, `เช็ค`, `ดูสาเหตุ`, `หาสาเหตุ`, or similar wording, you must treat the turn as investigation-only unless the user explicitly asks you to edit code in that same message.
