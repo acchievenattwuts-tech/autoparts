@@ -15,7 +15,8 @@ import { getPublicFaqItems } from "@/lib/knowledge-public";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
-  const title = `คำถามที่พบบ่อย | ${config.shopName}`;
+  const title = "คำถามที่พบบ่อย";
+  const shareTitle = `${title} | ${config.shopName}`;
   const description =
     "รวมคำถามที่ลูกค้ามักสงสัยเกี่ยวกับร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ วิธีสั่งซื้อ การเช็กสต็อก การจัดส่ง ความน่าเชื่อถือของร้าน และการติดต่อร้าน";
 
@@ -28,12 +29,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       url: absoluteUrl("/faq"),
-      title,
+      title: shareTitle,
       description,
-      images: [buildOgCardImage("/faq/opengraph-image", title)],
+      images: [buildOgCardImage("/faq/opengraph-image", shareTitle)],
     },
     twitter: {
-      title,
+      title: shareTitle,
       description,
       images: [absoluteUrl("/faq/opengraph-image")],
     },

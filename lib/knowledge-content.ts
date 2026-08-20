@@ -404,7 +404,7 @@ export const knowledgeArticles: KnowledgeArticle[] = [
         description: "เริ่มจากหมวดคอมเพรสเซอร์แอร์เพื่อเทียบชนิดคอม จุดยึด ปลั๊ก และข้อมูลรถก่อนถามราคา",
       },
       {
-        href: "/products/magnetic-clutch-cmnooof1n000004jxoj8t392k",
+        href: "/products/compressor-clutch-cmoefp5ki000004jpdxqimp52",
         title: "ดูหมวดคลัทช์คอมแอร์",
         description: "เหมาะกับเคสที่คอมยังใช้งานได้ แต่ชุดคลัทช์ พูลเลย์ หรือการตัดต่อกำลังมีปัญหา",
       },
@@ -970,7 +970,7 @@ export const knowledgeArticles: KnowledgeArticle[] = [
     ],
     internalLinks: [
       {
-        href: "/products/magnetic-clutch-cmnooof1n000004jxoj8t392k",
+        href: "/products/compressor-clutch-cmoefp5ki000004jpdxqimp52",
         title: "ดูหมวดคลัทช์คอมแอร์",
         description: "เหมาะกับเสียงที่เกี่ยวกับการจับปล่อยกำลัง หน้าแปลน พูลเลย์ หรือจังหวะเปิดแอร์",
       },
@@ -1300,7 +1300,7 @@ export const knowledgeArticles: KnowledgeArticle[] = [
     ],
     internalLinks: [
       {
-        href: "/products/magnetic-clutch-cmnooof1n000004jxoj8t392k",
+        href: "/products/compressor-clutch-cmoefp5ki000004jpdxqimp52",
         title: "ดูหมวดคลัตช์คอมแอร์",
         description: "เหมาะกับเคสที่คอมยังใช้งานได้ แต่ชุดคลัตช์ พูลเลย์ หรือการตัดต่อมีปัญหา",
       },

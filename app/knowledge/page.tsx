@@ -14,7 +14,8 @@ import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
-  const title = `คลังความรู้ | ${config.shopName}`;
+  const title = "คลังความรู้";
+  const shareTitle = `${title} | ${config.shopName}`;
   const description =
     "รวมบทความความรู้เกี่ยวกับอะไหล่แอร์รถยนต์ หม้อน้ำรถยนต์ วิธีเลือกซื้อ วิธีค้นหาสินค้าบนเว็บไซต์ และคำแนะนำสำหรับลูกค้าที่กำลังหาอะไหล่แอร์รถยนต์ในนครสวรรค์";
 
@@ -27,12 +28,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       url: absoluteUrl("/knowledge"),
-      title,
+      title: shareTitle,
       description,
-      images: [buildOgCardImage("/knowledge/opengraph-image", title)],
+      images: [buildOgCardImage("/knowledge/opengraph-image", shareTitle)],
     },
     twitter: {
-      title,
+      title: shareTitle,
       description,
       images: [absoluteUrl("/knowledge/opengraph-image")],
     },

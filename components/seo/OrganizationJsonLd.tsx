@@ -7,18 +7,6 @@ interface OrganizationJsonLdProps {
   config: Partial<SiteConfig>;
 }
 
-const RETURN_POLICY = {
-  "@type": "MerchantReturnPolicy",
-  applicableCountry: "TH",
-  returnPolicyCountry: "TH",
-  returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
-  merchantReturnDays: 15,
-  returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
-  itemCondition: "https://schema.org/NewCondition",
-  description: "รับคืนภายใน 15 วัน โดยสินค้าต้องอยู่ในสภาพเดิมและลูกค้ารับผิดชอบค่าส่งคืน",
-} as const;
-
 const OrganizationJsonLd = ({ config }: OrganizationJsonLdProps) => {
   const logoUrl = config.shopLogoUrl
     ? absoluteUrl(toPublicStorageCdnPath(config.shopLogoUrl) ?? config.shopLogoUrl)
@@ -45,7 +33,6 @@ const OrganizationJsonLd = ({ config }: OrganizationJsonLdProps) => {
           "ร้านอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ในนครสวรรค์ พร้อมให้ลูกค้าค้นหาสินค้าผ่านเว็บไซต์และติดต่อร้านผ่าน LINE OA หรือโทรศัพท์",
         keywords: LOCAL_SEO_KEYWORDS.join(", "),
         sameAs: sameAs.length > 0 ? sameAs : undefined,
-        hasMerchantReturnPolicy: RETURN_POLICY,
       }}
     />
   );

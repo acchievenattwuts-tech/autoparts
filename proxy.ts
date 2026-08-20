@@ -4,6 +4,11 @@ import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/client-ip";
 import { shouldRejectRootPost } from "@/lib/root-request-guard";
 import {
+  isAggressiveBotUserAgent,
+  isAiAnswerBotPathAllowed,
+  isAiAnswerBotUserAgent,
+} from "@/lib/public-crawler-policy";
+import {
   extractProductIdFromSlug,
   getLegacyThaiProductPathRedirectTarget,
   getProductPath,
@@ -24,25 +29,6 @@ import {
  *   /api/auth, /api/admin, /api/line, /api/internal,
  *   /api/liff, /api/content, /api/revalidate (via matcher)
  */
-
-const BLOCKED_BOT_PATTERNS = [
-  /AhrefsBot/i,
-  /SemrushBot/i,
-  /MJ12bot/i,
-  /DotBot/i,
-  /PetalBot/i,
-  /BLEXBot/i,
-  /DataForSeoBot/i,
-  /SeekportBot/i,
-  /Bytespider/i,
-  /GPTBot/i,
-  /ClaudeBot/i,
-  /anthropic-ai/i,
-  /ChatGPT-User/i,
-  /CCBot/i,
-  /Amazonbot/i,
-  /Diffbot/i,
-];
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_IMAGE_PER_MIN = 300;
@@ -89,7 +75,11 @@ export const proxy = auth(async (req) => {
     return NextResponse.next();
   }
 
-  if (userAgent && BLOCKED_BOT_PATTERNS.some((pattern) => pattern.test(userAgent))) {
+  if (userAgent && isAggressiveBotUserAgent(userAgent)) {
+    return new NextResponse("Forbidden", { status: 403 });
+  }
+
+  if (userAgent && isAiAnswerBotUserAgent(userAgent) && !isAiAnswerBotPathAllowed(pathname)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 

@@ -33,15 +33,16 @@ async function getPolicy() {
 
 export async function generateMetadata(): Promise<Metadata> {
   const [config, policy] = await Promise.all([getPublicSiteConfig(), getPolicy()]);
-  const title = `${policy.title} | ${config.shopName}`;
+  const title = policy.title;
+  const shareTitle = `${title} | ${config.shopName}`;
   const description = policy.description ?? policy.content.intro;
   return {
     title,
     description,
     keywords: LOCAL_SEO_KEYWORDS,
     alternates: { canonical: absoluteUrl("/return-warranty-policy") },
-    openGraph: { url: absoluteUrl("/return-warranty-policy"), title, description },
-    twitter: { title, description },
+    openGraph: { url: absoluteUrl("/return-warranty-policy"), title: shareTitle, description },
+    twitter: { title: shareTitle, description },
   };
 }
 

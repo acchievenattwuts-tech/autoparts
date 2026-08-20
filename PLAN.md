@@ -78,6 +78,7 @@
 
 ### 2. SEO / AEO / AIO Follow-up
 - สถานะ: baseline หลักเสร็จแล้ว แต่ยังมี external/manual work ต่อเนื่อง
+- [x] 2026-08-20 technical trust patch (Option A; ไม่เปลี่ยน UI และไม่เพิ่ม H1 ที่ `/products`): ทำ crawler policy ของ `proxy.ts`/`robots.ts` ให้ใช้ source of truth เดียวกันและเปิด AI answer bots เฉพาะหน้า hub/knowledge/`llms.txt`, เอา shipping/return claims ที่ไม่ตรง policy ออกจาก JSON-LD, noindex filtered product URLs + legacy search, แก้ title ซ้ำ, internal product link ที่เสีย และเพิ่ม policy page ใน sitemap
 - เอกสารอ้างอิง:
   - [docs/seo/phase-7-final-status-2026-04-03.md](/D:/autoparts/docs/seo/phase-7-final-status-2026-04-03.md)
   - [docs/seo/phase-7-follow-up-2026-04-03.md](/D:/autoparts/docs/seo/phase-7-follow-up-2026-04-03.md)
@@ -947,6 +948,14 @@
 - [ ] ติดตาม Supabase egress 1-2 สัปดาห์หลัง deploy — เป้า ≤5GB/เดือน ถ้าเกินให้ถอย allow list ของบอท AI ลง
 - ยังไม่แตะ (รอเจ้าของสั่ง): prompt แชท AI/LINE (`lib/chat-core/*`, `lib/content-ai.ts`), บทความ `lib/knowledge-content.ts`, alt text การ์ดสินค้า, title หน้าหมวด (`${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์` — เติมแล้วยาวเกิน ~60 ตัวอักษรใน SERP)
 - ตรวจแล้ว: `npm run build` ผ่าน (Compiled successfully) ทั้งรอบข้อความและรอบ robots
+
+## SEO / AIO technical trust patch — Option A (2026-08-20)
+- [x] รวมรายชื่อ crawler และ route policy ไว้ที่ `lib/public-crawler-policy.ts`; `proxy.ts` ไม่บล็อก AI answer bots แบบเหมารวมอีก แต่เปิดเฉพาะ `/`, `/products`, `/about`, `/faq`, `/knowledge`, บทความ `/knowledge/*`, และ `/llms.txt` พร้อมคงการบล็อกหน้าสินค้ารายตัว/หน้าค้นหา/ส่วน private เพื่อลด egress
+- [x] ลบ `shippingDetails` และ `hasMerchantReturnPolicy` ที่ hardcode ไม่ตรงนโยบายจริงออกจาก Product/Organization JSON-LD จนกว่าจะมีข้อมูลกลางที่เชื่อถือได้
+- [x] URL `/products` ที่มี filter ใหม่ (`categories`, `partsBrand`, `carBrand`, ช่วงปี/ราคา รวม `year`) เป็น `noindex,follow`; `/products/search` เป็น legacy redirect พร้อม canonical `/products` และ `noindex,follow`
+- [x] แก้ document title ซ้ำชื่อร้านใน `/about`, `/faq`, `/knowledge`, `/return-warranty-policy`; OG/Twitter ยังมีชื่อร้านหนึ่งครั้ง โดยไม่แก้ข้อความหรือ layout ที่แสดงบนหน้า
+- [x] เปลี่ยน internal link สินค้าที่เสีย 3 จุดในบทความไป canonical product URL และเพิ่ม `/return-warranty-policy` ใน sitemap
+- [x] ตามคำสั่งเจ้าของ: **ไม่เพิ่มและไม่แก้ H1 ของ `/products`**; งานรอบนี้ไม่มีการเปลี่ยนดีไซน์หน้าเว็บ
 
 ## ช่องค้นหาหน้าร้าน: loading โลโก้ร้าน + คำค้นค้างตอนกรอง (2026-08-11)
 - ที่มา: เจ้าของสั่งให้กด Enter แล้วค้นหาได้พร้อมมี loading เป็นโลโก้ร้าน แล้วสั่งเพิ่มให้คลิกคำใน dropdown ก็ต้องมี loading เหมือนกัน · ระหว่างทางเจอบั๊กแยก: ลบ `508` ในช่องค้นหาแล้วติ๊กหมวด "กรองอากาศ" กด "ตกลง" แต่ `q=508` ยังค้างใน URL

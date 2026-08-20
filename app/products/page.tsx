@@ -26,6 +26,7 @@ import { isLikelyBotUserAgent } from "@/lib/search-bot";
 import { headers } from "next/headers";
 import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
+import { shouldNoIndexProductsListing } from "@/lib/storefront-products-indexing";
 
 type QueryValue = string | string[] | undefined;
 
@@ -117,10 +118,38 @@ const buildRenderNonce = (input: {
   });
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
-  const { q, category, brand, model, page } = await searchParams;
+  const {
+    q,
+    category,
+    brand,
+    model,
+    year,
+    page,
+    categories,
+    partsBrand,
+    carBrand,
+    yearMin,
+    yearMax,
+    priceMin,
+    priceMax,
+  } = await searchParams;
   const models = normalizeQueryValues(model);
   const currentPage = parsePage(page);
-  const hasFilter = Boolean(q || category || brand || models.length > 0 || currentPage > 1);
+  const hasFilter = shouldNoIndexProductsListing({
+    q,
+    category,
+    brand,
+    model,
+    year,
+    page,
+    categories,
+    partsBrand,
+    carBrand,
+    yearMin,
+    yearMax,
+    priceMin,
+    priceMax,
+  });
 
   if (!hasFilter) {
     return {

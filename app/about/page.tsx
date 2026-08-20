@@ -26,7 +26,8 @@ import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-them
 
 export async function generateMetadata(): Promise<Metadata> {
   const config = await getPublicSiteConfig();
-  const title = `เกี่ยวกับร้าน ${config.shopName}`;
+  const title = "เกี่ยวกับร้าน";
+  const shareTitle = `${title} ${config.shopName}`;
   const description =
     "ข้อมูลร้านศรีวรรณ อะไหล่แอร์ ร้านอะไหล่แอร์รถยนต์ในนครสวรรค์ ช่องทางติดต่อ วิธีสั่งซื้อ และแนวทางที่ช่วยให้ลูกค้าค้นหาอะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์ได้รวดเร็วขึ้น";
 
@@ -39,12 +40,12 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       url: absoluteUrl("/about"),
-      title,
+      title: shareTitle,
       description,
-      images: [buildOgCardImage("/about/opengraph-image", title)],
+      images: [buildOgCardImage("/about/opengraph-image", shareTitle)],
     },
     twitter: {
-      title,
+      title: shareTitle,
       description,
       images: [absoluteUrl("/about/opengraph-image")],
     },

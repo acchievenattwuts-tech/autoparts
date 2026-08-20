@@ -1,6 +1,20 @@
 export const dynamic = "force-dynamic";
 
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { absoluteUrl } from "@/lib/seo";
+
+export const metadata: Metadata = {
+  title: "ค้นหาสินค้า",
+  description: "เส้นทางค้นหาสินค้าเดิม ซึ่งส่งต่อไปยังหน้าสินค้าหลัก",
+  alternates: { canonical: absoluteUrl("/products") },
+  robots: { index: false, follow: true },
+  openGraph: {
+    url: absoluteUrl("/products"),
+    title: "ค้นหาสินค้า",
+    description: "ค้นหาและกรองสินค้าอะไหล่แอร์และหม้อน้ำรถยนต์",
+  },
+};
 
 type QueryValue = string | string[] | undefined;
 

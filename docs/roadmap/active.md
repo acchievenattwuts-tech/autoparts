@@ -105,8 +105,9 @@
 
 ### Phase 7 - SEO Follow-up
 - สถานะ: mostly complete with ongoing follow-up
+- [x] 2026-08-20 Option A technical trust patch: crawler policy sync, structured-data claim cleanup, filtered/search noindex, title deduplication, broken internal-link repair, policy sitemap entry (ไม่มี UI change และไม่แตะ H1 `/products`)
 - สิ่งที่ยังเป็นงานต่อเนื่อง:
-  - [ ] external verification
+  - [x] external verification (Google Search Console ownership + sitemap submission; ดู `docs/seo/phase-7-final-status-2026-04-03.md`)
   - [ ] content expansion ตาม priority
   - [ ] periodic Core Web Vitals review
 

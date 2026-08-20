@@ -20,59 +20,6 @@ interface ProductJsonLdProps {
   relatedLinks?: string[];
 }
 
-const STANDARD_SHIPPING_RATE_THB = 50;
-
-const SHIPPING_DETAILS = {
-  "@type": "OfferShippingDetails",
-  shippingDestination: {
-    "@type": "DefinedRegion",
-    addressCountry: "TH",
-  },
-  shippingRate: {
-    "@type": "MonetaryAmount",
-    value: STANDARD_SHIPPING_RATE_THB,
-    currency: "THB",
-  },
-  description: "ค่าจัดส่งคิดตามจริง ระยะเวลาจัดส่งโดยประมาณ 1-3 วันทำการ",
-  deliveryTime: {
-    "@type": "ShippingDeliveryTime",
-    businessDays: {
-      "@type": "OpeningHoursSpecification",
-      dayOfWeek: [
-        "https://schema.org/Monday",
-        "https://schema.org/Tuesday",
-        "https://schema.org/Wednesday",
-        "https://schema.org/Thursday",
-        "https://schema.org/Friday",
-      ],
-    },
-    handlingTime: {
-      "@type": "QuantitativeValue",
-      minValue: 0,
-      maxValue: 0,
-      unitCode: "DAY",
-    },
-    transitTime: {
-      "@type": "QuantitativeValue",
-      minValue: 1,
-      maxValue: 3,
-      unitCode: "DAY",
-    },
-  },
-} as const;
-
-const RETURN_POLICY = {
-  "@type": "MerchantReturnPolicy",
-  applicableCountry: "TH",
-  returnPolicyCountry: "TH",
-  returnPolicyCategory: "https://schema.org/MerchantReturnFiniteReturnWindow",
-  merchantReturnDays: 15,
-  returnMethod: "https://schema.org/ReturnByMail",
-  returnFees: "https://schema.org/ReturnFeesCustomerResponsibility",
-  itemCondition: "https://schema.org/NewCondition",
-  description: "รับคืนภายใน 15 วัน โดยสินค้าต้องอยู่ในสภาพเดิมและลูกค้ารับผิดชอบค่าส่งคืน",
-} as const;
-
 const ProductJsonLd = ({
   name,
   description,
@@ -135,8 +82,6 @@ const ProductJsonLd = ({
                 name: sellerName,
               }
             : undefined,
-          shippingDetails: SHIPPING_DETAILS,
-          hasMerchantReturnPolicy: RETURN_POLICY,
         },
       }}
     />

@@ -122,6 +122,12 @@ export async function getStorefrontSitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.85,
     },
+    {
+      url: absoluteUrl("/return-warranty-policy"),
+      lastModified: homeLastModified,
+      changeFrequency: "monthly",
+      priority: 0.75,
+    },
     ...knowledgeArticles.map((article) => ({
       url: absoluteUrl(`/knowledge/${article.slug}`),
       lastModified: new Date(article.updatedAt),
