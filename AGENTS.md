@@ -28,6 +28,12 @@ When introducing a new admin menu, admin page entrypoint, or user-facing admin w
 
 When adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, you must use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern in the same round. These flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not regress back to a full page refresh.
 
+# Export / Download Prefetch Guard Rule
+
+Admin export and download actions must use the shared `AdminExportLink`, which renders a native anchor. Never render an export/download route with Next.js `Link`, `router.prefetch()`, or another speculative-prefetch mechanism: production prefetch can execute the route's expensive database reads and audit writes without an explicit user click.
+
+When adding a new CSV, Excel, PDF, backup, or equivalent download entrypoint, reuse `AdminExportLink` for a normal link-style action or an explicit click handler for generated downloads. The request must start only after deliberate user interaction. Keep the route's server-side permission check and audit logging; preventing prefetch is not an authorization substitute.
+
 # Transaction Reference Guard Rule
 
 When changing any transaction document update, cancel, reopen, rollback, or status-transition flow, you must preserve downstream reference safety in the same round. If an active downstream document uses the current document, the server action must block the mutation before changing data, stock, cash/bank movements, audit state, or status.

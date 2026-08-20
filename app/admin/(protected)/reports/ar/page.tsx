@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FileSpreadsheet, FileText } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import AdminExportLink from "@/components/shared/AdminExportLink";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
@@ -121,20 +122,20 @@ export default async function ARReportPage({ searchParams }: PageProps) {
           ล้าง
         </Link>
         <div className="ml-auto flex gap-2">
-          <Link
+          <AdminExportLink
             href={`/admin/reports/export?type=ar&${exportQuery}`}
             className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600"
           >
             <FileText size={14} />
             CSV
-          </Link>
-          <Link
+          </AdminExportLink>
+          <AdminExportLink
             href={`/admin/reports/export-excel?type=ar&${exportQuery}`}
             className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
           >
             <FileSpreadsheet size={14} />
             Excel
-          </Link>
+          </AdminExportLink>
         </div>
       </AdminSearchForm>
 

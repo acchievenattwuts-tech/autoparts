@@ -16,6 +16,7 @@ import { requirePermission } from "@/lib/require-auth";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import NavLink from "@/components/shared/NavLink";
+import AdminExportLink from "@/components/shared/AdminExportLink";
 import { Plus, Pencil, Eye, X, FileText, FileSpreadsheet } from "lucide-react";
 import ToggleProductButton from "./DeleteProductButton";
 import ProductImagePreview from "./ProductImagePreview";
@@ -259,20 +260,20 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         description="ค้นหา กรอง และจัดการข้อมูลสินค้าในระบบสต็อก"
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Link
+            <AdminExportLink
               href={`/admin/products/export${exportQuery ? `?${exportQuery}` : ""}`}
               className="inline-flex items-center gap-2 rounded-lg bg-gray-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-700 dark:bg-slate-700 dark:hover:bg-slate-600"
             >
               <FileText size={16} />
               CSV
-            </Link>
-            <Link
+            </AdminExportLink>
+            <AdminExportLink
               href={`/admin/products/export-excel${exportQuery ? `?${exportQuery}` : ""}`}
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
             >
               <FileSpreadsheet size={16} />
               Excel
-            </Link>
+            </AdminExportLink>
             {canCreate ? (
               <Link
                 href="/admin/products/new"
