@@ -7,7 +7,7 @@ import StorefrontProductCard from "@/components/storefront/StorefrontProductCard
 // Type-only: home2-data pulls in the Prisma client, which must never reach the
 // browser bundle. Any value needed here is declared locally instead.
 import type { StorefrontProductCardData, StorefrontProductPage } from "@/lib/storefront-home";
-import { loadMoreHomeNewArrivalsAction } from "@/components/storefront/home-new-arrivals-actions";
+import { fetchHomeNewArrivalsPage } from "@/lib/storefront-home-pagination";
 import { STOREFRONT_SECTION_CARD_CLASS } from "@/lib/storefront-home-theme";
 
 /**
@@ -50,12 +50,14 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
   const [total, setTotal] = useState(initialPage.total);
   const [loadedPage, setLoadedPage] = useState(initialPage.page);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const latestRequestIdRef = useRef(0);
+  const isLoadingMoreRef = useRef(false);
 
   const totalPages = Math.max(1, Math.ceil(total / initialPage.pageSize));
   const hasMore = products.length < total && loadedPage < totalPages;
-  const canAutoLoad = hasMore && loadedPage < AUTO_LOAD_PAGE_LIMIT;
+  const canAutoLoad = hasMore && loadedPage < AUTO_LOAD_PAGE_LIMIT && loadMoreError === null;
 
   // Restoring from bfcache would otherwise show a long, stale list.
   useEffect(() => {
@@ -64,7 +66,10 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
       setProducts(initialPage.products);
       setTotal(initialPage.total);
       setLoadedPage(initialPage.page);
+      latestRequestIdRef.current += 1;
+      isLoadingMoreRef.current = false;
       setIsLoadingMore(false);
+      setLoadMoreError(null);
     };
 
     window.addEventListener("pageshow", handlePageShow);
@@ -72,14 +77,16 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
   }, [initialPage]);
 
   const loadMoreProducts = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+    if (isLoadingMoreRef.current || !hasMore) return;
 
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
+    isLoadingMoreRef.current = true;
+    setLoadMoreError(null);
     setIsLoadingMore(true);
 
     try {
-      const result = await loadMoreHomeNewArrivalsAction({ page: loadedPage + 1 });
+      const result = await fetchHomeNewArrivalsPage(loadedPage + 1);
       if (latestRequestIdRef.current !== requestId) return;
 
       setProducts((current) => {
@@ -88,10 +95,17 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
       });
       setTotal(result.total);
       setLoadedPage(result.page);
+    } catch (error) {
+      if (latestRequestIdRef.current !== requestId) return;
+      console.error("[HomeNewArrivals] load more failed", error);
+      setLoadMoreError("โหลดสินค้าเพิ่มเติมไม่สำเร็จ กรุณาลองอีกครั้ง");
     } finally {
-      if (latestRequestIdRef.current === requestId) setIsLoadingMore(false);
+      if (latestRequestIdRef.current === requestId) {
+        isLoadingMoreRef.current = false;
+        setIsLoadingMore(false);
+      }
     }
-  }, [hasMore, isLoadingMore, loadedPage]);
+  }, [hasMore, loadedPage]);
 
   useEffect(() => {
     if (!canAutoLoad || isLoadingMore) return;
@@ -153,7 +167,12 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
           </div>
 
           {hasMore && (
-            <div ref={loadMoreRef} className="mt-6 flex justify-center">
+            <div ref={loadMoreRef} className="mt-6 flex flex-col items-center gap-2">
+              {loadMoreError && (
+                <p role="alert" className="text-center text-sm font-medium text-red-600">
+                  {loadMoreError}
+                </p>
+              )}
               {canAutoLoad ? (
                 <div className="inline-flex items-center gap-2 rounded-full border border-[#dbe6f5] bg-white px-5 py-2.5 text-sm font-semibold text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin text-[#2563eb]" />
@@ -172,7 +191,7 @@ const HomeNewArrivals = ({ initialPage, lineUrl }: Props) => {
                       <span>กำลังโหลด...</span>
                     </>
                   ) : (
-                    <span>โหลดเพิ่มเติม</span>
+                    <span>{loadMoreError ? "ลองโหลดอีกครั้ง" : "โหลดเพิ่มเติม"}</span>
                   )}
                 </button>
               )}
