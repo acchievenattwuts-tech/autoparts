@@ -30,6 +30,10 @@ import {
   isAllowedProductImageUrl,
 } from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
+import {
+  enqueueProductStorefrontSync,
+  getProductStorefrontPath,
+} from "@/lib/storefront-sync-queue";
 import { reembedProductSearchDocument } from "@/lib/product-embedding-sync";
 import {
   copyBlobProductImageToCodeFolder,
@@ -169,12 +173,15 @@ const productSchema = z.object({
 type ProductInput = z.infer<typeof productSchema>;
 type ProductImageInput = z.infer<typeof productImageSchema>;
 
-const revalidateStorefrontProductCaches = async (productId?: string) => {
+const revalidateStorefrontProductCaches = async (productId?: string, canonicalPath?: string) => {
   revalidatePath("/admin/products");
   updateProductSearchCache();
   invalidateTransactionProductOptions();
   if (productId) {
     updateTag(`storefront-product:${productId}`);
+  }
+  if (canonicalPath) {
+    revalidatePath(canonicalPath);
   }
   await revalidateStorefrontCaches();
 };
@@ -711,6 +718,7 @@ export const createProduct = async (
   const primaryImageUrl =
     productImages.find((image) => image.isPrimary)?.url ?? productImages[0]?.url ?? productData.imageUrl;
   let createdProductId = "";
+  let createdProductPath = "";
 
   try {
     const requestContext = await getRequestContext();
@@ -793,6 +801,9 @@ export const createProduct = async (
           skipDuplicates: true,
         });
       }
+
+      await enqueueProductStorefrontSync(tx, product);
+      createdProductPath = getProductStorefrontPath(product);
     });
 
     const createdSnapshot = createdProductId
@@ -812,7 +823,7 @@ export const createProduct = async (
     }
 
     await cleanupProductImageObjects(normalizedImages.orphanedSourceUrls);
-    await revalidateStorefrontProductCaches(createdProductId);
+    await revalidateStorefrontProductCaches(createdProductId, createdProductPath);
     // Refresh the semantic embedding off the response path (after the DB trigger
     // has rebuilt the search-document text). No-op when semantic search is off.
     if (createdProductId) {
@@ -899,6 +910,7 @@ export const updateProduct = async (
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getProductAuditSnapshot(id);
 
+    let updatedProductPath = "";
     await dbTx(async (tx) => {
       const currentProduct = await tx.product.findUnique({
         where: { id },
@@ -925,7 +937,7 @@ export const updateProduct = async (
             slugify: slugifyAsciiSegment,
           });
 
-      await tx.product.update({
+      const updatedProduct = await tx.product.update({
         where: { id },
         data: {
           slug,
@@ -1091,6 +1103,9 @@ export const updateProduct = async (
       if (fitmentPlan.create.length > 0) {
         await tx.productFitment.createMany({ data: fitmentPlan.create, skipDuplicates: true });
       }
+
+      await enqueueProductStorefrontSync(tx, updatedProduct);
+      updatedProductPath = getProductStorefrontPath(updatedProduct);
     });
 
     const afterSnapshot = await getProductAuditSnapshot(id);
@@ -1112,7 +1127,7 @@ export const updateProduct = async (
 
     await cleanupProductImageObjects([...removedImageUrls, ...normalizedImages.orphanedSourceUrls]);
     revalidatePath(`/admin/products/${id}/edit`);
-    await revalidateStorefrontProductCaches(id);
+    await revalidateStorefrontProductCaches(id, updatedProductPath);
     // Refresh the semantic embedding off the response path (text/fitment may have
     // changed). No-op when semantic search is off.
     after(() => reembedProductSearchDocument(id));
@@ -1144,7 +1159,12 @@ export const toggleProduct = async (
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getProductAuditSnapshot(id);
 
-    await db.product.update({ where: { id }, data: { isActive } });
+    let updatedProductPath = "";
+    await dbTx(async (tx) => {
+      const updatedProduct = await tx.product.update({ where: { id }, data: { isActive } });
+      await enqueueProductStorefrontSync(tx, updatedProduct);
+      updatedProductPath = getProductStorefrontPath(updatedProduct);
+    });
 
     const afterSnapshot = await getProductAuditSnapshot(id);
 
@@ -1164,7 +1184,7 @@ export const toggleProduct = async (
       });
     }
 
-    await revalidateStorefrontProductCaches(id);
+    await revalidateStorefrontProductCaches(id, updatedProductPath);
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
+import { enqueueStorefrontStockInvalidation } from "@/lib/storefront-sync-queue";
 import { generatePurchaseNo } from "@/lib/doc-number";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
@@ -399,6 +400,7 @@ async function refreshLatestPurchaseStockCardBalance(
       avgCost: new Prisma.Decimal(baPrice > 0 ? baPrice : 0),
     },
   });
+  await enqueueStorefrontStockInvalidation(tx, row.productId);
 
   return true;
 }

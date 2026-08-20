@@ -73,7 +73,10 @@ export const getActiveStorefrontProductById = async (productId: string) => {
       }),
     ),
     [`storefront-product:${productId}`],
-    { tags: ["storefront:products", `storefront-product:${productId}`] },
+    {
+      tags: ["storefront:products", `storefront-product:${productId}`],
+      revalidate: 300,
+    },
   )();
 };
 
@@ -130,7 +133,10 @@ export const getRelatedStorefrontProductsByCategory = async ({
       }),
     ),
     [`storefront-related-products:${categoryId}:${currentProductId}`],
-    { tags: ["storefront:products", `storefront-product:${currentProductId}`] },
+    {
+      tags: ["storefront:products", `storefront-product:${currentProductId}`],
+      revalidate: 300,
+    },
   )();
 };
 

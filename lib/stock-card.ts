@@ -16,6 +16,10 @@
 
 import { Prisma, StockCardSource } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
+import {
+  enqueueStorefrontStockInvalidation,
+  enqueueStorefrontStockInvalidations,
+} from "@/lib/storefront-sync-queue";
 
 // Type for Prisma transaction client
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -363,6 +367,7 @@ export async function recalculateStockCard(
       avgCost: new Prisma.Decimal(finalPrice),
     },
   });
+  await enqueueStorefrontStockInvalidation(tx, productId);
 }
 
 /**
@@ -434,6 +439,7 @@ export async function recalculateStockCardMany(
       WHERE p."id" = data."id"
     `;
   }
+  await enqueueStorefrontStockInvalidations(tx, productIds);
 }
 
 /**
@@ -596,6 +602,7 @@ export async function writeStockCard(
         avgCost: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
       },
     });
+    await enqueueStorefrontStockInvalidation(tx, input.productId);
   }
 
   return createdRow.id;

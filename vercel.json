@@ -40,6 +40,10 @@
     {
       "path": "/api/notifications/cron/cleanup",
       "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/storefront/cron/sync-products",
+      "schedule": "* * * * *"
     }
   ]
 }

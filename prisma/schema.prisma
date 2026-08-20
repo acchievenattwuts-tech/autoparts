@@ -1040,47 +1040,47 @@ model PartsBrand {
 }
 
 model Product {
-  id                  String                 @id @default(cuid())
-  code                String                 @unique
+  id                  String                              @id @default(cuid())
+  code                String                              @unique
   name                String
   description         String?
   categoryId          String
   shelfLocation       String?
-  costPrice           Decimal                @default(0) @db.Decimal(10, 2)
-  purchaseLastPrice   Decimal?               @db.Decimal(10, 2)
-  purchaseLastDate    DateTime?              @db.Timestamptz(3)
-  salePrice           Decimal                @default(0) @db.Decimal(10, 2)
-  retailPrice         Decimal                @default(0) @db.Decimal(10, 2)
-  memberPrice         Decimal                @default(0) @db.Decimal(10, 2)
-  stock               Int                    @default(0)
-  minStock            Int                    @default(1)
+  costPrice           Decimal                             @default(0) @db.Decimal(10, 2)
+  purchaseLastPrice   Decimal?                            @db.Decimal(10, 2)
+  purchaseLastDate    DateTime?                           @db.Timestamptz(3)
+  salePrice           Decimal                             @default(0) @db.Decimal(10, 2)
+  retailPrice         Decimal                             @default(0) @db.Decimal(10, 2)
+  memberPrice         Decimal                             @default(0) @db.Decimal(10, 2)
+  stock               Int                                 @default(0)
+  minStock            Int                                 @default(1)
   imageUrl            String?
-  isActive            Boolean                @default(true)
-  isStorefrontVisible Boolean                @default(true)
-  createdAt           DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt           DateTime               @updatedAt @db.Timestamptz(3)
-  purchaseUnitName    String                 @default("ชิ้น")
-  reportUnitName      String                 @default("ชิ้น")
-  saleUnitName        String                 @default("ชิ้น")
+  isActive            Boolean                             @default(true)
+  isStorefrontVisible Boolean                             @default(true)
+  createdAt           DateTime                            @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime                            @updatedAt @db.Timestamptz(3)
+  purchaseUnitName    String                              @default("ชิ้น")
+  reportUnitName      String                              @default("ชิ้น")
+  saleUnitName        String                              @default("ชิ้น")
   brandId             String?
-  avgCost             Decimal                @default(0) @db.Decimal(10, 2)
-  warrantyDays        Int                    @default(0)
+  avgCost             Decimal                             @default(0) @db.Decimal(10, 2)
+  warrantyDays        Int                                 @default(0)
   preferredSupplierId String?
-  allowExpiredIssue   Boolean                @default(false)
-  isLotControl        Boolean                @default(false)
-  lotIssueMethod      LotIssueMethod         @default(FIFO)
-  requireExpiryDate   Boolean                @default(false)
-  slug                String?                @unique
-  inventoryTracking   InventoryTracking      @default(TRACKED)
+  allowExpiredIssue   Boolean                             @default(false)
+  isLotControl        Boolean                             @default(false)
+  lotIssueMethod      LotIssueMethod                      @default(FIFO)
+  requireExpiryDate   Boolean                             @default(false)
+  slug                String?                             @unique
+  inventoryTracking   InventoryTracking                   @default(TRACKED)
   adjustmentItems     AdjustmentItem[]
   balanceForwards     BalanceForward[]
   claimStockBalances  ClaimStockBalance[]
   claimStockMovements ClaimStockMovement[]
   creditNoteItems     CreditNoteItem[]
   lotBalances         LotBalance[]
-  brand               PartsBrand?            @relation(fields: [brandId], references: [id])
-  category            Category               @relation(fields: [categoryId], references: [id])
-  preferredSupplier   Supplier?              @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
+  brand               PartsBrand?                         @relation(fields: [brandId], references: [id])
+  category            Category                            @relation(fields: [categoryId], references: [id])
+  preferredSupplier   Supplier?                           @relation("ProductPreferredSupplier", fields: [preferredSupplierId], references: [id])
   aliases             ProductAlias[]
   carModels           ProductFitment[]
   images              ProductImage[]
@@ -1091,6 +1091,8 @@ model Product {
   saleItems           SaleItem[]
   shopeeMappings      ShopeeProductMapping[]
   stockCards          StockCard[]
+  storefrontSync      ProductStorefrontSyncState?
+  storefrontStockSync ProductStorefrontStockInvalidation?
   warranties          Warranty[]
 
   @@index([categoryId])
@@ -1098,6 +1100,37 @@ model Product {
   // Storefront category listing + related-products: filter on
   // (categoryId, isActive, isStorefrontVisible) then order by stock desc.
   @@index([categoryId, isActive, isStorefrontVisible, stock(sort: Desc)])
+}
+
+/// Durable guard for product-master changes that must become visible on the storefront.
+/// One row per product is intentionally coalesced so repeated admin saves do not grow a queue.
+model ProductStorefrontSyncState {
+  productId             String                      @id
+  expectedUpdatedAt     DateTime                    @db.Timestamptz(3)
+  canonicalPath         String
+  status                ProductStorefrontSyncStatus @default(PENDING)
+  attempts              Int                         @default(0)
+  nextAttemptAt         DateTime                    @default(now()) @db.Timestamptz(3)
+  lastObservedUpdatedAt DateTime?                   @db.Timestamptz(3)
+  lastError             String?
+  verifiedAt            DateTime?                   @db.Timestamptz(3)
+  failedAt              DateTime?                   @db.Timestamptz(3)
+  telegramNotifiedAt    DateTime?                   @db.Timestamptz(3)
+  createdAt             DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                    @updatedAt @db.Timestamptz(3)
+  product               Product                     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextAttemptAt])
+}
+
+/// Coalescing outbox for stock-only cache invalidation. It does not perform
+/// storefront verification or send Telegram, keeping transaction egress low.
+model ProductStorefrontStockInvalidation {
+  productId   String   @id
+  requestedAt DateTime @default(now()) @db.Timestamptz(3)
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([requestedAt])
 }
 
 model ProductImage {
@@ -3217,4 +3250,12 @@ enum NotificationSeverity {
   INFO
   WARNING
   ERROR
+}
+
+enum ProductStorefrontSyncStatus {
+  PENDING
+  PROCESSING
+  RETRYING
+  VERIFIED
+  FAILED
 }
