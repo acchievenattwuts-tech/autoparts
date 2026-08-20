@@ -1,6 +1,6 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { db } from "@/lib/db";
-import { ProductStorefrontSyncStatus } from "@/lib/generated/prisma";
+import { ProductStorefrontSyncStatus, type Prisma } from "@/lib/generated/prisma";
 import { getActiveStorefrontProductById } from "@/lib/storefront-product";
 import { formatDateTimeThai } from "@/lib/th-date";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/telegram";
@@ -17,11 +17,43 @@ type SyncCandidate = {
   expectedUpdatedAt: Date;
   canonicalPath: string;
   attempts: number;
+  repairCount: number;
   product: {
     code: string;
+    stock: number;
     isActive: boolean;
     isStorefrontVisible: boolean;
   };
+};
+
+type StorefrontCacheSnapshot = {
+  updatedAt: Date | string;
+  stock: number;
+};
+
+export type StorefrontMismatchReason =
+  | "VISIBLE_PRODUCT_CACHE_MISSING"
+  | "EXPECTED_HIDDEN_CACHE_PRESENT"
+  | "CACHED_REVISION_INVALID"
+  | "CACHED_REVISION_BEHIND"
+  | "CACHED_STOCK_MISMATCH";
+
+type AuditExpected = {
+  shouldBeVisible: boolean;
+  updatedAt: Date | string;
+  stock: number;
+};
+
+export type StorefrontCacheAuditResult = {
+  outcome: "current" | "repaired" | "mismatch" | "error";
+  initialObserved: StorefrontCacheSnapshot | null | undefined;
+  finalObserved: StorefrontCacheSnapshot | null | undefined;
+  initialMismatchReason: StorefrontMismatchReason | null;
+  finalMismatchReason: StorefrontMismatchReason | null;
+  mismatchDetectedAt: Date | null;
+  didExpire: boolean;
+  error?: unknown;
+  errorPhase?: "INITIAL_READ" | "EXPIRE" | "VERIFICATION_READ";
 };
 
 const truncateError = (error: unknown): string =>
@@ -40,13 +72,107 @@ export function isStorefrontRevisionCurrent(params: {
   return Number.isFinite(expectedTime) && Number.isFinite(observedTime) && observedTime >= expectedTime;
 }
 
-function revisionMatches(candidate: SyncCandidate, observed: { updatedAt: Date } | null): boolean {
-  const shouldBeVisible = candidate.product.isActive && candidate.product.isStorefrontVisible;
-  return isStorefrontRevisionCurrent({
-    shouldBeVisible,
-    expectedUpdatedAt: candidate.expectedUpdatedAt,
-    observedUpdatedAt: observed?.updatedAt ?? null,
-  });
+export function getStorefrontMismatchReason(
+  expected: AuditExpected,
+  observed: StorefrontCacheSnapshot | null,
+): StorefrontMismatchReason | null {
+  if (!expected.shouldBeVisible) {
+    return observed === null ? null : "EXPECTED_HIDDEN_CACHE_PRESENT";
+  }
+  if (observed === null) return "VISIBLE_PRODUCT_CACHE_MISSING";
+
+  const expectedTime = new Date(expected.updatedAt).getTime();
+  const observedTime = new Date(observed.updatedAt).getTime();
+  if (!Number.isFinite(expectedTime) || !Number.isFinite(observedTime)) return "CACHED_REVISION_INVALID";
+  if (observedTime < expectedTime) return "CACHED_REVISION_BEHIND";
+  if (observed.stock !== expected.stock) return "CACHED_STOCK_MISMATCH";
+  return null;
+}
+
+/**
+ * Reads before invalidating. An initial read error deliberately returns without
+ * expiring anything, preserving the last usable storefront cache.
+ */
+export async function auditThenRepairStorefrontCache(params: {
+  expected: AuditExpected;
+  readCache: () => Promise<StorefrontCacheSnapshot | null>;
+  expireCache: () => Promise<void>;
+  now?: () => Date;
+}): Promise<StorefrontCacheAuditResult> {
+  let initialObserved: StorefrontCacheSnapshot | null;
+  try {
+    initialObserved = await params.readCache();
+  } catch (error) {
+    return {
+      outcome: "error",
+      initialObserved: undefined,
+      finalObserved: undefined,
+      initialMismatchReason: null,
+      finalMismatchReason: null,
+      mismatchDetectedAt: null,
+      didExpire: false,
+      error,
+      errorPhase: "INITIAL_READ",
+    };
+  }
+
+  const initialMismatchReason = getStorefrontMismatchReason(params.expected, initialObserved);
+  if (!initialMismatchReason) {
+    return {
+      outcome: "current",
+      initialObserved,
+      finalObserved: initialObserved,
+      initialMismatchReason: null,
+      finalMismatchReason: null,
+      mismatchDetectedAt: null,
+      didExpire: false,
+    };
+  }
+
+  const mismatchDetectedAt = (params.now ?? (() => new Date()))();
+  try {
+    await params.expireCache();
+  } catch (error) {
+    return {
+      outcome: "error",
+      initialObserved,
+      finalObserved: undefined,
+      initialMismatchReason,
+      finalMismatchReason: null,
+      mismatchDetectedAt,
+      didExpire: false,
+      error,
+      errorPhase: "EXPIRE",
+    };
+  }
+
+  let finalObserved: StorefrontCacheSnapshot | null;
+  try {
+    finalObserved = await params.readCache();
+  } catch (error) {
+    return {
+      outcome: "error",
+      initialObserved,
+      finalObserved: undefined,
+      initialMismatchReason,
+      finalMismatchReason: null,
+      mismatchDetectedAt,
+      didExpire: true,
+      error,
+      errorPhase: "VERIFICATION_READ",
+    };
+  }
+
+  const finalMismatchReason = getStorefrontMismatchReason(params.expected, finalObserved);
+  return {
+    outcome: finalMismatchReason ? "mismatch" : "repaired",
+    initialObserved,
+    finalObserved,
+    initialMismatchReason,
+    finalMismatchReason,
+    mismatchDetectedAt,
+    didExpire: true,
+  };
 }
 
 export function buildStorefrontSyncFailureTelegramText(params: {
@@ -121,7 +247,39 @@ async function drainStockInvalidations(): Promise<number> {
   return rows.length;
 }
 
-async function markFailedAndNotify(candidate: SyncCandidate, error: unknown, now: Date): Promise<boolean> {
+function validDateOrNull(value: Date | string | null | undefined): Date | null {
+  if (value == null) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function buildAuditEvidence(
+  candidate: SyncCandidate,
+  audit: StorefrontCacheAuditResult,
+): Prisma.ProductStorefrontSyncStateUpdateManyMutationInput {
+  const lastObserved = audit.finalObserved !== undefined ? audit.finalObserved : audit.initialObserved;
+  const data: Prisma.ProductStorefrontSyncStateUpdateManyMutationInput = {
+    expectedStockAtAudit: candidate.product.stock,
+    lastObservedUpdatedAt: validDateOrNull(lastObserved?.updatedAt),
+    repairCount: candidate.repairCount + (audit.didExpire ? 1 : 0),
+  };
+  if (audit.initialObserved !== undefined) {
+    data.initialObservedAt = validDateOrNull(audit.initialObserved?.updatedAt);
+    data.initialObservedStock = audit.initialObserved?.stock ?? null;
+  }
+  if (audit.initialMismatchReason) {
+    data.mismatchDetectedAt = audit.mismatchDetectedAt;
+    data.mismatchReason = audit.initialMismatchReason;
+  }
+  return data;
+}
+
+async function markFailedAndNotify(
+  candidate: SyncCandidate,
+  error: unknown,
+  now: Date,
+  auditEvidence: Prisma.ProductStorefrontSyncStateUpdateManyMutationInput,
+): Promise<boolean> {
   const attempts = candidate.attempts + 1;
   const updated = await db.productStorefrontSyncState.updateMany({
     where: {
@@ -130,6 +288,7 @@ async function markFailedAndNotify(candidate: SyncCandidate, error: unknown, now
       status: ProductStorefrontSyncStatus.PROCESSING,
     },
     data: {
+      ...auditEvidence,
       status: ProductStorefrontSyncStatus.FAILED,
       attempts,
       failedAt: now,
@@ -165,7 +324,9 @@ async function markFailedAndNotify(candidate: SyncCandidate, error: unknown, now
   }
 }
 
-async function processCandidate(candidate: SyncCandidate): Promise<"verified" | "retrying" | "failed" | "superseded"> {
+async function processCandidate(
+  candidate: SyncCandidate,
+): Promise<"current" | "repaired" | "retrying" | "failed" | "superseded"> {
   const now = new Date();
   const claimed = await db.productStorefrontSyncState.updateMany({
     where: {
@@ -187,39 +348,20 @@ async function processCandidate(candidate: SyncCandidate): Promise<"verified" | 
   });
   if (claimed.count === 0) return "superseded";
 
-  try {
-    // Repair first, then verify the cached projection. This avoids external page
-    // requests while still proving that the Data Cache sees the committed revision.
-    await expireProductCache(candidate.productId, candidate.canonicalPath);
-    const observed = await getActiveStorefrontProductById(candidate.productId);
-    if (revisionMatches(candidate, observed)) {
-      const verifiedAt = new Date();
-      const updated = await db.productStorefrontSyncState.updateMany({
-        where: {
-          productId: candidate.productId,
-          expectedUpdatedAt: candidate.expectedUpdatedAt,
-          status: ProductStorefrontSyncStatus.PROCESSING,
-        },
-        data: {
-          status: ProductStorefrontSyncStatus.VERIFIED,
-          attempts: candidate.attempts + 1,
-          lastObservedUpdatedAt: observed?.updatedAt ?? null,
-          lastError: null,
-          verifiedAt,
-          nextAttemptAt: verifiedAt,
-        },
-      });
-      return updated.count === 1 ? "verified" : "superseded";
-    }
+  const audit = await auditThenRepairStorefrontCache({
+    expected: {
+      shouldBeVisible: candidate.product.isActive && candidate.product.isStorefrontVisible,
+      updatedAt: candidate.expectedUpdatedAt,
+      stock: candidate.product.stock,
+    },
+    readCache: () => getActiveStorefrontProductById(candidate.productId),
+    expireCache: () => expireProductCache(candidate.productId, candidate.canonicalPath),
+  });
+  const auditEvidence = buildAuditEvidence(candidate, audit);
+  const attempts = candidate.attempts + 1;
 
-    const mismatch = new Error("STOREFRONT_CACHE_REVISION_MISMATCH");
-    const attempts = candidate.attempts + 1;
-    if (attempts >= MAX_SYNC_ATTEMPTS) {
-      await markFailedAndNotify(candidate, mismatch, new Date());
-      return "failed";
-    }
-
-    const retryAt = new Date(Date.now() + (RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS.at(-1)!));
+  if (audit.outcome === "current" || audit.outcome === "repaired") {
+    const verifiedAt = new Date();
     const updated = await db.productStorefrontSyncState.updateMany({
       where: {
         productId: candidate.productId,
@@ -227,42 +369,47 @@ async function processCandidate(candidate: SyncCandidate): Promise<"verified" | 
         status: ProductStorefrontSyncStatus.PROCESSING,
       },
       data: {
-        status: ProductStorefrontSyncStatus.RETRYING,
+        ...auditEvidence,
+        status: ProductStorefrontSyncStatus.VERIFIED,
         attempts,
-        nextAttemptAt: retryAt,
-        lastObservedUpdatedAt: observed?.updatedAt ?? null,
-        lastError: mismatch.message,
+        lastError: null,
+        verifiedAt,
+        nextAttemptAt: verifiedAt,
       },
     });
-    return updated.count === 1 ? "retrying" : "superseded";
-  } catch (error) {
-    const attempts = candidate.attempts + 1;
-    if (attempts >= MAX_SYNC_ATTEMPTS) {
-      await markFailedAndNotify(candidate, error, new Date());
-      return "failed";
-    }
-    const retryAt = new Date(Date.now() + (RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS.at(-1)!));
-    const updated = await db.productStorefrontSyncState.updateMany({
-      where: {
-        productId: candidate.productId,
-        expectedUpdatedAt: candidate.expectedUpdatedAt,
-        status: ProductStorefrontSyncStatus.PROCESSING,
-      },
-      data: {
-        status: ProductStorefrontSyncStatus.RETRYING,
-        attempts,
-        nextAttemptAt: retryAt,
-        lastError: truncateError(error),
-      },
-    });
-    return updated.count === 1 ? "retrying" : "superseded";
+    return updated.count === 1 ? audit.outcome : "superseded";
   }
+
+  const failure = audit.outcome === "mismatch"
+    ? new Error(`STOREFRONT_CACHE_${audit.finalMismatchReason ?? "MISMATCH"}`)
+    : new Error(`${audit.errorPhase ?? "AUDIT"}: ${truncateError(audit.error)}`);
+  if (attempts >= MAX_SYNC_ATTEMPTS) {
+    await markFailedAndNotify(candidate, failure, new Date(), auditEvidence);
+    return "failed";
+  }
+
+  const retryAt = new Date(Date.now() + (RETRY_DELAYS_MS[attempts - 1] ?? RETRY_DELAYS_MS.at(-1)!));
+  const updated = await db.productStorefrontSyncState.updateMany({
+    where: {
+      productId: candidate.productId,
+      expectedUpdatedAt: candidate.expectedUpdatedAt,
+      status: ProductStorefrontSyncStatus.PROCESSING,
+    },
+    data: {
+      ...auditEvidence,
+      status: ProductStorefrontSyncStatus.RETRYING,
+      attempts,
+      nextAttemptAt: retryAt,
+      lastError: failure.message.slice(0, 500),
+    },
+  });
+  return updated.count === 1 ? "retrying" : "superseded";
 }
 
 async function retryUnsentFailureNotifications(): Promise<number> {
   const failed = await db.productStorefrontSyncState.findMany({
     where: { status: ProductStorefrontSyncStatus.FAILED, telegramNotifiedAt: null },
-    include: { product: { select: { code: true, isActive: true, isStorefrontVisible: true } } },
+    include: { product: { select: { code: true, stock: true, isActive: true, isStorefrontVisible: true } } },
     take: 10,
   });
   let sentCount = 0;
@@ -285,6 +432,8 @@ async function retryUnsentFailureNotifications(): Promise<number> {
 export async function processStorefrontSyncQueue(): Promise<{
   stockInvalidated: number;
   verified: number;
+  current: number;
+  repaired: number;
   retrying: number;
   failed: number;
   telegramSent: number;
@@ -302,16 +451,18 @@ export async function processStorefrontSyncQueue(): Promise<{
       },
       nextAttemptAt: { lte: now },
     },
-    include: { product: { select: { code: true, isActive: true, isStorefrontVisible: true } } },
+    include: { product: { select: { code: true, stock: true, isActive: true, isStorefrontVisible: true } } },
     orderBy: { nextAttemptAt: "asc" },
     take: SYNC_BATCH_SIZE,
   });
 
-  const counts = { verified: 0, retrying: 0, failed: 0 };
+  const counts = { current: 0, repaired: 0, retrying: 0, failed: 0 };
   for (const candidate of candidates) {
     const result = await processCandidate(candidate);
-    if (result === "verified" || result === "retrying" || result === "failed") counts[result] += 1;
+    if (result === "current" || result === "repaired" || result === "retrying" || result === "failed") {
+      counts[result] += 1;
+    }
   }
   const telegramSent = await retryUnsentFailureNotifications();
-  return { stockInvalidated, ...counts, telegramSent };
+  return { stockInvalidated, verified: counts.current + counts.repaired, ...counts, telegramSent };
 }

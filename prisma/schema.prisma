@@ -1112,6 +1112,12 @@ model ProductStorefrontSyncState {
   attempts              Int                         @default(0)
   nextAttemptAt         DateTime                    @default(now()) @db.Timestamptz(3)
   lastObservedUpdatedAt DateTime?                   @db.Timestamptz(3)
+  initialObservedAt     DateTime?                   @db.Timestamptz(3)
+  initialObservedStock  Int?
+  expectedStockAtAudit  Int?
+  mismatchDetectedAt    DateTime?                   @db.Timestamptz(3)
+  mismatchReason        String?
+  repairCount           Int                         @default(0)
   lastError             String?
   verifiedAt            DateTime?                   @db.Timestamptz(3)
   failedAt              DateTime?                   @db.Timestamptz(3)
