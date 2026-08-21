@@ -9,6 +9,7 @@ import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import Pagination from "@/components/shared/Pagination";
+import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { formatDateThai } from "@/lib/th-date";
 
@@ -182,6 +183,9 @@ export default function AdvanceRefundList({
                   </td>
                   <td className="px-4 py-3">
                     <AdminActionGroup align="end">
+                      {isCustomer ? (
+                        <PrintFromListButton href={`${basePath}/${row.id}`} />
+                      ) : null}
                       <Link
                         href={`${basePath}/${row.id}`}
                         className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] dark:text-sky-300"

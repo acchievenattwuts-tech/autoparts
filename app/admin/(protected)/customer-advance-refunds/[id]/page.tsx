@@ -93,7 +93,7 @@ export default async function CustomerAdvanceRefundDetailPage({
   };
   return (
     <>
-      <style>{`@page{margin:0}@media print{body *{visibility:hidden}#customer-advance-refund-print,#customer-advance-refund-print *{visibility:visible}#customer-advance-refund-print{position:absolute;left:0;top:0;width:100%}.print-slip{display:flex;flex-direction:column;min-height:100vh}.no-print{display:none!important}.receipt-footer{margin-top:auto}}${PRINT_COPY_VISIBILITY_CSS}`}</style>
+      <style>{`@page{margin:0}@media print{body *{visibility:hidden}#customer-advance-refund-print,#customer-advance-refund-print *{visibility:visible;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}#customer-advance-refund-print{position:absolute;left:0;top:0;width:100%}.print-slip{display:flex;flex-direction:column;min-height:100vh}.no-print{display:none!important}.receipt-footer{margin-top:auto}}${PRINT_COPY_VISIBILITY_CSS}`}</style>
       <div className="no-print space-y-6">
         <div className="flex items-center justify-between gap-3">
           <Link
@@ -234,19 +234,27 @@ export default async function CustomerAdvanceRefundDetailPage({
             ) : null}
           </div>
         </div>
-        <DocumentActivityTimeline events={activity} />
       </div>
-      <div id="customer-advance-refund-print" className="mt-6">
-        <CustomerAdvanceRefundPrintDocument
-          {...printProps}
-          copyLabel={PRINT_COPY_LABEL_ORIGINAL}
-          rootClassName={PRINT_CLASS}
-        />
-        <CustomerAdvanceRefundPrintDocument
-          {...printProps}
-          copyLabel={PRINT_COPY_LABEL_DUPLICATE}
-          rootClassName={`${PRINT_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
-        />
+      <div className="mt-6 grid items-start gap-6 xl:grid-cols-[30fr_70fr]">
+        <div className="no-print xl:sticky xl:top-4">
+          <DocumentActivityTimeline
+            events={activity}
+            variant="compact"
+            className="mb-0"
+          />
+        </div>
+        <div id="customer-advance-refund-print" className="min-w-0">
+          <CustomerAdvanceRefundPrintDocument
+            {...printProps}
+            copyLabel={PRINT_COPY_LABEL_ORIGINAL}
+            rootClassName={PRINT_CLASS}
+          />
+          <CustomerAdvanceRefundPrintDocument
+            {...printProps}
+            copyLabel={PRINT_COPY_LABEL_DUPLICATE}
+            rootClassName={`${PRINT_CLASS} ${PRINT_SLIP_COPY_CLASS}`}
+          />
+        </div>
       </div>
     </>
   );

@@ -3,12 +3,22 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import AdvanceRefundForm from "@/components/admin/AdvanceRefundForm";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/require-auth";
+import {
+  getSessionPermissionContext,
+  requirePermission,
+} from "@/lib/require-auth";
 
 export default async function NewCustomerAdvanceRefundPage() {
   await requirePermission("customer_advance_refunds.create");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canPrint = hasPermissionAccess(
+    role,
+    permissions,
+    "customer_advance_refunds.view",
+  );
   const [advances, accounts] = await Promise.all([
     db.customerAdvance.findMany({
       where: { status: "ACTIVE", amountRemain: { gt: 0 } },
@@ -43,6 +53,7 @@ export default async function NewCustomerAdvanceRefundPage() {
           amountRemain: Number(row.amountRemain),
         }))}
         cashBankAccounts={accounts}
+        canPrint={canPrint}
       />
     </div>
   );

@@ -4,10 +4,14 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import AdvanceRefundForm from "@/components/admin/AdvanceRefundForm";
+import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { db } from "@/lib/db";
 import { DocumentPaymentDocType } from "@/lib/generated/prisma";
-import { requirePermission } from "@/lib/require-auth";
+import {
+  getSessionPermissionContext,
+  requirePermission,
+} from "@/lib/require-auth";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 
 export default async function EditCustomerAdvanceRefundPage({
@@ -16,6 +20,12 @@ export default async function EditCustomerAdvanceRefundPage({
   params: Promise<{ id: string }>;
 }) {
   await requirePermission("customer_advance_refunds.update");
+  const { role, permissions } = await getSessionPermissionContext();
+  const canPrint = hasPermissionAccess(
+    role,
+    permissions,
+    "customer_advance_refunds.view",
+  );
   const { id } = await params;
   const [refund, accounts, payments] = await Promise.all([
     db.customerAdvanceRefund.findUnique({
@@ -63,6 +73,7 @@ export default async function EditCustomerAdvanceRefundPage({
           },
         ]}
         cashBankAccounts={accounts}
+        canPrint={canPrint}
         initialData={{
           id,
           sourceAdvanceId: source.id,

@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle } from "lucide-react";
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import PaymentChannelsInput, {
   type PaymentChannelAccount,
@@ -41,15 +42,21 @@ export default function AdvanceRefundForm({
   advances,
   cashBankAccounts,
   initialData,
+  canPrint = false,
 }: {
   side: "CUSTOMER" | "SUPPLIER";
   advances: AdvanceRefundOption[];
   cashBankAccounts: PaymentChannelAccount[];
   initialData?: InitialData;
+  canPrint?: boolean;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [persistedRefundId, setPersistedRefundId] = useState(
+    initialData?.id ?? "",
+  );
   const [sourceAdvanceId, setSourceAdvanceId] = useState(
     initialData?.sourceAdvanceId ?? "",
   );
@@ -63,9 +70,9 @@ export default function AdvanceRefundForm({
     initialData?.payments ?? [{ cashBankAccountId: "", amount: 0 }],
   );
   const [note, setNote] = useState(initialData?.note ?? "");
-  const isEdit = Boolean(initialData);
+  const isEdit = Boolean(initialData || persistedRefundId);
   const selected = advances.find((advance) => advance.id === sourceAdvanceId);
-  const maxRefund = isEdit
+  const maxRefund = initialData
     ? (initialData?.sourceAmountRemain ?? 0) + (initialData?.refundAmount ?? 0)
     : (selected?.amountRemain ?? 0);
   const isCustomer = side === "CUSTOMER";
@@ -85,6 +92,7 @@ export default function AdvanceRefundForm({
 
   const submit = () => {
     setError("");
+    setSuccess("");
     if (!sourceAdvanceId) return setError("กรุณาเลือกเอกสารมัดจำต้นทาง");
     if (refundAmount <= 0) return setError("ยอดคืนต้องมากกว่า 0");
     if (refundAmount - maxRefund > 0.005)
@@ -101,18 +109,38 @@ export default function AdvanceRefundForm({
     formData.set("note", note);
     formData.set("payments", JSON.stringify(activePayments));
     startTransition(async () => {
-      const result = initialData
+      const result = persistedRefundId
         ? isCustomer
-          ? await updateCustomerAdvanceRefund(initialData.id, formData)
-          : await updateSupplierAdvanceRefund(initialData.id, formData)
+          ? await updateCustomerAdvanceRefund(persistedRefundId, formData)
+          : await updateSupplierAdvanceRefund(persistedRefundId, formData)
         : isCustomer
           ? await createCustomerAdvanceRefund(formData)
           : await createSupplierAdvanceRefund(formData);
       if (result.error) return setError(result.error);
+      if (isCustomer) {
+        if (persistedRefundId) {
+          setSuccess("บันทึกการแก้ไขสำเร็จ");
+        } else if ("refundId" in result && result.refundId) {
+          setPersistedRefundId(result.refundId);
+          setSuccess(
+            `บันทึกสำเร็จ เลขที่คืนเงินมัดจำ: ${result.refundNo ?? "-"}`,
+          );
+          window.history.replaceState(
+            null,
+            "",
+            `${listPath}/${result.refundId}/edit`,
+          );
+        } else {
+          setSuccess("บันทึกคืนเงินมัดจำสำเร็จ");
+          router.refresh();
+        }
+        return;
+      }
+
       const id =
-        initialData?.id ?? ("refundId" in result ? result.refundId : undefined);
-      if (id) router.push(`${listPath}/${id}`);
-      else router.push(listPath);
+        persistedRefundId ||
+        ("refundId" in result ? result.refundId : undefined);
+      router.push(id ? `${listPath}/${id}` : listPath);
       router.refresh();
     });
   };
@@ -128,6 +156,26 @@ export default function AdvanceRefundForm({
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300">
           <AlertCircle className="mt-0.5 shrink-0" size={16} />
           {error}
+        </div>
+      ) : null}
+      {success ? (
+        <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-green-400/30 dark:bg-green-500/10">
+          <div className="flex items-center gap-2">
+            <CheckCircle
+              size={16}
+              className="text-green-700 dark:text-green-300"
+            />
+            <p className="text-sm text-green-700 dark:text-green-300">
+              {success}
+            </p>
+          </div>
+          {isCustomer && canPrint && persistedRefundId ? (
+            <PrintCopyModeLink
+              href={`${listPath}/${persistedRefundId}?print=1`}
+              label="พิมพ์แบบฟอร์ม"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900 dark:bg-sky-700 dark:hover:bg-sky-600"
+            />
+          ) : null}
         </div>
       ) : null}
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
@@ -220,6 +268,13 @@ export default function AdvanceRefundForm({
         >
           ยกเลิก
         </button>
+        {isCustomer && canPrint && persistedRefundId ? (
+          <PrintCopyModeLink
+            href={`${listPath}/${persistedRefundId}?print=1`}
+            label="พิมพ์"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-900 dark:bg-sky-700 dark:hover:bg-sky-600"
+          />
+        ) : null}
         <button
           type="button"
           onClick={submit}
