@@ -6,6 +6,7 @@ import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
+import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import { getThailandDateKey } from "@/lib/th-date";
 import { createCustomerAdvance, updateCustomerAdvance } from "./actions";
 
@@ -16,12 +17,13 @@ type InitialData = { id: string; customerId: string; advanceDate: string; totalA
 const inputCls = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
 
-export default function CustomerAdvanceForm({ customers, cashBankAccounts, initialData, submitLocked = false }: { customers: Customer[]; cashBankAccounts: Account[]; initialData?: InitialData; submitLocked?: boolean }) {
+export default function CustomerAdvanceForm({ customers, cashBankAccounts, initialData, submitLocked = false, canPrint = false }: { customers: Customer[]; cashBankAccounts: Account[]; initialData?: InitialData; submitLocked?: boolean; canPrint?: boolean }) {
   const router = useRouter();
   const isEdit = Boolean(initialData);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [persistedAdvanceId, setPersistedAdvanceId] = useState(initialData?.id ?? "");
   const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
   const [advanceDate, setAdvanceDate] = useState(initialData?.advanceDate ?? getThailandDateKey());
   const [totalAmount, setTotalAmount] = useState(initialData?.totalAmount ?? 0);
@@ -46,11 +48,23 @@ export default function CustomerAdvanceForm({ customers, cashBankAccounts, initi
     formData.set("totalAmount", String(totalAmount)); formData.set("note", note);
     formData.set("payments", JSON.stringify(active));
     startTransition(async () => {
-      const result = isEdit && initialData ? await updateCustomerAdvance(initialData.id, formData) : await createCustomerAdvance(formData);
-      if (result.error) return setError(result.error);
-      if (isEdit) router.push(`/admin/customer-advances/${initialData!.id}`);
-      else if ("advanceId" in result && result.advanceId) router.push(`/admin/customer-advances/${result.advanceId}`);
-      else { setSuccess("บันทึกรับเงินมัดจำสำเร็จ"); router.refresh(); }
+      if (persistedAdvanceId) {
+        const result = await updateCustomerAdvance(persistedAdvanceId, formData);
+        if (result.error) setError(result.error);
+        else setSuccess("บันทึกการแก้ไขสำเร็จ");
+      } else {
+        const result = await createCustomerAdvance(formData);
+        if (result.error) {
+          setError(result.error);
+        } else if (result.advanceId) {
+          setSuccess(`บันทึกสำเร็จ เลขที่รับเงินมัดจำ: ${result.advanceNo}`);
+          setPersistedAdvanceId(result.advanceId);
+          window.history.replaceState(null, "", `/admin/customer-advances/${result.advanceId}/edit`);
+        } else {
+          setSuccess("บันทึกรับเงินมัดจำสำเร็จ");
+          router.refresh();
+        }
+      }
     });
   };
 
@@ -68,8 +82,8 @@ export default function CustomerAdvanceForm({ customers, cashBankAccounts, initi
     </div>
     <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
       {error ? <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300">{error}</p> : null}
-      {success ? <p className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-400/30 dark:bg-green-500/10 dark:text-green-300"><CheckCircle size={16} />{success}</p> : null}
-      <div className="flex justify-end gap-3"><button type="button" onClick={() => router.back()} className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-white/20 dark:text-slate-300 dark:hover:bg-white/5">ยกเลิก</button><button type="button" onClick={submit} disabled={isPending || submitLocked} className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sky-700 dark:hover:bg-sky-600">{isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกรับเงินมัดจำ"}</button></div>
+      {success ? <div className="mb-4 flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-green-400/30 dark:bg-green-500/10"><div className="flex items-center gap-2"><CheckCircle size={16} className="text-green-700 dark:text-green-300" /><p className="text-sm text-green-700 dark:text-green-300">{success}</p></div>{canPrint && persistedAdvanceId ? <PrintCopyModeLink href={`/admin/customer-advances/${persistedAdvanceId}?print=1`} label="พิมพ์แบบฟอร์ม" className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900" /> : null}</div> : null}
+      <div className="flex justify-end gap-3"><button type="button" onClick={() => router.back()} className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-white/20 dark:text-slate-300 dark:hover:bg-white/5">ยกเลิก</button>{canPrint && persistedAdvanceId ? <PrintCopyModeLink href={`/admin/customer-advances/${persistedAdvanceId}?print=1`} label="พิมพ์" className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-900" /> : null}<button type="button" onClick={submit} disabled={isPending || submitLocked} className="rounded-lg bg-[#1e3a5f] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#162d4a] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sky-700 dark:hover:bg-sky-600">{isPending ? "กำลังบันทึก..." : isEdit || persistedAdvanceId ? "บันทึกการแก้ไข" : "บันทึกรับเงินมัดจำ"}</button></div>
     </div>
   </div>;
 }
