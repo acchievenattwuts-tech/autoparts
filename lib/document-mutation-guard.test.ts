@@ -13,7 +13,8 @@ describe("document mutation guard", () => {
         findMany: async () => [{ id: "cn-1", cnNo: "CN-001" }],
       },
       receiptItem: {
-        findMany: async () => [{ receipt: { id: "receipt-1", receiptNo: "RC-001" } }],
+        findMany: async () => [{ receipt: { id: "receipt-1", receiptNo: "RC-001" } },
+        ],
       },
       warrantyClaim: {
         findMany: async () => [{ id: "claim-1", claimNo: "WC-001" }],
@@ -23,7 +24,8 @@ describe("document mutation guard", () => {
     const result = await guard.check("Sale", "sale-1", "update");
 
     assert.equal(result.blocked, true);
-    assert.deepEqual(result.references.map((ref) => ref.refNo), ["CN-001", "RC-001", "WC-001"]);
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["CN-001", "RC-001", "WC-001"],
+    );
   });
 
   it("deduplicates supplier payment refs for purchase return and supplier advance", async () => {
@@ -36,13 +38,17 @@ describe("document mutation guard", () => {
       },
     });
 
-    const purchaseReturnResult = await guard.check("PurchaseReturn", "return-1", "cancel");
-    const advanceResult = await guard.check("SupplierAdvance", "advance-1", "cancel");
+    const purchaseReturnResult = await guard.check("PurchaseReturn", "return-1", "cancel",
+    );
+    const advanceResult = await guard.check("SupplierAdvance", "advance-1", "cancel",
+    );
 
     assert.equal(purchaseReturnResult.blocked, true);
-    assert.deepEqual(purchaseReturnResult.references.map((ref) => ref.refNo), ["SP-001"]);
+    assert.deepEqual(purchaseReturnResult.references.map((ref) => ref.refNo), ["SP-001"],
+    );
     assert.equal(advanceResult.blocked, true);
-    assert.deepEqual(advanceResult.references.map((ref) => ref.refNo), ["SP-001"]);
+    assert.deepEqual(advanceResult.references.map((ref) => ref.refNo), ["SP-001"],
+    );
   });
 
   it("blocks customer advance mutation when an active receipt uses it", async () => {
@@ -59,7 +65,56 @@ describe("document mutation guard", () => {
 
     assert.equal(result.blocked, true);
     assert.equal(result.reason, "ถูกนำไปใช้ที่ใบเสร็จรับเงิน");
-    assert.deepEqual(result.references.map((ref) => ref.refNo), ["REC-001"]);
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["REC-001"],
+    );
+  });
+
+  it("blocks source cancellation when an active advance refund references it", async () => {
+    const guard = createDocumentMutationGuard({
+      customerAdvanceRefund: {
+        findMany: async () => [{ id: "refund-1", refundNo: "CNSD26080001" }],
+      },
+      supplierAdvanceRefund: {
+        findMany: async () => [{ id: "refund-2", refundNo: "CNADV26080001" }],
+      },
+    });
+
+    const customerResult = await guard.check(
+      "CustomerAdvance",
+      "advance-1",
+      "cancel",
+    );
+    const supplierResult = await guard.check(
+      "SupplierAdvance",
+      "advance-2",
+      "cancel",
+    );
+
+    assert.equal(customerResult.blocked, true);
+    assert.deepEqual(
+      customerResult.references.map((ref) => ref.refNo),
+      ["CNSD26080001"],
+    );
+    assert.equal(supplierResult.blocked, true);
+    assert.deepEqual(
+      supplierResult.references.map((ref) => ref.refNo),
+      ["CNADV26080001"],
+    );
+  });
+
+  it("does not treat an advance refund as an update blocker because source updates become note-only", async () => {
+    const guard = createDocumentMutationGuard({
+      customerAdvanceRefund: {
+        findMany: async () => {
+          throw new Error("refund lookup must only run for cancellation");
+        },
+      },
+    });
+
+    const result = await guard.check("CustomerAdvance", "advance-1", "update");
+
+    assert.equal(result.blocked, false);
+    assert.deepEqual(result.references, []);
   });
 
   it("blocks warranty claim cancellation when an active purchase return uses it", async () => {
@@ -76,7 +131,8 @@ describe("document mutation guard", () => {
 
     assert.equal(result.blocked, true);
     assert.equal(result.reason, "ถูกนำไปใช้ที่ใบลดหนี้ซื้อ");
-    assert.deepEqual(result.references.map((ref) => ref.refNo), ["PR-001", "PR-002"]);
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["PR-001", "PR-002"],
+    );
   });
 
   it("allows warranty claim cancellation when no active downstream document exists", async () => {

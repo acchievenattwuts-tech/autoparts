@@ -1,4 +1,5 @@
-import { CashBankDirection, CashBankSourceType, Prisma } from "@/lib/generated/prisma";
+import { CashBankDirection, CashBankSourceType, Prisma,
+} from "@/lib/generated/prisma";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -16,8 +17,10 @@ const DEFAULT_SOURCE_ORDER: Record<CashBankSourceType, number> = {
   SALE: 10,
   RECEIPT: 20,
   CUSTOMER_ADVANCE: 25,
+  CUSTOMER_ADVANCE_REFUND: 26,
   PURCHASE: 30,
   SUPPLIER_ADVANCE: 35,
+  SUPPLIER_ADVANCE_REFUND: 37,
   SUPPLIER_PAYMENT: 36,
   EXPENSE: 40,
   CN_SALE: 50,
@@ -74,7 +77,8 @@ export async function assertCashBankAccountsExist(
     select: { id: true },
   });
   const existingIds = new Set(existingAccounts.map((account) => account.id));
-  const missingId = normalizedIds.find((accountId) => !existingIds.has(accountId));
+  const missingId = normalizedIds.find((accountId) => !existingIds.has(accountId),
+  );
   if (missingId) {
     throw new Error("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
   }
@@ -99,7 +103,8 @@ async function assertCashBankAccountsCanPost(
   });
   const accountById = new Map(accounts.map((account) => [account.id, account]));
 
-  const missingId = normalizedIds.find((accountId) => !accountById.has(accountId));
+  const missingId = normalizedIds.find((accountId) => !accountById.has(accountId),
+  );
   if (missingId) {
     throw new Error("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
   }
@@ -113,7 +118,8 @@ async function assertCashBankAccountsCanPost(
       throw new Error(`บัญชีเงินสด/ธนาคาร ${accountLabel} ถูกปิดใช้งานแล้ว`);
     }
     if (entry.txnDate < account.openingDate) {
-      throw new Error(`วันที่รายการของบัญชี ${accountLabel} ต้องไม่ก่อนวันที่ยอดยกมา`);
+      throw new Error(`วันที่รายการของบัญชี ${accountLabel} ต้องไม่ก่อนวันที่ยอดยกมา`,
+      );
     }
   }
 }

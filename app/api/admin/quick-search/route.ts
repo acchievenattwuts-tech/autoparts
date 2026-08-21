@@ -50,7 +50,10 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     if (!rate.ok) {
       return NextResponse.json(
         { error: "RATE_LIMITED" },
-        { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
+        { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000),
+            ),
+          },
+        },
       );
     }
 
@@ -67,7 +70,9 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       creditNotes: can("credit_notes.view"),
       receipts: can("receipts.view"),
       customerAdvances: can("customer_advances.view"),
+      customerAdvanceRefunds: can("customer_advance_refunds.view"),
       supplierAdvances: can("supplier_advances.view"),
+      supplierAdvanceRefunds: can("supplier_advance_refunds.view"),
       supplierPayments: can("supplier_payments.view"),
       expenses: can("expenses.view"),
       warrantyClaims: can("warranty_claims.view"),
@@ -76,7 +81,8 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       suppliers: can("master.view"),
     };
 
-    const rows = await queryAdminQuickSearchRows({ query, docOnly, access, take: TAKE_PER_GROUP });
+    const rows = await queryAdminQuickSearchRows({ query, docOnly, access, take: TAKE_PER_GROUP,
+    });
     return NextResponse.json(
       { groups: buildQuickSearchGroups(rows) },
       { headers: { "Cache-Control": "private, no-store" } },

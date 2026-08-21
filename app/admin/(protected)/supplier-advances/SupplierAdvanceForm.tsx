@@ -4,8 +4,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
-import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
-import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
+import SearchableSelect, { type SelectOption,
+} from "@/components/shared/SearchableSelect";
+import PaymentChannelsInput, { type PaymentChannelRow,
+} from "@/components/shared/PaymentChannelsInput";
 import { createSupplierAdvance, updateSupplierAdvance } from "./actions";
 import { getThailandDateKey } from "@/lib/th-date";
 
@@ -44,11 +46,13 @@ const SupplierAdvanceForm = ({
   cashBankAccounts,
   initialData,
   submitLocked = false,
+  sourceFieldsLocked = false,
 }: {
   suppliers: SupplierOption[];
   cashBankAccounts: CashBankAccountOption[];
   initialData?: InitialData;
   submitLocked?: boolean;
+  sourceFieldsLocked?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -99,7 +103,8 @@ const SupplierAdvanceForm = ({
     if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
     const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
     if (Math.abs(paymentsTotal - totalAmount) > 0.005) {
-      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดเงินมัดจำ (${totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดเงินมัดจำ (${totalAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`,
+      );
       return;
     }
 
@@ -109,7 +114,9 @@ const SupplierAdvanceForm = ({
     formData.set("totalAmount", String(totalAmount));
     formData.set(
       "payments",
-      JSON.stringify(activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))),
+      JSON.stringify(activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount,
+        })),
+      ),
     );
     formData.set("note", note);
 
@@ -151,6 +158,7 @@ const SupplierAdvanceForm = ({
               type="date"
               value={advanceDate}
               onChange={(event) => setAdvanceDate(event.target.value)}
+              disabled={sourceFieldsLocked}
               className={inputCls}
             />
           </div>
@@ -164,6 +172,7 @@ const SupplierAdvanceForm = ({
               value={supplierId}
               onChange={setSupplierId}
               placeholder="โปรดระบุซัพพลายเออร์"
+              disabled={sourceFieldsLocked}
             />
           </div>
 
@@ -176,12 +185,17 @@ const SupplierAdvanceForm = ({
               step={0.01}
               value={totalAmount}
               onValueChange={setTotalAmount}
+              disabled={sourceFieldsLocked}
               className={inputCls}
               placeholder="0.00"
             />
           </div>
 
-          <div>
+          <div
+            className={
+              sourceFieldsLocked ? "pointer-events-none opacity-60" : ""
+            }
+          >
             <PaymentChannelsInput
               accounts={cashBankAccounts}
               value={payments}
@@ -208,6 +222,12 @@ const SupplierAdvanceForm = ({
           </div>
         </div>
       </div>
+
+      {sourceFieldsLocked ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
+          เอกสารนี้มี CN รับคืนเงินมัดจำแล้ว จึงแก้ไขได้เฉพาะหมายเหตุ
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
         เงินมัดจำซัพพลายเออร์เป็นเอกสารจ่ายล่วงหน้าที่ไม่กระทบสต็อก และยอดคงเหลือจะถูกนำไปหักตอนทำเอกสารจ่ายชำระซัพพลายเออร์ภายหลัง

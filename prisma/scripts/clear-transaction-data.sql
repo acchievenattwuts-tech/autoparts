@@ -43,6 +43,7 @@ DELETE FROM "DeliveryCommissionRun";
 -- STEP 4: SupplierPaymentItem
 -- (references Purchase, PurchaseReturn, SupplierAdvance — ต้องลบก่อนทั้งสาม)
 -- ────────────────────────────────────────────────────────────────
+DELETE FROM "DocumentPayment";
 DELETE FROM "SupplierPaymentItem";
 
 -- ────────────────────────────────────────────────────────────────
@@ -95,6 +96,9 @@ DELETE FROM "Adjustment";
 -- STEP 12: SupplierAdvance & SupplierPayment
 -- (SupplierPaymentItem ลบไปแล้วใน STEP 4)
 -- ────────────────────────────────────────────────────────────────
+DELETE FROM "CustomerAdvanceRefund";
+DELETE FROM "SupplierAdvanceRefund";
+DELETE FROM "CustomerAdvance";
 DELETE FROM "SupplierAdvance";
 DELETE FROM "SupplierPayment";
 

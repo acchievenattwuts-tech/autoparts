@@ -7,6 +7,8 @@ export type MutableDocumentEntityType =
   | "SupplierPayment"
   | "SupplierAdvance"
   | "CustomerAdvance"
+  | "SupplierAdvanceRefund"
+  | "CustomerAdvanceRefund"
   | "Expense"
   | "WarrantyClaim";
 
@@ -33,6 +35,8 @@ type GuardDb = {
   warrantyClaim?: { findMany(args: FindManyArgs): FindManyResult };
   purchaseReturn?: { findMany(args: FindManyArgs): FindManyResult };
   supplierPaymentItem?: { findMany(args: FindManyArgs): FindManyResult };
+  supplierAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
+  customerAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
 };
 
 const allow = (): MutationBlockResult => ({
@@ -41,13 +45,15 @@ const allow = (): MutationBlockResult => ({
   references: [],
 });
 
-const block = (reason: string, references: MutationBlockReference[]): MutationBlockResult => ({
+const block = (reason: string, references: MutationBlockReference[],
+): MutationBlockResult => ({
   blocked: references.length > 0,
   reason: references.length > 0 ? reason : null,
   references,
 });
 
-const uniqueRefs = (refs: MutationBlockReference[]): MutationBlockReference[] => {
+const uniqueRefs = (refs: MutationBlockReference[],
+): MutationBlockReference[] => {
   const seen = new Set<string>();
   return refs.filter((ref) => {
     const key = `${ref.entityType}:${ref.id}`;
@@ -63,7 +69,7 @@ function stringValue(value: unknown): string | null {
 
 function nestedRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -97,7 +103,8 @@ function mapNestedRefs(
     .filter((ref): ref is MutationBlockReference => ref !== null);
 }
 
-export function buildMutationBlockMessage(result: MutationBlockResult): string | null {
+export function buildMutationBlockMessage(result: MutationBlockResult,
+): string | null {
   if (!result.blocked || !result.reason) return null;
   const refs = result.references.map((ref) => ref.refNo).join(", ");
   return `ไม่สามารถดำเนินการได้ เนื่องจาก${result.reason}${refs ? `: ${refs}` : ""}`;
@@ -112,6 +119,8 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   SupplierPayment: "/admin/supplier-payments",
   SupplierAdvance: "/admin/supplier-advances",
   CustomerAdvance: "/admin/customer-advances",
+  SupplierAdvanceRefund: "/admin/supplier-advance-refunds",
+  CustomerAdvanceRefund: "/admin/customer-advance-refunds",
   Expense: "/admin/expenses",
   WarrantyClaim: "/admin/warranty-claims",
 };
@@ -135,7 +144,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
     async check(
       entityType: MutableDocumentEntityType,
       entityId: string,
-      _action: DocumentMutationAction,
+      action: DocumentMutationAction,
     ): Promise<MutationBlockResult> {
       if (!entityId) return allow();
 
@@ -150,7 +159,8 @@ export function createDocumentMutationGuard(database: GuardDb) {
             select: { receipt: { select: { id: true, receiptNo: true } } },
           }) ?? Promise.resolve([]),
           database.warrantyClaim?.findMany({
-            where: { warranty: { saleId: entityId }, status: { not: "CANCELLED" } },
+            where: { warranty: { saleId: entityId }, status: { not: "CANCELLED" },
+            },
             select: { id: true, claimNo: true },
           }) ?? Promise.resolve([]),
         ]);
@@ -179,52 +189,88 @@ export function createDocumentMutationGuard(database: GuardDb) {
       }
 
       if (entityType === "CreditNote") {
-        const receiptItems = await database.receiptItem?.findMany({
+        const receiptItems =
+          (await database.receiptItem?.findMany({
           where: { cnId: entityId, receipt: { status: "ACTIVE" } },
           select: { receipt: { select: { id: true, receiptNo: true } } },
-        }) ?? [];
-        return block("ถูกนำไปใช้ที่ใบเสร็จรับเงิน", mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"));
+        })) ?? [];
+        return block("ถูกนำไปใช้ที่ใบเสร็จรับเงิน", mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
+        );
       }
 
       if (entityType === "PurchaseReturn") {
-        const paymentItems = await database.supplierPaymentItem?.findMany({
-          where: { purchaseReturnId: entityId, payment: { status: "ACTIVE" } },
+        const paymentItems =
+          (await database.supplierPaymentItem?.findMany({
+          where: { purchaseReturnId: entityId, payment: { status: "ACTIVE" },
+            },
           select: { payment: { select: { id: true, paymentNo: true } } },
-        }) ?? [];
+        })) ?? [];
         return block(
           "ถูกนำไปใช้ที่เอกสารจ่ายชำระ",
-          uniqueRefs(mapNestedRefs(paymentItems, "payment", "SupplierPayment", "paymentNo")),
+          uniqueRefs(mapNestedRefs(paymentItems, "payment", "SupplierPayment", "paymentNo",
+            ),
+          ),
         );
       }
 
       if (entityType === "SupplierAdvance") {
-        const paymentItems = await database.supplierPaymentItem?.findMany({
+        const [paymentItems, refunds] = await Promise.all([
+          database.supplierPaymentItem?.findMany({
           where: { advanceId: entityId, payment: { status: "ACTIVE" } },
           select: { payment: { select: { id: true, paymentNo: true } } },
-        }) ?? [];
+        }) ?? Promise.resolve([]),
+          action === "cancel"
+            ? (database.supplierAdvanceRefund?.findMany({
+                where: { supplierAdvanceId: entityId, status: "ACTIVE" },
+                select: { id: true, refundNo: true },
+              }) ?? Promise.resolve([]))
+            : Promise.resolve([]),
+        ]);
         return block(
-          "ถูกนำไปใช้ที่เอกสารจ่ายชำระ",
-          uniqueRefs(mapNestedRefs(paymentItems, "payment", "SupplierPayment", "paymentNo")),
+          refunds.length > 0
+            ? "ถูกนำไปใช้ที่เอกสารปลายทาง"
+            : "ถูกนำไปใช้ที่เอกสารจ่ายชำระ",
+          uniqueRefs([
+            ...mapNestedRefs(paymentItems, "payment", "SupplierPayment", "paymentNo",
+            ),
+            ...mapDirectRefs(refunds, "SupplierAdvanceRefund", "refundNo"),
+          ]),
         );
       }
 
       if (entityType === "CustomerAdvance") {
-        const receiptItems = await database.receiptItem?.findMany({
-          where: { customerAdvanceId: entityId, receipt: { status: "ACTIVE" } },
+        const [receiptItems, refunds] = await Promise.all([
+          database.receiptItem?.findMany({
+          where: { customerAdvanceId: entityId, receipt: { status: "ACTIVE" },
+            },
           select: { receipt: { select: { id: true, receiptNo: true } } },
-        }) ?? [];
+        }) ?? Promise.resolve([]),
+          action === "cancel"
+            ? (database.customerAdvanceRefund?.findMany({
+                where: { customerAdvanceId: entityId, status: "ACTIVE" },
+                select: { id: true, refundNo: true },
+              }) ?? Promise.resolve([]))
+            : Promise.resolve([]),
+        ]);
         return block(
-          "ถูกนำไปใช้ที่ใบเสร็จรับเงิน",
-          uniqueRefs(mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo")),
+          refunds.length > 0
+            ? "ถูกนำไปใช้ที่เอกสารปลายทาง"
+            : "ถูกนำไปใช้ที่ใบเสร็จรับเงิน",
+          uniqueRefs([
+            ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
+            ...mapDirectRefs(refunds, "CustomerAdvanceRefund", "refundNo"),
+          ]),
         );
       }
 
       if (entityType === "WarrantyClaim") {
-        const returns = await database.purchaseReturn?.findMany({
+        const returns =
+          (await database.purchaseReturn?.findMany({
           where: { claimId: entityId, status: "ACTIVE" },
           select: { id: true, returnNo: true },
-        }) ?? [];
-        return block("ถูกนำไปใช้ที่ใบลดหนี้ซื้อ", mapDirectRefs(returns, "PurchaseReturn", "returnNo"));
+        })) ?? [];
+        return block("ถูกนำไปใช้ที่ใบลดหนี้ซื้อ", mapDirectRefs(returns, "PurchaseReturn", "returnNo"),
+        );
       }
 
       return allow();
@@ -238,7 +284,8 @@ export async function checkDocumentMutation(
   action: DocumentMutationAction,
 ): Promise<MutationBlockResult> {
   const { db } = await import("@/lib/db");
-  return createDocumentMutationGuard(db as unknown as GuardDb).check(entityType, entityId, action);
+  return createDocumentMutationGuard(db as unknown as GuardDb).check(entityType, entityId, action,
+  );
 }
 
 export async function getDocumentMutationBlockMessage(

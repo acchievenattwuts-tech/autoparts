@@ -40,6 +40,8 @@ const ENTITY_LABELS: Record<string, string> = {
   Supplier: "เจ้าหนี้/ซัพพลายเออร์",
   SupplierAdvance: "เงินมัดจำเจ้าหนี้",
   CustomerAdvance: "เงินมัดจำลูกค้า",
+  CustomerAdvanceRefund: "คืนเงินมัดจำลูกค้า",
+  SupplierAdvanceRefund: "รับคืนเงินมัดจำซัพพลายเออร์",
   SupplierPayment: "จ่ายชำระเจ้าหนี้",
   User: "ผู้ใช้งาน",
   UserLineRecipient: "ผู้รับ LINE Daily Summary",
@@ -65,7 +67,8 @@ const SOURCE_ROUTE_BUILDERS: Record<string, (entityId: string) => string> = {
   Customer: (entityId) => `/admin/customers/${entityId}/edit`,
   Expense: (entityId) => `/admin/expenses/${entityId}`,
   ExpenseCode: staticAuditSourceHref("/admin/master/expense-codes"),
-  LineDailySummarySettings: staticAuditSourceHref("/admin/reports/line-daily-summary"),
+  LineDailySummarySettings: staticAuditSourceHref("/admin/reports/line-daily-summary",
+  ),
   PartnerProfile: staticAuditSourceHref("/admin/profit-distributions/partners"),
   Product: (entityId) => `/admin/products/${entityId}/edit`,
   ProfitDistribution: (entityId) => `/admin/profit-distributions/${entityId}`,
@@ -78,6 +81,10 @@ const SOURCE_ROUTE_BUILDERS: Record<string, (entityId: string) => string> = {
   Supplier: staticAuditSourceHref("/admin/master/suppliers"),
   SupplierAdvance: (entityId) => `/admin/supplier-advances/${entityId}`,
   CustomerAdvance: (entityId) => `/admin/customer-advances/${entityId}`,
+  CustomerAdvanceRefund: (entityId) =>
+    `/admin/customer-advance-refunds/${entityId}`,
+  SupplierAdvanceRefund: (entityId) =>
+    `/admin/supplier-advance-refunds/${entityId}`,
   SupplierPayment: (entityId) => `/admin/supplier-payments/${entityId}`,
   User: (entityId) => `/admin/users/${entityId}/edit`,
   UserLineRecipient: staticAuditSourceHref("/admin/reports/line-daily-summary"),
@@ -157,7 +164,8 @@ function normalizeString(value: string | undefined): string {
   return value?.trim() ?? "";
 }
 
-export function parseAuditLogSearchParams(params: SearchParamMap): AuditLogFilters {
+export function parseAuditLogSearchParams(params: SearchParamMap,
+): AuditLogFilters {
   const defaultDate = getThailandDateKey();
   const action = normalizeString(params.action);
 
@@ -175,7 +183,8 @@ export function parseAuditLogSearchParams(params: SearchParamMap): AuditLogFilte
   };
 }
 
-export function buildAuditLogListHref(filters: AuditLogFilters, page = filters.page): string {
+export function buildAuditLogListHref(filters: AuditLogFilters, page = filters.page,
+): string {
   const nextParams = new URLSearchParams();
 
   nextParams.set("user", filters.user);
@@ -244,8 +253,12 @@ export function buildAuditLogWhere(
           AND: [
             {
               OR: [
-                { entityRef: { contains: filters.entityRef, mode: "insensitive" } },
-                { entityId: { contains: filters.entityRef, mode: "insensitive" } },
+                { entityRef: { contains: filters.entityRef, mode: "insensitive",
+                  },
+                },
+                { entityId: { contains: filters.entityRef, mode: "insensitive",
+                  },
+                },
               ],
             },
           ],
@@ -311,7 +324,8 @@ function collectDiffRows(
   if (isJsonObject(beforeValue) || isJsonObject(afterValue)) {
     const beforeObject = isJsonObject(beforeValue) ? beforeValue : {};
     const afterObject = isJsonObject(afterValue) ? afterValue : {};
-    const keys = new Set([...Object.keys(beforeObject), ...Object.keys(afterObject)]);
+    const keys = new Set([...Object.keys(beforeObject), ...Object.keys(afterObject),
+    ]);
 
     const rows = [...keys]
       .sort((left, right) => left.localeCompare(right))
@@ -356,7 +370,8 @@ export function buildAuditDiffRows(
   );
 }
 
-export function formatAuditJson(value: AuditLog["meta"] | AuditLog["before"] | AuditLog["after"]): string {
+export function formatAuditJson(value: AuditLog["meta"] | AuditLog["before"] | AuditLog["after"],
+): string {
   if (value === null) {
     return "-";
   }

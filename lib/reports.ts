@@ -138,7 +138,9 @@ type ExpenseDocumentRow = {
 };
 
 type DailyReceiptRow = {
-  source: "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN";
+  source:
+    | "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"
+    | "SUPPLIER_ADVANCE_REFUND";
   docNo: string;
   docDate: Date;
   counterpartCode: string;
@@ -150,7 +152,9 @@ type DailyReceiptRow = {
 };
 
 type DailyPaymentRow = {
-  source: "PURCHASE" | "EXPENSE" | "CN_SALE" | "SUPPLIER_ADVANCE" | "SUPPLIER_PAYMENT";
+  source:
+    | "PURCHASE" | "EXPENSE" | "CN_SALE" | "SUPPLIER_ADVANCE" | "SUPPLIER_PAYMENT"
+    | "CUSTOMER_ADVANCE_REFUND";
   docNo: string;
   docDate: Date;
   counterpartCode: string;
@@ -251,6 +255,7 @@ export type ReportsData = {
     receiptAmount: number;
     customerAdvanceAmount: number;
     purchaseReturnRefundAmount: number;
+    supplierAdvanceRefundAmount: number;
     items: DailyReceiptRow[];
   };
   dailyPayments: {
@@ -260,6 +265,7 @@ export type ReportsData = {
     creditNoteRefundAmount: number;
     supplierAdvanceAmount: number;
     supplierPaymentAmount: number;
+    customerAdvanceRefundAmount: number;
     items: DailyPaymentRow[];
   };
 };
@@ -310,7 +316,8 @@ function normalizeCode(value: string | undefined): string {
   return value?.trim() ?? "";
 }
 
-function buildStringRange(from: string, to: string): { gte?: string; lte?: string } | undefined {
+function buildStringRange(from: string, to: string,
+): { gte?: string; lte?: string } | undefined {
   if (!from && !to) return undefined;
   return { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
 }
@@ -327,7 +334,7 @@ async function runQueryBatches(batches: Array<Array<Promise<unknown>>>) {
 }
 
 function buildWeightedSaleCostMap(
-  saleItems: Array<{ productId: string; quantity: number; costPrice: number }>
+  saleItems: Array<{ productId: string; quantity: number; costPrice: number }>,
 ): Map<string, number> {
   const totals = new Map<string, { qty: number; cost: number }>();
 
@@ -346,7 +353,8 @@ function buildWeightedSaleCostMap(
   );
 }
 
-function getPaymentMethodLabel(method: PaymentMethod | null | undefined): string {
+function getPaymentMethodLabel(method: PaymentMethod | null | undefined,
+): string {
   switch (method) {
     case PaymentMethod.CASH:
       return "เงินสด";
@@ -359,7 +367,8 @@ function getPaymentMethodLabel(method: PaymentMethod | null | undefined): string
   }
 }
 
-function getRefundMethodLabel(method: CNRefundMethod | null | undefined): string {
+function getRefundMethodLabel(method: CNRefundMethod | null | undefined,
+): string {
   switch (method) {
     case CNRefundMethod.CASH:
       return "เงินสด";
@@ -371,7 +380,7 @@ function getRefundMethodLabel(method: CNRefundMethod | null | undefined): string
 }
 
 function getPurchaseReturnRefundMethodLabel(
-  method: PurchaseReturnRefundMethod | null | undefined
+  method: PurchaseReturnRefundMethod | null | undefined,
 ): string {
   switch (method) {
     case PurchaseReturnRefundMethod.CASH:
@@ -391,7 +400,7 @@ function buildSalesBuckets(
     netSaleAmount: number;
     vatAmount: number;
   }>,
-  mode: "day" | "week" | "month"
+  mode: "day" | "week" | "month",
 ): SalesBucket[] {
   const bucketMap = new Map<string, SalesBucket & { sortDate: Date }>();
 
@@ -472,8 +481,10 @@ export function parseReportFilters(params: {
   const defaults = getDefaultReportRange();
   const from = parseDateInput(params.from, parseDateOnlyToDate(defaults.from));
   const to = parseDateInput(params.to, parseDateOnlyToDate(defaults.to));
-  const normalizedFrom = parseDateOnlyToStartOfDay(formatDateOnlyForInput(from));
-  const normalizedTo = parseDateOnlyToEndOfDay(formatDateOnlyForInput(to < from ? from : to));
+  const normalizedFrom = parseDateOnlyToStartOfDay(formatDateOnlyForInput(from),
+  );
+  const normalizedTo = parseDateOnlyToEndOfDay(formatDateOnlyForInput(to < from ? from : to),
+  );
 
   return {
     from: normalizedFrom,
@@ -512,13 +523,18 @@ export function buildReportQuery(filters: ParsedReportFilters): string {
   return params.toString();
 }
 
-export async function getReportsData(filters: ParsedReportFilters): Promise<ReportsData> {
+export async function getReportsData(filters: ParsedReportFilters,
+): Promise<ReportsData> {
   const now = new Date();
   const soonDate = addThailandDays(startOfDay(now), 30);
-  const customerCodeRange = buildStringRange(filters.customerCodeFrom, filters.customerCodeTo);
-  const supplierCodeRange = buildStringRange(filters.supplierCodeFrom, filters.supplierCodeTo);
-  const productCodeRange = buildStringRange(filters.productCodeFrom, filters.productCodeTo);
-  const expenseCodeRange = buildStringRange(filters.expenseCodeFrom, filters.expenseCodeTo);
+  const customerCodeRange = buildStringRange(filters.customerCodeFrom, filters.customerCodeTo,
+  );
+  const supplierCodeRange = buildStringRange(filters.supplierCodeFrom, filters.supplierCodeTo,
+  );
+  const productCodeRange = buildStringRange(filters.productCodeFrom, filters.productCodeTo,
+  );
+  const expenseCodeRange = buildStringRange(filters.expenseCodeFrom, filters.expenseCodeTo,
+  );
 
   const saleWhere = {
     status: "ACTIVE" as const,
@@ -560,6 +576,20 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     advanceDate: { gte: filters.from, lte: filters.to },
     ...(customerCodeRange ? { customer: { code: customerCodeRange } } : {}),
   };
+  const supplierAdvanceRefundWhere = {
+    status: "ACTIVE" as const,
+    refundDate: { gte: filters.from, lte: filters.to },
+    ...(supplierCodeRange
+      ? { supplierAdvance: { supplier: { code: supplierCodeRange } } }
+      : {}),
+  };
+  const customerAdvanceRefundWhere = {
+    status: "ACTIVE" as const,
+    refundDate: { gte: filters.from, lte: filters.to },
+    ...(customerCodeRange
+      ? { customerAdvance: { customer: { code: customerCodeRange } } }
+      : {}),
+  };
   const supplierPaymentWhere = {
     status: "ACTIVE" as const,
     paymentDate: { gte: filters.from, lte: filters.to },
@@ -570,7 +600,11 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     receiptDate: { gte: filters.from, lte: filters.to },
     ...(customerCodeRange ? { customer: { code: customerCodeRange } } : {}),
     ...(productCodeRange
-      ? { items: { some: { sale: { items: { some: { product: { code: productCodeRange } } } } } } }
+      ? { items: { some: { sale: { items: { some: { product: { code: productCodeRange } } },
+              },
+            },
+          },
+        }
       : {}),
   };
   const outstandingSaleWhere = {
@@ -597,7 +631,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           note: true,
           cashBankAccount: { select: { name: true } },
           customer: { select: { code: true, name: true } },
-          items: { orderBy: { lineNo: "asc" }, select: { quantity: true, costPrice: true, lineDiscount: true } },
+          items: { orderBy: { lineNo: "asc" }, select: { quantity: true, costPrice: true, lineDiscount: true },
+      },
         },
       });
   const creditNotesPromise = db.creditNote.findMany({
@@ -729,6 +764,42 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           customer: { select: { code: true, name: true } },
         },
       });
+  const supplierAdvanceRefundsPromise = db.supplierAdvanceRefund.findMany({
+    where: supplierAdvanceRefundWhere,
+    orderBy: [{ refundDate: "asc" }, { refundNo: "asc" }],
+    select: {
+      refundNo: true,
+      refundDate: true,
+      refundAmount: true,
+      paymentMethod: true,
+      note: true,
+      cashBankAccount: { select: { name: true } },
+      supplierAdvance: {
+        select: {
+          advanceNo: true,
+          supplier: { select: { code: true, name: true } },
+        },
+      },
+    },
+  });
+  const customerAdvanceRefundsPromise = db.customerAdvanceRefund.findMany({
+    where: customerAdvanceRefundWhere,
+    orderBy: [{ refundDate: "asc" }, { refundNo: "asc" }],
+    select: {
+      refundNo: true,
+      refundDate: true,
+      refundAmount: true,
+      paymentMethod: true,
+      note: true,
+      cashBankAccount: { select: { name: true } },
+      customerAdvance: {
+        select: {
+          advanceNo: true,
+          customer: { select: { code: true, name: true } },
+        },
+      },
+    },
+  });
   const supplierPaymentsPromise = db.supplierPayment.findMany({
         where: supplierPaymentWhere,
         orderBy: [{ paymentDate: "asc" }, { paymentNo: "asc" }],
@@ -903,8 +974,11 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     outstandingSales,
     receipts,
     customerAdvances,
+    supplierAdvanceRefunds,
+    customerAdvanceRefunds,
   ] = (await runQueryBatches([
-    [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise],
+    [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise,
+    ],
     [
       supplierAdvancesPromise,
       supplierPaymentsPromise,
@@ -912,7 +986,10 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       warrantiesPromise,
       openClaimsPromise,
     ],
-    [outstandingSalesPromise, receiptsPromise, customerAdvancesPromise],
+    [outstandingSalesPromise, receiptsPromise, customerAdvancesPromise,
+      supplierAdvanceRefundsPromise,
+      customerAdvanceRefundsPromise,
+    ],
   ])) as [
     Awaited<typeof salesPromise>,
     Awaited<typeof creditNotesPromise>,
@@ -927,6 +1004,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     Awaited<typeof outstandingSalesPromise>,
     Awaited<typeof receiptsPromise>,
     Awaited<typeof customerAdvancesPromise>,
+    Awaited<typeof supplierAdvanceRefundsPromise>,
+    Awaited<typeof customerAdvanceRefundsPromise>,
   ];
 
   const normalizedSales = sales.map((sale) => ({
@@ -942,10 +1021,12 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     paymentMethod: sale.paymentMethod,
     accountName: sale.cashBankAccount?.name ?? "-",
     note: sale.note ?? "",
-    cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0),
+    cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0,
+    ),
     // Memo only: total line-level discount granted on this sale. Never feeds
     // revenue/COGS/profit — netAmount is already net of it.
-    lineDiscount: sale.items.reduce((sum, item) => sum + toNumber(item.lineDiscount), 0),
+    lineDiscount: sale.items.reduce((sum, item) => sum + toNumber(item.lineDiscount), 0,
+    ),
   }));
   const normalizedCreditNotes = creditNotes.map((creditNote) => {
     const saleCostMap = buildWeightedSaleCostMap(
@@ -953,7 +1034,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         productId: saleItem.productId,
         quantity: Number(saleItem.quantity),
         costPrice: toNumber(saleItem.costPrice),
-      }))
+      })),
     );
 
     return {
@@ -1029,8 +1110,10 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     })),
   ];
 
-  const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0);
-  const lineDiscountTotal = normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0);
+  const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0,
+  );
+  const lineDiscountTotal = normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0,
+  );
   const totalInvoices = normalizedSales.length;
   const creditNoteCostReversal = normalizedCreditNotes.reduce(
     (sum, creditNote) => sum + creditNote.cogsReversal,
@@ -1038,14 +1121,22 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
   );
   const costOfGoodsSold =
     normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal;
-  const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0);
-  const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmount, 0);
-  const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0);
-  const purchaseVat = purchases.reduce((sum, purchase) => sum + toNumber(purchase.vatAmount), 0);
-  const expenseTotal = expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0);
-  const expenseVat = expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0);
-  const totalPurchaseAmount = purchases.reduce((sum, purchase) => sum + toNumber(purchase.netAmount), 0);
-  const totalReturnAmount = normalizedPurchaseReturns.reduce((sum, doc) => sum + doc.totalAmount, 0);
+  const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0,
+  );
+  const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmount, 0,
+  );
+  const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0,
+  );
+  const purchaseVat = purchases.reduce((sum, purchase) => sum + toNumber(purchase.vatAmount), 0,
+  );
+  const expenseTotal = expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
+  );
+  const expenseVat = expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
+  );
+  const totalPurchaseAmount = purchases.reduce((sum, purchase) => sum + toNumber(purchase.netAmount), 0,
+  );
+  const totalReturnAmount = normalizedPurchaseReturns.reduce((sum, doc) => sum + doc.totalAmount, 0,
+  );
   const netRevenue = grossSales - salesReturns;
   const grossProfit = netRevenue - costOfGoodsSold;
   const netProfit = grossProfit - expenseTotal;
@@ -1066,7 +1157,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         ?? "-",
     saleNo: warranty.sale?.saleNo ?? "-",
     endDate: warranty.endDate,
-    daysLeft: Math.ceil((startOfDay(warranty.endDate).getTime() - startOfDay(now).getTime()) / DAY_MS),
+    daysLeft: Math.ceil((startOfDay(warranty.endDate).getTime() - startOfDay(now).getTime()) / DAY_MS,
+    ),
   }));
   const openClaimItems: OpenClaimRow[] = openClaims.map((claim) => ({
     id: claim.id,
@@ -1092,11 +1184,14 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     ["มากกว่า 90 วัน", 0],
   ]);
   const receivableItems: ReceivableRow[] = outstandingSales.map((sale) => {
-    const ageDays = Math.max(0, Math.floor((startOfDay(now).getTime() - startOfDay(sale.saleDate).getTime()) / DAY_MS));
+    const ageDays = Math.max(0, Math.floor((startOfDay(now).getTime() - startOfDay(sale.saleDate).getTime()) / DAY_MS,
+      ),
+    );
     const bucketLabel =
       ageDays <= 30 ? "0-30 วัน" : ageDays <= 60 ? "31-60 วัน" : ageDays <= 90 ? "61-90 วัน" : "มากกว่า 90 วัน";
     const amountRemain = toNumber(sale.amountRemain);
-    receivableBuckets.set(bucketLabel, (receivableBuckets.get(bucketLabel) ?? 0) + amountRemain);
+    receivableBuckets.set(bucketLabel, (receivableBuckets.get(bucketLabel) ?? 0) + amountRemain,
+    );
     return {
       id: sale.id,
       saleNo: sale.saleNo,
@@ -1253,19 +1348,34 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       note: advance.note ?? "",
     })),
     ...normalizedPurchaseReturns
-      .filter((purchaseReturn) => purchaseReturn.settlementType === PurchaseReturnSettlementType.CASH_REFUND)
+      .filter((purchaseReturn) => purchaseReturn.settlementType === PurchaseReturnSettlementType.CASH_REFUND,
+      )
       .map((purchaseReturn) => ({
         source: "PURCHASE_RETURN" as const,
         docNo: purchaseReturn.returnNo,
         docDate: purchaseReturn.returnDate,
         counterpartCode: purchaseReturn.supplierCode,
         counterpartName: purchaseReturn.supplierName,
-        paymentMethod: getPurchaseReturnRefundMethodLabel(purchaseReturn.refundMethod),
+        paymentMethod: getPurchaseReturnRefundMethodLabel(purchaseReturn.refundMethod,
+        ),
         accountName: purchaseReturn.accountName,
         amount: purchaseReturn.totalAmount,
         note: purchaseReturn.note,
       })),
-  ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo));
+    ...supplierAdvanceRefunds.map((refund) => ({
+      source: "SUPPLIER_ADVANCE_REFUND" as const,
+      docNo: refund.refundNo,
+      docDate: refund.refundDate,
+      counterpartCode: refund.supplierAdvance.supplier.code ?? "",
+      counterpartName: refund.supplierAdvance.supplier.name,
+      paymentMethod: getPaymentMethodLabel(refund.paymentMethod),
+      accountName: refund.cashBankAccount?.name ?? "-",
+      amount: toNumber(refund.refundAmount),
+      note: [refund.supplierAdvance.advanceNo, refund.note].filter(Boolean)
+        .join(" · "),
+    })),
+  ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo),
+  );
 
   const dailyPaymentRows: DailyPaymentRow[] = [
     ...purchases
@@ -1296,7 +1406,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       note: expense.note ?? expense.items.map((item) => item.expenseCode.name).join(", "),
     })),
     ...normalizedCreditNotes
-      .filter((creditNote) => creditNote.settlementType === CNSettlementType.CASH_REFUND)
+      .filter((creditNote) => creditNote.settlementType === CNSettlementType.CASH_REFUND,
+      )
       .map((creditNote) => ({
         source: "CN_SALE" as const,
         docNo: creditNote.cnNo,
@@ -1332,7 +1443,20 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         amount: payment.totalAmount,
         note: payment.note,
       })),
-  ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo));
+    ...customerAdvanceRefunds.map((refund) => ({
+      source: "CUSTOMER_ADVANCE_REFUND" as const,
+      docNo: refund.refundNo,
+      docDate: refund.refundDate,
+      counterpartCode: refund.customerAdvance.customer.code ?? "",
+      counterpartName: refund.customerAdvance.customer.name,
+      paymentMethod: getPaymentMethodLabel(refund.paymentMethod),
+      accountName: refund.cashBankAccount?.name ?? "-",
+      amount: toNumber(refund.refundAmount),
+      note: [refund.customerAdvance.advanceNo, refund.note].filter(Boolean)
+        .join(" · "),
+    })),
+  ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo),
+  );
 
   return {
     range: { from: filters.fromInput, to: filters.toInput },
@@ -1388,19 +1512,24 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       items: openClaimItems,
     },
     receivables: {
-      totalOutstanding: receivableItems.reduce((sum, item) => sum + item.amountRemain, 0),
+      totalOutstanding: receivableItems.reduce((sum, item) => sum + item.amountRemain, 0,
+      ),
       regularOutstanding: receivableItems.filter((item) => !item.isCodPending).reduce((sum, item) => sum + item.amountRemain, 0),
       codPendingOutstanding: receivableItems.filter((item) => item.isCodPending).reduce((sum, item) => sum + item.amountRemain, 0),
-      buckets: [...receivableBuckets.entries()].map(([label, amount]) => ({ label, amount })),
+      buckets: [...receivableBuckets.entries()].map(([label, amount]) => ({ label, amount,
+      })),
       items: receivableItems.sort((a, b) => b.amountRemain - a.amountRemain).slice(0, 100),
     },
     payables: {
       purchaseOutstanding: purchases
-        .filter((purchase) => purchase.purchaseType === PurchaseType.CREDIT_PURCHASE)
+        .filter((purchase) => purchase.purchaseType === PurchaseType.CREDIT_PURCHASE,
+        )
         .reduce((sum, purchase) => sum + toNumber(purchase.amountRemain), 0),
-      advanceOutstanding: normalizedSupplierAdvances.reduce((sum, advance) => sum + advance.amountRemain, 0),
+      advanceOutstanding: normalizedSupplierAdvances.reduce((sum, advance) => sum + advance.amountRemain, 0,
+      ),
       purchaseReturnCreditOutstanding: normalizedPurchaseReturns
-        .filter((purchaseReturn) => purchaseReturn.settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT)
+        .filter((purchaseReturn) => purchaseReturn.settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT,
+        )
         .reduce((sum, purchaseReturn) => sum + purchaseReturn.amountRemain, 0),
     },
     suppliers: {
@@ -1410,17 +1539,23 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       items: [...supplierMap.values()].sort((a, b) => b.netPurchaseAmount - a.netPurchaseAmount).slice(0, 50),
     },
     customers: {
-      totalNetSalesAmount: [...customerMap.values()].reduce((sum, item) => sum + item.netSalesAmount, 0),
-      totalOutstandingAmount: [...customerMap.values()].reduce((sum, item) => sum + item.outstandingAmount, 0),
+      totalNetSalesAmount: [...customerMap.values()].reduce((sum, item) => sum + item.netSalesAmount, 0,
+      ),
+      totalOutstandingAmount: [...customerMap.values()].reduce((sum, item) => sum + item.outstandingAmount, 0,
+      ),
       items: [...customerMap.values()].sort((a, b) => b.netSalesAmount - a.netSalesAmount).slice(0, 50),
     },
     expenses: {
-      totalAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.totalAmount), 0),
-      totalVatAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0),
-      totalNetAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0),
+      totalAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.totalAmount), 0,
+      ),
+      totalVatAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
+      ),
+      totalNetAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
+      ),
       items: [...expenseSummaryMap.values()].sort((a, b) => b.netAmount - a.netAmount).slice(0, 50),
       documents: expenseDocumentRows
-        .sort((a, b) => a.expenseDate.getTime() - b.expenseDate.getTime() || a.expenseNo.localeCompare(b.expenseNo))
+        .sort((a, b) => a.expenseDate.getTime() - b.expenseDate.getTime() || a.expenseNo.localeCompare(b.expenseNo),
+        )
         .slice(0, 100),
     },
     dailyReceipts: {
@@ -1432,6 +1567,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
         .reduce((sum, item) => sum + item.amount, 0),
       purchaseReturnRefundAmount: dailyReceiptRows
         .filter((item) => item.source === "PURCHASE_RETURN")
+        .reduce((sum, item) => sum + item.amount, 0),
+      supplierAdvanceRefundAmount: dailyReceiptRows
+        .filter((item) => item.source === "SUPPLIER_ADVANCE_REFUND")
         .reduce((sum, item) => sum + item.amount, 0),
       items: dailyReceiptRows.slice(0, 100),
     },
@@ -1446,6 +1584,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       supplierPaymentAmount: dailyPaymentRows
         .filter((item) => item.source === "SUPPLIER_PAYMENT")
         .reduce((sum, item) => sum + item.amount, 0),
+      customerAdvanceRefundAmount: dailyPaymentRows
+        .filter((item) => item.source === "CUSTOMER_ADVANCE_REFUND")
+        .reduce((sum, item) => sum + item.amount, 0),
       items: dailyPaymentRows.slice(0, 100),
     },
   };
@@ -1454,7 +1595,8 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
 export function buildReportsCsv(data: ReportsData): string {
   const lines: string[] = [];
   const pushRow = (values: Array<string | number>) => {
-    lines.push(values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","));
+    lines.push(values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),
+    );
   };
   pushRow(["ช่วงรายงาน", `${data.range.from} ถึง ${data.range.to}`]);
   pushRow(["ลูกค้า From", data.filters.customerCodeFrom || "-"]);
@@ -1468,10 +1610,13 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["สรุปรายงานขาย"]);
-  pushRow(["ส่วนลดระดับรายการรวม", data.salesSummary.lineDiscountTotal.toFixed(2)]);
-  pushRow(["ช่วงเวลา", "จำนวนเอกสาร", "ยอดขาย", "ยอดคืน", "Net Sale", "VAT สุทธิ"]);
+  pushRow(["ส่วนลดระดับรายการรวม", data.salesSummary.lineDiscountTotal.toFixed(2),
+  ]);
+  pushRow(["ช่วงเวลา", "จำนวนเอกสาร", "ยอดขาย", "ยอดคืน", "Net Sale", "VAT สุทธิ",
+  ]);
   for (const row of data.salesSummary.byDay) {
-    pushRow([row.label, row.documentCount, row.grossSalesAmount.toFixed(2), row.returnAmount.toFixed(2), row.netSaleAmount.toFixed(2), row.vatAmount.toFixed(2)]);
+    pushRow([row.label, row.documentCount, row.grossSalesAmount.toFixed(2), row.returnAmount.toFixed(2), row.netSaleAmount.toFixed(2), row.vatAmount.toFixed(2),
+    ]);
   }
   lines.push("");
 
@@ -1491,7 +1636,8 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["รายงานรับเงินประจำวัน"]);
-  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ"]);
+  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ",
+  ]);
   for (const row of data.dailyReceipts.items) {
     pushRow([
       row.source === "SALE"
@@ -1500,7 +1646,9 @@ export function buildReportsCsv(data: ReportsData): string {
           ? "ใบเสร็จรับเงิน"
           : row.source === "CUSTOMER_ADVANCE"
             ? "รับเงินมัดจำลูกค้า"
-            : "รับเงินคืนซื้อ",
+            : row.source === "SUPPLIER_ADVANCE_REFUND"
+              ? "รับคืนเงินมัดจำซัพพลายเออร์"
+              : "รับเงินคืนซื้อ",
       row.docNo,
       formatDateInput(row.docDate),
       row.counterpartCode || "-",
@@ -1514,7 +1662,8 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["รายงานจ่ายเงินประจำวัน"]);
-  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ"]);
+  pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ",
+  ]);
   for (const row of data.dailyPayments.items) {
     pushRow([
       row.source === "PURCHASE"
@@ -1525,7 +1674,9 @@ export function buildReportsCsv(data: ReportsData): string {
             ? "มัดจำซัพพลายเออร์"
             : row.source === "SUPPLIER_PAYMENT"
               ? "จ่ายซัพพลายเออร์"
-              : "ค่าใช้จ่าย",
+              : row.source === "CUSTOMER_ADVANCE_REFUND"
+                ? "คืนเงินมัดจำลูกค้า"
+                : "ค่าใช้จ่าย",
       row.docNo,
       formatDateInput(row.docDate),
       row.counterpartCode || "-",
@@ -1539,44 +1690,55 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["รายงานค่าใช้จ่าย"]);
-  pushRow(["รหัสค่าใช้จ่าย", "ชื่อ", "จำนวนรายการ", "ยอดรวม", "VAT", "ยอดสุทธิ"]);
+  pushRow(["รหัสค่าใช้จ่าย", "ชื่อ", "จำนวนรายการ", "ยอดรวม", "VAT", "ยอดสุทธิ",
+  ]);
   for (const row of data.expenses.items) {
-    pushRow([row.expenseCode, row.expenseName, row.documentCount, row.totalAmount.toFixed(2), row.vatAmount.toFixed(2), row.netAmount.toFixed(2)]);
+    pushRow([row.expenseCode, row.expenseName, row.documentCount, row.totalAmount.toFixed(2), row.vatAmount.toFixed(2), row.netAmount.toFixed(2),
+    ]);
   }
   lines.push("");
 
   pushRow(["ลูกหนี้ค้างชำระ"]);
-  pushRow(["เลขที่ขาย", "วันที่ขาย", "รหัสลูกค้า", "ลูกค้า", "ยอดค้าง", "อายุหนี้(วัน)", "ช่วงอายุหนี้", "ประเภท"]);
+  pushRow(["เลขที่ขาย", "วันที่ขาย", "รหัสลูกค้า", "ลูกค้า", "ยอดค้าง", "อายุหนี้(วัน)", "ช่วงอายุหนี้", "ประเภท",
+  ]);
   for (const row of data.receivables.items) {
-    pushRow([row.saleNo, formatDateInput(row.saleDate), row.customerCode || "-", row.customerName, row.amountRemain.toFixed(2), row.ageDays, row.bucketLabel, row.isCodPending ? "COD ค้างรับ" : "ลูกหนี้ทั่วไป"]);
+    pushRow([row.saleNo, formatDateInput(row.saleDate), row.customerCode || "-", row.customerName, row.amountRemain.toFixed(2), row.ageDays, row.bucketLabel, row.isCodPending ? "COD ค้างรับ" : "ลูกหนี้ทั่วไป",
+    ]);
   }
   lines.push("");
 
   pushRow(["สรุปซื้อแยกซัพพลายเออร์"]);
-  pushRow(["รหัสซัพพลายเออร์", "ซัพพลายเออร์", "จำนวนเอกสารซื้อ", "ยอดซื้อ", "ยอดคืน", "สุทธิ"]);
+  pushRow(["รหัสซัพพลายเออร์", "ซัพพลายเออร์", "จำนวนเอกสารซื้อ", "ยอดซื้อ", "ยอดคืน", "สุทธิ",
+  ]);
   for (const row of data.suppliers.items) {
-    pushRow([row.supplierCode || "-", row.supplierName, row.purchaseCount, row.purchaseAmount.toFixed(2), row.returnAmount.toFixed(2), row.netPurchaseAmount.toFixed(2)]);
+    pushRow([row.supplierCode || "-", row.supplierName, row.purchaseCount, row.purchaseAmount.toFixed(2), row.returnAmount.toFixed(2), row.netPurchaseAmount.toFixed(2),
+    ]);
   }
   lines.push("");
 
   pushRow(["สรุปขายแยกลูกค้า"]);
-  pushRow(["รหัสลูกค้า", "ลูกค้า", "จำนวนบิล", "ยอดขาย", "ยอดคืน", "Net Sale", "ยอดค้างชำระ"]);
+  pushRow(["รหัสลูกค้า", "ลูกค้า", "จำนวนบิล", "ยอดขาย", "ยอดคืน", "Net Sale", "ยอดค้างชำระ",
+  ]);
   for (const row of data.customers.items) {
-    pushRow([row.customerCode || "-", row.customerName, row.invoiceCount, row.grossSalesAmount.toFixed(2), row.returnAmount.toFixed(2), row.netSalesAmount.toFixed(2), row.outstandingAmount.toFixed(2)]);
+    pushRow([row.customerCode || "-", row.customerName, row.invoiceCount, row.grossSalesAmount.toFixed(2), row.returnAmount.toFixed(2), row.netSalesAmount.toFixed(2), row.outstandingAmount.toFixed(2),
+    ]);
   }
   lines.push("");
 
   pushRow(["สินค้าใกล้ minStock"]);
   pushRow(["รหัส", "สินค้า", "หมวดหมู่", "คงเหลือ", "ขั้นต่ำ", "มูลค่า"]);
   for (const row of data.stock.lowStockItems) {
-    pushRow([row.code, row.name, row.categoryName, row.stock, row.minStock, row.stockValue.toFixed(2)]);
+    pushRow([row.code, row.name, row.categoryName, row.stock, row.minStock, row.stockValue.toFixed(2),
+    ]);
   }
   lines.push("");
 
   pushRow(["ประกันใกล้หมด"]);
-  pushRow(["เลขที่ขาย", "ลูกค้า", "รหัสสินค้า", "สินค้า", "วันหมดประกัน", "วันคงเหลือ"]);
+  pushRow(["เลขที่ขาย", "ลูกค้า", "รหัสสินค้า", "สินค้า", "วันหมดประกัน", "วันคงเหลือ",
+  ]);
   for (const row of data.warranties.expiringItems) {
-    pushRow([row.saleNo, row.customerName, row.productCode, row.productName, formatDateInput(row.endDate), row.daysLeft]);
+    pushRow([row.saleNo, row.customerName, row.productCode, row.productName, formatDateInput(row.endDate), row.daysLeft,
+    ]);
   }
 
   return `\uFEFF${lines.join("\n")}`;

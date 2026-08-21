@@ -30,6 +30,7 @@ type MoneySection = {
   cashInFromSales: number;
   cashInFromReceipts: number;
   cashInFromCustomerAdvances: number;
+  cashInFromSupplierAdvanceRefunds: number;
   cashInTotal: number;
   cashChannelTotal: number;
   transferChannelTotal: number;
@@ -37,6 +38,7 @@ type MoneySection = {
   codOutstanding: number;
   apOutstanding: number;
   expensesToday: number;
+  cashOutForCustomerAdvanceRefunds: number;
   transfersToday: number;
 };
 
@@ -145,7 +147,8 @@ export function resolveBangkokDayKey(value?: string): string {
   return isValidDayKey(value) ? value : getThailandDateKey();
 }
 
-async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>): Promise<T> {
+async function runSummaryStep<T>(stepName: string, runner: () => Promise<T>,
+): Promise<T> {
   try {
     return await runner();
   } catch (error) {
@@ -227,13 +230,15 @@ export function buildRiskRadarItems(risks: RiskRadarSection): RiskRadarItem[] {
   ];
 }
 
-function shouldKeepSummaryFactItem(item: SummaryFactItem, compactMode: boolean) {
+function shouldKeepSummaryFactItem(item: SummaryFactItem, compactMode: boolean,
+) {
   if (!compactMode) return true;
   if (item.keepWhenZero) return true;
   return item.compactValue !== 0;
 }
 
-function filterSummaryFactItems(items: SummaryFactItem[], compactMode: boolean) {
+function filterSummaryFactItems(items: SummaryFactItem[], compactMode: boolean,
+) {
   return items.filter((item) => shouldKeepSummaryFactItem(item, compactMode));
 }
 
@@ -262,6 +267,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
     `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
+    `- รับคืนเงินมัดจำซัพพลายเออร์ ${formatMoney(money.cashInFromSupplierAdvanceRefunds)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "💸 แยกตามช่องทางรับเงิน",
@@ -270,7 +276,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
     "",
     "💵 ยอดเงินคงเหลือแต่ละบัญชี",
     ...balances.accounts.map(
-      (account) => `- ${account.label} ${formatMoney(account.balance)} บาท`
+      (account) => `- ${account.label} ${formatMoney(account.balance)} บาท`,
     ),
     `- รวมทุกบัญชี ${formatMoney(balances.totalBalance)} บาท`,
     "",
@@ -280,10 +286,12 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- เจ้าหนี้ค้างจ่าย ${formatMoney(money.apOutstanding)} บาท`,
     "",
     "📡 เรดาร์ความเสี่ยงวันนี้",
-    ...buildRiskRadarItems(risks).map((item) => `- ${item.label} ${item.value}`),
+    ...buildRiskRadarItems(risks).map((item) => `- ${item.label} ${item.value}`,
+    ),
     "",
     "✨ สรุปเพิ่มเติม",
     `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- คืนเงินมัดจำลูกค้า ${formatMoney(money.cashOutForCustomerAdvanceRefunds)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -524,13 +532,24 @@ function buildLineDailySummaryFlexMessage(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows([
-                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
-                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}` },
-                  { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
-                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
-                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
-                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}` },
-                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}` },
+                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`,
+                  },
+                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}`,
+                  },
+                  { label: "รับคืนเงินมัดจำซัพพลายเออร์",
+                    value: `฿${formatMoney(money.cashInFromSupplierAdvanceRefunds)}`,
+                  },
+                  {
+                    label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`,
+                  },
+                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`,
+                  },
+                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`,
+                  },
+                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}`,
+                  },
+                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}`,
+                  },
                 ]),
               },
             ],
@@ -555,13 +574,20 @@ function buildLineDailySummaryFlexMessage(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows([
-                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ` },
-                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ` },
-                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ` },
-                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ` },
-                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot` },
-                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ` },
-                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ` },
+                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ`,
+                  },
+                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ`,
+                  },
+                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ`,
+                  },
+                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ`,
+                  },
+                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot`,
+                  },
+                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ`,
+                  },
+                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ`,
+                  },
                 ]),
               },
             ],
@@ -582,7 +608,7 @@ function buildLineDailySummaryFlexMessage(summary: {
               },
               {
                 type: "text",
-                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • คืนเงินมัดจำลูกค้า ฿${formatMoney(money.cashOutForCustomerAdvanceRefunds)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -617,6 +643,7 @@ function renderFriendlyLineDailySummaryMessage(summary: {
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
     `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
+    `- รับคืนเงินมัดจำซัพพลายเออร์ ${formatMoney(money.cashInFromSupplierAdvanceRefunds)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "แยกตามช่องทางรับเงิน",
@@ -646,6 +673,7 @@ function renderFriendlyLineDailySummaryMessage(summary: {
     "",
     "สรุปเพิ่มเติม",
     `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- คืนเงินมัดจำลูกค้า ${formatMoney(money.cashOutForCustomerAdvanceRefunds)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -666,7 +694,7 @@ async function getLotExpiryCounts(reportStart: Date, reportEnd: Date) {
         lotNo: true,
         expDate: true,
       },
-    })
+    }),
   );
 
   if (productLots.length === 0) {
@@ -686,10 +714,11 @@ async function getLotExpiryCounts(reportStart: Date, reportEnd: Date) {
         productId: true,
         lotNo: true,
       },
-    })
+    }),
   );
 
-  const activeLotKeys = new Set(lotBalances.map((lot) => `${lot.productId}:${lot.lotNo}`));
+  const activeLotKeys = new Set(lotBalances.map((lot) => `${lot.productId}:${lot.lotNo}`),
+  );
 
   let expiringLotCount = 0;
   let expiredLotCount = 0;
@@ -731,6 +760,7 @@ function renderLineDailySummaryMessage(summary: {
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
     `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
+    `- รับคืนเงินมัดจำซัพพลายเออร์ ${formatMoney(money.cashInFromSupplierAdvanceRefunds)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "แยกตามช่องทางรับเงิน",
@@ -760,6 +790,7 @@ function renderLineDailySummaryMessage(summary: {
     "",
     "สรุปเพิ่มเติม",
     `- จ่ายเงินวันนี้ ${formatMoney(money.expensesToday)} บาท`,
+    `- คืนเงินมัดจำลูกค้า ${formatMoney(money.cashOutForCustomerAdvanceRefunds)} บาท`,
     `- เงินโอนระหว่างบัญชีวันนี้ ${formatMoney(money.transfersToday)} บาท`,
   ].join("\n");
 }
@@ -897,10 +928,13 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows([
-                  { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}` },
+                  { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}`,
+                  },
                   { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}` },
-                  { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}` },
-                  { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}` },
+                  { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}`,
+                  },
+                  { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}`,
+                  },
                 ]),
               },
             ],
@@ -925,13 +959,24 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows([
-                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
-                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}` },
-                  { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
-                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
-                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
-                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}` },
-                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}` },
+                  { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`,
+                  },
+                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}`,
+                  },
+                  { label: "รับคืนเงินมัดจำซัพพลายเออร์",
+                    value: `฿${formatMoney(money.cashInFromSupplierAdvanceRefunds)}`,
+                  },
+                  {
+                    label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`,
+                  },
+                  { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`,
+                  },
+                  { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`,
+                  },
+                  { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}`,
+                  },
+                  { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}`,
+                  },
                 ]),
               },
             ],
@@ -956,13 +1001,20 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows([
-                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ` },
-                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ` },
-                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ` },
-                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ` },
-                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot` },
-                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ` },
-                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ` },
+                  { label: "รอจัดส่ง", value: `${formatCount(counts.pendingDelivery)} รายการ`,
+                  },
+                  { label: "กำลังจัดส่ง", value: `${formatCount(counts.outForDelivery)} รายการ`,
+                  },
+                  { label: "สต๊อกต่ำขั้นต่ำ", value: `${formatCount(counts.lowStockCount)} รายการ`,
+                  },
+                  { label: "ของหมด", value: `${formatCount(counts.outOfStockCount)} รายการ`,
+                  },
+                  { label: "lot ใกล้หมดอายุ", value: `${formatCount(counts.expiringLotCount)} lot`,
+                  },
+                  { label: "เคลมค้าง", value: `${formatCount(counts.openClaimCount)} รายการ`,
+                  },
+                  { label: "เอกสารถูกยกเลิก", value: `${formatCount(counts.cancelledDocumentCount)} รายการ`,
+                  },
                 ]),
               },
             ],
@@ -983,7 +1035,7 @@ function buildLineDailySummaryFlexMessageV2(summary: {
               },
               {
                 type: "text",
-                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • คืนเงินมัดจำลูกค้า ฿${formatMoney(money.cashOutForCustomerAdvanceRefunds)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -1003,7 +1055,8 @@ function buildLineDailySummaryFlexMessageV3(summary: {
   counts: CountSection;
   balances: BalanceSection;
   risks: RiskRadarSection;
-}, options: SummaryRenderOptions = {}): LineFlexMessage {
+}, options: SummaryRenderOptions = {},
+): LineFlexMessage {
   const { reportDateLabel, money, balances, risks } = summary;
   const compactMode = options.compactMode ?? false;
   const balanceFactItems: SummaryFactItem[] = [
@@ -1022,7 +1075,8 @@ function buildLineDailySummaryFlexMessageV3(summary: {
     label: item.label,
     value: item.value,
     compactValue: item.count,
-  }));
+  }),
+  );
 
   return {
     type: "flex",
@@ -1147,17 +1201,25 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 contents: buildSummaryFactRows(
                   filterSummaryFactItems(
                     [
-                      { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}`, compactValue: money.salesTotal, keepWhenZero: true },
-                      { label: "หน้าร้าน", value: `฿${formatMoney(money.storeSales)} / ${formatCount(money.storeOrderCount)} ออเดอร์`, compactValue: money.storeSales },
-                      { label: "Shopee", value: `฿${formatMoney(money.shopeeSales)} / ${formatCount(money.shopeeOrderCount)} ออเดอร์`, compactValue: money.shopeeSales },
-                      { label: "GP หน้าร้าน", value: `฿${formatMoney(money.storeGrossProfit)}`, compactValue: money.storeGrossProfit },
-                      { label: "GP Shopee", value: `฿${formatMoney(money.shopeeGrossProfit)}`, compactValue: money.shopeeGrossProfit },
-                      { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}`, compactValue: money.cashSales },
-                      { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}`, compactValue: money.creditSales },
-                      { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}`, compactValue: money.costOfGoodsSoldToday },
+                      { label: "ยอดขายรวม", value: `฿${formatMoney(money.salesTotal)}`, compactValue: money.salesTotal, keepWhenZero: true,
+                      },
+                      { label: "หน้าร้าน", value: `฿${formatMoney(money.storeSales)} / ${formatCount(money.storeOrderCount)} ออเดอร์`, compactValue: money.storeSales,
+                      },
+                      { label: "Shopee", value: `฿${formatMoney(money.shopeeSales)} / ${formatCount(money.shopeeOrderCount)} ออเดอร์`, compactValue: money.shopeeSales,
+                      },
+                      { label: "GP หน้าร้าน", value: `฿${formatMoney(money.storeGrossProfit)}`, compactValue: money.storeGrossProfit,
+                      },
+                      { label: "GP Shopee", value: `฿${formatMoney(money.shopeeGrossProfit)}`, compactValue: money.shopeeGrossProfit,
+                      },
+                      { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}`, compactValue: money.cashSales,
+                      },
+                      { label: "ขายเชื่อ", value: `฿${formatMoney(money.creditSales)}`, compactValue: money.creditSales,
+                      },
+                      { label: "ต้นทุนขาย", value: `฿${formatMoney(money.costOfGoodsSoldToday)}`, compactValue: money.costOfGoodsSoldToday,
+                      },
                     ],
-                    compactMode
-                  )
+                    compactMode,
+                  ),
                 ),
               },
             ],
@@ -1184,16 +1246,28 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 contents: buildSummaryFactRows(
                   filterSummaryFactItems(
                     [
-                      { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`, keepWhenZero: true },
-                      { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}`, compactValue: money.cashInFromCustomerAdvances },
-                      { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`, compactValue: money.cashChannelTotal },
-                      { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`, compactValue: money.transferChannelTotal },
-                      { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`, compactValue: money.arOutstanding },
-                      { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}`, compactValue: money.codOutstanding },
-                      { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}`, compactValue: money.apOutstanding },
+                      { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`, keepWhenZero: true,
+                      },
+                      { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}`, compactValue: money.cashInFromCustomerAdvances,
+                      },
+                      { label: "รับคืนเงินมัดจำซัพพลายเออร์",
+                        value: `฿${formatMoney(money.cashInFromSupplierAdvanceRefunds)}`,
+                        compactValue: money.cashInFromSupplierAdvanceRefunds,
+                      },
+                      {
+                        label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`, compactValue: money.cashChannelTotal,
+                      },
+                      { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`, compactValue: money.transferChannelTotal,
+                      },
+                      { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`, compactValue: money.arOutstanding,
+                      },
+                      { label: "COD ค้างรับเงิน", value: `฿${formatMoney(money.codOutstanding)}`, compactValue: money.codOutstanding,
+                      },
+                      { label: "เจ้าหนี้ค้างจ่าย", value: `฿${formatMoney(money.apOutstanding)}`, compactValue: money.apOutstanding,
+                      },
                     ],
-                    compactMode
-                  )
+                    compactMode,
+                  ),
                 ),
               },
             ],
@@ -1218,7 +1292,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows(
-                  filterSummaryFactItems(balanceFactItems, compactMode)
+                  filterSummaryFactItems(balanceFactItems, compactMode),
                 ),
               },
             ],
@@ -1243,7 +1317,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                 margin: "lg",
                 spacing: "md",
                 contents: buildSummaryFactRows(
-                  filterSummaryFactItems(radarFactItems, compactMode)
+                  filterSummaryFactItems(radarFactItems, compactMode),
                 ),
               },
             ],
@@ -1264,7 +1338,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
               },
               {
                 type: "text",
-                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
+                text: `จ่ายเงินวันนี้ ฿${formatMoney(money.expensesToday)} • คืนเงินมัดจำลูกค้า ฿${formatMoney(money.cashOutForCustomerAdvanceRefunds)} • เงินโอนระหว่างบัญชี ฿${formatMoney(money.transfersToday)}`,
                 margin: "sm",
                 size: "sm",
                 color: "#0F172A",
@@ -1280,7 +1354,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
 
 export async function buildLineDailySummary(
   dayKeyInput?: string,
-  options: SummaryRenderOptions = {}
+  options: SummaryRenderOptions = {},
 ): Promise<LineDailySummary> {
   const reportDayKey = resolveBangkokDayKey(dayKeyInput);
   const { start, end } = getBangkokDayRange(reportDayKey);
@@ -1301,6 +1375,10 @@ export async function buildLineDailySummary(
     customerAdvanceTotalAgg,
     customerAdvanceCashAgg,
     customerAdvanceTransferAgg,
+    supplierAdvanceRefundTotalAgg,
+    supplierAdvanceRefundCashAgg,
+    supplierAdvanceRefundTransferAgg,
+    customerAdvanceRefundTotalAgg,
     arOutstandingAgg,
     codOutstandingAgg,
     apOutstandingAgg,
@@ -1319,15 +1397,18 @@ export async function buildLineDailySummary(
     workboardData,
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
-    runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end)),
-    runSummaryStep("money.channelSummary", () => getShopeeReportingSummary({ from: start, to: end })),
+    runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end),
+    ),
+    runSummaryStep("money.channelSummary", () => getShopeeReportingSummary({ from: start, to: end }),
+    ),
     runSummaryStep("money.salesTotal", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
         status: "ACTIVE",
         saleDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.cashSales", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1335,7 +1416,8 @@ export async function buildLineDailySummary(
         paymentType: "CASH_SALE",
         saleDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.creditSales", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1343,14 +1425,16 @@ export async function buildLineDailySummary(
         paymentType: "CREDIT_SALE",
         saleDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.receiptTotal", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
         status: "ACTIVE",
         receiptDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.cashSaleCash", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1359,7 +1443,8 @@ export async function buildLineDailySummary(
         paymentMethod: "CASH",
         saleDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.cashSaleTransfer", () => db.sale.aggregate({
       _sum: { netAmount: true },
       where: {
@@ -1368,7 +1453,8 @@ export async function buildLineDailySummary(
         paymentMethod: "TRANSFER",
         saleDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.receiptCash", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
@@ -1376,7 +1462,8 @@ export async function buildLineDailySummary(
         paymentMethod: "CASH",
         receiptDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.receiptTransfer", () => db.receipt.aggregate({
       _sum: { totalAmount: true },
       where: {
@@ -1384,14 +1471,16 @@ export async function buildLineDailySummary(
         paymentMethod: "TRANSFER",
         receiptDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.customerAdvanceTotal", () => db.customerAdvance.aggregate({
       _sum: { totalAmount: true },
       where: {
         status: "ACTIVE",
         advanceDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.customerAdvanceCash", () => db.cashBankMovement.aggregate({
       _sum: { amount: true },
       where: {
@@ -1400,7 +1489,8 @@ export async function buildLineDailySummary(
         txnDate: { gte: start, lte: end },
         account: { type: "CASH" },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.customerAdvanceTransfer", () => db.cashBankMovement.aggregate({
       _sum: { amount: true },
       where: {
@@ -1409,7 +1499,48 @@ export async function buildLineDailySummary(
         txnDate: { gte: start, lte: end },
         account: { type: "BANK" },
       },
-    })),
+    }),
+    ),
+    runSummaryStep("money.supplierAdvanceRefundTotal", () =>
+      db.supplierAdvanceRefund.aggregate({
+        _sum: { refundAmount: true },
+        where: {
+          status: "ACTIVE",
+          refundDate: { gte: start, lte: end },
+        },
+      }),
+    ),
+    runSummaryStep("money.supplierAdvanceRefundCash", () =>
+      db.cashBankMovement.aggregate({
+        _sum: { amount: true },
+        where: {
+          sourceType: "SUPPLIER_ADVANCE_REFUND",
+          direction: "IN",
+          txnDate: { gte: start, lte: end },
+          account: { type: "CASH" },
+        },
+      }),
+    ),
+    runSummaryStep("money.supplierAdvanceRefundTransfer", () =>
+      db.cashBankMovement.aggregate({
+        _sum: { amount: true },
+        where: {
+          sourceType: "SUPPLIER_ADVANCE_REFUND",
+          direction: "IN",
+          txnDate: { gte: start, lte: end },
+          account: { type: "BANK" },
+        },
+      }),
+    ),
+    runSummaryStep("money.customerAdvanceRefundTotal", () =>
+      db.customerAdvanceRefund.aggregate({
+        _sum: { refundAmount: true },
+        where: {
+          status: "ACTIVE",
+          refundDate: { gte: start, lte: end },
+        },
+      }),
+    ),
     runSummaryStep("money.arOutstanding", () => db.sale.aggregate({
       _sum: { amountRemain: true },
       where: {
@@ -1418,7 +1549,8 @@ export async function buildLineDailySummary(
         fulfillmentType: "PICKUP",
         amountRemain: { gt: 0 },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.codOutstanding", () => db.sale.aggregate({
       _sum: { amountRemain: true },
       where: {
@@ -1427,7 +1559,8 @@ export async function buildLineDailySummary(
         fulfillmentType: "DELIVERY",
         amountRemain: { gt: 0 },
       },
-    })),
+    }),
+    ),
     runSummaryStep("money.apOutstanding", () => db.purchase.aggregate({
       _sum: { amountRemain: true },
       where: {
@@ -1435,21 +1568,24 @@ export async function buildLineDailySummary(
         purchaseType: "CREDIT_PURCHASE",
         amountRemain: { gt: 0 },
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.pendingDelivery", () => db.sale.count({
       where: {
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "PENDING",
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.outForDelivery", () => db.sale.count({
       where: {
         status: "ACTIVE",
         fulfillmentType: "DELIVERY",
         shippingStatus: "OUT_FOR_DELIVERY",
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.deliveredToday", () => db.sale.count({
       where: {
         status: "ACTIVE",
@@ -1458,7 +1594,8 @@ export async function buildLineDailySummary(
         // Temporary proxy until we store a dedicated delivered timestamp on Sale.
         updatedAt: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.lowStockCount", () => db.product.count({
       where: {
         isActive: true,
@@ -1468,18 +1605,21 @@ export async function buildLineDailySummary(
     ),
     runSummaryStep("counts.outOfStockCount", () => db.product.count({
       where: buildOutOfStockProductsWhere(),
-    })),
+    }),
+    ),
     runSummaryStep("counts.openClaimCount", () => db.warrantyClaim.count({
       where: {
         status: { in: ["DRAFT", "SENT_TO_SUPPLIER"] },
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.adjustmentCount", () => db.adjustment.count({
       where: {
         status: "ACTIVE",
         adjustDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     // Use the same query as the "จ่ายเงิน" report so this total stays in sync
     // with what users see there (cash purchases + expenses + supplier advances +
     // supplier payments cash portion + CN cash refunds). Active rows only.
@@ -1505,23 +1645,39 @@ export async function buildLineDailySummary(
         status: "ACTIVE",
         transferDate: { gte: start, lte: end },
       },
-    })),
+    }),
+    ),
     runSummaryStep("counts.cancelledCounts", () => Promise.all([
-      db.sale.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.purchase.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.receipt.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.customerAdvance.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.creditNote.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.purchaseReturn.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.expense.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
-      db.adjustment.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
+      db.sale.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.purchase.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.receipt.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.customerAdvance.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.customerAdvanceRefund.count({
+          where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+        db.supplierAdvanceRefund.count({
+          where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+        db.creditNote.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.purchaseReturn.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.expense.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
+      db.adjustment.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
+        }),
       db.cashBankTransfer.count({
         where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
       }),
       db.cashBankAdjustment.count({
         where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } },
       }),
-    ])),
+    ]),
+    ),
     runSummaryStep("counts.lotCounts", () => getLotExpiryCounts(start, end)),
     // Latest running balance per active cash/bank account — mirrors the
     // Cash/Bank Snapshot report so both surfaces stay in sync.
@@ -1544,7 +1700,8 @@ export async function buildLineDailySummary(
           select: { balanceAfter: true },
         },
       },
-    })),
+    }),
+    ),
     // Reuse the admin Workboard's tested backlog/risk queries (overdue AR with
     // aging, due AP, COD in transit, expiring lots, cash/bank below threshold,
     // pending deliveries, supplier claims) so the LINE risk radar and the
@@ -1568,23 +1725,33 @@ export async function buildLineDailySummary(
     grossMarginPctToday: profitToday.marginPct,
     cashInFromSales: toNumber(cashSalesAgg._sum.netAmount),
     cashInFromReceipts: toNumber(receiptTotalAgg._sum.totalAmount),
-    cashInFromCustomerAdvances: toNumber(customerAdvanceTotalAgg._sum.totalAmount),
+    cashInFromCustomerAdvances: toNumber(customerAdvanceTotalAgg._sum.totalAmount,
+    ),
+    cashInFromSupplierAdvanceRefunds: toNumber(
+      supplierAdvanceRefundTotalAgg._sum.refundAmount,
+    ),
     cashInTotal:
       toNumber(cashSalesAgg._sum.netAmount) +
       toNumber(receiptTotalAgg._sum.totalAmount) +
-      toNumber(customerAdvanceTotalAgg._sum.totalAmount),
+      toNumber(customerAdvanceTotalAgg._sum.totalAmount) +
+      toNumber(supplierAdvanceRefundTotalAgg._sum.refundAmount),
     cashChannelTotal:
       toNumber(cashSaleCashAgg._sum.netAmount) +
       toNumber(receiptCashAgg._sum.totalAmount) +
-      toNumber(customerAdvanceCashAgg._sum.amount),
+      toNumber(customerAdvanceCashAgg._sum.amount) +
+      toNumber(supplierAdvanceRefundCashAgg._sum.amount),
     transferChannelTotal:
       toNumber(cashSaleTransferAgg._sum.netAmount) +
       toNumber(receiptTransferAgg._sum.totalAmount) +
-      toNumber(customerAdvanceTransferAgg._sum.amount),
+      toNumber(customerAdvanceTransferAgg._sum.amount) +
+      toNumber(supplierAdvanceRefundTransferAgg._sum.amount),
     arOutstanding: toNumber(arOutstandingAgg._sum.amountRemain),
     codOutstanding: toNumber(codOutstandingAgg._sum.amountRemain),
     apOutstanding: toNumber(apOutstandingAgg._sum.amountRemain),
     expensesToday: toNumber(paymentsTodayTotal),
+    cashOutForCustomerAdvanceRefunds: toNumber(
+      customerAdvanceRefundTotalAgg._sum.refundAmount,
+    ),
     transfersToday: toNumber(transfersTodayAgg._sum.amount),
   };
 
@@ -1597,17 +1764,20 @@ export async function buildLineDailySummary(
     expiringLotCount: lotCounts.expiringLotCount,
     expiredLotCount: lotCounts.expiredLotCount,
     openClaimCount,
-    cancelledDocumentCount: cancelledCounts.reduce((sum, value) => sum + value, 0),
+    cancelledDocumentCount: cancelledCounts.reduce((sum, value) => sum + value, 0,
+    ),
     stockAdjustmentCount: adjustmentCount,
   };
 
   const balanceItems: AccountBalanceItem[] = balanceAccounts.map((account) => ({
     label: account.name,
-    balance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance),
+    balance: Number(account.movements[0]?.balanceAfter ?? account.openingBalance,
+    ),
   }));
   const balances: BalanceSection = {
     accounts: balanceItems,
-    totalBalance: balanceItems.reduce((sum, account) => sum + account.balance, 0),
+    totalBalance: balanceItems.reduce((sum, account) => sum + account.balance, 0,
+    ),
   };
 
   const risks: RiskRadarSection = {
@@ -1639,7 +1809,7 @@ export async function buildLineDailySummary(
       balances,
       risks,
     },
-    options
+    options,
   );
 
   return {

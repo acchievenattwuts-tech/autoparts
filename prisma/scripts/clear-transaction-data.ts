@@ -24,7 +24,8 @@ async function step(label: string, fn: () => Promise<unknown>) {
 async function main() {
   console.log("\n🗑️  Clear Transaction Data — Production\n");
   console.log("Master data ที่เก็บไว้: User, AppRole, Permission, Category,");
-  console.log("PartsBrand, CarBrand, CarModel, Supplier, Customer, ExpenseCode,");
+  console.log("PartsBrand, CarBrand, CarModel, Supplier, Customer, ExpenseCode,",
+  );
   console.log("CashBankAccount, LineRecipient, SiteContent\n");
   console.log("─".repeat(55));
 
@@ -35,29 +36,36 @@ async function main() {
       await step("StockMovementLot", () => tx.stockMovementLot.deleteMany());
       await step("PurchaseItemLot", () => tx.purchaseItemLot.deleteMany());
       await step("SaleItemLot", () => tx.saleItemLot.deleteMany());
-      await step("PurchaseReturnItemLot", () => tx.purchaseReturnItemLot.deleteMany());
+      await step("PurchaseReturnItemLot", () => tx.purchaseReturnItemLot.deleteMany(),
+      );
       await step("CreditNoteItemLot", () => tx.creditNoteItemLot.deleteMany());
       await step("WarrantyClaimLot", () => tx.warrantyClaimLot.deleteMany());
 
       // ── STEP 2: Claim sub-tables ────────────────────────────
       console.log("\nSTEP 2: Claim sub-tables");
-      await step("ClaimStockMovement", () => tx.claimStockMovement.deleteMany());
+      await step("ClaimStockMovement", () => tx.claimStockMovement.deleteMany(),
+      );
       await step("ClaimStockBalance", () => tx.claimStockBalance.deleteMany());
 
       // ── STEP 3: Delivery ────────────────────────────────────
       console.log("\nSTEP 3: Delivery");
       await step("DeliveryTracking", () => tx.deliveryTracking.deleteMany());
       await step("DeliveryProof", () => tx.deliveryProof.deleteMany());
-      await step("DeliveryCommissionItem", () => tx.deliveryCommissionItem.deleteMany());
-      await step("DeliveryCommissionRun", () => tx.deliveryCommissionRun.deleteMany());
+      await step("DeliveryCommissionItem", () => tx.deliveryCommissionItem.deleteMany(),
+      );
+      await step("DeliveryCommissionRun", () => tx.deliveryCommissionRun.deleteMany(),
+      );
 
       // ── STEP 4: SupplierPaymentItem ─────────────────────────
       console.log("\nSTEP 4: SupplierPaymentItem");
-      await step("SupplierPaymentItem", () => tx.supplierPaymentItem.deleteMany());
+      await step("DocumentPayment", () => tx.documentPayment.deleteMany());
+      await step("SupplierPaymentItem", () => tx.supplierPaymentItem.deleteMany(),
+      );
 
       // ── STEP 5: PurchaseReturn ──────────────────────────────
       console.log("\nSTEP 5: PurchaseReturn (ก่อน WarrantyClaim)");
-      await step("PurchaseReturnItem", () => tx.purchaseReturnItem.deleteMany());
+      await step("PurchaseReturnItem", () => tx.purchaseReturnItem.deleteMany(),
+      );
       await step("PurchaseReturn", () => tx.purchaseReturn.deleteMany());
 
       // ── STEP 6: Warranty chain ──────────────────────────────
@@ -94,6 +102,12 @@ async function main() {
 
       // ── STEP 12: SupplierAdvance & SupplierPayment ──────────
       console.log("\nSTEP 12: SupplierAdvance & SupplierPayment");
+      await step("CustomerAdvanceRefund", () =>
+        tx.customerAdvanceRefund.deleteMany(),
+      );
+      await step("SupplierAdvanceRefund", () =>
+        tx.supplierAdvanceRefund.deleteMany(),
+      );
       await step("CustomerAdvance", () => tx.customerAdvance.deleteMany());
       await step("SupplierAdvance", () => tx.supplierAdvance.deleteMany());
       await step("SupplierPayment", () => tx.supplierPayment.deleteMany());
@@ -102,7 +116,8 @@ async function main() {
       console.log("\nSTEP 13: Cash/Bank movements");
       await step("CashBankMovement", () => tx.cashBankMovement.deleteMany());
       await step("CashBankTransfer", () => tx.cashBankTransfer.deleteMany());
-      await step("CashBankAdjustment", () => tx.cashBankAdjustment.deleteMany());
+      await step("CashBankAdjustment", () => tx.cashBankAdjustment.deleteMany(),
+      );
 
       // ── STEP 14: Stock ledger ───────────────────────────────
       console.log("\nSTEP 14: Stock ledger");
@@ -115,27 +130,31 @@ async function main() {
       console.log("\nSTEP 15: Analytics / Logs");
       await step("FactProfit", () => tx.factProfit.deleteMany());
       await step("AuditLog", () => tx.auditLog.deleteMany());
-      await step("LineDailySummaryDispatch", () => tx.lineDailySummaryDispatch.deleteMany());
-      await step("StorefrontVisitDaily", () => tx.storefrontVisitDaily.deleteMany());
+      await step("LineDailySummaryDispatch", () => tx.lineDailySummaryDispatch.deleteMany(),
+      );
+      await step("StorefrontVisitDaily", () => tx.storefrontVisitDaily.deleteMany(),
+      );
 
       // ── STEP 16: Content ────────────────────────────────────
       console.log("\nSTEP 16: Content");
       await step("ContentAuditLog", () => tx.contentAuditLog.deleteMany());
-      await step("ContentScheduledJob", () => tx.contentScheduledJob.deleteMany());
+      await step("ContentScheduledJob", () => tx.contentScheduledJob.deleteMany(),
+      );
       await step("ContentApproval", () => tx.contentApproval.deleteMany());
       await step("ContentPost", () => tx.contentPost.deleteMany());
 
       // ── STEP 17: Product ────────────────────────────────────
       console.log("\nSTEP 17: Product");
       await step("product_search_documents", () =>
-        tx.$executeRawUnsafe(`DELETE FROM "product_search_documents"`)
+        tx.$executeRawUnsafe(`DELETE FROM "product_search_documents"`),
       );
-      await step("Product (cascade: Unit, Alias, CarModel)", () => tx.product.deleteMany());
+      await step("Product (cascade: Unit, Alias, CarModel)", () => tx.product.deleteMany(),
+      );
 
       // ── STEP 18: Reset CashBankAccount ──────────────────────
       console.log("\nSTEP 18: Reset CashBankAccount.openingBalance = 0");
       await step("CashBankAccount reset", () =>
-        tx.cashBankAccount.updateMany({ data: { openingBalance: 0 } })
+        tx.cashBankAccount.updateMany({ data: { openingBalance: 0 } }),
       );
 
       // ── STEP 19: Reset LINE Daily Summary state ─────────────
@@ -144,13 +163,14 @@ async function main() {
         tx.siteContent.deleteMany({
           where: {
             key: {
-              in: ["line_daily_summary_last_sent_day_key", "line_daily_summary_last_sent_at"],
+              in: ["line_daily_summary_last_sent_day_key", "line_daily_summary_last_sent_at",
+              ],
             },
           },
-        })
+        }),
       );
     },
-    { timeout: 120_000 }
+    { timeout: 120_000 },
   );
 
   console.log("\n" + "─".repeat(55));

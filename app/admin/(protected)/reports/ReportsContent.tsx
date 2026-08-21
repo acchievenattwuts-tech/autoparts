@@ -17,7 +17,10 @@ function formatDate(value: Date): string {
   return formatDateThai(value);
 }
 
-function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"): string {
+function getReceiptSourceLabel(source:
+    | "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"
+    | "SUPPLIER_ADVANCE_REFUND",
+): string {
   switch (source) {
     case "SALE":
       return "ขายสด";
@@ -27,13 +30,17 @@ function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" |
       return "รับเงินมัดจำลูกค้า";
     case "PURCHASE_RETURN":
       return "รับเงินคืนซื้อ";
+    case "SUPPLIER_ADVANCE_REFUND":
+      return "รับคืนเงินมัดจำซัพพลายเออร์";
     default:
       return source;
   }
 }
 
 function getPaymentSourceLabel(
-  source: "PURCHASE" | "EXPENSE" | "CN_SALE" | "SUPPLIER_ADVANCE" | "SUPPLIER_PAYMENT"
+  source:
+    | "PURCHASE" | "EXPENSE" | "CN_SALE" | "SUPPLIER_ADVANCE" | "SUPPLIER_PAYMENT"
+    | "CUSTOMER_ADVANCE_REFUND",
 ): string {
   switch (source) {
     case "PURCHASE":
@@ -46,6 +53,8 @@ function getPaymentSourceLabel(
       return "มัดจำซัพพลายเออร์";
     case "SUPPLIER_PAYMENT":
       return "จ่ายซัพพลายเออร์";
+    case "CUSTOMER_ADVANCE_REFUND":
+      return "คืนเงินมัดจำลูกค้า";
     default:
       return source;
   }
@@ -93,7 +102,9 @@ function ScopePill({
       ? "border-sky-200 bg-sky-50 text-sky-700"
       : "border-emerald-200 bg-emerald-50 text-emerald-700";
 
-  return <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${className}`}>{label}</span>;
+  return (
+    <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${className}`}>{label}</span>
+  );
 }
 
 function SummaryCard({
@@ -315,8 +326,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ รับเงินมัดจำลูกค้า และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5 dark:border-white/10">
+          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ รับเงินมัดจำลูกค้า รับคืนมัดจำซัพพลายเออร์ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-6 dark:border-white/10">
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500 dark:text-slate-400">รวมรับเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
@@ -335,7 +346,19 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               </div>
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รับเงินคืนซื้อ</p>
-                <p className="font-kanit text-xl font-bold text-cyan-700">฿{formatCurrency(data.dailyReceipts.purchaseReturnRefundAmount)}</p>
+                <p className="font-kanit text-xl font-bold text-cyan-700">฿{formatCurrency(data.dailyReceipts.purchaseReturnRefundAmount,
+                  )}</p>
+              </div>
+            <div className="rounded-xl bg-cyan-50 p-3 dark:bg-cyan-500/10">
+                <p className="text-xs text-cyan-700 dark:text-cyan-300">
+                  รับคืนเงินมัดจำซัพพลายเออร์
+                </p>
+                <p className="font-kanit text-xl font-bold text-cyan-700 dark:text-cyan-300">
+                  ฿
+                  {formatCurrency(
+                    data.dailyReceipts.supplierAdvanceRefundAmount,
+                  )}
+                </p>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -362,7 +385,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
                           <p className="text-xs text-gray-400">
-                            {getReceiptSourceLabel(item.source)} | {formatDate(item.docDate)}
+                            {getReceiptSourceLabel(item.source)} | {" "}
+                            {formatDate(item.docDate)}
                           </p>
                         </td>
                         <td className="px-4 py-2">
@@ -380,8 +404,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
             </div>
           </TableCard>
 
-          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN มัดจำ และจ่ายซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5 dark:border-white/10">
+          <TableCard title="จ่ายเงินรายวัน" subtitle="ซื้อสินค้า ค่าใช้จ่าย คืนเงิน CN คืนเงินมัดจำลูกค้า มัดจำ และจ่ายซัพพลายเออร์ พร้อมบัญชีที่เงินออก">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-7 dark:border-white/10">
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รวมจ่ายเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyPayments.totalAmount)}</p>
@@ -405,6 +429,17 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">จ่ายซัพพลายเออร์</p>
                 <p className="font-kanit text-xl font-bold text-rose-700">฿{formatCurrency(data.dailyPayments.supplierPaymentAmount)}</p>
+              </div>
+            <div className="rounded-xl bg-rose-50 p-3 dark:bg-rose-500/10">
+                <p className="text-xs text-rose-700 dark:text-rose-300">
+                  คืนเงินมัดจำลูกค้า
+                </p>
+                <p className="font-kanit text-xl font-bold text-rose-700 dark:text-rose-300">
+                  ฿
+                  {formatCurrency(
+                    data.dailyPayments.customerAdvanceRefundAmount,
+                  )}
+                </p>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -431,7 +466,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
                           <p className="text-xs text-gray-400">
-                            {getPaymentSourceLabel(item.source)} | {formatDate(item.docDate)}
+                            {getPaymentSourceLabel(item.source)} | {" "}
+                            {formatDate(item.docDate)}
                           </p>
                         </td>
                         <td className="px-4 py-2">
@@ -539,7 +575,9 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                         <td className="px-4 py-2">
                           <p className="text-gray-800">{item.supplierName}</p>
                           <p className="text-xs text-gray-400">
-                            {item.supplierCode || "-"} | ซื้อ {formatCurrency(item.purchaseAmount)} | คืน {formatCurrency(item.returnAmount)}
+                            {item.supplierCode || "-"} | ซื้อ {" "}
+                            {formatCurrency(item.purchaseAmount)} | คืน {" "}
+                            {formatCurrency(item.returnAmount)}
                           </p>
                         </td>
                         <td className="px-4 py-2 text-right text-gray-600">{item.purchaseCount}</td>

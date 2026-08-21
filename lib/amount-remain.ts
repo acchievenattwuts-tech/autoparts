@@ -26,7 +26,7 @@ type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
  */
 export async function recalculateSaleAmountRemain(
   tx: TxClient,
-  saleId: string
+  saleId: string,
 ): Promise<void> {
   const sale = await tx.sale.findUnique({
     where: { id: saleId },
@@ -64,7 +64,7 @@ export async function recalculateSaleAmountRemain(
   // CREDIT_SALE: หักเฉพาะ receipt items
   const paidByReceipts = sale.receipts.reduce(
     (sum, ri) => sum + Number(ri.paidAmount),
-    0
+    0,
   );
   const remain = Math.max(0, Number(sale.netAmount) - paidByReceipts);
 
@@ -89,7 +89,7 @@ export async function recalculateSaleAmountRemain(
  */
 export async function recalculateCNAmountRemain(
   tx: TxClient,
-  cnId: string
+  cnId: string,
 ): Promise<void> {
   const cn = await tx.creditNote.findUnique({
     where: { id: cnId },
@@ -117,7 +117,7 @@ export async function recalculateCNAmountRemain(
 
   const appliedByReceipts = cn.receiptItems.reduce(
     (sum, ri) => sum + Number(ri.paidAmount),
-    0
+    0,
   );
   const remain = Math.max(0, Number(cn.totalAmount) - appliedByReceipts);
 
@@ -248,6 +248,10 @@ export async function recalculateSupplierAdvanceAmountRemain(
         where: { payment: { status: "ACTIVE" } },
         select: { paidAmount: true },
       },
+      refunds: {
+        where: { status: "ACTIVE" },
+        select: { refundAmount: true },
+      },
     },
   });
 
@@ -265,7 +269,12 @@ export async function recalculateSupplierAdvanceAmountRemain(
     (sum, item) => sum + Number(item.paidAmount),
     0,
   );
-  const remain = Math.max(0, Number(advance.totalAmount) - appliedBySupplierPayments);
+  const refunded = advance.refunds.reduce(
+    (sum, refund) => sum + Number(refund.refundAmount),
+    0,
+  );
+  const remain = Math.max(0, Number(advance.totalAmount) - appliedBySupplierPayments - refunded,
+  );
 
   await tx.supplierAdvance.update({
     where: { id: advanceId },
@@ -287,6 +296,10 @@ export async function recalculateCustomerAdvanceAmountRemain(
         where: { receipt: { status: "ACTIVE" } },
         select: { paidAmount: true },
       },
+      refunds: {
+        where: { status: "ACTIVE" },
+        select: { refundAmount: true },
+      },
     },
   });
 
@@ -304,7 +317,11 @@ export async function recalculateCustomerAdvanceAmountRemain(
     (sum, item) => sum + Number(item.paidAmount),
     0,
   );
-  const remain = Math.max(0, Number(advance.totalAmount) - applied);
+  const refunded = advance.refunds.reduce(
+    (sum, refund) => sum + Number(refund.refundAmount),
+    0,
+  );
+  const remain = Math.max(0, Number(advance.totalAmount) - applied - refunded);
 
   await tx.customerAdvance.update({
     where: { id: advanceId },

@@ -18,8 +18,10 @@ import {
   CashBankSourceType,
   DocumentPaymentDocType,
   PaymentMethod,
+  Prisma,
 } from "@/lib/generated/prisma";
-import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements,
+} from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -74,12 +76,14 @@ function parseAdvancePayments(
   try {
     assertPaymentsMatchTotal(payments, totalAmount);
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+    return { ok: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง",
+    };
   }
   return { ok: true, payments };
 }
 
-async function getActiveSupplierPaymentRefs(advanceId: string): Promise<string[]> {
+async function getActiveSupplierPaymentRefs(advanceId: string,
+): Promise<string[]> {
   const refs = await db.supplierPaymentItem.findMany({
     where: {
       advanceId,
@@ -91,6 +95,25 @@ async function getActiveSupplierPaymentRefs(advanceId: string): Promise<string[]
   });
 
   return [...new Set(refs.map((item) => item.payment.paymentNo))];
+}
+
+async function getActiveSupplierAdvanceRefundRefs(
+  advanceId: string,
+): Promise<string[]> {
+  const rows = await db.supplierAdvanceRefund.findMany({
+    where: { supplierAdvanceId: advanceId, status: "ACTIVE" },
+    select: { refundNo: true },
+  });
+  return rows.map((row) => row.refundNo);
+}
+
+async function lockSupplierAdvance(
+  tx: Prisma.TransactionClient,
+  id: string,
+): Promise<void> {
+  await tx.$queryRaw(
+    Prisma.sql`SELECT id FROM "SupplierAdvance" WHERE id = ${id} FOR UPDATE`,
+  );
 }
 
 async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
@@ -107,7 +130,8 @@ async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
       },
     }),
     db.documentPayment.findMany({
-      where: { docType: DocumentPaymentDocType.SUPPLIER_ADVANCE, docId: advanceId },
+      where: { docType: DocumentPaymentDocType.SUPPLIER_ADVANCE, docId: advanceId,
+      },
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       select: { cashBankAccountId: true, amount: true },
     }),
@@ -139,7 +163,8 @@ async function getSupplierAdvanceAuditSnapshot(advanceId: string) {
 export async function createSupplierAdvance(
   formData: FormData,
 ): Promise<{ success: boolean; advanceNo?: string; error?: string }> {
-  const session = await requirePermission("supplier_advances.create").catch(() => null);
+  const session = await requirePermission("supplier_advances.create").catch(() => null,
+  );
   if (!session?.user?.id) {
     return { success: false, error: "กรุณาเข้าสู่ระบบก่อน" };
   }
@@ -154,7 +179,8 @@ export async function createSupplierAdvance(
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+      return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง",
+      };
     }
     return { success: false, error: "ข้อมูลไม่ถูกต้อง" };
   }
@@ -171,7 +197,8 @@ export async function createSupplierAdvance(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
-      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments);
+      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments,
+      );
 
       const advance = await tx.supplierAdvance.create({
         data: {
@@ -240,7 +267,8 @@ export async function updateSupplierAdvance(
   id: string,
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requirePermission("supplier_advances.update").catch(() => null);
+  const session = await requirePermission("supplier_advances.update").catch(() => null,
+  );
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const existing = await db.supplierAdvance.findUnique({
@@ -256,7 +284,10 @@ export async function updateSupplierAdvance(
   if (existing.status === "CANCELLED") {
     return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
   }
-  const mutationBlockMessage = await getDocumentMutationBlockMessage("SupplierAdvance", id, "update");
+  const refundRefs = await getActiveSupplierAdvanceRefundRefs(id);
+  if (refundRefs.length === 0) {
+    const mutationBlockMessage = await getDocumentMutationBlockMessage("SupplierAdvance", id, "update",
+    );
   if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   const activeRefs = await getActiveSupplierPaymentRefs(id);
@@ -264,6 +295,7 @@ export async function updateSupplierAdvance(
     return {
       error: `ไม่สามารถแก้ไขได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
     };
+  }
   }
 
   let parsed: z.infer<typeof supplierAdvanceSchema>;
@@ -292,7 +324,19 @@ export async function updateSupplierAdvance(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments);
+      await lockSupplierAdvance(tx, id);
+      const lockedRefundCount = await tx.supplierAdvanceRefund.count({
+        where: { supplierAdvanceId: id, status: "ACTIVE" },
+      });
+      if (lockedRefundCount > 0) {
+        await tx.supplierAdvance.update({
+          where: { id },
+          data: { note: parsed.note?.trim() || null },
+        });
+        return;
+      }
+      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments,
+      );
 
       await tx.supplierAdvance.update({
         where: { id },
@@ -366,7 +410,8 @@ const cancelSupplierAdvanceSchema = z.object({
 export async function cancelSupplierAdvance(
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requirePermission("supplier_advances.cancel").catch(() => null);
+  const session = await requirePermission("supplier_advances.cancel").catch(() => null,
+  );
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelSupplierAdvanceSchema.safeParse({
@@ -385,7 +430,8 @@ export async function cancelSupplierAdvance(
 
   if (!advance) return { error: "ไม่พบเอกสาร" };
   if (advance.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };
-  const mutationBlockMessage = await getDocumentMutationBlockMessage("SupplierAdvance", advance.id, "cancel");
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("SupplierAdvance", advance.id, "cancel",
+  );
   if (mutationBlockMessage) return { error: mutationBlockMessage };
 
   const activeRefs = await getActiveSupplierPaymentRefs(advance.id);
@@ -394,13 +440,29 @@ export async function cancelSupplierAdvance(
       error: `ไม่สามารถยกเลิกได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
     };
   }
+  const refundRefs = await getActiveSupplierAdvanceRefundRefs(advance.id);
+  if (refundRefs.length > 0)
+    return {
+      error: `ไม่สามารถยกเลิกได้ เนื่องจากถูกอ้างอิงในเอกสารรับคืนเงินมัดจำ: ${refundRefs.join(", ")}`,
+    };
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierAdvanceAuditSnapshot(advance.id);
     await dbTx(async (tx) => {
-      await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_ADVANCE, advance.id);
-      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_ADVANCE, advance.id);
+      await lockSupplierAdvance(tx, advance.id);
+      const lockedRefunds = await tx.supplierAdvanceRefund.findMany({
+        where: { supplierAdvanceId: advance.id, status: "ACTIVE" },
+        select: { refundNo: true },
+      });
+      if (lockedRefunds.length > 0)
+        throw new Error(
+          `ไม่สามารถยกเลิกได้ เนื่องจากถูกอ้างอิงในเอกสารรับคืนเงินมัดจำ: ${lockedRefunds.map((row) => row.refundNo).join(", ")}`,
+        );
+      await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_ADVANCE, advance.id,
+      );
+      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_ADVANCE, advance.id,
+      );
       await tx.supplierAdvance.update({
         where: { id: advance.id },
         data: {

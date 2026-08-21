@@ -18,7 +18,8 @@ import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
-import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission,
+} from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
 import { formatDateThai } from "@/lib/th-date";
 import CustomerAdvanceCancelButton from "../CustomerAdvanceCancelButton";
@@ -27,7 +28,9 @@ import PrintButton from "../PrintButton";
 const CUSTOMER_ADVANCE_PRINT_SLIP_CLASS =
   "print-slip mx-auto flex min-h-screen max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug";
 
-export default async function CustomerAdvanceDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CustomerAdvanceDetailPage({ params,
+}: { params: Promise<{ id: string }>;
+}) {
   await requirePermission("customer_advances.view");
   const { role, permissions } = await getSessionPermissionContext();
   const { id } = await params;
@@ -40,9 +43,13 @@ export default async function CustomerAdvanceDetailPage({ params }: { params: Pr
         cashBankAccount: { select: { code: true, name: true } },
         receiptItems: {
           orderBy: { lineNo: "asc" },
-          include: { receipt: { select: { id: true, receiptNo: true, receiptDate: true, status: true } } },
+          include: { receipt: { select: { id: true, receiptNo: true, receiptDate: true, status: true,
+              },
+            },
+          },
         },
-      },
+        refunds: { orderBy: { refundDate: "desc" } },
+    },
     }),
     db.documentPayment.findMany({
       where: { docType: "CUSTOMER_ADVANCE", docId: id },
@@ -58,8 +65,20 @@ export default async function CustomerAdvanceDetailPage({ params }: { params: Pr
   const activeRefs = advance.receiptItems
     .filter((item) => item.receipt.status === "ACTIVE")
     .map((item) => item.receipt.receiptNo);
-  const canUpdate = hasPermissionAccess(role, permissions, "customer_advances.update");
-  const canCancel = hasPermissionAccess(role, permissions, "customer_advances.cancel");
+  const activeRefunds = advance.refunds.filter(
+    (refund) => refund.status === "ACTIVE",
+  );
+  const usedAmount = advance.receiptItems
+    .filter((item) => item.receipt.status === "ACTIVE")
+    .reduce((sum, item) => sum + Number(item.paidAmount), 0);
+  const refundedAmount = activeRefunds.reduce(
+    (sum, refund) => sum + Number(refund.refundAmount),
+    0,
+  );
+  const canUpdate = hasPermissionAccess(role, permissions, "customer_advances.update",
+  );
+  const canCancel = hasPermissionAccess(role, permissions, "customer_advances.cancel",
+  );
   const printDocumentProps = {
     advance: { ...advance, totalAmount: Number(advance.totalAmount) },
     shopConfig: {
@@ -125,7 +144,11 @@ ${PRINT_COPY_VISIBILITY_CSS}
               <CustomerAdvanceCancelButton
                 advanceId={id}
                 docNo={advance.advanceNo}
-                disabledReason={activeRefs.length ? `ถูกใช้ใน ${activeRefs.join(", ")}` : null}
+                disabledReason={
+                  [
+                    ...activeRefs,
+                    ...activeRefunds.map((refund) => refund.refundNo),
+                  ].length ? `ถูกใช้ใน ${[...activeRefs, ...activeRefunds.map((refund) => refund.refundNo)].join(", ")}` : null}
               />
             ) : null}
           </div>
@@ -144,27 +167,88 @@ ${PRINT_COPY_VISIBILITY_CSS}
             <div><p className="text-gray-500 dark:text-slate-400">เลขที่</p><p className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-300">{advance.advanceNo}</p></div>
             <div><p className="text-gray-500 dark:text-slate-400">วันที่</p><p className="dark:text-slate-100">{formatDateThai(advance.advanceDate)}</p></div>
             <div><p className="text-gray-500 dark:text-slate-400">ลูกค้า</p><Link href={`/admin/customers/${advance.customerId}`} className="font-medium text-[#1e3a5f] dark:text-sky-300">{advance.customer.name}</Link></div>
-            <div><p className="text-gray-500 dark:text-slate-400">ยอดมัดจำ</p><p className="text-lg font-bold dark:text-slate-100">{Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</p></div>
-            <div><p className="text-gray-500 dark:text-slate-400">ใช้แล้ว</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{(Number(advance.totalAmount) - Number(advance.amountRemain)).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</p></div>
-            <div><p className="text-gray-500 dark:text-slate-400">คงเหลือ</p><p className="text-lg font-bold text-amber-700 dark:text-amber-300">{Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท</p></div>
-            {advance.note ? <div className="md:col-span-3"><p className="text-gray-500 dark:text-slate-400">หมายเหตุ</p><p className="dark:text-slate-200">{advance.note}</p></div> : null}
+            <div><p className="text-gray-500 dark:text-slate-400">ยอดมัดจำ</p><p className="text-lg font-bold dark:text-slate-100">{Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2,
+                })}{" "}
+                บาท</p></div>
+            <div><p className="text-gray-500 dark:text-slate-400">ใช้ผ่านใบเสร็จแล้ว</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{usedAmount.toLocaleString("th-TH", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                บาท
+              </p>
+            </div>
+            <div>
+              <p className="text-gray-500 dark:text-slate-400">คืนเงินแล้ว</p>
+              <p className="text-lg font-bold text-red-700 dark:text-red-300">
+                {refundedAmount.toLocaleString("th-TH", { minimumFractionDigits: 2,
+                })}{" "}
+                บาท</p></div>
+            <div><p className="text-gray-500 dark:text-slate-400">คงเหลือ</p><p className="text-lg font-bold text-amber-700 dark:text-amber-300">{Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2,
+                })}{" "}
+                บาท</p></div>
+            {advance.note ? (
+              <div className="md:col-span-3"><p className="text-gray-500 dark:text-slate-400">หมายเหตุ</p><p className="dark:text-slate-200">{advance.note}</p></div>
+            ) : null}
           </div>
         </div>
 
         <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
-          <h2 className="mb-4 font-kanit text-lg font-semibold dark:text-slate-100">ใบเสร็จที่ใช้เงินมัดจำ</h2>
+          <h2 className="mb-4 font-kanit text-lg font-semibold dark:text-slate-100">
+            CN คืนเงินมัดจำ
+          </h2>
+          {advance.refunds.length ? (
+            <div className="space-y-2">
+              {advance.refunds.map((refund) => (
+                <div
+                  key={refund.id}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 p-3 text-sm dark:border-white/10"
+                >
+                  <Link
+                    href={`/admin/customer-advance-refunds/${refund.id}`}
+                    className="font-mono text-[#1e3a5f] dark:text-sky-300"
+                  >
+                    {refund.refundNo}
+                  </Link>
+                  <span className="dark:text-slate-300">
+                    {formatDateThai(refund.refundDate)}
+                  </span>
+                  <span className="font-medium dark:text-slate-100">
+                    {Number(refund.refundAmount).toLocaleString("th-TH", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                  <AdminStatusBadge
+                    tone={refund.status === "ACTIVE" ? "success" : "danger"}
+                  >
+                    {refund.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}
+                  </AdminStatusBadge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-gray-400 dark:text-slate-500">
+              ยังไม่มี CN คืนเงินมัดจำ
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <h2 className="mb-4 font-kanit text-lg font-semibold dark:text-slate-100">
+            ใบเสร็จที่ใช้เงินมัดจำ</h2>
           {advance.receiptItems.length ? (
             <div className="space-y-2">
               {advance.receiptItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3 text-sm dark:border-white/10">
                   <Link href={`/admin/receipts/${item.receipt.id}`} className="font-mono text-[#1e3a5f] dark:text-sky-300">{item.receipt.receiptNo}</Link>
                   <span className="dark:text-slate-300">{formatDateThai(item.receipt.receiptDate)}</span>
-                  <span className="font-medium dark:text-slate-100">{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span>
+                  <span className="font-medium dark:text-slate-100">{Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2,
+                    })}</span>
                   <AdminStatusBadge tone={item.receipt.status === "ACTIVE" ? "success" : "danger"}>{item.receipt.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}</AdminStatusBadge>
                 </div>
               ))}
             </div>
-          ) : <p className="py-8 text-center text-sm text-gray-400 dark:text-slate-500">ยังไม่มีใบเสร็จอ้างอิง</p>}
+          ) : (
+            <p className="py-8 text-center text-sm text-gray-400 dark:text-slate-500">ยังไม่มีใบเสร็จอ้างอิง</p>
+          )}
         </div>
       </div>
 

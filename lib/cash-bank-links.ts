@@ -11,6 +11,8 @@ export function getCashBankSourceHref(
       return `/admin/receipts/${sourceId}`;
     case "CUSTOMER_ADVANCE":
       return `/admin/customer-advances/${sourceId}`;
+    case "CUSTOMER_ADVANCE_REFUND":
+      return `/admin/customer-advance-refunds/${sourceId}`;
     case "PURCHASE":
       return `/admin/purchases/${sourceId}`;
     case "EXPENSE":
@@ -21,6 +23,8 @@ export function getCashBankSourceHref(
       return `/admin/purchase-returns/${sourceId}`;
     case "SUPPLIER_ADVANCE":
       return `/admin/supplier-advances/${sourceId}`;
+    case "SUPPLIER_ADVANCE_REFUND":
+      return `/admin/supplier-advance-refunds/${sourceId}`;
     case "SUPPLIER_PAYMENT":
       return `/admin/supplier-payments/${sourceId}`;
     case "PARTNER_PAYOUT":
@@ -42,6 +46,8 @@ export function getCashBankSourceLabel(sourceType: CashBankSourceType): string {
       return "รับชำระหนี้";
     case "CUSTOMER_ADVANCE":
       return "รับเงินมัดจำลูกค้า";
+    case "CUSTOMER_ADVANCE_REFUND":
+      return "คืนเงินมัดจำลูกค้า";
     case "PURCHASE":
       return "ซื้อสินค้า";
     case "EXPENSE":
@@ -52,6 +58,8 @@ export function getCashBankSourceLabel(sourceType: CashBankSourceType): string {
       return "CN ซื้อ";
     case "SUPPLIER_ADVANCE":
       return "จ่ายมัดจำซัพพลายเออร์";
+    case "SUPPLIER_ADVANCE_REFUND":
+      return "รับคืนเงินมัดจำซัพพลายเออร์";
     case "SUPPLIER_PAYMENT":
       return "จ่ายชำระซัพพลายเออร์";
     case "PARTNER_PAYOUT":

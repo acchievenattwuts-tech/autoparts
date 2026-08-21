@@ -1,9 +1,9 @@
 import type { PermissionKey } from "@/lib/access-control";
-import { ADMIN_NAVIGATION, flattenAdminNavigation } from "@/lib/admin-navigation";
+import { ADMIN_NAVIGATION, flattenAdminNavigation,
+} from "@/lib/admin-navigation";
 import { KNOWLEDGE_ADMIN_TABS } from "@/lib/knowledge-admin-navigation";
 
-export type CommandGroupKey =
-  | "create"
+export type CommandGroupKey = "create"
   | "navigate"
   | "personal";
 
@@ -26,15 +26,40 @@ export const COMMAND_GROUP_LABEL: Record<CommandGroupKey, string> = {
 
 export const QUICK_COMMANDS: readonly QuickCommand[] = [
   // Create
-  { id: "create-sale", label: "สร้างใบขายใหม่", href: "/admin/sales/new", permission: "sales.create", group: "create", keywords: "sale ขาย invoice" },
-  { id: "create-purchase", label: "สร้างใบซื้อใหม่", href: "/admin/purchases/new", permission: "purchases.create", group: "create", keywords: "purchase ซื้อ" },
-  { id: "create-purchase-return", label: "สร้างใบคืนซื้อใหม่", href: "/admin/purchase-returns/new", permission: "purchase_returns.create", group: "create", keywords: "return คืน" },
-  { id: "create-cn", label: "สร้าง CN ใหม่", href: "/admin/credit-notes/new", permission: "credit_notes.create", group: "create", keywords: "credit note ลดหนี้" },
-  { id: "create-receipt", label: "สร้างใบเสร็จรับเงินใหม่", href: "/admin/receipts/new", permission: "receipts.create", group: "create", keywords: "receipt รับชำระ" },
-  { id: "create-customer-advance", label: "สร้างรับเงินมัดจำลูกค้า", href: "/admin/customer-advances/new", permission: "customer_advances.create", group: "create", keywords: "customer advance sales deposit รับเงินมัดจำ" },
-  { id: "create-expense", label: "สร้างค่าใช้จ่ายใหม่", href: "/admin/expenses/new", permission: "expenses.create", group: "create", keywords: "expense ค่าใช้จ่าย" },
-  { id: "create-supplier-advance", label: "สร้างมัดจำซัพพลายเออร์", href: "/admin/supplier-advances/new", permission: "supplier_advances.create", group: "create", keywords: "advance มัดจำ" },
-  { id: "create-supplier-payment", label: "สร้างใบจ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments/new", permission: "supplier_payments.create", group: "create", keywords: "supplier payment จ่าย" },
+  { id: "create-sale", label: "สร้างใบขายใหม่", href: "/admin/sales/new", permission: "sales.create", group: "create", keywords: "sale ขาย invoice",
+  },
+  { id: "create-purchase", label: "สร้างใบซื้อใหม่", href: "/admin/purchases/new", permission: "purchases.create", group: "create", keywords: "purchase ซื้อ",
+  },
+  { id: "create-purchase-return", label: "สร้างใบคืนซื้อใหม่", href: "/admin/purchase-returns/new", permission: "purchase_returns.create", group: "create", keywords: "return คืน",
+  },
+  { id: "create-cn", label: "สร้าง CN ใหม่", href: "/admin/credit-notes/new", permission: "credit_notes.create", group: "create", keywords: "credit note ลดหนี้",
+  },
+  { id: "create-receipt", label: "สร้างใบเสร็จรับเงินใหม่", href: "/admin/receipts/new", permission: "receipts.create", group: "create", keywords: "receipt รับชำระ",
+  },
+  { id: "create-customer-advance", label: "สร้างรับเงินมัดจำลูกค้า", href: "/admin/customer-advances/new", permission: "customer_advances.create", group: "create", keywords: "customer advance sales deposit รับเงินมัดจำ",
+  },
+  { id: "create-customer-advance-refund",
+    label: "สร้างคืนเงินมัดจำลูกค้า",
+    href: "/admin/customer-advance-refunds/new",
+    permission: "customer_advance_refunds.create",
+    group: "create",
+    keywords: "customer advance refund cn cnsd คืนเงินมัดจำ",
+  },
+  {
+    id: "create-expense", label: "สร้างค่าใช้จ่ายใหม่", href: "/admin/expenses/new", permission: "expenses.create", group: "create", keywords: "expense ค่าใช้จ่าย",
+  },
+  { id: "create-supplier-advance", label: "สร้างมัดจำซัพพลายเออร์", href: "/admin/supplier-advances/new", permission: "supplier_advances.create", group: "create", keywords: "advance มัดจำ",
+  },
+  { id: "create-supplier-advance-refund",
+    label: "สร้างรับคืนเงินมัดจำซัพพลายเออร์",
+    href: "/admin/supplier-advance-refunds/new",
+    permission: "supplier_advance_refunds.create",
+    group: "create",
+    keywords: "supplier advance refund cnadv รับคืนเงินมัดจำ",
+  },
+  {
+    id: "create-supplier-payment", label: "สร้างใบจ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments/new", permission: "supplier_payments.create", group: "create", keywords: "supplier payment จ่าย",
+  },
 
   // Navigate
   ...flattenAdminNavigation(ADMIN_NAVIGATION).map((item) => ({
@@ -63,9 +88,12 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
   },
 
   // Personal
-  { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode" },
-  { id: "personal-change-password", label: "เปลี่ยนรหัสผ่าน", href: "/admin/profile/change-password", group: "personal", keywords: "password รหัสผ่าน profile" },
-  { id: "personal-logout", label: "ออกจากระบบ", action: "logout", group: "personal", keywords: "logout signout ออก" },
+  { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode",
+  },
+  { id: "personal-change-password", label: "เปลี่ยนรหัสผ่าน", href: "/admin/profile/change-password", group: "personal", keywords: "password รหัสผ่าน profile",
+  },
+  { id: "personal-logout", label: "ออกจากระบบ", action: "logout", group: "personal", keywords: "logout signout ออก",
+  },
 ];
 
 export const filterCommandsByPermission = (
@@ -74,5 +102,6 @@ export const filterCommandsByPermission = (
   permissions: readonly string[] | null | undefined,
 ): QuickCommand[] => {
   if (!Array.isArray(permissions)) return [];
-  return commands.filter((cmd) => !cmd.permission || permissions.includes(cmd.permission));
+  return commands.filter((cmd) => !cmd.permission || permissions.includes(cmd.permission),
+  );
 };

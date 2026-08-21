@@ -20,21 +20,24 @@ import { formatDateThai } from "@/lib/th-date";
 const ROW_LIMIT = 2000;
 
 function fmt(n: number) {
-  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  "ซื้อสินค้า": "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-200",
-  "ค่าใช้จ่าย": "bg-orange-100 text-orange-700 dark:bg-orange-500/25 dark:text-orange-200",
-  "คืนเงินลูกค้า": "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
-  "เงินมัดจำซัพพลายเออร์": "bg-amber-100 text-amber-700 dark:bg-amber-500/25 dark:text-amber-200",
-  "จ่ายชำระซัพพลายเออร์": "bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-200",
+  ซื้อสินค้า: "bg-blue-100 text-blue-700 dark:bg-blue-500/25 dark:text-blue-200",
+  ค่าใช้จ่าย: "bg-orange-100 text-orange-700 dark:bg-orange-500/25 dark:text-orange-200",
+  คืนเงินลูกค้า: "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
+  คืนเงินมัดจำลูกค้า:
+    "bg-rose-100 text-rose-700 dark:bg-rose-500/25 dark:text-rose-200",
+  เงินมัดจำซัพพลายเออร์: "bg-amber-100 text-amber-700 dark:bg-amber-500/25 dark:text-amber-200",
+  จ่ายชำระซัพพลายเออร์: "bg-teal-100 text-teal-700 dark:bg-teal-500/25 dark:text-teal-200",
 };
 
 const PM_COLORS: Record<string, string> = {
-  "เงินสด": "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-200",
-  "โอนเงิน": "bg-sky-100 text-sky-700 dark:bg-sky-500/25 dark:text-sky-200",
-  "เครดิต": "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
+  เงินสด: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/25 dark:text-emerald-200",
+  โอนเงิน: "bg-sky-100 text-sky-700 dark:bg-sky-500/25 dark:text-sky-200",
+  เครดิต: "bg-purple-100 text-purple-700 dark:bg-purple-500/25 dark:text-purple-200",
 };
 
 export type PaymentSummaryTotals = {
@@ -44,6 +47,7 @@ export type PaymentSummaryTotals = {
   supplierAdvance: number;
   supplierPayment: number;
   cnRefund: number;
+  customerAdvanceRefund: number;
 };
 
 export const EMPTY_PAYMENT_TOTALS: PaymentSummaryTotals = {
@@ -53,16 +57,21 @@ export const EMPTY_PAYMENT_TOTALS: PaymentSummaryTotals = {
   supplierAdvance: 0,
   supplierPayment: 0,
   cnRefund: 0,
+  customerAdvanceRefund: 0,
 };
 
-const sumActiveByDocType = (rows: DailyPaymentRow[], docType?: string): number =>
+const sumActiveByDocType = (rows: DailyPaymentRow[], docType?: string,
+): number =>
   rows
-    .filter((row) => row.status === "ACTIVE" && (docType === undefined || row.docType === docType))
+    .filter((row) => row.status === "ACTIVE" && (docType === undefined || row.docType === docType),
+    )
     .reduce((sum, row) => sum + row.amount, 0);
 
 /** Shared by the loaded report and the "no filter yet" state, which shows zeros. */
-export const PaymentSummaryCards = ({ totals }: { totals: PaymentSummaryTotals }) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-6">
+export const PaymentSummaryCards = ({ totals,
+}: { totals: PaymentSummaryTotals;
+}) => (
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-7">
     <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
       <p className="text-xs text-gray-500">รวมจ่ายเงิน (เฉพาะที่ใช้งาน)</p>
       <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totals.total)}</p>
@@ -87,10 +96,20 @@ export const PaymentSummaryCards = ({ totals }: { totals: PaymentSummaryTotals }
       <p className="text-xs text-purple-700">คืนเงินลูกค้า (CN)</p>
       <p className="mt-0.5 text-xl font-bold text-purple-700 tabular-nums">{fmt(totals.cnRefund)}</p>
     </div>
+  <div className="rounded-lg border border-rose-100 bg-rose-50 p-3 shadow-sm dark:border-rose-400/30 dark:bg-rose-500/10">
+      <p className="text-xs text-rose-700 dark:text-rose-300">
+        คืนเงินมัดจำลูกค้า
+      </p>
+      <p className="mt-0.5 text-xl font-bold text-rose-700 tabular-nums dark:text-rose-300">
+        {fmt(totals.customerAdvanceRefund)}
+      </p>
+    </div>
   </div>
 );
 
-export default async function PaymentsReportResults({ filters }: { filters: ReportFilters }) {
+export default async function PaymentsReportResults({ filters,
+}: { filters: ReportFilters;
+}) {
   const rows = await queryDailyPaymentRows(filters);
 
   const totals: PaymentSummaryTotals = {
@@ -100,6 +119,7 @@ export default async function PaymentsReportResults({ filters }: { filters: Repo
     supplierAdvance: sumActiveByDocType(rows, "เงินมัดจำซัพพลายเออร์"),
     supplierPayment: sumActiveByDocType(rows, "จ่ายชำระซัพพลายเออร์"),
     cnRefund: sumActiveByDocType(rows, "คืนเงินลูกค้า"),
+    customerAdvanceRefund: sumActiveByDocType(rows, "คืนเงินมัดจำลูกค้า"),
   };
 
   return (
@@ -107,7 +127,8 @@ export default async function PaymentsReportResults({ filters }: { filters: Repo
       <PaymentSummaryCards totals={totals} />
 
       <p className="text-sm text-gray-500">
-        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
+        แสดง <span className="font-semibold text-gray-900">{rows.length}</span>{" "}
+        รายการ
         {rows.length >= ROW_LIMIT && " (จำกัด 2,000 รายการ)"}
       </p>
 

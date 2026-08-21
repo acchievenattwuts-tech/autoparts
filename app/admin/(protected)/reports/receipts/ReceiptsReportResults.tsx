@@ -16,19 +16,22 @@ import { formatDateThai } from "@/lib/th-date";
 const ROW_LIMIT = 2000;
 
 function fmt(n: number) {
-  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
 }
 
 const DOC_TYPE_COLORS: Record<string, string> = {
-  "ขายสด": "bg-green-100 text-green-700",
-  "รับชำระหนี้": "bg-blue-100 text-blue-700",
-  "รับเงินมัดจำลูกค้า": "bg-amber-100 text-amber-700",
+  ขายสด: "bg-green-100 text-green-700",
+  รับชำระหนี้: "bg-blue-100 text-blue-700",
+  รับเงินมัดจำลูกค้า: "bg-amber-100 text-amber-700",
+  รับคืนเงินมัดจำซัพพลายเออร์:
+    "bg-cyan-100 text-cyan-700 dark:bg-cyan-500/25 dark:text-cyan-200",
 };
 
 const PM_COLORS: Record<string, string> = {
-  "เงินสด": "bg-emerald-100 text-emerald-700",
-  "โอนเงิน": "bg-sky-100 text-sky-700",
-  "เครดิต": "bg-purple-100 text-purple-700",
+  เงินสด: "bg-emerald-100 text-emerald-700",
+  โอนเงิน: "bg-sky-100 text-sky-700",
+  เครดิต: "bg-purple-100 text-purple-700",
 };
 
 export type ReceiptSummaryTotals = {
@@ -36,6 +39,7 @@ export type ReceiptSummaryTotals = {
   cashSale: number;
   receipt: number;
   customerAdvance: number;
+  supplierAdvanceRefund: number;
 };
 
 export const EMPTY_RECEIPT_TOTALS: ReceiptSummaryTotals = {
@@ -43,16 +47,21 @@ export const EMPTY_RECEIPT_TOTALS: ReceiptSummaryTotals = {
   cashSale: 0,
   receipt: 0,
   customerAdvance: 0,
+  supplierAdvanceRefund: 0,
 };
 
-const sumActiveByDocType = (rows: DailyReceiptRow[], docType?: string): number =>
+const sumActiveByDocType = (rows: DailyReceiptRow[], docType?: string,
+): number =>
   rows
-    .filter((row) => row.status === "ACTIVE" && (docType === undefined || row.docType === docType))
+    .filter((row) => row.status === "ACTIVE" && (docType === undefined || row.docType === docType),
+    )
     .reduce((sum, row) => sum + row.amount, 0);
 
 /** Shared by the loaded report and the "no filter yet" state, which shows zeros. */
-export const ReceiptSummaryCards = ({ totals }: { totals: ReceiptSummaryTotals }) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+export const ReceiptSummaryCards = ({ totals,
+}: { totals: ReceiptSummaryTotals;
+}) => (
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
     <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
       <p className="text-xs text-gray-500">รวมรับเงิน (เฉพาะที่ใช้งาน)</p>
       <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totals.total)}</p>
@@ -69,10 +78,20 @@ export const ReceiptSummaryCards = ({ totals }: { totals: ReceiptSummaryTotals }
       <p className="text-xs text-amber-700">รับเงินมัดจำลูกค้า</p>
       <p className="mt-0.5 text-xl font-bold text-amber-700 tabular-nums">{fmt(totals.customerAdvance)}</p>
     </div>
+  <div className="rounded-lg border border-cyan-100 bg-cyan-50 p-3 shadow-sm dark:border-cyan-400/30 dark:bg-cyan-500/10">
+      <p className="text-xs text-cyan-700 dark:text-cyan-300">
+        รับคืนเงินมัดจำซัพพลายเออร์
+      </p>
+      <p className="mt-0.5 text-xl font-bold text-cyan-700 tabular-nums dark:text-cyan-300">
+        {fmt(totals.supplierAdvanceRefund)}
+      </p>
+    </div>
   </div>
 );
 
-export default async function ReceiptsReportResults({ filters }: { filters: ReportFilters }) {
+export default async function ReceiptsReportResults({ filters,
+}: { filters: ReportFilters;
+}) {
   const rows = await queryDailyReceiptRows(filters);
 
   const totals: ReceiptSummaryTotals = {
@@ -80,6 +99,10 @@ export default async function ReceiptsReportResults({ filters }: { filters: Repo
     cashSale: sumActiveByDocType(rows, "ขายสด"),
     receipt: sumActiveByDocType(rows, "รับชำระหนี้"),
     customerAdvance: sumActiveByDocType(rows, "รับเงินมัดจำลูกค้า"),
+    supplierAdvanceRefund: sumActiveByDocType(
+      rows,
+      "รับคืนเงินมัดจำซัพพลายเออร์",
+    ),
   };
 
   return (
@@ -87,7 +110,8 @@ export default async function ReceiptsReportResults({ filters }: { filters: Repo
       <ReceiptSummaryCards totals={totals} />
 
       <p className="text-sm text-gray-500">
-        แสดง <span className="font-semibold text-gray-900">{rows.length}</span> รายการ
+        แสดง <span className="font-semibold text-gray-900">{rows.length}</span>{" "}
+        รายการ
         {rows.length >= ROW_LIMIT && " (จำกัด 2,000 รายการ)"}
       </p>
 

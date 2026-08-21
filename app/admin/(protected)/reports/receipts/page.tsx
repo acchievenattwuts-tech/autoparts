@@ -9,7 +9,8 @@ import AdminExportLink from "@/components/shared/AdminExportLink";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
-import { buildExportQuery, parseReportQueryFilters } from "@/lib/report-queries";
+import { buildExportQuery, parseReportQueryFilters,
+} from "@/lib/report-queries";
 
 import ReportResultsSkeleton from "../ReportResultsSkeleton";
 import ReceiptsReportResults, {
@@ -22,7 +23,8 @@ interface PageProps {
 }
 
 export default async function DailyReceiptPage({ searchParams }: PageProps) {
-  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams]);
+  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams,
+  ]);
   const filters = parseReportQueryFilters(params);
   const exportQuery = buildExportQuery(filters);
 
@@ -64,6 +66,9 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
             <option value="CASH_SALE">ขายสด</option>
             <option value="RECEIPT">รับชำระหนี้</option>
             <option value="CUSTOMER_ADVANCE">รับเงินมัดจำลูกค้า</option>
+          <option value="SUPPLIER_ADVANCE_REFUND">
+              รับคืนเงินมัดจำซัพพลายเออร์
+            </option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

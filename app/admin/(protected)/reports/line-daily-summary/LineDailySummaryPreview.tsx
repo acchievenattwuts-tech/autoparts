@@ -21,22 +21,40 @@ export default async function LineDailySummaryPreview({
 
   const previewMoneyAndOutstandingItems = [
     keepPreviewItem(compactMode, summary.money.cashInTotal, true)
-      ? { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}` }
+      ? { label: "เงินเข้ารวม", value: `฿${fmtMoney(summary.money.cashInTotal)}`,
+        }
+      : null,
+    keepPreviewItem(compactMode, summary.money.cashInFromCustomerAdvances)
+      ? {
+          label: "รับเงินมัดจำลูกค้า",
+          value: `฿${fmtMoney(summary.money.cashInFromCustomerAdvances)}`,
+        }
+      : null,
+    keepPreviewItem(compactMode, summary.money.cashInFromSupplierAdvanceRefunds)
+      ? {
+          label: "รับคืนเงินมัดจำซัพพลายเออร์",
+          value: `฿${fmtMoney(summary.money.cashInFromSupplierAdvanceRefunds)}`,
+        }
       : null,
     keepPreviewItem(compactMode, summary.money.cashChannelTotal)
-      ? { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}` }
+      ? { label: "เงินสด", value: `฿${fmtMoney(summary.money.cashChannelTotal)}`,
+        }
       : null,
     keepPreviewItem(compactMode, summary.money.transferChannelTotal)
-      ? { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}` }
+      ? { label: "เงินโอน", value: `฿${fmtMoney(summary.money.transferChannelTotal)}`,
+        }
       : null,
     keepPreviewItem(compactMode, summary.money.arOutstanding)
-      ? { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}` }
+      ? { label: "ลูกหนี้ค้างรับ", value: `฿${fmtMoney(summary.money.arOutstanding)}`,
+        }
       : null,
     keepPreviewItem(compactMode, summary.money.codOutstanding)
-      ? { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}` }
+      ? { label: "COD ค้างรับเงิน", value: `฿${fmtMoney(summary.money.codOutstanding)}`,
+        }
       : null,
     keepPreviewItem(compactMode, summary.money.apOutstanding)
-      ? { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}` }
+      ? { label: "เจ้าหนี้ค้างจ่าย", value: `฿${fmtMoney(summary.money.apOutstanding)}`,
+        }
       : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
   const previewSalesItems = [
@@ -50,14 +68,17 @@ export default async function LineDailySummaryPreview({
       ? { label: "ขายเชื่อ", value: `฿${fmtMoney(summary.money.creditSales)}` }
       : null,
     keepPreviewItem(compactMode, summary.money.costOfGoodsSoldToday)
-      ? { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}` }
+      ? { label: "ต้นทุนขาย", value: `฿${fmtMoney(summary.money.costOfGoodsSoldToday)}`,
+        }
       : null,
   ].filter((item): item is { label: string; value: string } => item !== null);
   const previewBalanceItems = [
     ...summary.balances.accounts
       .filter((account) => keepPreviewItem(compactMode, account.balance))
-      .map((account) => ({ label: account.label, value: `฿${fmtMoney(account.balance)}` })),
-    { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}` },
+      .map((account) => ({ label: account.label, value: `฿${fmtMoney(account.balance)}`,
+      })),
+    { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}`,
+    },
   ];
   const previewRiskItems = buildRiskRadarItems(summary.risks)
     .filter((item) => keepPreviewItem(compactMode, item.count))
@@ -69,7 +90,8 @@ export default async function LineDailySummaryPreview({
         <div className="flex flex-col gap-1">
           <h3 className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">ข้อความ LINE ที่จะส่งจริง</h3>
           <p className="text-sm text-gray-500 dark:text-slate-400">
-            preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {summary.reportDateLabel} ({summary.reportDayKey})
+            preview นี้แสดงเฉพาะ Flex card เดียวกับที่ระบบส่งจริง สำหรับวันที่ {" "}
+            {summary.reportDateLabel} ({summary.reportDayKey})
             {compactMode ? " โดยเปิด compact mode ซ่อนแถวค่า 0" : " โดยแสดงครบทุกแถวตามค่าเดิม"}
           </p>
         </div>
@@ -124,7 +146,10 @@ export default async function LineDailySummaryPreview({
                 <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
                   <p className="font-semibold">✨ ปิดท้ายวันนี้</p>
                   <p className="mt-1">
-                    จ่ายเงินวันนี้ ฿{fmtMoney(summary.money.expensesToday)} • เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
+                    จ่ายเงินวันนี้ ฿{fmtMoney(summary.money.expensesToday)} •
+                    คืนเงินมัดจำลูกค้า ฿
+                    {fmtMoney(summary.money.cashOutForCustomerAdvanceRefunds)} •
+                    เงินโอนระหว่างบัญชี ฿{fmtMoney(summary.money.transfersToday)}
                   </p>
                 </div>
               </div>
@@ -141,7 +166,15 @@ export default async function LineDailySummaryPreview({
             <PreviewMetric label="ขายเชื่อ" value={`฿${fmtMoney(summary.money.creditSales)}`} />
             <PreviewMetric label="รับชำระหนี้" value={`฿${fmtMoney(summary.money.cashInFromReceipts)}`} />
             <PreviewMetric label="รับเงินมัดจำลูกค้า" value={`฿${fmtMoney(summary.money.cashInFromCustomerAdvances)}`} />
-            <PreviewMetric label="เงินสด" value={`฿${fmtMoney(summary.money.cashChannelTotal)}`} />
+            <PreviewMetric label="รับคืนเงินมัดจำซัพพลายเออร์"
+              value={`฿${fmtMoney(summary.money.cashInFromSupplierAdvanceRefunds)}`}
+            />
+            <PreviewMetric
+              label="คืนเงินมัดจำลูกค้า"
+              value={`฿${fmtMoney(summary.money.cashOutForCustomerAdvanceRefunds)}`}
+            />
+            <PreviewMetric
+              label="เงินสด" value={`฿${fmtMoney(summary.money.cashChannelTotal)}`} />
             <PreviewMetric label="เงินโอน" value={`฿${fmtMoney(summary.money.transferChannelTotal)}`} />
             <PreviewMetric label="เจ้าหนี้ค้างจ่าย" value={`฿${fmtMoney(summary.money.apOutstanding)}`} />
           </div>

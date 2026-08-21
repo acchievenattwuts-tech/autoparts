@@ -58,9 +58,11 @@ async function resolveAccountDocIds(
 function accountWhereFilter(
   accountId: string | undefined,
   accountDocIds: string[],
-): { OR: Array<{ cashBankAccountId: string } | { id: { in: string[] } }> } | Record<string, never> {
+):
+  | { OR: Array<{ cashBankAccountId: string } | { id: { in: string[] } }> } | Record<string, never> {
   if (!accountId) return {};
-  return { OR: [{ cashBankAccountId: accountId }, { id: { in: accountDocIds } }] };
+  return { OR: [{ cashBankAccountId: accountId }, { id: { in: accountDocIds } }],
+  };
 }
 
 export type ReportFilters = {
@@ -145,7 +147,8 @@ export function cnTypeLabel(t: CreditNoteType): string {
   return "อื่นๆ";
 }
 
-export function paymentMethodLabel(m: PaymentMethod | null | undefined): string {
+export function paymentMethodLabel(m: PaymentMethod | null | undefined,
+): string {
   if (m === "CASH") return "เงินสด";
   if (m === "TRANSFER") return "โอนเงิน";
   if (m === "CREDIT") return "เครดิต";
@@ -418,11 +421,13 @@ export async function querySalesRowsTotals(filters: ReportFilters): Promise<{
   };
 }
 
-export async function countSalesRowsDocs(filters: ReportFilters): Promise<number> {
+export async function countSalesRowsDocs(filters: ReportFilters,
+): Promise<number> {
   const accountDocIds = filters.accountId
     ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
     : [];
-  return db.sale.count({ where: buildSalesReportWhere(filters, accountDocIds) });
+  return db.sale.count({ where: buildSalesReportWhere(filters, accountDocIds),
+  });
 }
 
 // Query: Purchase Register
@@ -448,7 +453,8 @@ export async function queryPurchaseRows(
   pageNo: number = 0,
 ): Promise<PurchaseRow[]> {
   const accountDocIds = filters.accountId
-    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId,
+      )
     : [];
   const purchases = await db.purchase.findMany({
     where: buildPurchaseReportWhere(filters, accountDocIds),
@@ -475,7 +481,8 @@ export async function queryPurchaseRows(
             showQty: true,
             showUnitName: true,
             showPricePerUnit: true,
-            product: { select: { code: true, name: true, purchaseUnitName: true } },
+            product: { select: { code: true, name: true, purchaseUnitName: true },
+          },
           },
         },
       },
@@ -530,7 +537,8 @@ export async function queryPurchaseRowsTotals(filters: ReportFilters): Promise<{
   total: number;
 }> {
   const accountDocIds = filters.accountId
-    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId,
+      )
     : [];
   const where = buildPurchaseReportWhere(filters, accountDocIds);
   const [documentTotals, itemTotals] = await Promise.all([
@@ -562,7 +570,8 @@ export async function queryCreditNoteRows(
     : { status: "ACTIVE" };
 
   const accountDocIds = filters.accountId
-    ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId)
+    ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId,
+      )
     : [];
 
   const cns = await db.creditNote.findMany({
@@ -653,7 +662,8 @@ export async function queryReceiptRows(
     : { status: "ACTIVE" };
 
   const accountDocIds = filters.accountId
-    ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId)
+    ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId,
+      )
     : [];
 
   const receipts = await db.receipt.findMany({
@@ -722,7 +732,8 @@ export async function queryPaymentRows(
   if (docType === "ALL" || docType === "PURCHASE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId,
+        )
       : [];
     const purchases = await db.purchase.findMany({
       where: {
@@ -769,7 +780,8 @@ export async function queryPaymentRows(
   if (docType === "ALL" || docType === "EXPENSE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId,
+        )
       : [];
     const expenses = await db.expense.findMany({
       where: {
@@ -933,7 +945,7 @@ export type DailyReceiptRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "ขายสด" | "รับชำระหนี้" | "รับเงินมัดจำลูกค้า"
+  docType: string; // รวมเอกสารเงินเข้าทุกประเภท
   customerCode: string;
   customerName: string;
   paymentMethod: string;
@@ -956,7 +968,8 @@ export async function queryDailyReceiptRows(
   if (docType === "ALL" || docType === "CASH_SALE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId,
+        )
       : [];
     const sales = await db.sale.findMany({
       where: {
@@ -999,7 +1012,8 @@ export async function queryDailyReceiptRows(
   if (docType === "ALL" || docType === "RECEIPT") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId,
+        )
       : [];
     const receipts = await db.receipt.findMany({
       where: {
@@ -1041,7 +1055,8 @@ export async function queryDailyReceiptRows(
   if (docType === "ALL" || docType === "CUSTOMER_ADVANCE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.CUSTOMER_ADVANCE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.CUSTOMER_ADVANCE, filters.accountId,
+        )
       : [];
     const advances = await db.customerAdvance.findMany({
       where: {
@@ -1079,6 +1094,58 @@ export async function queryDailyReceiptRows(
     }
   }
 
+  if (docType === "ALL" || docType === "SUPPLIER_ADVANCE_REFUND") {
+    const statusFilter: { status?: DocStatus } = showCancelled
+      ? {}
+      : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(
+          DocumentPaymentDocType.SUPPLIER_ADVANCE_REFUND,
+          filters.accountId,
+        )
+      : [];
+    const refunds = await db.supplierAdvanceRefund.findMany({
+      where: {
+        refundDate: { gte: filters.from, lte: filters.to },
+        ...accountWhereFilter(filters.accountId, accountDocIds),
+        ...statusFilter,
+      },
+      select: {
+        refundNo: true,
+        refundDate: true,
+        refundAmount: true,
+        paymentMethod: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        supplierAdvance: {
+          select: {
+            advanceNo: true,
+            supplier: { select: { code: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ refundDate: "asc" }, { refundNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    for (const refund of refunds)
+      rows.push({
+        rowNo: 0,
+        docNo: refund.refundNo,
+        docDate: refund.refundDate,
+        docType: "รับคืนเงินมัดจำซัพพลายเออร์",
+        customerCode: refund.supplierAdvance.supplier.code ?? "",
+        customerName: refund.supplierAdvance.supplier.name,
+        paymentMethod: paymentMethodLabel(refund.paymentMethod),
+        accountName: refund.cashBankAccount?.name ?? "-",
+        note: [refund.supplierAdvance.advanceNo, refund.note]
+          .filter(Boolean)
+          .join(" · "),
+        status: refund.status,
+        amount: Number(refund.refundAmount),
+      });
+  }
+
   rows.sort((a, b) => {
     const dt = a.docDate.getTime() - b.docDate.getTime();
     return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
@@ -1093,7 +1160,7 @@ export type DailyPaymentRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "ซื้อสินค้า" | "ค่าใช้จ่าย" | "คืนเงินลูกค้า" | "เงินมัดจำซัพพลายเออร์" | "จ่ายชำระซัพพลายเออร์"
+  docType: string; // รวมเอกสารเงินออกทุกประเภท
   partyCode: string;
   partyName: string;
   paymentMethod: string;
@@ -1116,7 +1183,8 @@ export async function queryDailyPaymentRows(
   if (docType === "ALL" || docType === "PURCHASE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId,
+        )
       : [];
     const purchases = await db.purchase.findMany({
       where: {
@@ -1158,7 +1226,8 @@ export async function queryDailyPaymentRows(
   if (docType === "ALL" || docType === "EXPENSE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId,
+        )
       : [];
     const expenses = await db.expense.findMany({
       where: {
@@ -1209,7 +1278,8 @@ export async function queryDailyPaymentRows(
   if (docType === "ALL" || docType === "SUPPLIER_ADVANCE") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_ADVANCE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_ADVANCE, filters.accountId,
+        )
       : [];
     const advances = await db.supplierAdvance.findMany({
       where: {
@@ -1250,7 +1320,8 @@ export async function queryDailyPaymentRows(
   if (docType === "ALL" || docType === "SUPPLIER_PAYMENT") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_PAYMENT, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_PAYMENT, filters.accountId,
+        )
       : [];
     const payments = await db.supplierPayment.findMany({
       where: {
@@ -1308,7 +1379,8 @@ export async function queryDailyPaymentRows(
   if (docType === "ALL" || docType === "CN_REFUND") {
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
-      ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId)
+      ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId,
+        )
       : [];
     const cns = await db.creditNote.findMany({
       where: {
@@ -1350,6 +1422,58 @@ export async function queryDailyPaymentRows(
         amount: Number(cn.totalAmount),
       });
     }
+  }
+
+  if (docType === "ALL" || docType === "CUSTOMER_ADVANCE_REFUND") {
+    const statusFilter: { status?: DocStatus } = showCancelled
+      ? {}
+      : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(
+          DocumentPaymentDocType.CUSTOMER_ADVANCE_REFUND,
+          filters.accountId,
+        )
+      : [];
+    const refunds = await db.customerAdvanceRefund.findMany({
+      where: {
+        refundDate: { gte: filters.from, lte: filters.to },
+        ...accountWhereFilter(filters.accountId, accountDocIds),
+        ...statusFilter,
+      },
+      select: {
+        refundNo: true,
+        refundDate: true,
+        refundAmount: true,
+        paymentMethod: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        customerAdvance: {
+          select: {
+            advanceNo: true,
+            customer: { select: { code: true, name: true } },
+          },
+        },
+      },
+      orderBy: [{ refundDate: "asc" }, { refundNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    for (const refund of refunds)
+      rows.push({
+        rowNo: 0,
+        docNo: refund.refundNo,
+        docDate: refund.refundDate,
+        docType: "คืนเงินมัดจำลูกค้า",
+        partyCode: refund.customerAdvance.customer.code ?? "",
+        partyName: refund.customerAdvance.customer.name,
+        paymentMethod: paymentMethodLabel(refund.paymentMethod),
+        accountName: refund.cashBankAccount?.name ?? "-",
+        note: [refund.customerAdvance.advanceNo, refund.note]
+          .filter(Boolean)
+          .join(" · "),
+        status: refund.status,
+        amount: Number(refund.refundAmount),
+      });
   }
 
   rows.sort((a, b) => {

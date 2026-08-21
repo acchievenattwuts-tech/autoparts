@@ -173,6 +173,40 @@ test("customer advance routes use the matching view permission", () => {
   );
 });
 
+test("advance refund routes use their own view and mutation permissions", () => {
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({
+      pathname: "/admin/customer-advance-refunds",
+      permissions: ["customer_advance_refunds.view"],
+    })),
+    { type: "allow" },
+  );
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({
+      pathname: "/admin/supplier-advance-refunds",
+      permissions: ["supplier_advances.view"],
+    })),
+    { type: "deny" },
+  );
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({
+      pathname: "/admin/customer-advance-refunds/new",
+      permissions: ["customer_advance_refunds.view"],
+    })),
+    { type: "deny" },
+  );
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({
+      pathname: "/admin/supplier-advance-refunds/refund-1/edit",
+      permissions: [
+        "supplier_advance_refunds.view",
+        "supplier_advance_refunds.update",
+      ],
+    })),
+    { type: "allow" },
+  );
+});
+
 test("a staff user is denied a page their role does not grant", () => {
   assert.deepEqual(
     decideAdminRouteAccess(staff({ pathname: "/admin/audit-log" })),

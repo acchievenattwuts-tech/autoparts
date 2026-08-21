@@ -21,7 +21,11 @@ const TARGET_TABLES = [
   "PurchaseItem",
   "Purchase",
   "SupplierPaymentItem",
+  "DocumentPayment",
   "SupplierPayment",
+  "CustomerAdvanceRefund",
+  "SupplierAdvanceRefund",
+  "CustomerAdvance",
   "SupplierAdvance",
   "ExpenseItem",
   "Expense",
@@ -64,7 +68,11 @@ const DELETE_STATEMENTS = [
   'delete from "PurchaseItem"',
   'delete from "Purchase"',
   'delete from "SupplierPaymentItem"',
+  'delete from "DocumentPayment"',
   'delete from "SupplierPayment"',
+  'delete from "CustomerAdvanceRefund"',
+  'delete from "SupplierAdvanceRefund"',
+  'delete from "CustomerAdvance"',
   'delete from "SupplierAdvance"',
   'delete from "ExpenseItem"',
   'delete from "Expense"',
@@ -90,11 +98,12 @@ const DELETE_STATEMENTS = [
 ] as const;
 
 function quoteIdent(value: string): string {
-  return `"${value.replace(/"/g, "\"\"")}"`;
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 async function countRows(client: Client, table: string): Promise<number> {
-  const result = await client.query<{ n: string }>(`select count(*)::text as n from ${quoteIdent(table)}`);
+  const result = await client.query<{ n: string }>(`select count(*)::text as n from ${quoteIdent(table)}`,
+  );
   return Number(result.rows[0]?.n ?? 0);
 }
 
@@ -119,7 +128,8 @@ async function main() {
       code: string;
       openingBalance: string;
       openingDate: string;
-    }>('select "code", "openingBalance"::text as "openingBalance", "openingDate"::text as "openingDate" from "CashBankAccount" order by "code"');
+    }>('select "code", "openingBalance"::text as "openingBalance", "openingDate"::text as "openingDate" from "CashBankAccount" order by "code"',
+    );
 
     console.log("Target row counts before cleanup:");
     for (const table of TARGET_TABLES) {
@@ -128,11 +138,13 @@ async function main() {
 
     console.log("\nCashBankAccount before reset:");
     for (const row of cashBankBefore.rows) {
-      console.log(`${row.code}: openingBalance=${row.openingBalance} openingDate=${row.openingDate}`);
+      console.log(`${row.code}: openingBalance=${row.openingBalance} openingDate=${row.openingDate}`,
+      );
     }
 
     if (!execute) {
-      console.log("\nDry run only. Re-run with --execute to apply the cleanup.");
+      console.log("\nDry run only. Re-run with --execute to apply the cleanup.",
+      );
       return;
     }
 
@@ -153,7 +165,8 @@ async function main() {
       code: string;
       openingBalance: string;
       openingDate: string;
-    }>('select "code", "openingBalance"::text as "openingBalance", "openingDate"::text as "openingDate" from "CashBankAccount" order by "code"');
+    }>('select "code", "openingBalance"::text as "openingBalance", "openingDate"::text as "openingDate" from "CashBankAccount" order by "code"',
+    );
 
     console.log("\nTarget row counts after cleanup:");
     for (const table of TARGET_TABLES) {
@@ -162,7 +175,8 @@ async function main() {
 
     console.log("\nCashBankAccount after reset:");
     for (const row of cashBankAfter.rows) {
-      console.log(`${row.code}: openingBalance=${row.openingBalance} openingDate=${row.openingDate}`);
+      console.log(`${row.code}: openingBalance=${row.openingBalance} openingDate=${row.openingDate}`,
+      );
     }
   } catch (error) {
     try {

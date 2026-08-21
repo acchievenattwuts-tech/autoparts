@@ -58,6 +58,8 @@ model User {
   supplierAdvances               SupplierAdvance[]
   supplierPayments               SupplierPayment[]
   customerAdvances               CustomerAdvance[]
+  customerAdvanceRefunds         CustomerAdvanceRefund[]
+  supplierAdvanceRefunds         SupplierAdvanceRefund[]
   appRole                        AppRole?                   @relation(fields: [appRoleId], references: [id])
   directPermissionGrants         UserPermissionGrant[]
   knowledgeSourcesCreated        KnowledgeSource[]          @relation("KnowledgeSourceCreatedBy")
@@ -2129,6 +2131,8 @@ model CashBankAccount {
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
   customerAdvances         CustomerAdvance[]
+  customerAdvanceRefunds   CustomerAdvanceRefund[]
+  supplierAdvanceRefunds   SupplierAdvanceRefund[]
 
   @@index([type, isActive])
   @@index([name])
@@ -2373,10 +2377,37 @@ model CustomerAdvance {
   customer          Customer         @relation(fields: [customerId], references: [id])
   user              User             @relation(fields: [userId], references: [id])
   receiptItems      ReceiptItem[]
+  refunds           CustomerAdvanceRefund[]
 
   @@index([advanceDate(sort: Desc), status])
   @@index([cashBankAccountId, advanceDate(sort: Desc), status])
   @@index([customerId, status])
+  @@index([cashBankAccountId])
+  @@index([userId])
+}
+
+model CustomerAdvanceRefund {
+  id                String           @id @default(cuid())
+  refundNo          String           @unique
+  refundDate        DateTime         @default(now()) @db.Timestamptz(3)
+  customerAdvanceId String
+  userId            String
+  refundAmount      Decimal          @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod    @default(TRANSFER)
+  note              String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  cancelNote        String?
+  cancelledAt       DateTime?        @db.Timestamptz(3)
+  status            DocStatus        @default(ACTIVE)
+  cashBankAccountId String?
+  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  customerAdvance   CustomerAdvance  @relation(fields: [customerAdvanceId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
+
+  @@index([refundDate(sort: Desc), status])
+  @@index([customerAdvanceId, status])
+  @@index([cashBankAccountId, refundDate(sort: Desc), status])
   @@index([cashBankAccountId])
   @@index([userId])
 }
@@ -2401,11 +2432,38 @@ model SupplierAdvance {
   supplier          Supplier              @relation(fields: [supplierId], references: [id])
   user              User                  @relation(fields: [userId], references: [id])
   supplierPayments  SupplierPaymentItem[]
+  refunds           SupplierAdvanceRefund[]
 
   @@index([advanceDate])
   @@index([advanceDate(sort: Desc), status])
   @@index([cashBankAccountId, advanceDate(sort: Desc), status])
   @@index([supplierId, status])
+  @@index([cashBankAccountId])
+  @@index([userId])
+}
+
+model SupplierAdvanceRefund {
+  id                String           @id @default(cuid())
+  refundNo          String           @unique
+  refundDate        DateTime         @default(now()) @db.Timestamptz(3)
+  supplierAdvanceId String
+  userId            String
+  refundAmount      Decimal          @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod    @default(TRANSFER)
+  note              String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  cancelNote        String?
+  cancelledAt       DateTime?        @db.Timestamptz(3)
+  status            DocStatus        @default(ACTIVE)
+  cashBankAccountId String?
+  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  supplierAdvance   SupplierAdvance  @relation(fields: [supplierAdvanceId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
+
+  @@index([refundDate(sort: Desc), status])
+  @@index([supplierAdvanceId, status])
+  @@index([cashBankAccountId, refundDate(sort: Desc), status])
   @@index([cashBankAccountId])
   @@index([userId])
 }
@@ -2960,6 +3018,7 @@ enum CashBankSourceType {
   SALE
   RECEIPT
   CUSTOMER_ADVANCE
+  CUSTOMER_ADVANCE_REFUND
   PURCHASE
   EXPENSE
   CN_SALE
@@ -2967,6 +3026,7 @@ enum CashBankSourceType {
   ADJUSTMENT
   CN_PURCHASE
   SUPPLIER_ADVANCE
+  SUPPLIER_ADVANCE_REFUND
   SUPPLIER_PAYMENT
   PARTNER_PAYOUT
 }
@@ -2980,11 +3040,13 @@ enum DocumentPaymentDocType {
   SALE
   RECEIPT
   CUSTOMER_ADVANCE
+  CUSTOMER_ADVANCE_REFUND
   PURCHASE
   EXPENSE
   CN_SALE
   CN_PURCHASE
   SUPPLIER_ADVANCE
+  SUPPLIER_ADVANCE_REFUND
   SUPPLIER_PAYMENT
 }
 

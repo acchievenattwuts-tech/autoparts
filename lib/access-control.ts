@@ -78,11 +78,19 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "customer_advances.create", group: "ระบบงาน", label: "เพิ่มรับเงินมัดจำลูกค้า" },
   { key: "customer_advances.update", group: "ระบบงาน", label: "แก้ไขรับเงินมัดจำลูกค้า" },
   { key: "customer_advances.cancel", group: "ระบบงาน", label: "ยกเลิกรับเงินมัดจำลูกค้า" },
+  { key: "customer_advance_refunds.view", group: "ระบบงาน", label: "ดูคืนเงินมัดจำลูกค้า" },
+  { key: "customer_advance_refunds.create", group: "ระบบงาน", label: "เพิ่มคืนเงินมัดจำลูกค้า" },
+  { key: "customer_advance_refunds.update", group: "ระบบงาน", label: "แก้ไขคืนเงินมัดจำลูกค้า" },
+  { key: "customer_advance_refunds.cancel", group: "ระบบงาน", label: "ยกเลิกคืนเงินมัดจำลูกค้า" },
 
   { key: "supplier_advances.view", group: "ระบบงาน", label: "ดูเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_advances.create", group: "ระบบงาน", label: "เพิ่มเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_advances.update", group: "ระบบงาน", label: "แก้ไขเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_advances.cancel", group: "ระบบงาน", label: "ยกเลิกเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advance_refunds.view", group: "ระบบงาน", label: "ดูรับคืนเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advance_refunds.create", group: "ระบบงาน", label: "เพิ่มรับคืนเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advance_refunds.update", group: "ระบบงาน", label: "แก้ไขรับคืนเงินมัดจำซัพพลายเออร์" },
+  { key: "supplier_advance_refunds.cancel", group: "ระบบงาน", label: "ยกเลิกรับคืนเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_payments.view", group: "ระบบงาน", label: "ดูจ่ายชำระซัพพลายเออร์" },
   { key: "supplier_payments.create", group: "ระบบงาน", label: "เพิ่มจ่ายชำระซัพพลายเออร์" },
   { key: "supplier_payments.update", group: "ระบบงาน", label: "แก้ไขจ่ายชำระซัพพลายเออร์" },
@@ -220,9 +228,15 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "customer_advances.view",
   "customer_advances.create",
   "customer_advances.update",
+  "customer_advance_refunds.view",
+  "customer_advance_refunds.create",
+  "customer_advance_refunds.update",
   "supplier_advances.view",
   "supplier_advances.create",
   "supplier_advances.update",
+  "supplier_advance_refunds.view",
+  "supplier_advance_refunds.create",
+  "supplier_advance_refunds.update",
   "supplier_payments.view",
   "supplier_payments.create",
   "supplier_payments.update",
@@ -269,7 +283,9 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "credit_notes.view",
   "receipts.view",
   "customer_advances.view",
+  "customer_advance_refunds.view",
   "supplier_advances.view",
+  "supplier_advance_refunds.view",
   "supplier_payments.view",
   "warranties.view",
   "warranty_claims.view",
@@ -348,7 +364,9 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
   { prefix: "/admin/customer-advances", permission: "customer_advances.view" },
+  { prefix: "/admin/customer-advance-refunds", permission: "customer_advance_refunds.view" },
   { prefix: "/admin/supplier-advances", permission: "supplier_advances.view" },
+  { prefix: "/admin/supplier-advance-refunds", permission: "supplier_advance_refunds.view" },
   { prefix: "/admin/supplier-payments", permission: "supplier_payments.view" },
   { prefix: "/admin/warranties", permission: "warranties.view" },
   { prefix: "/admin/warranty-claims", permission: "warranty_claims.view" },
@@ -530,8 +548,12 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (/^\/admin\/receipts\/[^/]+\/edit$/.test(pathname)) return "receipts.update";
   if (pathname === "/admin/customer-advances/new") return "customer_advances.create";
   if (/^\/admin\/customer-advances\/[^/]+\/edit$/.test(pathname)) return "customer_advances.update";
+  if (pathname === "/admin/customer-advance-refunds/new") return "customer_advance_refunds.create";
+  if (/^\/admin\/customer-advance-refunds\/[^/]+\/edit$/.test(pathname)) return "customer_advance_refunds.update";
   if (pathname === "/admin/supplier-advances/new") return "supplier_advances.create";
   if (/^\/admin\/supplier-advances\/[^/]+\/edit$/.test(pathname)) return "supplier_advances.update";
+  if (pathname === "/admin/supplier-advance-refunds/new") return "supplier_advance_refunds.create";
+  if (/^\/admin\/supplier-advance-refunds\/[^/]+\/edit$/.test(pathname)) return "supplier_advance_refunds.update";
   if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";
   if (/^\/admin\/supplier-payments\/[^/]+\/edit$/.test(pathname)) return "supplier_payments.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";

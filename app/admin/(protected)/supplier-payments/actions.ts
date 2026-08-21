@@ -26,7 +26,8 @@ import {
   recalculatePurchaseReturnAmountRemain,
   recalculateSupplierAdvanceAmountRemain,
 } from "@/lib/amount-remain";
-import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements,
+} from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -84,7 +85,8 @@ const supplierPaymentItemSchema = z
     paidAmount: z.coerce.number().positive("ยอดที่นำมาชำระต้องมากกว่า 0"),
   })
   .superRefine((data, ctx) => {
-    const refCount = [data.purchaseId, data.purchaseReturnId, data.advanceId].filter(Boolean).length;
+    const refCount = [data.purchaseId, data.purchaseReturnId, data.advanceId,
+    ].filter(Boolean).length;
     if (refCount !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -103,7 +105,8 @@ const supplierPaymentSchema = z.object({
 
 type ParsedSupplierPayment = z.infer<typeof supplierPaymentSchema>;
 
-function sumPaidAmount(items: Array<{ paidAmount: Prisma.Decimal | number }>): number {
+function sumPaidAmount(items: Array<{ paidAmount: Prisma.Decimal | number }>,
+): number {
   return items.reduce((sum, item) => sum + Number(item.paidAmount), 0);
 }
 
@@ -131,14 +134,20 @@ async function getAvailableSupplierDocuments(
   supplierId: string,
   excludePaymentId?: string,
 ): Promise<AvailableDocumentBundle> {
-  const purchaseOr = [{ amountRemain: { gt: 0 } }] as Prisma.PurchaseWhereInput[];
-  const creditOr = [{ amountRemain: { gt: 0 } }] as Prisma.PurchaseReturnWhereInput[];
-  const advanceOr = [{ amountRemain: { gt: 0 } }] as Prisma.SupplierAdvanceWhereInput[];
+  const purchaseOr = [{ amountRemain: { gt: 0 } },
+  ] as Prisma.PurchaseWhereInput[];
+  const creditOr = [{ amountRemain: { gt: 0 } },
+  ] as Prisma.PurchaseReturnWhereInput[];
+  const advanceOr = [{ amountRemain: { gt: 0 } },
+  ] as Prisma.SupplierAdvanceWhereInput[];
 
   if (excludePaymentId) {
-    purchaseOr.push({ supplierPaymentItems: { some: { paymentId: excludePaymentId } } });
-    creditOr.push({ supplierPaymentItems: { some: { paymentId: excludePaymentId } } });
-    advanceOr.push({ supplierPayments: { some: { paymentId: excludePaymentId } } });
+    purchaseOr.push({ supplierPaymentItems: { some: { paymentId: excludePaymentId } },
+    });
+    creditOr.push({ supplierPaymentItems: { some: { paymentId: excludePaymentId } },
+    });
+    advanceOr.push({ supplierPayments: { some: { paymentId: excludePaymentId } },
+    });
   }
 
   // Sequential awaits on the single transaction connection — Promise.all here
@@ -240,17 +249,22 @@ async function getAvailableSupplierDocuments(
   };
 }
 
-function serializeDocuments(bundle: AvailableDocumentBundle): SupplierSettlementDocumentBundle {
+function serializeDocuments(bundle: AvailableDocumentBundle,
+): SupplierSettlementDocumentBundle {
   return {
-    purchases: bundle.purchases.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "PURCHASE" })),
-    credits: bundle.credits.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "SUPPLIER_CREDIT" })),
-    advances: bundle.advances.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "ADVANCE" })),
+    purchases: bundle.purchases.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "PURCHASE",
+    })),
+    credits: bundle.credits.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "SUPPLIER_CREDIT",
+    })),
+    advances: bundle.advances.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "ADVANCE",
+    })),
   };
 }
 
 function parseSupplierPaymentForm(
   formData: FormData,
-): { success: true; data: ParsedSupplierPayment } | { success: false; error: string } {
+):
+  | { success: true; data: ParsedSupplierPayment } | { success: false; error: string } {
   try {
     const parsed = supplierPaymentSchema.parse({
       supplierId: formData.get("supplierId"),
@@ -262,7 +276,8 @@ function parseSupplierPaymentForm(
     return { success: true, data: parsed };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+      return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง",
+      };
     }
     return { success: false, error: "ข้อมูลไม่ถูกต้อง" };
   }
@@ -279,25 +294,46 @@ function collectAffectedIds(items: Array<{
   purchaseId?: string | null | undefined;
   purchaseReturnId?: string | null | undefined;
   advanceId?: string | null | undefined;
-}>): {
+}>,
+): {
   purchaseIds: string[];
   purchaseReturnIds: string[];
   advanceIds: string[];
 } {
   return {
-    purchaseIds: [...new Set(items.map((item) => item.purchaseId).filter((id): id is string => !!id))],
-    purchaseReturnIds: [
-      ...new Set(items.map((item) => item.purchaseReturnId).filter((id): id is string => !!id)),
+    purchaseIds: [...new Set(items.map((item) => item.purchaseId).filter((id): id is string => !!id),
+      ),
     ],
-    advanceIds: [...new Set(items.map((item) => item.advanceId).filter((id): id is string => !!id))],
+    purchaseReturnIds: [
+      ...new Set(items.map((item) => item.purchaseReturnId).filter((id): id is string => !!id),
+      ),
+    ],
+    advanceIds: [...new Set(items.map((item) => item.advanceId).filter((id): id is string => !!id),
+      ),
+    ],
   };
+}
+
+async function lockSupplierAdvancesForPayment(
+  tx: TxClient,
+  advanceIds: string[],
+): Promise<void> {
+  const ids = [...new Set(advanceIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id FROM "SupplierAdvance"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id
+    FOR UPDATE
+  `);
 }
 
 function validatePaymentItemsAgainstAvailable(
   items: ParsedSupplierPayment["items"],
   available: AvailableDocumentBundle,
 ): string | null {
-  const purchaseMap = new Map(available.purchases.map((item) => [item.id, item]));
+  const purchaseMap = new Map(available.purchases.map((item) => [item.id, item]),
+  );
   const creditMap = new Map(available.credits.map((item) => [item.id, item]));
   const advanceMap = new Map(available.advances.map((item) => [item.id, item]));
   const usedMap = new Map<string, number>();
@@ -396,7 +432,8 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
     },
   }),
     db.documentPayment.findMany({
-      where: { docType: DocumentPaymentDocType.SUPPLIER_PAYMENT, docId: paymentId },
+      where: { docType: DocumentPaymentDocType.SUPPLIER_PAYMENT, docId: paymentId,
+      },
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       select: { cashBankAccountId: true, amount: true },
     }),
@@ -446,14 +483,16 @@ export async function getOutstandingSupplierDocuments(
     return { purchases: [], credits: [], advances: [] };
   }
 
-  const available = await getAvailableSupplierDocuments(db, supplierId, excludePaymentId);
+  const available = await getAvailableSupplierDocuments(db, supplierId, excludePaymentId,
+  );
   return serializeDocuments(available);
 }
 
 export async function createSupplierPayment(
   formData: FormData,
 ): Promise<{ success: boolean; paymentNo?: string; error?: string }> {
-  const session = await requirePermission("supplier_payments.create").catch(() => null);
+  const session = await requirePermission("supplier_payments.create").catch(() => null,
+  );
   if (!session?.user?.id) return { success: false, error: "กรุณาเข้าสู่ระบบก่อน" };
 
   const parsedResult = parseSupplierPaymentForm(formData);
@@ -462,7 +501,8 @@ export async function createSupplierPayment(
 
   const totalCashPaid = calculateCashPaid(parsed.items);
   if (totalCashPaid < 0) {
-    return { success: false, error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ" };
+    return { success: false, error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ",
+    };
   }
 
   let payments: DocumentPaymentRow[] = [];
@@ -473,12 +513,14 @@ export async function createSupplierPayment(
       return { success: false, error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
     }
     if (payments.length === 0) {
-      return { success: false, error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+      return { success: false, error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง",
+      };
     }
     try {
       assertPaymentsMatchTotal(payments, totalCashPaid);
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+      return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง",
+      };
     }
   }
   const primaryAccountId = derivePrimaryAccountId(payments);
@@ -490,11 +532,18 @@ export async function createSupplierPayment(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
-      const available = await getAvailableSupplierDocuments(tx, parsed.supplierId);
-      const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
+      await lockSupplierAdvancesForPayment(
+        tx,
+        collectAffectedIds(parsed.items).advanceIds,
+      );
+      const available = await getAvailableSupplierDocuments(tx, parsed.supplierId,
+      );
+      const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available,
+      );
       if (validationError) throw new Error(validationError);
 
-      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid);
+      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid,
+      );
       const payment = await tx.supplierPayment.create({
         data: {
           paymentNo,
@@ -576,7 +625,8 @@ export async function updateSupplierPayment(
   id: string,
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requirePermission("supplier_payments.update").catch(() => null);
+  const session = await requirePermission("supplier_payments.update").catch(() => null,
+  );
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const existing = await db.supplierPayment.findUnique({
@@ -605,7 +655,8 @@ export async function updateSupplierPayment(
 
   const totalCashPaid = calculateCashPaid(parsed.items);
   if (totalCashPaid < 0) {
-    return { error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ" };
+    return { error: "ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ",
+    };
   }
 
   let payments: DocumentPaymentRow[] = [];
@@ -621,7 +672,8 @@ export async function updateSupplierPayment(
     try {
       assertPaymentsMatchTotal(payments, totalCashPaid);
     } catch (err) {
-      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
+      return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง",
+      };
     }
   }
   const primaryAccountId = derivePrimaryAccountId(payments);
@@ -629,9 +681,14 @@ export async function updateSupplierPayment(
   const oldAffectedIds = collectAffectedIds(existing.items);
   const newAffectedIds = collectAffectedIds(parsed.items);
   const allAffectedIds = {
-    purchaseIds: [...new Set([...oldAffectedIds.purchaseIds, ...newAffectedIds.purchaseIds])],
-    purchaseReturnIds: [...new Set([...oldAffectedIds.purchaseReturnIds, ...newAffectedIds.purchaseReturnIds])],
-    advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds])],
+    purchaseIds: [...new Set([...oldAffectedIds.purchaseIds, ...newAffectedIds.purchaseIds,
+      ]),
+    ],
+    purchaseReturnIds: [...new Set([...oldAffectedIds.purchaseReturnIds, ...newAffectedIds.purchaseReturnIds,
+      ]),
+    ],
+    advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds]),
+    ],
   };
   const paymentDate = parseDateOnlyToDate(parsed.paymentDate);
 
@@ -639,11 +696,15 @@ export async function updateSupplierPayment(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierPaymentAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const available = await getAvailableSupplierDocuments(tx, parsed.supplierId, id);
-      const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available);
+      await lockSupplierAdvancesForPayment(tx, allAffectedIds.advanceIds);
+      const available = await getAvailableSupplierDocuments(tx, parsed.supplierId, id,
+      );
+      const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available,
+      );
       if (validationError) throw new Error(validationError);
 
-      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid);
+      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid,
+      );
 
       await tx.supplierPaymentItem.deleteMany({ where: { paymentId: id } });
       await tx.supplierPayment.update({
@@ -729,7 +790,8 @@ const cancelSupplierPaymentSchema = z.object({
 export async function cancelSupplierPayment(
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
-  const session = await requirePermission("supplier_payments.cancel").catch(() => null);
+  const session = await requirePermission("supplier_payments.cancel").catch(() => null,
+  );
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
   const parsed = cancelSupplierPaymentSchema.safeParse({
@@ -761,8 +823,14 @@ export async function cancelSupplierPayment(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierPaymentAuditSnapshot(payment.id);
     await dbTx(async (tx) => {
-      await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_PAYMENT, payment.id);
-      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_PAYMENT, payment.id);
+      await lockSupplierAdvancesForPayment(
+        tx,
+        collectAffectedIds(payment.items).advanceIds,
+      );
+      await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_PAYMENT, payment.id,
+      );
+      await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_PAYMENT, payment.id,
+      );
       await tx.supplierPayment.update({
         where: { id: payment.id },
         data: {
@@ -800,6 +868,7 @@ export async function cancelSupplierPayment(
     return { success: true };
   } catch (error) {
     console.error("[cancelSupplierPayment]", error);
-    return { error: "เกิดข้อผิดพลาด ไม่สามารถยกเลิกเอกสารจ่ายชำระซัพพลายเออร์ได้" };
+    return { error: "เกิดข้อผิดพลาด ไม่สามารถยกเลิกเอกสารจ่ายชำระซัพพลายเออร์ได้",
+    };
   }
 }

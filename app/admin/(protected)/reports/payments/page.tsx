@@ -9,7 +9,8 @@ import AdminExportLink from "@/components/shared/AdminExportLink";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
-import { buildExportQuery, parseReportQueryFilters } from "@/lib/report-queries";
+import { buildExportQuery, parseReportQueryFilters,
+} from "@/lib/report-queries";
 
 import ReportResultsSkeleton from "../ReportResultsSkeleton";
 import PaymentsReportResults, {
@@ -22,7 +23,8 @@ interface PageProps {
 }
 
 export default async function DailyPaymentPage({ searchParams }: PageProps) {
-  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams]);
+  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams,
+  ]);
   const filters = parseReportQueryFilters(params);
   const exportQuery = buildExportQuery(filters);
 
@@ -66,6 +68,7 @@ export default async function DailyPaymentPage({ searchParams }: PageProps) {
             <option value="SUPPLIER_ADVANCE">เงินมัดจำซัพพลายเออร์</option>
             <option value="SUPPLIER_PAYMENT">จ่ายชำระซัพพลายเออร์</option>
             <option value="CN_REFUND">คืนเงินลูกค้า (CN)</option>
+          <option value="CUSTOMER_ADVANCE_REFUND">คืนเงินมัดจำลูกค้า</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

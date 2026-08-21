@@ -18,7 +18,8 @@ type PageProps = {
   searchParams: Promise<Record<string, string | undefined>>;
 };
 
-function buildQuery(filters: ReturnType<typeof parseCashBankReportFilters>): string {
+function buildQuery(filters: ReturnType<typeof parseCashBankReportFilters>,
+): string {
   const params = new URLSearchParams();
   params.set("from", filters.fromStr);
   params.set("to", filters.toStr);
@@ -27,8 +28,10 @@ function buildQuery(filters: ReturnType<typeof parseCashBankReportFilters>): str
   return params.toString();
 }
 
-export default async function CashBankLedgerReportPage({ searchParams }: PageProps) {
-  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams]);
+export default async function CashBankLedgerReportPage({ searchParams,
+}: PageProps) {
+  const [, params] = await Promise.all([requirePermission("reports.view"), searchParams,
+  ]);
   const filters = parseCashBankReportFilters(params);
   const exportQuery = buildQuery(filters);
 
@@ -86,6 +89,13 @@ export default async function CashBankLedgerReportPage({ searchParams }: PagePro
             <option value="CN_SALE">CN_SALE</option>
             <option value="CN_PURCHASE">CN_PURCHASE</option>
             <option value="SUPPLIER_ADVANCE">SUPPLIER_ADVANCE</option>
+            <option value="SUPPLIER_ADVANCE_REFUND">
+              SUPPLIER_ADVANCE_REFUND
+            </option>
+            <option value="CUSTOMER_ADVANCE">CUSTOMER_ADVANCE</option>
+            <option value="CUSTOMER_ADVANCE_REFUND">
+              CUSTOMER_ADVANCE_REFUND
+            </option>
             <option value="SUPPLIER_PAYMENT">SUPPLIER_PAYMENT</option>
             <option value="TRANSFER">TRANSFER</option>
             <option value="ADJUSTMENT">ADJUSTMENT</option>

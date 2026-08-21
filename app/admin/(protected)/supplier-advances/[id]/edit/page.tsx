@@ -15,12 +15,14 @@ import {
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SupplierAdvanceForm from "../../SupplierAdvanceForm";
 
-const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: string }> }) => {
+const EditSupplierAdvancePage = async ({ params,
+}: { params: Promise<{ id: string }>;
+}) => {
   await requirePermission("supplier_advances.update");
 
   const { id } = await params;
 
-  const [advance, suppliers, cashBankAccounts] = await Promise.all([
+  const [advance, suppliers, cashBankAccounts, activeRefundCount] = await Promise.all([
     db.supplierAdvance.findUnique({
       where: { id },
       select: {
@@ -45,7 +47,10 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
       },
     }),
     getActiveCashBankAccountOptions(),
-  ]);
+      db.supplierAdvanceRefund.count({
+        where: { supplierAdvanceId: id, status: "ACTIVE" },
+      }),
+    ]);
 
   if (!advance) notFound();
   if (advance.status === "CANCELLED") redirect(`/admin/supplier-advances/${id}`);
@@ -56,8 +61,10 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const mutationBlock = await checkDocumentMutation("SupplierAdvance", id, "update");
-  const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
+  const mutationBlock = await checkDocumentMutation("SupplierAdvance", id, "update",
+  );
+  const mutationBlockMessage =
+    activeRefundCount > 0 ? null : buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   return (
@@ -88,6 +95,7 @@ const EditSupplierAdvancePage = async ({ params }: { params: Promise<{ id: strin
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
         submitLocked={!!mutationBlockMessage}
+        sourceFieldsLocked={activeRefundCount > 0}
         initialData={{
           id: advance.id,
           supplierId: advance.supplierId,

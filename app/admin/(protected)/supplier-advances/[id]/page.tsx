@@ -8,7 +8,8 @@ import { PaymentMethod } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
-import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getSessionPermissionContext, requirePermission,
+} from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import SupplierAdvanceCancelButton from "../SupplierAdvanceCancelButton";
@@ -19,11 +20,15 @@ const paymentMethodLabel: Record<PaymentMethod, string> = {
   CREDIT: "เครดิต",
 };
 
-const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
+const SupplierAdvanceDetailPage = async ({ params,
+}: { params: Promise<{ id: string }>;
+}) => {
   await requirePermission("supplier_advances.view");
   const { role, permissions } = await getSessionPermissionContext();
-  const canUpdate = hasPermissionAccess(role, permissions, "supplier_advances.update");
-  const canCancel = hasPermissionAccess(role, permissions, "supplier_advances.cancel");
+  const canUpdate = hasPermissionAccess(role, permissions, "supplier_advances.update",
+  );
+  const canCancel = hasPermissionAccess(role, permissions, "supplier_advances.cancel",
+  );
   const { id } = await params;
 
   const advance = await db.supplierAdvance.findUnique({
@@ -45,7 +50,8 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
         },
         orderBy: [{ payment: { paymentDate: "desc" } }],
       },
-    },
+      refunds: { orderBy: { refundDate: "desc" } },
+  },
   });
 
   if (!advance) notFound();
@@ -56,10 +62,21 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       select: {
         amount: true,
-        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
+        cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true },
+        },
       },
     }),
   ]);
+  const activeRefunds = advance.refunds.filter(
+    (refund) => refund.status === "ACTIVE",
+  );
+  const usedAmount = advance.supplierPayments
+    .filter((item) => item.payment.status === "ACTIVE")
+    .reduce((sum, item) => sum + Number(item.paidAmount), 0);
+  const refundedAmount = activeRefunds.reduce(
+    (sum, refund) => sum + Number(refund.refundAmount),
+    0,
+  );
 
   return (
     <div>
@@ -97,7 +114,13 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
               </Link>
             ) : null}
             {advance.status === "ACTIVE" && canCancel ? (
-              <SupplierAdvanceCancelButton advanceId={advance.id} docNo={advance.advanceNo} />
+              <SupplierAdvanceCancelButton advanceId={advance.id} docNo={advance.advanceNo}
+                disabledReason={
+                  activeRefunds.length
+                    ? `ถูกอ้างอิงใน ${activeRefunds.map((refund) => refund.refundNo).join(", ")}`
+                    : null
+                }
+              />
             ) : null}
           </div>
         </div>
@@ -138,12 +161,14 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
                     <span className="font-medium text-gray-900 dark:text-slate-100">
                       {row.cashBankAccount.name}
                       <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
-                        {row.cashBankAccount.type === "BANK" ? row.cashBankAccount.bankName ?? "ธนาคาร" : "เงินสด"}
+                        {row.cashBankAccount.type === "BANK" ? (row.cashBankAccount.bankName ?? "ธนาคาร")
+                          : "เงินสด"}
                         {row.cashBankAccount.accountNo ? ` | ${row.cashBankAccount.accountNo}` : ""}
                       </span>
                     </span>
                     <span className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
-                      {Number(row.amount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      {Number(row.amount).toLocaleString("th-TH", { minimumFractionDigits: 2,
+                      })}
                     </span>
                   </div>
                 ))}
@@ -164,17 +189,42 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ยอดมัดจำ</p>
             <p className="font-kanit text-lg font-bold text-[#1e3a5f] dark:text-sky-300">
-              {Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+              {Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2,
+              })}{" "}
+              บาท
             </p>
           </div>
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ยอดคงเหลือ</p>
             <p className="font-kanit text-lg font-bold text-amber-700 dark:text-amber-400">
-              {Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+              {Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2,
+              })}{" "}
+              บาท
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500 dark:text-slate-400">จำนวนเอกสารที่อ้างอิง</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">
+              ใช้จ่ายชำระแล้ว
+            </p>
+            <p className="font-kanit text-lg font-bold text-sky-700 dark:text-sky-300">
+              {usedAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}{" "}
+              บาท
+            </p>
+          </div>
+          <div>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">
+              รับคืนแล้ว
+            </p>
+            <p className="font-kanit text-lg font-bold text-emerald-700 dark:text-emerald-300">
+              {refundedAmount.toLocaleString("th-TH", {
+                minimumFractionDigits: 2,
+              })}{" "}
+              บาท
+            </p>
+          </div>
+          <div>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">
+              จำนวนเอกสารที่อ้างอิง</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{advance.supplierPayments.length} รายการ</p>
           </div>
           {advance.note ? (
@@ -190,6 +240,46 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+        <h2 className="mb-4 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
+          CN รับคืนเงินมัดจำ
+        </h2>
+        {advance.refunds.length ? (
+          <div className="space-y-2">
+            {advance.refunds.map((refund) => (
+              <div
+                key={refund.id}
+                className="flex items-center justify-between rounded-lg border border-gray-100 p-3 text-sm dark:border-white/10"
+              >
+                <Link
+                  href={`/admin/supplier-advance-refunds/${refund.id}`}
+                  className="font-mono text-[#1e3a5f] dark:text-sky-300"
+                >
+                  {refund.refundNo}
+                </Link>
+                <span className="dark:text-slate-300">
+                  {formatDateThai(refund.refundDate)}
+                </span>
+                <span className="font-medium dark:text-slate-100">
+                  {Number(refund.refundAmount).toLocaleString("th-TH", {
+                    minimumFractionDigits: 2,
+                  })}
+                </span>
+                <AdminStatusBadge
+                  tone={refund.status === "ACTIVE" ? "success" : "danger"}
+                >
+                  {refund.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}
+                </AdminStatusBadge>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="py-8 text-center text-sm text-gray-400 dark:text-slate-500">
+            ยังไม่มี CN รับคืนเงินมัดจำ
+          </p>
+        )}
       </div>
 
       <DocumentActivityTimeline events={activityEvents} />
@@ -228,7 +318,8 @@ const SupplierAdvanceDetailPage = async ({ params }: { params: Promise<{ id: str
                       {formatDateThai(item.payment.paymentDate)}
                     </td>
                     <td className="px-3 py-2 text-right font-medium text-gray-900 dark:text-slate-100">
-                      {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                      {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2,
+                      })}
                     </td>
                     <td className="px-3 py-2">
                       {item.payment.status === "CANCELLED" ? (

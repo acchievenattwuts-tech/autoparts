@@ -6,7 +6,8 @@ import { getThailandDateKey } from "@/lib/th-date";
  * Format: SA2603001 = SA prefix, year 2026, month 03, sequence 0001
  * Sequence resets every month (counts only records with same PREFIX+YYMM pattern)
  */
-export async function generateDocNo(prefix: string, date?: Date): Promise<string> {
+export async function generateDocNo(prefix: string, date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
@@ -97,7 +98,8 @@ export async function generateExpenseNo(date?: Date): Promise<string> {
  * Generate delivery commission run number using DeliveryCommissionRun table
  * Format: DCP{YYMM}{4-digit}
  */
-export async function generateDeliveryCommissionRunNo(date?: Date): Promise<string> {
+export async function generateDeliveryCommissionRunNo(date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
@@ -167,6 +169,36 @@ export async function generateCustomerAdvanceNo(date?: Date): Promise<string> {
   return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
+/** Customer deposit refund (sales side): CNSD{YYMM}{4-digit}. */
+export async function generateCustomerAdvanceRefundNo(
+  date?: Date,
+): Promise<string> {
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const pattern = `CNSD${year.slice(-2)}${month}`;
+  const last = await db.customerAdvanceRefund.findFirst({
+    where: { refundNo: { startsWith: pattern } },
+    orderBy: { refundNo: "desc" },
+    select: { refundNo: true },
+  });
+  const seq = last ? parseInt(last.refundNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/** Supplier deposit refund (purchase side): CNADV{YYMM}{4-digit}. */
+export async function generateSupplierAdvanceRefundNo(
+  date?: Date,
+): Promise<string> {
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const pattern = `CNADV${year.slice(-2)}${month}`;
+  const last = await db.supplierAdvanceRefund.findFirst({
+    where: { refundNo: { startsWith: pattern } },
+    orderBy: { refundNo: "desc" },
+    select: { refundNo: true },
+  });
+  const seq = last ? parseInt(last.refundNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
 /**
  * Generate purchase return number using PurchaseReturn table
  * Format: CNRR{YYMM}{4-digit}
@@ -190,7 +222,8 @@ export async function generatePurchaseReturnNo(date?: Date): Promise<string> {
  * prefix: SA (cash) or SAC (credit)
  * Format: {prefix}{YYMM}{4-digit}
  */
-export async function generateSaleNo(prefix: "SA" | "SAC" | "SP", date?: Date): Promise<string> {
+export async function generateSaleNo(prefix: "SA" | "SAC" | "SP", date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
@@ -280,7 +313,8 @@ export async function generateCashBankTransferNo(date?: Date): Promise<string> {
  * Generate cash/bank adjustment number using CashBankAdjustment table
  * Format: CBA{YYMM}{4-digit}
  */
-export async function generateCashBankAdjustmentNo(date?: Date): Promise<string> {
+export async function generateCashBankAdjustmentNo(date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
@@ -301,7 +335,8 @@ export async function generateCashBankAdjustmentNo(date?: Date): Promise<string>
  * NOTE: the running number follows the *declaration* date (today), not the
  * distributed period — back-keying July on 1 August yields PD2608xxxx.
  */
-export async function generateProfitDistributionNo(date?: Date): Promise<string> {
+export async function generateProfitDistributionNo(date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;

@@ -112,6 +112,12 @@ export default async function CashBankLedgerPage({ searchParams }: PageProps) {
               <option value="CN_PURCHASE">CN ซื้อ</option>
               <option value="SUPPLIER_ADVANCE">เงินมัดจำซัพพลายเออร์</option>
               <option value="CUSTOMER_ADVANCE">รับเงินมัดจำลูกค้า</option>
+              <option value="CUSTOMER_ADVANCE_REFUND">
+                คืนเงินมัดจำลูกค้า
+              </option>
+              <option value="SUPPLIER_ADVANCE_REFUND">
+                รับคืนเงินมัดจำซัพพลายเออร์
+              </option>
               <option value="SUPPLIER_PAYMENT">จ่ายชำระซัพพลายเออร์</option>
               <option value="PARTNER_PAYOUT">แบ่งกำไรผู้ร่วมทุน</option>
               <option value="TRANSFER">โอนเงิน</option>
