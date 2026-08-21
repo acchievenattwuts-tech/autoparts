@@ -64,11 +64,16 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
   {
     section: "ขาย & ลูกหนี้",
     items: [
+      { label: "รับเงินมัดจำลูกค้า", href: "/admin/customer-advances", icon: Wallet, permission: "customer_advances.view", keywords: "customer advance sales deposit รับเงินมัดจำ ลูกค้า" },
       { label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view", keywords: "sales ขาย invoice" },
       { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view", keywords: "delivery dispatch shipping" },
       { label: "ใบเสร็จรับเงิน", href: "/admin/receipts", icon: FileCheck, permission: "receipts.view", keywords: "receipt รับชำระ" },
-      { label: "รับเงินมัดจำลูกค้า", href: "/admin/customer-advances", icon: Wallet, permission: "customer_advances.view", keywords: "customer advance sales deposit รับเงินมัดจำ ลูกค้า" },
       { label: "Credit Note (CN)", href: "/admin/credit-notes", icon: FileX, permission: "credit_notes.view", keywords: "credit note cn ลดหนี้" },
+    ],
+  },
+  {
+    section: "แชตลูกค้า & การชำระเงิน",
+    items: [
       { label: "LINE OA Conversations", href: "/admin/line-conversations", icon: MessageCircle, permission: "line_conversations.view", keywords: "line oa chat conversations ai agent reply customer" },
       { label: "Messenger Conversations", href: "/admin/messenger-conversations", icon: MessageCircle, permission: "messenger_conversations.view", keywords: "facebook messenger fb chat conversations ai agent reply customer dm" },
       { label: "สลิปการชำระเงิน (LINE)", href: "/admin/line-payment-slips", icon: Receipt, permission: "line_payment_slips.view", keywords: "line payment slip สลิป โอนเงิน หลักฐานการโอน ตรวจสลิป ชำระเงิน ocr" },
