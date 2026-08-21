@@ -24,6 +24,7 @@ type ReceiptSettlementItem = {
   paidAmount: NumericLike;
   saleId?: string | null;
   cnId?: string | null;
+  customerAdvanceId?: string | null;
   sale?: {
     saleNo: string;
     saleDate: Date | string;
@@ -32,6 +33,11 @@ type ReceiptSettlementItem = {
   creditNote?: {
     cnNo: string;
     cnDate: Date | string;
+    totalAmount: NumericLike;
+  } | null;
+  customerAdvance?: {
+    advanceNo: string;
+    advanceDate: Date | string;
     totalAmount: NumericLike;
   } | null;
 };
@@ -185,20 +191,22 @@ const SharedReceiptSettlementPrintDocument = ({
         <tbody>
           {receipt.items.map((item) => {
             const isCreditNote = Boolean(item.cnId);
-            const documentNo = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
-            const documentDate = item.sale?.saleDate ?? item.creditNote?.cnDate ?? null;
-            const documentAmount = item.sale?.netAmount ?? item.creditNote?.totalAmount ?? 0;
+            const isAdvance = Boolean(item.customerAdvanceId);
+            const isCredit = isCreditNote || isAdvance;
+            const documentNo = item.sale?.saleNo ?? item.creditNote?.cnNo ?? item.customerAdvance?.advanceNo ?? "-";
+            const documentDate = item.sale?.saleDate ?? item.creditNote?.cnDate ?? item.customerAdvance?.advanceDate ?? null;
+            const documentAmount = item.sale?.netAmount ?? item.creditNote?.totalAmount ?? item.customerAdvance?.totalAmount ?? 0;
 
             return (
               <tr key={item.id}>
-                <td className={`${PRINT_TABLE_CELL_CLASS} font-mono ${isCreditNote ? "text-emerald-700" : "text-gray-700"}`}>
+                <td className={`${PRINT_TABLE_CELL_CLASS} font-mono ${isCreditNote ? "text-emerald-700" : isAdvance ? "text-amber-700" : "text-gray-700"}`}>
                   {documentNo}
-                  {isCreditNote ? " (เครดิต CN)" : ""}
+                  {isCreditNote ? " (เครดิต CN)" : isAdvance ? " (เงินมัดจำ)" : ""}
                 </td>
                 <td className={PRINT_TABLE_CELL_CLASS}>{documentDate ? formatPrintDate(documentDate) : "-"}</td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(documentAmount))}</td>
-                <td className={`${PRINT_TABLE_CELL_CLASS} text-right font-medium ${isCreditNote ? "text-emerald-700" : "text-gray-900"}`}>
-                  {isCreditNote ? "-" : ""}
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-right font-medium ${isCreditNote ? "text-emerald-700" : isAdvance ? "text-amber-700" : "text-gray-900"}`}>
+                  {isCredit ? "-" : ""}
                   {formatPrintNumber(Number(item.paidAmount))}
                 </td>
               </tr>

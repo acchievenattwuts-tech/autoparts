@@ -80,6 +80,10 @@ const fetchDashboardAggregates = (params: {
             amountRemain: { gt: 0 },
           },
         }),
+        db.customerAdvance.aggregate({
+          _sum: { amountRemain: true },
+          where: { status: "ACTIVE", amountRemain: { gt: 0 } },
+        }),
         db.expense.aggregate({
           _sum: { netAmount: true },
           where: {
@@ -184,6 +188,7 @@ const DailyOperationsDashboard = async () => {
     purchasesMonthAgg,
     arNormal,
     arCOD,
+    customerAdvanceOutstandingAgg,
     expensesMonthAgg,
     apOutstandingAgg,
     supplierAdvanceOutstandingAgg,
@@ -294,6 +299,13 @@ const DailyOperationsDashboard = async () => {
       helper: `ณ ${todayLabel}`,
       icon: Receipt,
       color: "bg-orange-50 text-orange-600",
+    },
+    {
+      label: "เงินมัดจำลูกค้าคงเหลือ",
+      value: `${formatMoney(customerAdvanceOutstandingAgg._sum.amountRemain)} บาท`,
+      helper: `ใช้หักผ่านใบเสร็จได้ ณ ${todayLabel}`,
+      icon: Banknote,
+      color: "bg-amber-50 text-amber-600",
     },
     {
       label: "เจ้าหนี้คงค้าง",

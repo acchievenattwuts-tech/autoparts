@@ -6,6 +6,7 @@ export type MutableDocumentEntityType =
   | "PurchaseReturn"
   | "SupplierPayment"
   | "SupplierAdvance"
+  | "CustomerAdvance"
   | "Expense"
   | "WarrantyClaim";
 
@@ -110,6 +111,7 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   PurchaseReturn: "/admin/purchase-returns",
   SupplierPayment: "/admin/supplier-payments",
   SupplierAdvance: "/admin/supplier-advances",
+  CustomerAdvance: "/admin/customer-advances",
   Expense: "/admin/expenses",
   WarrantyClaim: "/admin/warranty-claims",
 };
@@ -203,6 +205,17 @@ export function createDocumentMutationGuard(database: GuardDb) {
         return block(
           "ถูกนำไปใช้ที่เอกสารจ่ายชำระ",
           uniqueRefs(mapNestedRefs(paymentItems, "payment", "SupplierPayment", "paymentNo")),
+        );
+      }
+
+      if (entityType === "CustomerAdvance") {
+        const receiptItems = await database.receiptItem?.findMany({
+          where: { customerAdvanceId: entityId, receipt: { status: "ACTIVE" } },
+          select: { receipt: { select: { id: true, receiptNo: true } } },
+        }) ?? [];
+        return block(
+          "ถูกนำไปใช้ที่ใบเสร็จรับเงิน",
+          uniqueRefs(mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo")),
         );
       }
 

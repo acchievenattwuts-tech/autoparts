@@ -13,7 +13,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
 import { AuditAction, DocumentPaymentDocType, PaymentMethod, Prisma } from "@/lib/generated/prisma";
-import { recalculateSaleAmountRemain, recalculateCNAmountRemain } from "@/lib/amount-remain";
+import { recalculateSaleAmountRemain, recalculateCNAmountRemain, recalculateCustomerAdvanceAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
@@ -44,7 +44,7 @@ export interface CreditSaleItem {
   netAmount:   number;  // netAmount (SALE) or totalAmount (CN)
   paidAmount:  number;  // amount already collected/applied
   outstanding: number;  // amountRemain
-  type:        "SALE" | "CN";
+  type:        "SALE" | "CN" | "ADVANCE";
 }
 
 export async function getCreditSalesForCustomer(customerId: string): Promise<CreditSaleItem[]> {
@@ -57,7 +57,7 @@ export async function getCreditSalesForCustomer(customerId: string): Promise<Cre
 
   if (!customerId) return [];
 
-  const [sales, creditNotes] = await Promise.all([
+  const [sales, creditNotes, advances] = await Promise.all([
     // Outstanding credit sales
     db.sale.findMany({
       where: {
@@ -92,6 +92,11 @@ export async function getCreditSalesForCustomer(customerId: string): Promise<Cre
         amountRemain: true,
       },
     }),
+    db.customerAdvance.findMany({
+      where: { customerId, status: "ACTIVE", amountRemain: { gt: 0 } },
+      orderBy: { advanceDate: "asc" },
+      select: { id: true, advanceNo: true, advanceDate: true, totalAmount: true, amountRemain: true },
+    }),
   ]);
 
   const saleItems: CreditSaleItem[] = sales.map((s) => ({
@@ -114,7 +119,13 @@ export async function getCreditSalesForCustomer(customerId: string): Promise<Cre
     type:        "CN",
   }));
 
-  return [...saleItems, ...cnItems];
+  const advanceItems: CreditSaleItem[] = advances.map((advance) => ({
+    id: advance.id, saleNo: advance.advanceNo, saleDate: advance.advanceDate.toISOString(),
+    netAmount: Number(advance.totalAmount), paidAmount: Number(advance.totalAmount) - Number(advance.amountRemain),
+    outstanding: Number(advance.amountRemain), type: "ADVANCE",
+  }));
+
+  return [...saleItems, ...cnItems, ...advanceItems];
 }
 
 // ─────────────────────────────────────────
@@ -125,10 +136,11 @@ const receiptItemSchema = z
   .object({
     saleId: z.string().optional(),
     cnId: z.string().optional(),
+    customerAdvanceId: z.string().optional(),
     paidAmount: z.coerce.number().positive("ยอดที่รับชำระต้องมากกว่า 0"),
   })
   .superRefine((data, ctx) => {
-    const refCount = [data.saleId, data.cnId].filter(Boolean).length;
+    const refCount = [data.saleId, data.cnId, data.customerAdvanceId].filter(Boolean).length;
     if (refCount !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -171,19 +183,34 @@ function parseReceiptForm(
 }
 
 function calculateReceiptTotalAmount(items: ParsedReceipt["items"]): number {
-  return items.reduce((sum, item) => {
-    if (item.cnId) return sum - item.paidAmount;
+  const total = items.reduce((sum, item) => {
+    if (item.cnId || item.customerAdvanceId) return sum - item.paidAmount;
     return sum + item.paidAmount;
   }, 0);
+  return Math.round(total * 100) / 100;
+}
+
+async function lockCustomerAdvancesForReceipt(tx: TxClient, advanceIds: string[]): Promise<void> {
+  const ids = [...new Set(advanceIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id
+    FROM "CustomerAdvance"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id
+    FOR UPDATE
+  `);
 }
 
 function collectAffectedReceiptIds(items: Array<{
   saleId?: string | null | undefined;
   cnId?: string | null | undefined;
-}>): { saleIds: string[]; cnIds: string[] } {
+  customerAdvanceId?: string | null | undefined;
+}>): { saleIds: string[]; cnIds: string[]; advanceIds: string[] } {
   return {
     saleIds: [...new Set(items.map((item) => item.saleId).filter((id): id is string => !!id))],
     cnIds: [...new Set(items.map((item) => item.cnId).filter((id): id is string => !!id))],
+    advanceIds: [...new Set(items.map((item) => item.customerAdvanceId).filter((id): id is string => !!id))],
   };
 }
 
@@ -196,6 +223,9 @@ async function recalculateAffectedReceiptDocuments(
   }
   for (const cnId of affectedIds.cnIds) {
     await recalculateCNAmountRemain(tx, cnId);
+  }
+  for (const advanceId of affectedIds.advanceIds) {
+    await recalculateCustomerAdvanceAmountRemain(tx, advanceId);
   }
 }
 
@@ -253,6 +283,7 @@ async function getReceiptAuditSnapshot(receiptId: string) {
         select: {
           saleId: true,
           cnId: true,
+          customerAdvanceId: true,
           paidAmount: true,
           sale: {
             select: {
@@ -264,6 +295,7 @@ async function getReceiptAuditSnapshot(receiptId: string) {
               cnNo: true,
             },
           },
+          customerAdvance: { select: { advanceNo: true } },
         },
       },
     },
@@ -295,6 +327,8 @@ async function getReceiptAuditSnapshot(receiptId: string) {
       saleNo: item.sale?.saleNo ?? null,
       cnId: item.cnId,
       cnNo: item.creditNote?.cnNo ?? null,
+      customerAdvanceId: item.customerAdvanceId,
+      customerAdvanceNo: item.customerAdvance?.advanceNo ?? null,
       paidAmount: item.paidAmount,
     })),
     payments: payments.map((payment) => ({
@@ -325,6 +359,9 @@ export async function createReceipt(
 
     // Sale items add to total; CN items are credits that reduce the total
     const totalAmount = calculateReceiptTotalAmount(parsed.items);
+    if (totalAmount < 0) {
+      return { success: false, error: "ยอดเครดิต CN และเงินมัดจำที่เลือกมากกว่ายอดใบขายเชื่อ" };
+    }
     // Only positive net totals move real cash and require payment channels.
     const payments = totalAmount > 0 ? parsed.payments : [];
     if (totalAmount > 0) {
@@ -343,6 +380,7 @@ export async function createReceipt(
     const requestContext = await getRequestContext();
 
     await dbTx(async (tx) => {
+      await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "");
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
       if (validationError) throw new Error(validationError);
@@ -374,6 +412,7 @@ export async function createReceipt(
           lineNo:     idx + 1,
           saleId:     item.saleId ?? null,
           cnId:       item.cnId ?? null,
+          customerAdvanceId: item.customerAdvanceId ?? null,
           paidAmount: item.paidAmount,
         })),
       });
@@ -418,6 +457,9 @@ export async function createReceipt(
 
     revalidatePath("/admin/receipts");
     revalidatePath("/admin/customers");
+    revalidatePath("/admin/customer-advances");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
 
     return { success: true, receiptNo, receiptId: createdReceiptId };
   } catch (err) {
@@ -450,18 +492,20 @@ export async function cancelReceipt(
 
   const receipt = await db.receipt.findUnique({
     where: { id: receiptId },
-    include: { items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true } } },
+    include: { items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true, customerAdvanceId: true } } },
   });
   if (!receipt)                        return { error: "ไม่พบเอกสาร" };
   if (receipt.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
   const affectedSaleIds = [...new Set(receipt.items.map((i) => i.saleId).filter((id): id is string => id !== null))];
   const affectedCnIds   = [...new Set(receipt.items.map((i) => i.cnId).filter((id): id is string => id !== null))];
+  const affectedAdvanceIds = [...new Set(receipt.items.map((i) => i.customerAdvanceId).filter((id): id is string => id !== null))];
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(receiptId);
     await dbTx(async (tx) => {
+      await lockCustomerAdvancesForReceipt(tx, affectedAdvanceIds);
       await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.RECEIPT, receiptId);
       await tx.receipt.update({
@@ -473,6 +517,9 @@ export async function cancelReceipt(
       }
       for (const cnId of affectedCnIds) {
         await recalculateCNAmountRemain(tx, cnId);
+      }
+      for (const advanceId of affectedAdvanceIds) {
+        await recalculateCustomerAdvanceAmountRemain(tx, advanceId);
       }
     });
 
@@ -493,6 +540,9 @@ export async function cancelReceipt(
     }
 
     revalidatePath("/admin/receipts");
+    revalidatePath("/admin/customer-advances");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
     return { success: true };
   } catch (err) {
     await reportCriticalError(err, { scope: "receipts.cancel" });
@@ -519,7 +569,7 @@ export async function updateReceipt(
     where: { id },
     include: {
       user: { select: { name: true, signatureUrl: true } },
-      items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true } },
+      items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true, customerAdvanceId: true } },
     },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
@@ -531,6 +581,7 @@ export async function updateReceipt(
 
   const docDate     = parseDateOnlyToDate(parsed.receiptDate);
   const totalAmount = calculateReceiptTotalAmount(parsed.items);
+  if (totalAmount < 0) return { error: "ยอดเครดิต CN และเงินมัดจำที่เลือกมากกว่ายอดใบขายเชื่อ" };
   const payments = totalAmount > 0 ? parsed.payments : [];
   if (totalAmount > 0) {
     if (payments.length === 0) {
@@ -549,12 +600,14 @@ export async function updateReceipt(
   const allAffectedIds = {
     saleIds: [...new Set([...oldAffectedIds.saleIds, ...newAffectedIds.saleIds])],
     cnIds: [...new Set([...oldAffectedIds.cnIds, ...newAffectedIds.cnIds])],
+    advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds])],
   };
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockCustomerAdvancesForReceipt(tx, allAffectedIds.advanceIds);
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "", id);
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
       if (validationError) throw new Error(validationError);
@@ -593,6 +646,7 @@ export async function updateReceipt(
           lineNo:     idx + 1,
           saleId:     item.saleId ?? null,
           cnId:       item.cnId ?? null,
+          customerAdvanceId: item.customerAdvanceId ?? null,
           paidAmount: item.paidAmount,
         })),
       });
@@ -639,6 +693,9 @@ export async function updateReceipt(
     revalidatePath("/admin/receipts");
     revalidatePath(`/admin/receipts/${id}`);
     revalidatePath("/admin/customers");
+    revalidatePath("/admin/customer-advances");
+    revalidatePath("/admin/cash-bank");
+    revalidatePath("/admin/reports");
     return { success: true };
   } catch (err) {
     await reportCriticalError(err, { scope: "receipts.update" });

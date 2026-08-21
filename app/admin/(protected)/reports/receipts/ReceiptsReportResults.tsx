@@ -22,6 +22,7 @@ function fmt(n: number) {
 const DOC_TYPE_COLORS: Record<string, string> = {
   "ขายสด": "bg-green-100 text-green-700",
   "รับชำระหนี้": "bg-blue-100 text-blue-700",
+  "รับเงินมัดจำลูกค้า": "bg-amber-100 text-amber-700",
 };
 
 const PM_COLORS: Record<string, string> = {
@@ -34,12 +35,14 @@ export type ReceiptSummaryTotals = {
   total: number;
   cashSale: number;
   receipt: number;
+  customerAdvance: number;
 };
 
 export const EMPTY_RECEIPT_TOTALS: ReceiptSummaryTotals = {
   total: 0,
   cashSale: 0,
   receipt: 0,
+  customerAdvance: 0,
 };
 
 const sumActiveByDocType = (rows: DailyReceiptRow[], docType?: string): number =>
@@ -49,7 +52,7 @@ const sumActiveByDocType = (rows: DailyReceiptRow[], docType?: string): number =
 
 /** Shared by the loaded report and the "no filter yet" state, which shows zeros. */
 export const ReceiptSummaryCards = ({ totals }: { totals: ReceiptSummaryTotals }) => (
-  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
     <div className="rounded-lg border border-gray-100 bg-white p-3 shadow-sm">
       <p className="text-xs text-gray-500">รวมรับเงิน (เฉพาะที่ใช้งาน)</p>
       <p className="mt-0.5 text-xl font-bold text-[#1e3a5f] tabular-nums">{fmt(totals.total)}</p>
@@ -62,6 +65,10 @@ export const ReceiptSummaryCards = ({ totals }: { totals: ReceiptSummaryTotals }
       <p className="text-xs text-blue-700">รับชำระหนี้</p>
       <p className="mt-0.5 text-xl font-bold text-blue-700 tabular-nums">{fmt(totals.receipt)}</p>
     </div>
+    <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 shadow-sm">
+      <p className="text-xs text-amber-700">รับเงินมัดจำลูกค้า</p>
+      <p className="mt-0.5 text-xl font-bold text-amber-700 tabular-nums">{fmt(totals.customerAdvance)}</p>
+    </div>
   </div>
 );
 
@@ -72,6 +79,7 @@ export default async function ReceiptsReportResults({ filters }: { filters: Repo
     total: sumActiveByDocType(rows),
     cashSale: sumActiveByDocType(rows, "ขายสด"),
     receipt: sumActiveByDocType(rows, "รับชำระหนี้"),
+    customerAdvance: sumActiveByDocType(rows, "รับเงินมัดจำลูกค้า"),
   };
 
   return (

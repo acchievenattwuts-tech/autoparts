@@ -140,6 +140,7 @@ export default async function LineDailySummaryPreview({
             <PreviewMetric label="ขายสด" value={`฿${fmtMoney(summary.money.cashSales)}`} />
             <PreviewMetric label="ขายเชื่อ" value={`฿${fmtMoney(summary.money.creditSales)}`} />
             <PreviewMetric label="รับชำระหนี้" value={`฿${fmtMoney(summary.money.cashInFromReceipts)}`} />
+            <PreviewMetric label="รับเงินมัดจำลูกค้า" value={`฿${fmtMoney(summary.money.cashInFromCustomerAdvances)}`} />
             <PreviewMetric label="เงินสด" value={`฿${fmtMoney(summary.money.cashChannelTotal)}`} />
             <PreviewMetric label="เงินโอน" value={`฿${fmtMoney(summary.money.transferChannelTotal)}`} />
             <PreviewMetric label="เจ้าหนี้ค้างจ่าย" value={`฿${fmtMoney(summary.money.apOutstanding)}`} />

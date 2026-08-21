@@ -15,6 +15,7 @@ type CashBankEntryInput = {
 const DEFAULT_SOURCE_ORDER: Record<CashBankSourceType, number> = {
   SALE: 10,
   RECEIPT: 20,
+  CUSTOMER_ADVANCE: 25,
   PURCHASE: 30,
   SUPPLIER_ADVANCE: 35,
   SUPPLIER_PAYMENT: 36,

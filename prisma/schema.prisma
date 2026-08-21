@@ -57,6 +57,7 @@ model User {
   shopeeShopsAuthorized          ShopeeShop[]
   supplierAdvances               SupplierAdvance[]
   supplierPayments               SupplierPayment[]
+  customerAdvances               CustomerAdvance[]
   appRole                        AppRole?                   @relation(fields: [appRoleId], references: [id])
   directPermissionGrants         UserPermissionGrant[]
   knowledgeSourcesCreated        KnowledgeSource[]          @relation("KnowledgeSourceCreatedBy")
@@ -1437,6 +1438,7 @@ model Customer {
   lineConversations      LineConversation[]
   messengerConversations MessengerConversation[]
   creditNotes            CreditNote[]
+  customerAdvances       CustomerAdvance[]
   receipts               Receipt[]
   sales                  Sale[]
   warranties             Warranty[]
@@ -2126,6 +2128,7 @@ model CashBankAccount {
   shopeeSettlementShops    ShopeeShop[]
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
+  customerAdvances         CustomerAdvance[]
 
   @@index([type, isActive])
   @@index([name])
@@ -2332,19 +2335,50 @@ model DocumentPayment {
 }
 
 model ReceiptItem {
-  id         String      @id @default(cuid())
-  receiptId  String
-  lineNo     Int         @default(0)
-  saleId     String?
-  paidAmount Decimal     @db.Decimal(10, 2)
-  cnId       String?
-  creditNote CreditNote? @relation(fields: [cnId], references: [id])
-  receipt    Receipt     @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  sale       Sale?       @relation(fields: [saleId], references: [id])
+  id                String           @id @default(cuid())
+  receiptId         String
+  lineNo            Int              @default(0)
+  saleId            String?
+  paidAmount        Decimal          @db.Decimal(10, 2)
+  cnId              String?
+  customerAdvanceId String?
+  creditNote        CreditNote?      @relation(fields: [cnId], references: [id])
+  customerAdvance   CustomerAdvance? @relation(fields: [customerAdvanceId], references: [id])
+  receipt           Receipt          @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  sale              Sale?            @relation(fields: [saleId], references: [id])
 
   @@index([saleId])
   @@index([receiptId, lineNo])
   @@index([cnId])
+  @@index([customerAdvanceId])
+}
+
+model CustomerAdvance {
+  id                String           @id @default(cuid())
+  advanceNo         String           @unique
+  advanceDate       DateTime         @default(now()) @db.Timestamptz(3)
+  customerId        String
+  userId            String
+  totalAmount       Decimal          @db.Decimal(10, 2)
+  amountRemain      Decimal          @default(0) @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod    @default(TRANSFER)
+  note              String?
+  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  cancelNote        String?
+  cancelledAt       DateTime?        @db.Timestamptz(3)
+  status            DocStatus        @default(ACTIVE)
+  cashBankAccountId String?
+  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
+  receiptItems      ReceiptItem[]
+
+  @@index([advanceDate(sort: Desc), status])
+  @@index([cashBankAccountId, advanceDate(sort: Desc), status])
+  @@index([customerId, status])
+  @@index([cashBankAccountId])
+  @@index([userId])
 }
 
 model SupplierAdvance {
@@ -2925,6 +2959,7 @@ enum CashBankAccountType {
 enum CashBankSourceType {
   SALE
   RECEIPT
+  CUSTOMER_ADVANCE
   PURCHASE
   EXPENSE
   CN_SALE
@@ -2944,6 +2979,7 @@ enum CashBankDirection {
 enum DocumentPaymentDocType {
   SALE
   RECEIPT
+  CUSTOMER_ADVANCE
   PURCHASE
   EXPENSE
   CN_SALE

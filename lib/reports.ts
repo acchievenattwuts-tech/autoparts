@@ -138,7 +138,7 @@ type ExpenseDocumentRow = {
 };
 
 type DailyReceiptRow = {
-  source: "SALE" | "RECEIPT" | "PURCHASE_RETURN";
+  source: "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN";
   docNo: string;
   docDate: Date;
   counterpartCode: string;
@@ -249,6 +249,7 @@ export type ReportsData = {
     totalAmount: number;
     cashSaleAmount: number;
     receiptAmount: number;
+    customerAdvanceAmount: number;
     purchaseReturnRefundAmount: number;
     items: DailyReceiptRow[];
   };
@@ -554,6 +555,11 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     advanceDate: { gte: filters.from, lte: filters.to },
     ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
   };
+  const customerAdvanceWhere = {
+    status: "ACTIVE" as const,
+    advanceDate: { gte: filters.from, lte: filters.to },
+    ...(customerCodeRange ? { customer: { code: customerCodeRange } } : {}),
+  };
   const supplierPaymentWhere = {
     status: "ACTIVE" as const,
     paymentDate: { gte: filters.from, lte: filters.to },
@@ -708,6 +714,19 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
           note: true,
           cashBankAccount: { select: { name: true } },
           supplier: { select: { code: true, name: true } },
+        },
+      });
+  const customerAdvancesPromise = db.customerAdvance.findMany({
+        where: customerAdvanceWhere,
+        orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
+        select: {
+          advanceNo: true,
+          advanceDate: true,
+          totalAmount: true,
+          paymentMethod: true,
+          note: true,
+          cashBankAccount: { select: { name: true } },
+          customer: { select: { code: true, name: true } },
         },
       });
   const supplierPaymentsPromise = db.supplierPayment.findMany({
@@ -883,6 +902,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     openClaims,
     outstandingSales,
     receipts,
+    customerAdvances,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise],
     [
@@ -892,7 +912,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       warrantiesPromise,
       openClaimsPromise,
     ],
-    [outstandingSalesPromise, receiptsPromise],
+    [outstandingSalesPromise, receiptsPromise, customerAdvancesPromise],
   ])) as [
     Awaited<typeof salesPromise>,
     Awaited<typeof creditNotesPromise>,
@@ -906,6 +926,7 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
     Awaited<typeof openClaimsPromise>,
     Awaited<typeof outstandingSalesPromise>,
     Awaited<typeof receiptsPromise>,
+    Awaited<typeof customerAdvancesPromise>,
   ];
 
   const normalizedSales = sales.map((sale) => ({
@@ -1220,6 +1241,17 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       amount: toNumber(receipt.totalAmount),
       note: receipt.note ?? "",
     })),
+    ...customerAdvances.map((advance) => ({
+      source: "CUSTOMER_ADVANCE" as const,
+      docNo: advance.advanceNo,
+      docDate: advance.advanceDate,
+      counterpartCode: advance.customer.code ?? "",
+      counterpartName: advance.customer.name,
+      paymentMethod: getPaymentMethodLabel(advance.paymentMethod),
+      accountName: advance.cashBankAccount?.name ?? "-",
+      amount: toNumber(advance.totalAmount),
+      note: advance.note ?? "",
+    })),
     ...normalizedPurchaseReturns
       .filter((purchaseReturn) => purchaseReturn.settlementType === PurchaseReturnSettlementType.CASH_REFUND)
       .map((purchaseReturn) => ({
@@ -1395,6 +1427,9 @@ export async function getReportsData(filters: ParsedReportFilters): Promise<Repo
       totalAmount: dailyReceiptRows.reduce((sum, item) => sum + item.amount, 0),
       cashSaleAmount: dailyReceiptRows.filter((item) => item.source === "SALE").reduce((sum, item) => sum + item.amount, 0),
       receiptAmount: dailyReceiptRows.filter((item) => item.source === "RECEIPT").reduce((sum, item) => sum + item.amount, 0),
+      customerAdvanceAmount: dailyReceiptRows
+        .filter((item) => item.source === "CUSTOMER_ADVANCE")
+        .reduce((sum, item) => sum + item.amount, 0),
       purchaseReturnRefundAmount: dailyReceiptRows
         .filter((item) => item.source === "PURCHASE_RETURN")
         .reduce((sum, item) => sum + item.amount, 0),
@@ -1459,7 +1494,13 @@ export function buildReportsCsv(data: ReportsData): string {
   pushRow(["ที่มา", "เลขที่เอกสาร", "วันที่", "รหัสคู่ค้า/อ้างอิง", "คู่ค้า/รายละเอียด", "ช่องทางชำระ", "บัญชีเงิน", "จำนวนเงิน", "หมายเหตุ"]);
   for (const row of data.dailyReceipts.items) {
     pushRow([
-      row.source === "SALE" ? "ขายสด" : row.source === "RECEIPT" ? "ใบเสร็จรับเงิน" : "รับเงินคืนซื้อ",
+      row.source === "SALE"
+        ? "ขายสด"
+        : row.source === "RECEIPT"
+          ? "ใบเสร็จรับเงิน"
+          : row.source === "CUSTOMER_ADVANCE"
+            ? "รับเงินมัดจำลูกค้า"
+            : "รับเงินคืนซื้อ",
       row.docNo,
       formatDateInput(row.docDate),
       row.counterpartCode || "-",

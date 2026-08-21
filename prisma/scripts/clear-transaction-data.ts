@@ -94,6 +94,7 @@ async function main() {
 
       // ── STEP 12: SupplierAdvance & SupplierPayment ──────────
       console.log("\nSTEP 12: SupplierAdvance & SupplierPayment");
+      await step("CustomerAdvance", () => tx.customerAdvance.deleteMany());
       await step("SupplierAdvance", () => tx.supplierAdvance.deleteMany());
       await step("SupplierPayment", () => tx.supplierPayment.deleteMany());
 

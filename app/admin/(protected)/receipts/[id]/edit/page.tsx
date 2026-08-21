@@ -28,6 +28,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
           select: {
             saleId:     true,
             cnId:       true,
+            customerAdvanceId: true,
             paidAmount: true,
             sale: {
               select: {
@@ -44,6 +45,9 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
                 totalAmount:  true,
                 amountRemain: true,
               },
+            },
+            customerAdvance: {
+              select: { advanceNo: true, advanceDate: true, totalAmount: true, amountRemain: true },
             },
           },
         },
@@ -64,6 +68,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const receiptSaleIds = new Set(receipt.items.map((i) => i.saleId).filter(Boolean));
   const receiptCnIds   = new Set(receipt.items.map((i) => i.cnId).filter(Boolean));
+  const receiptAdvanceIds = new Set(receipt.items.map((i) => i.customerAdvanceId).filter(Boolean));
 
   // Reconstruct Sale items: outstanding = current amountRemain + what this receipt paid
   const receiptSaleItems: CreditSaleItem[] = receipt.items
@@ -105,11 +110,21 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       };
     });
 
+  const receiptAdvanceItems: CreditSaleItem[] = receipt.items
+    .filter((item) => item.customerAdvanceId !== null && item.customerAdvance !== null)
+    .map((item) => {
+      const advance = item.customerAdvance!;
+      const appliedHere = Number(item.paidAmount);
+      const outstanding = Number(advance.amountRemain) + appliedHere;
+      return { id: item.customerAdvanceId!, saleNo: advance.advanceNo, saleDate: advance.advanceDate.toISOString(), netAmount: Number(advance.totalAmount), paidAmount: Math.max(0, Number(advance.totalAmount) - outstanding), outstanding, type: "ADVANCE" as const };
+    });
+
   // Load other outstanding credit sales for this customer (not in this receipt)
   let otherSaleItems: CreditSaleItem[] = [];
   let otherCNItems:   CreditSaleItem[] = [];
+  let otherAdvanceItems: CreditSaleItem[] = [];
   if (receipt.customerId) {
-    const [otherRawSales, otherRawCNs] = await Promise.all([
+    const [otherRawSales, otherRawCNs, otherRawAdvances] = await Promise.all([
       db.sale.findMany({
         where: {
           customerId:   receipt.customerId,
@@ -144,6 +159,11 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
           amountRemain: true,
         },
       }),
+      db.customerAdvance.findMany({
+        where: { customerId: receipt.customerId, status: "ACTIVE", id: { notIn: [...receiptAdvanceIds].filter((value): value is string => value !== null) }, amountRemain: { gt: 0 } },
+        orderBy: { advanceDate: "asc" },
+        select: { id: true, advanceNo: true, advanceDate: true, totalAmount: true, amountRemain: true },
+      }),
     ]);
 
     otherSaleItems = otherRawSales.map((s) => ({
@@ -165,6 +185,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       outstanding: Number(cn.amountRemain),
       type:        "CN" as const,
     }));
+    otherAdvanceItems = otherRawAdvances.map((advance) => ({ id: advance.id, saleNo: advance.advanceNo, saleDate: advance.advanceDate.toISOString(), netAmount: Number(advance.totalAmount), paidAmount: Number(advance.totalAmount) - Number(advance.amountRemain), outstanding: Number(advance.amountRemain), type: "ADVANCE" as const }));
   }
 
   const initialCreditSales: CreditSaleItem[] = [
@@ -172,6 +193,8 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
     ...otherSaleItems,
     ...receiptCNItems,
     ...otherCNItems,
+    ...receiptAdvanceItems,
+    ...otherAdvanceItems,
   ];
 
   const initialData = {
@@ -204,6 +227,9 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
             isCN:        false,
           };
         }),
+      ...receipt.items
+        .filter((item) => item.customerAdvanceId !== null && item.customerAdvance !== null)
+        .map((item) => ({ saleId: undefined, cnId: undefined, customerAdvanceId: item.customerAdvanceId!, saleNo: item.customerAdvance!.advanceNo, outstanding: Number(item.customerAdvance!.amountRemain) + Number(item.paidAmount), paidAmount: Number(item.paidAmount), isCN: false, isAdvance: true })),
       // CN items
       ...receipt.items
         .filter((item) => item.cnId !== null && item.creditNote !== null)

@@ -45,6 +45,23 @@ describe("document mutation guard", () => {
     assert.deepEqual(advanceResult.references.map((ref) => ref.refNo), ["SP-001"]);
   });
 
+  it("blocks customer advance mutation when an active receipt uses it", async () => {
+    const guard = createDocumentMutationGuard({
+      receiptItem: {
+        findMany: async () => [
+          { receipt: { id: "receipt-1", receiptNo: "REC-001" } },
+          { receipt: { id: "receipt-1", receiptNo: "REC-001" } },
+        ],
+      },
+    });
+
+    const result = await guard.check("CustomerAdvance", "advance-1", "cancel");
+
+    assert.equal(result.blocked, true);
+    assert.equal(result.reason, "ถูกนำไปใช้ที่ใบเสร็จรับเงิน");
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["REC-001"]);
+  });
+
   it("blocks warranty claim cancellation when an active purchase return uses it", async () => {
     const guard = createDocumentMutationGuard({
       purchaseReturn: {

@@ -63,6 +63,7 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
             <option value="ALL">ทั้งหมด</option>
             <option value="CASH_SALE">ขายสด</option>
             <option value="RECEIPT">รับชำระหนี้</option>
+            <option value="CUSTOMER_ADVANCE">รับเงินมัดจำลูกค้า</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

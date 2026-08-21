@@ -12,7 +12,7 @@
   - **10 เอกสารครบ loop** (form split rows → create/update/cancel → posting →
     detail breakdown → audit): Receipt, Sale (CASH_SALE), Purchase (CASH_PURCHASE),
     Expense, CreditNote (CASH_REFUND), PurchaseReturn (CASH_REFUND),
-    SupplierAdvance, SupplierPayment
+    CustomerAdvance, SupplierAdvance, SupplierPayment
   - print: ใบเสร็จ + ใบขาย/ใบส่งของ multi-channel ครบทุก caller
   - reports: account filter multi-channel-aware (additive OR, ผลลัพธ์เดิมไม่เปลี่ยน)
 
@@ -26,6 +26,7 @@
 | CreditNote | CN_SALE | CASH_REFUND | OUT | netAmount |
 | PurchaseReturn | CN_PURCHASE | CASH_REFUND | IN | netAmount |
 | SupplierAdvance | SUPPLIER_ADVANCE | เสมอ | OUT | totalAmount |
+| CustomerAdvance | CUSTOMER_ADVANCE | เสมอ | IN | totalAmount |
 | SupplierPayment | SUPPLIER_PAYMENT | totalCashPaid > 0 | OUT | totalCashPaid |
 
 ## Notes ต่อเอกสาร

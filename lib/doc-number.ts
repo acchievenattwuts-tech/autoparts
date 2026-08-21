@@ -152,6 +152,22 @@ export async function generateSupplierAdvanceNo(date?: Date): Promise<string> {
 }
 
 /**
+ * Generate customer deposit number using CustomerAdvance table.
+ * Format: SD{YYMM}{4-digit}
+ */
+export async function generateCustomerAdvanceNo(date?: Date): Promise<string> {
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const pattern = `SD${year.slice(-2)}${month}`;
+  const last = await db.customerAdvance.findFirst({
+    where: { advanceNo: { startsWith: pattern } },
+    orderBy: { advanceNo: "desc" },
+    select: { advanceNo: true },
+  });
+  const seq = last ? parseInt(last.advanceNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
+/**
  * Generate purchase return number using PurchaseReturn table
  * Format: CNRR{YYMM}{4-digit}
  */
@@ -309,6 +325,7 @@ export async function generateProfitDistributionNo(date?: Date): Promise<string>
  * CN   — Credit Note
  * ADJ  — ปรับสต็อก (Adjustment)
  * REC  — ใบเสร็จรับเงิน (Receipt)
+ * SD   — รับเงินมัดจำลูกค้า (Sales Deposit)
  * OE   — ค่าใช้จ่าย (Operating Expense)
  * WC   — ใบเคลมสินค้า (Warranty Claim)
  * PD   — แบ่งกำไรผู้ร่วมทุน (Profit Distribution)

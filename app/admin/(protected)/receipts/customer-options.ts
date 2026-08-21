@@ -10,7 +10,7 @@ export type ReceiptCustomerOption = {
 export const getReceiptCustomerOptions = async (
   currentCustomerId?: string,
 ): Promise<ReceiptCustomerOption[]> => {
-  const [saleBalances, cnBalances] = await Promise.all([
+  const [saleBalances, cnBalances, advanceBalances] = await Promise.all([
     db.sale.groupBy({
       by: ["customerId"],
       where: {
@@ -31,13 +31,19 @@ export const getReceiptCustomerOptions = async (
       },
       _sum: { amountRemain: true },
     }),
+    db.customerAdvance.groupBy({
+      by: ["customerId"],
+      where: { status: "ACTIVE", amountRemain: { gt: 0 } },
+      _sum: { amountRemain: true },
+    }),
   ]);
 
   const customerIds = [
     ...new Set(
       [
         ...saleBalances.map((balance) => balance.customerId),
-        ...cnBalances.map((balance) => balance.customerId),
+      ...cnBalances.map((balance) => balance.customerId),
+      ...advanceBalances.map((balance) => balance.customerId),
         currentCustomerId,
       ].filter((customerId): customerId is string => !!customerId),
     ),
@@ -80,15 +86,17 @@ export const getReceiptCustomerOptions = async (
       .filter((balance): balance is typeof balance & { customerId: string } => balance.customerId !== null)
       .map((balance) => [balance.customerId, Number(balance._sum.amountRemain ?? 0)]),
   );
+  const advanceBalanceMap = new Map(advanceBalances.map((balance) => [balance.customerId, Number(balance._sum.amountRemain ?? 0)]));
 
   return customers
     .map((customer) => {
       const saleOutstanding = saleBalanceMap.get(customer.id) ?? 0;
       const cnOutstanding = cnBalanceMap.get(customer.id) ?? 0;
+      const advanceOutstanding = advanceBalanceMap.get(customer.id) ?? 0;
 
       return {
         ...customer,
-        amountRemain: saleOutstanding - cnOutstanding,
+        amountRemain: saleOutstanding - cnOutstanding - advanceOutstanding,
       };
     })
     .filter(

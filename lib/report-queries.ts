@@ -933,7 +933,7 @@ export type DailyReceiptRow = {
   rowNo: number;
   docNo: string;
   docDate: Date;
-  docType: string; // "ขายสด" | "รับชำระหนี้"
+  docType: string; // "ขายสด" | "รับชำระหนี้" | "รับเงินมัดจำลูกค้า"
   customerCode: string;
   customerName: string;
   paymentMethod: string;
@@ -1034,6 +1034,47 @@ export async function queryDailyReceiptRows(
         note: r.note ?? "",
         status: r.status,
         amount: Number(r.totalAmount),
+      });
+    }
+  }
+
+  if (docType === "ALL" || docType === "CUSTOMER_ADVANCE") {
+    const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.CUSTOMER_ADVANCE, filters.accountId)
+      : [];
+    const advances = await db.customerAdvance.findMany({
+      where: {
+        advanceDate: { gte: filters.from, lte: filters.to },
+        ...accountWhereFilter(filters.accountId, accountDocIds),
+        ...statusFilter,
+      },
+      select: {
+        advanceNo: true,
+        advanceDate: true,
+        paymentMethod: true,
+        totalAmount: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        customer: { select: { code: true, name: true } },
+      },
+      orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    for (const advance of advances) {
+      rows.push({
+        rowNo: 0,
+        docNo: advance.advanceNo,
+        docDate: advance.advanceDate,
+        docType: "รับเงินมัดจำลูกค้า",
+        customerCode: advance.customer.code ?? "",
+        customerName: advance.customer.name,
+        paymentMethod: paymentMethodLabel(advance.paymentMethod),
+        accountName: advance.cashBankAccount?.name ?? "-",
+        note: advance.note ?? "",
+        status: advance.status,
+        amount: Number(advance.totalAmount),
       });
     }
   }

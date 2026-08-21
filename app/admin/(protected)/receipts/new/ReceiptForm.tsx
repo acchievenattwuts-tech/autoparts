@@ -24,10 +24,12 @@ interface CustomerOption {
 interface SelectedItem {
   saleId?: string;
   cnId?: string;
+  customerAdvanceId?: string;
   saleNo: string;
   outstanding: number;
   paidAmount: number;
   isCN: boolean;
+  isAdvance?: boolean;
 }
 
 interface CashBankAccountOption {
@@ -103,6 +105,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
               outstanding: sale.outstanding,
               paidAmount: sale.outstanding,
               isCN: false,
+              isAdvance: false,
             })),
         );
       })
@@ -113,12 +116,12 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       .finally(() => setIsLoadingSales(false));
   };
 
-  const isChecked = (itemId: string) => selectedItems.some((item) => (item.saleId ?? item.cnId) === itemId);
+  const isChecked = (itemId: string) => selectedItems.some((item) => (item.saleId ?? item.cnId ?? item.customerAdvanceId) === itemId);
 
   const toggleItem = (sale: CreditSaleItem) => {
     const key = sale.id;
     if (isChecked(key)) {
-      setSelectedItems((prev) => prev.filter((item) => (item.saleId ?? item.cnId) !== key));
+      setSelectedItems((prev) => prev.filter((item) => (item.saleId ?? item.cnId ?? item.customerAdvanceId) !== key));
       return;
     }
     setSelectedItems((prev) => [
@@ -126,10 +129,12 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       {
         saleId: sale.type === "SALE" ? sale.id : undefined,
         cnId: sale.type === "CN" ? sale.id : undefined,
+        customerAdvanceId: sale.type === "ADVANCE" ? sale.id : undefined,
         saleNo: sale.saleNo,
         outstanding: sale.outstanding,
         paidAmount: sale.outstanding,
         isCN: sale.type === "CN",
+        isAdvance: sale.type === "ADVANCE",
       },
     ]);
   };
@@ -137,7 +142,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
   const updatePaidAmount = (itemId: string, value: number) => {
     setSelectedItems((prev) =>
       prev.map((item) =>
-        (item.saleId ?? item.cnId) === itemId
+        (item.saleId ?? item.cnId ?? item.customerAdvanceId) === itemId
           ? { ...item, paidAmount: Math.max(0, Math.min(value, item.outstanding)) }
           : item,
       ),
@@ -146,10 +151,12 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   const saleItems = creditSales.filter((sale) => sale.type === "SALE");
   const cnItems = creditSales.filter((sale) => sale.type === "CN");
+  const advanceItems = creditSales.filter((sale) => sale.type === "ADVANCE");
 
-  const saleTotal = selectedItems.filter((item) => !item.isCN).reduce((sum, item) => sum + item.paidAmount, 0);
+  const saleTotal = selectedItems.filter((item) => !item.isCN && !item.isAdvance).reduce((sum, item) => sum + item.paidAmount, 0);
   const cnTotal = selectedItems.filter((item) => item.isCN).reduce((sum, item) => sum + item.paidAmount, 0);
-  const netTotal = saleTotal - cnTotal;
+  const advanceTotal = selectedItems.filter((item) => item.isAdvance).reduce((sum, item) => sum + item.paidAmount, 0);
+  const netTotal = saleTotal - cnTotal - advanceTotal;
 
   const round2 = (value: number) => Math.round(value * 100) / 100;
   const paymentsTotal = round2(payments.reduce((sum, row) => sum + (row.amount || 0), 0));
@@ -190,6 +197,14 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
     }
     if (selectedItems.length === 0) {
       setError("กรุณาเลือกรายการที่ต้องการรับชำระหรือใช้เครดิต");
+      return;
+    }
+    if (!selectedItems.some((item) => item.saleId)) {
+      setError("กรุณาเลือกใบขายเชื่ออย่างน้อย 1 รายการ");
+      return;
+    }
+    if (netTotal < -0.005) {
+      setError("ยอดเครดิต CN และเงินมัดจำที่เลือกมากกว่ายอดใบขายเชื่อ");
       return;
     }
     if (selectedItems.some((item) => item.paidAmount <= 0)) {
@@ -234,6 +249,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         selectedItems.map((item) => ({
           saleId: item.saleId,
           cnId: item.cnId,
+          customerAdvanceId: item.customerAdvanceId,
           paidAmount: item.paidAmount,
         })),
       ),
@@ -263,7 +279,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   const renderSaleRow = (sale: CreditSaleItem) => {
     const checked = isChecked(sale.id);
-    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
+    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId ?? selected.customerAdvanceId) === sale.id);
     return (
       <tr key={sale.id} className={`border-t border-gray-50 transition-colors dark:border-white/5 ${checked ? "bg-blue-50/40 dark:bg-sky-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"}`}>
         <td className="px-3 py-2">
@@ -307,7 +323,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
   const renderCNRow = (sale: CreditSaleItem) => {
     const checked = isChecked(sale.id);
-    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId) === sale.id);
+    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId ?? selected.customerAdvanceId) === sale.id);
     return (
       <tr key={sale.id} className={`border-t border-gray-50 transition-colors dark:border-white/5 ${checked ? "bg-emerald-50/40 dark:bg-emerald-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"}`}>
         <td className="px-3 py-2">
@@ -347,6 +363,20 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </td>
       </tr>
     );
+  };
+
+  const renderAdvanceRow = (advance: CreditSaleItem) => {
+    const checked = isChecked(advance.id);
+    const item = selectedItems.find((selected) => (selected.saleId ?? selected.cnId ?? selected.customerAdvanceId) === advance.id);
+    return <tr key={advance.id} className={`border-t border-gray-50 transition-colors dark:border-white/5 ${checked ? "bg-amber-50/50 dark:bg-amber-500/10" : "hover:bg-gray-50 dark:hover:bg-white/5"}`}>
+      <td className="px-3 py-2"><input type="checkbox" checked={checked} onChange={() => toggleItem(advance)} className="h-4 w-4 accent-amber-600" /></td>
+      <td className="px-3 py-2 font-mono font-medium text-amber-700 dark:text-amber-300">{advance.saleNo}</td>
+      <td className="px-3 py-2 text-gray-600 dark:text-slate-400">{formatDateThai(advance.saleDate, dateLocale)}</td>
+      <td className="px-3 py-2 text-right text-gray-800 dark:text-slate-200">{advance.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+      <td className="px-3 py-2 text-right text-gray-600 dark:text-slate-400">{advance.paidAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+      <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">{advance.outstanding.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+      <td className="px-3 py-2 text-right">{checked ? <AdminNumberInput min={0} max={advance.outstanding} step={0.01} value={item?.paidAmount ?? advance.outstanding} onValueChange={(value) => updatePaidAmount(advance.id, value)} className="w-28 rounded border border-amber-200 px-2 py-1 text-right text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/30 dark:border-amber-400/30 dark:bg-slate-900 dark:text-slate-100" /> : <span className="text-sm text-gray-400 dark:text-slate-500">-</span>}</td>
+    </tr>;
   };
 
   return (
@@ -527,6 +557,14 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         </div>
       )}
 
+      {customerId && !isLoadingSales && advanceItems.length > 0 && (
+        <div className="rounded-xl border border-amber-100 bg-white p-6 shadow-sm dark:border-amber-400/20 dark:bg-[#101b2e]">
+          <h2 className="mb-1 font-kanit text-lg font-semibold text-amber-800 dark:text-amber-300">เงินมัดจำลูกค้าที่สามารถใช้ได้</h2>
+          <p className="mb-4 text-xs text-gray-500 dark:text-slate-400">เงินมัดจำใช้หักได้หลายครั้งจนยอดคงเหลือหมด</p>
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-amber-50 dark:bg-amber-500/10"><tr><th className="w-10 px-3 py-3"/><th className="px-3 py-3 text-left font-medium text-amber-700 dark:text-amber-300">เลขที่มัดจำ</th><th className="px-3 py-3 text-left font-medium text-amber-700 dark:text-amber-300">วันที่</th><th className="px-3 py-3 text-right font-medium text-amber-700 dark:text-amber-300">ยอดมัดจำ</th><th className="px-3 py-3 text-right font-medium text-amber-700 dark:text-amber-300">ใช้แล้ว</th><th className="px-3 py-3 text-right font-medium text-amber-700 dark:text-amber-300">คงเหลือ</th><th className="px-3 py-3 text-right font-medium text-amber-700 dark:text-amber-300">นำมาหักงวดนี้</th></tr></thead><tbody>{advanceItems.map(renderAdvanceRow)}</tbody></table></div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-400">
@@ -559,7 +597,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
 
         <div className="flex items-end justify-between">
           <div className="space-y-1">
-            {cnTotal > 0 && (
+            {(cnTotal > 0 || advanceTotal > 0) && (
               <>
                 <div className="flex items-center gap-8 text-sm text-gray-600 dark:text-slate-400">
                   <span>ยอดค้างชำระที่เลือก</span>
@@ -567,12 +605,13 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
                     {saleTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
-                <div className="flex items-center gap-8 text-sm text-emerald-700 dark:text-emerald-400">
+                {cnTotal > 0 ? <div className="flex items-center gap-8 text-sm text-emerald-700 dark:text-emerald-400">
                   <span>หักเครดิต CN</span>
                   <span className="font-medium">
                     -{cnTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                   </span>
-                </div>
+                </div> : null}
+                {advanceTotal > 0 ? <div className="flex items-center gap-8 text-sm text-amber-700 dark:text-amber-300"><span>หักเงินมัดจำลูกค้า</span><span className="font-medium">-{advanceTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}</span></div> : null}
                 <div className="my-1 h-px bg-gray-200 dark:bg-white/10" />
               </>
             )}

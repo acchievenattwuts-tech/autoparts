@@ -84,7 +84,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
     "line_payment_slips.view",
   );
 
-  const [customer, creditSales, receipts, creditNotes, paymentSlips] = await Promise.all([
+  const [customer, creditSales, receipts, customerAdvances, paymentSlips] = await Promise.all([
     db.customer.findUnique({
       where: { id },
       include: {
@@ -113,6 +113,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
         saleNo:    true,
         saleDate:  true,
         netAmount: true,
+        amountRemain: true,
         receipts:  { select: { paidAmount: true } },
       },
       orderBy: { saleDate: "desc" },
@@ -130,9 +131,18 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
       take: 20,
     }),
 
-    db.creditNote.findMany({
-      where: { customerId: id, settlementType: "CREDIT_DEBT" },
-      select: { cnNo: true, totalAmount: true, cnDate: true },
+    db.customerAdvance.findMany({
+      where: { customerId: id },
+      select: {
+        id: true,
+        advanceNo: true,
+        advanceDate: true,
+        totalAmount: true,
+        amountRemain: true,
+        status: true,
+      },
+      orderBy: [{ advanceDate: "desc" }, { advanceNo: "desc" }],
+      take: 20,
     }),
 
     canViewSlips ? listPaymentSlipsByCustomer(id) : Promise.resolve([]),
@@ -141,10 +151,10 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   if (!customer) notFound();
 
   // AR balance calculation
-  const totalCreditSales    = creditSales.reduce((sum, s) => sum + Number(s.netAmount), 0);
-  const totalPaidViaReceipts = receipts.reduce((sum, r) => sum + Number(r.totalAmount), 0);
-  const totalCNDebt         = creditNotes.reduce((sum, cn) => sum + Number(cn.totalAmount), 0);
-  const arBalance           = Math.max(0, totalCreditSales - totalPaidViaReceipts - totalCNDebt);
+  const arBalance = creditSales.reduce((sum, sale) => sum + Number(sale.amountRemain), 0);
+  const customerAdvanceRemain = customerAdvances
+    .filter((advance) => advance.status === "ACTIVE")
+    .reduce((sum, advance) => sum + Number(advance.amountRemain), 0);
 
   // Per-sale status
   const salesWithStatus = creditSales.map((s) => {
@@ -276,7 +286,7 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <AdminStatCard
           label="ยอดซื้อทั้งหมด"
           value={totalSpent.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -286,6 +296,11 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           label="จำนวนครั้งที่ซื้อ"
           value={customer.sales.length}
           hint="ครั้ง"
+        />
+        <AdminStatCard
+          label="เงินมัดจำคงเหลือ"
+          value={customerAdvanceRemain.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+          hint="บาท"
         />
       </div>
 
@@ -360,6 +375,39 @@ const CustomerDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                 ))}
               </tbody>
             </table>
+        </AdminTableSection>
+      )}
+
+      {customerAdvances.length > 0 && (
+        <AdminTableSection title="ประวัติรับเงินมัดจำลูกค้า">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 dark:bg-white/5">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่มัดจำ</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดมัดจำ</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">คงเหลือ</th>
+                <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customerAdvances.map((advance) => (
+                <tr key={advance.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-white/10 dark:hover:bg-white/5">
+                  <td className="px-4 py-3 font-mono">
+                    <NavLink href={`/admin/customer-advances/${advance.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300" hideSpinner>
+                      {advance.advanceNo}
+                    </NavLink>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{formatDateThai(advance.advanceDate)}</td>
+                  <td className="px-4 py-3 text-right text-gray-900 dark:text-slate-100">{Number(advance.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-right font-medium text-amber-700 dark:text-amber-300">{Number(advance.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3 text-center">
+                    <AdminStatusBadge tone={advance.status === "ACTIVE" ? "success" : "danger"}>{advance.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}</AdminStatusBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </AdminTableSection>
       )}
 

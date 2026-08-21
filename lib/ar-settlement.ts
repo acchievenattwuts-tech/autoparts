@@ -3,8 +3,8 @@ import { Prisma } from "@/lib/generated/prisma";
 
 type TxClient = Prisma.TransactionClient;
 
-type ReceiptDocumentClient = Pick<typeof db, "sale" | "creditNote"> &
-  Pick<TxClient, "sale" | "creditNote">;
+type ReceiptDocumentClient = Pick<typeof db, "sale" | "creditNote" | "customerAdvance"> &
+  Pick<TxClient, "sale" | "creditNote" | "customerAdvance">;
 
 export type AvailableReceiptDocument = {
   id: string;
@@ -18,11 +18,13 @@ export type AvailableReceiptDocument = {
 export type AvailableReceiptDocumentBundle = {
   sales: AvailableReceiptDocument[];
   creditNotes: AvailableReceiptDocument[];
+  advances: AvailableReceiptDocument[];
 };
 
 export type ReceiptSettlementItem = {
   saleId?: string | null | undefined;
   cnId?: string | null | undefined;
+  customerAdvanceId?: string | null | undefined;
   paidAmount: number;
 };
 
@@ -37,10 +39,12 @@ export async function getAvailableReceiptDocuments(
 ): Promise<AvailableReceiptDocumentBundle> {
   const saleOr = [{ amountRemain: { gt: 0 } }] as Prisma.SaleWhereInput[];
   const cnOr = [{ amountRemain: { gt: 0 } }] as Prisma.CreditNoteWhereInput[];
+  const advanceOr = [{ amountRemain: { gt: 0 } }] as Prisma.CustomerAdvanceWhereInput[];
 
   if (excludeReceiptId) {
     saleOr.push({ receipts: { some: { receiptId: excludeReceiptId } } });
     cnOr.push({ receiptItems: { some: { receiptId: excludeReceiptId } } });
+    advanceOr.push({ receiptItems: { some: { receiptId: excludeReceiptId } } });
   }
 
   // Sequential awaits on the single transaction connection — running both via
@@ -86,6 +90,14 @@ export async function getAvailableReceiptDocuments(
         },
       },
   });
+  const advances = await tx.customerAdvance.findMany({
+    where: { customerId, status: "ACTIVE", OR: advanceOr },
+    orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
+    select: {
+      id: true, advanceNo: true, advanceDate: true, totalAmount: true, amountRemain: true,
+      receiptItems: { where: { receiptId: excludeReceiptId ?? "__never__" }, select: { paidAmount: true } },
+    },
+  });
 
   return {
     sales: sales.map((sale) => {
@@ -110,6 +122,17 @@ export async function getAvailableReceiptDocuments(
         outstanding: Number(creditNote.amountRemain) + currentUsage,
       };
     }),
+    advances: advances.map((advance) => {
+      const currentUsage = sumReceiptUsage(advance.receiptItems);
+      return {
+        id: advance.id,
+        docNo: advance.advanceNo,
+        docDate: advance.advanceDate,
+        totalAmount: Number(advance.totalAmount),
+        usedAmount: Number(advance.totalAmount) - Number(advance.amountRemain) - currentUsage,
+        outstanding: Number(advance.amountRemain) + currentUsage,
+      };
+    }),
   };
 }
 
@@ -124,6 +147,7 @@ export function validateReceiptItemsAgainstAvailable(
 
   const saleMap = new Map(available.sales.map((item) => [item.id, item]));
   const cnMap = new Map(available.creditNotes.map((item) => [item.id, item]));
+  const advanceMap = new Map(available.advances.map((item) => [item.id, item]));
   const usedMap = new Map<string, number>();
 
   const registerAmount = (key: string, amount: number): number => {
@@ -152,8 +176,19 @@ export function validateReceiptItemsAgainstAvailable(
       if (registerAmount(`cn:${item.cnId}`, item.paidAmount) > creditNote.outstanding + 0.0001) {
         return `ยอดที่นำเครดิต ${creditNote.docNo} มาใช้ มากกว่ายอดคงเหลือที่ใช้ได้`;
       }
+      continue;
+    }
+
+    if (item.customerAdvanceId) {
+      const advance = advanceMap.get(item.customerAdvanceId);
+      if (!advance) return "พบเงินมัดจำลูกค้าที่เลือกไม่ถูกต้อง ถูกยกเลิก หรือไม่ใช่ของลูกค้ารายนี้";
+      if (registerAmount(`advance:${item.customerAdvanceId}`, item.paidAmount) > advance.outstanding + 0.0001) {
+        return `ยอดที่นำมัดจำ ${advance.docNo} มาใช้ มากกว่ายอดคงเหลือที่ใช้ได้`;
+      }
     }
   }
+
+  if (!items.some((item) => Boolean(item.saleId))) return "กรุณาเลือกใบขายเชื่ออย่างน้อย 1 รายการ";
 
   return null;
 }

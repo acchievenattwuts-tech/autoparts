@@ -1,0 +1,1 @@
+export default function Loading() { return <div className="space-y-4 animate-pulse"><div className="h-10 w-64 rounded bg-gray-200 dark:bg-slate-800"/><div className="h-72 rounded-xl bg-gray-100 dark:bg-slate-900"/></div>; }

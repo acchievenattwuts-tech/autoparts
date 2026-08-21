@@ -272,3 +272,42 @@ export async function recalculateSupplierAdvanceAmountRemain(
     data: { amountRemain: new Prisma.Decimal(remain) },
   });
 }
+
+/** Customer advance remains available until active Receipt items consume it. */
+export async function recalculateCustomerAdvanceAmountRemain(
+  tx: TxClient,
+  advanceId: string,
+): Promise<void> {
+  const advance = await tx.customerAdvance.findUnique({
+    where: { id: advanceId },
+    select: {
+      totalAmount: true,
+      status: true,
+      receiptItems: {
+        where: { receipt: { status: "ACTIVE" } },
+        select: { paidAmount: true },
+      },
+    },
+  });
+
+  if (!advance) return;
+
+  if (advance.status === "CANCELLED") {
+    await tx.customerAdvance.update({
+      where: { id: advanceId },
+      data: { amountRemain: new Prisma.Decimal(0) },
+    });
+    return;
+  }
+
+  const applied = advance.receiptItems.reduce(
+    (sum, item) => sum + Number(item.paidAmount),
+    0,
+  );
+  const remain = Math.max(0, Number(advance.totalAmount) - applied);
+
+  await tx.customerAdvance.update({
+    where: { id: advanceId },
+    data: { amountRemain: new Prisma.Decimal(remain) },
+  });
+}

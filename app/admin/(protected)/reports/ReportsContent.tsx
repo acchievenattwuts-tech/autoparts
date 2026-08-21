@@ -17,12 +17,14 @@ function formatDate(value: Date): string {
   return formatDateThai(value);
 }
 
-function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "PURCHASE_RETURN"): string {
+function getReceiptSourceLabel(source: "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"): string {
   switch (source) {
     case "SALE":
       return "ขายสด";
     case "RECEIPT":
       return "รับชำระ";
+    case "CUSTOMER_ADVANCE":
+      return "รับเงินมัดจำลูกค้า";
     case "PURCHASE_RETURN":
       return "รับเงินคืนซื้อ";
     default:
@@ -313,8 +315,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-4 dark:border-white/10">
+          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ รับเงินมัดจำลูกค้า และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-5 dark:border-white/10">
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500 dark:text-slate-400">รวมรับเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
@@ -326,6 +328,10 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รับชำระหนี้</p>
                 <p className="font-kanit text-xl font-bold text-emerald-600">฿{formatCurrency(data.dailyReceipts.receiptAmount)}</p>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3 dark:bg-amber-500/10">
+                <p className="text-xs text-amber-700 dark:text-amber-300">รับเงินมัดจำลูกค้า</p>
+                <p className="font-kanit text-xl font-bold text-amber-700 dark:text-amber-300">฿{formatCurrency(data.dailyReceipts.customerAdvanceAmount)}</p>
               </div>
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500">รับเงินคืนซื้อ</p>

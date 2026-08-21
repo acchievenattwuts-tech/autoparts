@@ -30,6 +30,7 @@ export type DocumentActivityEntityType =
   | "PurchaseReturn"
   | "SupplierPayment"
   | "SupplierAdvance"
+  | "CustomerAdvance"
   | "Expense"
   | "WarrantyClaim";
 
@@ -274,6 +275,7 @@ async function getReceiptRelationEvents(id: string): Promise<DocumentActivityEve
       paidAmount: true,
       sale: { select: { id: true, saleNo: true, saleDate: true, createdAt: true } },
       creditNote: { select: { id: true, cnNo: true, cnDate: true, createdAt: true } },
+      customerAdvance: { select: { id: true, advanceNo: true, advanceDate: true, createdAt: true } },
     },
   });
 
@@ -300,6 +302,18 @@ async function getReceiptRelationEvents(id: string): Promise<DocumentActivityEve
         description: `เครดิต ${formatMoneyActivity(String(item.paidAmount))}`,
         href: `/admin/credit-notes/${item.creditNote.id}`,
         hrefLabel: item.creditNote.cnNo,
+        tone: "used",
+      }));
+    }
+    if (item.customerAdvance) {
+      events.push(buildRelationActivityEvent({
+        id: `receipt-${id}-customer-advance-${item.customerAdvance.id}`,
+        kind: "USES_SOURCE",
+        occurredAt: item.customerAdvance.createdAt ?? item.customerAdvance.advanceDate,
+        title: "ใช้เงินมัดจำลูกค้า",
+        description: `ยอดใช้ ${formatMoneyActivity(String(item.paidAmount))}`,
+        href: `/admin/customer-advances/${item.customerAdvance.id}`,
+        hrefLabel: item.customerAdvance.advanceNo,
         tone: "used",
       }));
     }
@@ -463,6 +477,27 @@ async function getSupplierAdvanceRelationEvents(id: string): Promise<DocumentAct
   }));
 }
 
+async function getCustomerAdvanceRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
+  const db = await getDb();
+  const receipts = await db.receiptItem.findMany({
+    where: { customerAdvanceId: id, receipt: { status: "ACTIVE" } },
+    select: {
+      paidAmount: true,
+      receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true } },
+    },
+  });
+  return receipts.map((item) => buildRelationActivityEvent({
+    id: `customer-advance-${id}-receipt-${item.receipt.id}`,
+    kind: "USED_BY",
+    occurredAt: item.receipt.createdAt ?? item.receipt.receiptDate,
+    title: "ถูกนำไปใช้ที่ใบเสร็จรับเงิน",
+    description: `ใช้มัดจำ ${formatMoneyActivity(String(item.paidAmount))}`,
+    href: `/admin/receipts/${item.receipt.id}`,
+    hrefLabel: item.receipt.receiptNo,
+    tone: "used",
+  }));
+}
+
 async function getWarrantyClaimRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
   const claim = await db.warrantyClaim.findUnique({
@@ -517,6 +552,7 @@ async function getRelationEvents(
   if (entityType === "PurchaseReturn") return getPurchaseReturnRelationEvents(id);
   if (entityType === "SupplierPayment") return getSupplierPaymentRelationEvents(id);
   if (entityType === "SupplierAdvance") return getSupplierAdvanceRelationEvents(id);
+  if (entityType === "CustomerAdvance") return getCustomerAdvanceRelationEvents(id);
   if (entityType === "WarrantyClaim") return getWarrantyClaimRelationEvents(id);
   return [];
 }

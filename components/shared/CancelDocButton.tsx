@@ -10,9 +10,10 @@ interface CancelDocButtonProps {
   cancelAction: (formData: FormData) => Promise<{ success?: boolean; error?: string }>;
   onSuccess?:  () => void;
   disabledReason?: string | null;
+  description?: React.ReactNode;
 }
 
-const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, disabledReason }: CancelDocButtonProps) => {
+const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, disabledReason, description }: CancelDocButtonProps) => {
   const [isPending, startTransition] = useTransition();
   const [showModal, setShowModal]    = useState(false);
   const [cancelNote, setCancelNote]  = useState("");
@@ -48,7 +49,7 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, d
         }}
         disabled={isDisabled}
         className="inline-flex items-center gap-1 text-xs text-red-500 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:text-gray-300 dark:disabled:text-slate-600"
-        title="ยกเลิกเอกสาร"
+        title={disabledReason ?? "ยกเลิกเอกสาร"}
       >
         <XCircle size={14} /> ยกเลิก
       </button>
@@ -60,8 +61,10 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, d
               ยืนยันการยกเลิกเอกสาร {docNo}
             </h3>
             <p className="mb-4 text-sm text-gray-500 dark:text-slate-400">
-              เอกสาร <span className="font-mono font-semibold text-gray-700 dark:text-slate-200">{docNo}</span> จะถูกยกเลิก
-              ระบบจะคำนวณสต็อก MAVG ใหม่ทันที และไม่สามารถกู้คืนได้
+              {description ?? <>
+                เอกสาร <span className="font-mono font-semibold text-gray-700 dark:text-slate-200">{docNo}</span> จะถูกยกเลิก
+                ระบบจะคำนวณสต็อก MAVG ใหม่ทันที และไม่สามารถกู้คืนได้
+              </>}
             </p>
 
             <div className="mb-4">

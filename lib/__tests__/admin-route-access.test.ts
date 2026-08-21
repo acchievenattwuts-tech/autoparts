@@ -159,6 +159,20 @@ test("a staff user reaches a page their role grants", () => {
   assert.deepEqual(decideAdminRouteAccess(staff()), { type: "allow" });
 });
 
+test("customer advance routes use the matching view permission", () => {
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({
+      pathname: "/admin/customer-advances",
+      permissions: ["customer_advances.view"],
+    })),
+    { type: "allow" },
+  );
+  assert.deepEqual(
+    decideAdminRouteAccess(staff({ pathname: "/admin/customer-advances", permissions: [] })),
+    { type: "deny" },
+  );
+});
+
 test("a staff user is denied a page their role does not grant", () => {
   assert.deepEqual(
     decideAdminRouteAccess(staff({ pathname: "/admin/audit-log" })),

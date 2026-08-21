@@ -196,6 +196,7 @@ export default async function ExternalLiffOrderReceiptPage({
         include: {
           sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
           creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },
+          customerAdvance: { select: { advanceNo: true, advanceDate: true, totalAmount: true } },
         },
       },
     },

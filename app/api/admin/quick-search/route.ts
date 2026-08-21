@@ -66,6 +66,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       purchaseReturns: can("purchase_returns.view"),
       creditNotes: can("credit_notes.view"),
       receipts: can("receipts.view"),
+      customerAdvances: can("customer_advances.view"),
       supplierAdvances: can("supplier_advances.view"),
       supplierPayments: can("supplier_payments.view"),
       expenses: can("expenses.view"),

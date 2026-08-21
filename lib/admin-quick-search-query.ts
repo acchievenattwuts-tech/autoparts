@@ -6,6 +6,7 @@ export type QuickSearchAccess = {
   purchaseReturns: boolean;
   creditNotes: boolean;
   receipts: boolean;
+  customerAdvances: boolean;
   supplierAdvances: boolean;
   supplierPayments: boolean;
   expenses: boolean;
@@ -17,7 +18,7 @@ export type QuickSearchAccess = {
 
 type QuickSearchGroupKey =
   | "sales" | "purchases" | "purchase_returns" | "credit_notes" | "receipts"
-  | "supplier_advances" | "supplier_payments" | "expenses" | "warranty_claims"
+  | "customer_advances" | "supplier_advances" | "supplier_payments" | "expenses" | "warranty_claims"
   | "products" | "customers" | "suppliers";
 
 export type QuickSearchRow = {
@@ -50,6 +51,7 @@ export function buildQuickSearchGroups(rows: QuickSearchRow[]): QuickSearchResul
     { key: "purchase_returns", label: "ใบคืนซื้อ", item: (r) => ({ id: `purchase-return:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/purchase-returns/${r.id}` }) },
     { key: "credit_notes", label: "CN ขาย", item: (r) => ({ id: `cn:${r.id}`, label: r.label, sublabel: r.secondary ?? undefined, href: `/admin/credit-notes/${r.id}` }) },
     { key: "receipts", label: "ใบเสร็จรับเงิน", item: (r) => ({ id: `receipt:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/receipts/${r.id}` }) },
+    { key: "customer_advances", label: "รับเงินมัดจำลูกค้า", item: (r) => ({ id: `customer-advance:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/customer-advances/${r.id}` }) },
     { key: "supplier_advances", label: "เงินมัดจำซัพพลายเออร์", item: (r) => ({ id: `advance:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/supplier-advances/${r.id}` }) },
     { key: "supplier_payments", label: "จ่ายชำระซัพพลายเออร์", item: (r) => ({ id: `payment:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/supplier-payments/${r.id}` }) },
     { key: "expenses", label: "ค่าใช้จ่าย", item: (r) => ({ id: `expense:${r.id}`, label: r.label, sublabel: compactSublabel(r.secondary, cancelledSuffix(r.status)), href: `/admin/expenses/${r.id}` }) },
@@ -80,6 +82,7 @@ export async function queryAdminQuickSearchRows(input: {
   add(input.access.purchaseReturns, Prisma.sql`(SELECT 30, 'purchase_returns'::text, r.id, r."returnNo", s.name, NULL::text, r.status::text, NULL::boolean, r."returnDate", NULL::text FROM "PurchaseReturn" r LEFT JOIN "Supplier" s ON s.id=r."supplierId" WHERE r."returnNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR s.name ILIKE ${pattern}`} ORDER BY r."returnDate" DESC LIMIT ${input.take})`);
   add(input.access.creditNotes, Prisma.sql`(SELECT 40, 'credit_notes'::text, c.id, c."cnNo", c."customerName", NULL::text, NULL::text, NULL::boolean, c."cnDate", NULL::text FROM "CreditNote" c WHERE c."cnNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR c."customerName" ILIKE ${pattern}`} ORDER BY c."cnDate" DESC LIMIT ${input.take})`);
   add(input.access.receipts, Prisma.sql`(SELECT 50, 'receipts'::text, r.id, r."receiptNo", r."customerName", NULL::text, r.status::text, NULL::boolean, r."receiptDate", NULL::text FROM "Receipt" r WHERE r."receiptNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR r."customerName" ILIKE ${pattern}`} ORDER BY r."receiptDate" DESC LIMIT ${input.take})`);
+  add(input.access.customerAdvances, Prisma.sql`(SELECT 55, 'customer_advances'::text, a.id, a."advanceNo", c.name, NULL::text, a.status::text, NULL::boolean, a."advanceDate", NULL::text FROM "CustomerAdvance" a LEFT JOIN "Customer" c ON c.id=a."customerId" WHERE a."advanceNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR c.name ILIKE ${pattern}`} ORDER BY a."advanceDate" DESC LIMIT ${input.take})`);
   add(input.access.supplierAdvances, Prisma.sql`(SELECT 60, 'supplier_advances'::text, a.id, a."advanceNo", s.name, NULL::text, a.status::text, NULL::boolean, a."advanceDate", NULL::text FROM "SupplierAdvance" a LEFT JOIN "Supplier" s ON s.id=a."supplierId" WHERE a."advanceNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR s.name ILIKE ${pattern}`} ORDER BY a."advanceDate" DESC LIMIT ${input.take})`);
   add(input.access.supplierPayments, Prisma.sql`(SELECT 70, 'supplier_payments'::text, p.id, p."paymentNo", s.name, NULL::text, p.status::text, NULL::boolean, p."paymentDate", NULL::text FROM "SupplierPayment" p LEFT JOIN "Supplier" s ON s.id=p."supplierId" WHERE p."paymentNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR s.name ILIKE ${pattern}`} ORDER BY p."paymentDate" DESC LIMIT ${input.take})`);
   add(input.access.expenses, Prisma.sql`(SELECT 80, 'expenses'::text, e.id, e."expenseNo", e.note, NULL::text, e.status::text, NULL::boolean, e."expenseDate", NULL::text FROM "Expense" e WHERE e."expenseNo" ILIKE ${pattern} ${input.docOnly ? Prisma.empty : Prisma.sql`OR e.note ILIKE ${pattern}`} ORDER BY e."expenseDate" DESC LIMIT ${input.take})`);

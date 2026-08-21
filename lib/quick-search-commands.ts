@@ -31,6 +31,7 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
   { id: "create-purchase-return", label: "สร้างใบคืนซื้อใหม่", href: "/admin/purchase-returns/new", permission: "purchase_returns.create", group: "create", keywords: "return คืน" },
   { id: "create-cn", label: "สร้าง CN ใหม่", href: "/admin/credit-notes/new", permission: "credit_notes.create", group: "create", keywords: "credit note ลดหนี้" },
   { id: "create-receipt", label: "สร้างใบเสร็จรับเงินใหม่", href: "/admin/receipts/new", permission: "receipts.create", group: "create", keywords: "receipt รับชำระ" },
+  { id: "create-customer-advance", label: "สร้างรับเงินมัดจำลูกค้า", href: "/admin/customer-advances/new", permission: "customer_advances.create", group: "create", keywords: "customer advance sales deposit รับเงินมัดจำ" },
   { id: "create-expense", label: "สร้างค่าใช้จ่ายใหม่", href: "/admin/expenses/new", permission: "expenses.create", group: "create", keywords: "expense ค่าใช้จ่าย" },
   { id: "create-supplier-advance", label: "สร้างมัดจำซัพพลายเออร์", href: "/admin/supplier-advances/new", permission: "supplier_advances.create", group: "create", keywords: "advance มัดจำ" },
   { id: "create-supplier-payment", label: "สร้างใบจ่ายชำระซัพพลายเออร์", href: "/admin/supplier-payments/new", permission: "supplier_payments.create", group: "create", keywords: "supplier payment จ่าย" },

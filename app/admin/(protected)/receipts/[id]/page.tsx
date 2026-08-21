@@ -100,6 +100,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           include: {
             sale: { select: { saleNo: true, saleDate: true, netAmount: true } },
             creditNote: { select: { cnNo: true, cnDate: true, totalAmount: true } },
+            customerAdvance: { select: { advanceNo: true, advanceDate: true, totalAmount: true } },
           },
         },
       },
@@ -354,33 +355,37 @@ ${PRINT_COPY_VISIBILITY_CSS}
             <table className="w-full text-sm">
               <thead className="bg-gray-50 dark:bg-white/5">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
-                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่ใบขาย</th>
-                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดใบขาย</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่เอกสารอ้างอิง</th>
+                  <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่เอกสาร</th>
+                  <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดเอกสาร</th>
                   <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดที่ชำระ</th>
                 </tr>
               </thead>
               <tbody>
                 {receipt.items.map((item) => {
                   const isCreditNote = Boolean(item.cnId);
-                  const docNo = item.sale?.saleNo ?? item.creditNote?.cnNo ?? "-";
-                  const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate;
-                  const docAmount = item.sale?.netAmount ?? item.creditNote?.totalAmount;
+                  const isAdvance = Boolean(item.customerAdvanceId);
+                  const isCredit = isCreditNote || isAdvance;
+                  const docNo = item.sale?.saleNo ?? item.creditNote?.cnNo ?? item.customerAdvance?.advanceNo ?? "-";
+                  const docDate = item.sale?.saleDate ?? item.creditNote?.cnDate ?? item.customerAdvance?.advanceDate;
+                  const docAmount = item.sale?.netAmount ?? item.creditNote?.totalAmount ?? item.customerAdvance?.totalAmount;
 
                   return (
                     <tr
                       key={item.id}
-                      className={`border-t border-gray-50 dark:border-white/5 ${isCreditNote ? "bg-emerald-50/30 dark:bg-emerald-500/5" : ""}`}
+                      className={`border-t border-gray-50 dark:border-white/5 ${isCreditNote ? "bg-emerald-50/30 dark:bg-emerald-500/5" : isAdvance ? "bg-amber-50/30 dark:bg-amber-500/5" : ""}`}
                     >
                       <td
                         className={`px-4 py-3 font-mono font-medium ${
-                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : "text-[#1e3a5f] dark:text-sky-300"
+                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : isAdvance ? "text-amber-700 dark:text-amber-300" : "text-[#1e3a5f] dark:text-sky-300"
                         }`}
                       >
                         {item.saleId ? (
                           <NavLink href={`/admin/sales/${item.saleId}`} className="hover:underline" hideSpinner>
                             {docNo}
                           </NavLink>
+                        ) : item.customerAdvanceId ? (
+                          <NavLink href={`/admin/customer-advances/${item.customerAdvanceId}`} className="hover:underline" hideSpinner>{docNo} <span className="text-xs font-normal">(เงินมัดจำ)</span></NavLink>
                         ) : (
                           <span>
                             {docNo} <span className="text-xs font-normal text-emerald-600 dark:text-emerald-400">(เครดิต CN)</span>
@@ -399,10 +404,10 @@ ${PRINT_COPY_VISIBILITY_CSS}
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-medium ${
-                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-slate-100"
+                          isCreditNote ? "text-emerald-700 dark:text-emerald-400" : isAdvance ? "text-amber-700 dark:text-amber-300" : "text-gray-900 dark:text-slate-100"
                         }`}
                       >
-                        {isCreditNote ? "-" : ""}
+                        {isCredit ? "-" : ""}
                         {Number(item.paidAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                     </tr>

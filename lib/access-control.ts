@@ -74,6 +74,11 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "receipts.update", group: "ระบบงาน", label: "แก้ไขรับชำระ" },
   { key: "receipts.cancel", group: "ระบบงาน", label: "ยกเลิกรับชำระ" },
 
+  { key: "customer_advances.view", group: "ระบบงาน", label: "ดูรับเงินมัดจำลูกค้า" },
+  { key: "customer_advances.create", group: "ระบบงาน", label: "เพิ่มรับเงินมัดจำลูกค้า" },
+  { key: "customer_advances.update", group: "ระบบงาน", label: "แก้ไขรับเงินมัดจำลูกค้า" },
+  { key: "customer_advances.cancel", group: "ระบบงาน", label: "ยกเลิกรับเงินมัดจำลูกค้า" },
+
   { key: "supplier_advances.view", group: "ระบบงาน", label: "ดูเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_advances.create", group: "ระบบงาน", label: "เพิ่มเงินมัดจำซัพพลายเออร์" },
   { key: "supplier_advances.update", group: "ระบบงาน", label: "แก้ไขเงินมัดจำซัพพลายเออร์" },
@@ -212,6 +217,9 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "receipts.view",
   "receipts.create",
   "receipts.update",
+  "customer_advances.view",
+  "customer_advances.create",
+  "customer_advances.update",
   "supplier_advances.view",
   "supplier_advances.create",
   "supplier_advances.update",
@@ -260,6 +268,7 @@ const STAFF_VIEWER_PERMISSIONS: PermissionKey[] = [
   "sales.view",
   "credit_notes.view",
   "receipts.view",
+  "customer_advances.view",
   "supplier_advances.view",
   "supplier_payments.view",
   "warranties.view",
@@ -338,6 +347,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
+  { prefix: "/admin/customer-advances", permission: "customer_advances.view" },
   { prefix: "/admin/supplier-advances", permission: "supplier_advances.view" },
   { prefix: "/admin/supplier-payments", permission: "supplier_payments.view" },
   { prefix: "/admin/warranties", permission: "warranties.view" },
@@ -518,6 +528,8 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (/^\/admin\/credit-notes\/[^/]+\/edit$/.test(pathname)) return "credit_notes.update";
   if (pathname === "/admin/receipts/new") return "receipts.create";
   if (/^\/admin\/receipts\/[^/]+\/edit$/.test(pathname)) return "receipts.update";
+  if (pathname === "/admin/customer-advances/new") return "customer_advances.create";
+  if (/^\/admin\/customer-advances\/[^/]+\/edit$/.test(pathname)) return "customer_advances.update";
   if (pathname === "/admin/supplier-advances/new") return "supplier_advances.create";
   if (/^\/admin\/supplier-advances\/[^/]+\/edit$/.test(pathname)) return "supplier_advances.update";
   if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";

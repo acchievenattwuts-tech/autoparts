@@ -29,6 +29,7 @@ type MoneySection = {
   grossMarginPctToday: number;
   cashInFromSales: number;
   cashInFromReceipts: number;
+  cashInFromCustomerAdvances: number;
   cashInTotal: number;
   cashChannelTotal: number;
   transferChannelTotal: number;
@@ -260,6 +261,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
     "🏦 เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
+    `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "💸 แยกตามช่องทางรับเงิน",
@@ -523,6 +525,7 @@ function buildLineDailySummaryFlexMessage(summary: {
                 spacing: "md",
                 contents: buildSummaryFactRows([
                   { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
+                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}` },
                   { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
                   { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
                   { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
@@ -613,6 +616,7 @@ function renderFriendlyLineDailySummaryMessage(summary: {
     "เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
+    `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "แยกตามช่องทางรับเงิน",
@@ -726,6 +730,7 @@ function renderLineDailySummaryMessage(summary: {
     "เงินรับเข้าวันนี้",
     `- จากการขายสด ${formatMoney(money.cashInFromSales)} บาท`,
     `- จากการรับชำระหนี้ ${formatMoney(money.cashInFromReceipts)} บาท`,
+    `- รับเงินมัดจำลูกค้า ${formatMoney(money.cashInFromCustomerAdvances)} บาท`,
     `- รวมเงินเข้า ${formatMoney(money.cashInTotal)} บาท`,
     "",
     "แยกตามช่องทางรับเงิน",
@@ -921,6 +926,7 @@ function buildLineDailySummaryFlexMessageV2(summary: {
                 spacing: "md",
                 contents: buildSummaryFactRows([
                   { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}` },
+                  { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}` },
                   { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}` },
                   { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}` },
                   { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}` },
@@ -1179,6 +1185,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                   filterSummaryFactItems(
                     [
                       { label: "เงินเข้ารวม", value: `฿${formatMoney(money.cashInTotal)}`, keepWhenZero: true },
+                      { label: "รับเงินมัดจำลูกค้า", value: `฿${formatMoney(money.cashInFromCustomerAdvances)}`, compactValue: money.cashInFromCustomerAdvances },
                       { label: "เงินสด", value: `฿${formatMoney(money.cashChannelTotal)}`, compactValue: money.cashChannelTotal },
                       { label: "เงินโอน", value: `฿${formatMoney(money.transferChannelTotal)}`, compactValue: money.transferChannelTotal },
                       { label: "ลูกหนี้ค้างรับ", value: `฿${formatMoney(money.arOutstanding)}`, compactValue: money.arOutstanding },
@@ -1291,6 +1298,9 @@ export async function buildLineDailySummary(
     cashSaleTransferAgg,
     receiptCashAgg,
     receiptTransferAgg,
+    customerAdvanceTotalAgg,
+    customerAdvanceCashAgg,
+    customerAdvanceTransferAgg,
     arOutstandingAgg,
     codOutstandingAgg,
     apOutstandingAgg,
@@ -1373,6 +1383,31 @@ export async function buildLineDailySummary(
         status: "ACTIVE",
         paymentMethod: "TRANSFER",
         receiptDate: { gte: start, lte: end },
+      },
+    })),
+    runSummaryStep("money.customerAdvanceTotal", () => db.customerAdvance.aggregate({
+      _sum: { totalAmount: true },
+      where: {
+        status: "ACTIVE",
+        advanceDate: { gte: start, lte: end },
+      },
+    })),
+    runSummaryStep("money.customerAdvanceCash", () => db.cashBankMovement.aggregate({
+      _sum: { amount: true },
+      where: {
+        sourceType: "CUSTOMER_ADVANCE",
+        direction: "IN",
+        txnDate: { gte: start, lte: end },
+        account: { type: "CASH" },
+      },
+    })),
+    runSummaryStep("money.customerAdvanceTransfer", () => db.cashBankMovement.aggregate({
+      _sum: { amount: true },
+      where: {
+        sourceType: "CUSTOMER_ADVANCE",
+        direction: "IN",
+        txnDate: { gte: start, lte: end },
+        account: { type: "BANK" },
       },
     })),
     runSummaryStep("money.arOutstanding", () => db.sale.aggregate({
@@ -1475,6 +1510,7 @@ export async function buildLineDailySummary(
       db.sale.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.purchase.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.receipt.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
+      db.customerAdvance.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.creditNote.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.purchaseReturn.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
       db.expense.count({ where: { status: "CANCELLED", cancelledAt: { gte: start, lte: end } } }),
@@ -1532,13 +1568,19 @@ export async function buildLineDailySummary(
     grossMarginPctToday: profitToday.marginPct,
     cashInFromSales: toNumber(cashSalesAgg._sum.netAmount),
     cashInFromReceipts: toNumber(receiptTotalAgg._sum.totalAmount),
+    cashInFromCustomerAdvances: toNumber(customerAdvanceTotalAgg._sum.totalAmount),
     cashInTotal:
-      toNumber(cashSalesAgg._sum.netAmount) + toNumber(receiptTotalAgg._sum.totalAmount),
+      toNumber(cashSalesAgg._sum.netAmount) +
+      toNumber(receiptTotalAgg._sum.totalAmount) +
+      toNumber(customerAdvanceTotalAgg._sum.totalAmount),
     cashChannelTotal:
-      toNumber(cashSaleCashAgg._sum.netAmount) + toNumber(receiptCashAgg._sum.totalAmount),
+      toNumber(cashSaleCashAgg._sum.netAmount) +
+      toNumber(receiptCashAgg._sum.totalAmount) +
+      toNumber(customerAdvanceCashAgg._sum.amount),
     transferChannelTotal:
       toNumber(cashSaleTransferAgg._sum.netAmount) +
-      toNumber(receiptTransferAgg._sum.totalAmount),
+      toNumber(receiptTransferAgg._sum.totalAmount) +
+      toNumber(customerAdvanceTransferAgg._sum.amount),
     arOutstanding: toNumber(arOutstandingAgg._sum.amountRemain),
     codOutstanding: toNumber(codOutstandingAgg._sum.amountRemain),
     apOutstanding: toNumber(apOutstandingAgg._sum.amountRemain),

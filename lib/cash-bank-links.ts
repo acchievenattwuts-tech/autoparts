@@ -9,6 +9,8 @@ export function getCashBankSourceHref(
       return `/admin/sales/${sourceId}`;
     case "RECEIPT":
       return `/admin/receipts/${sourceId}`;
+    case "CUSTOMER_ADVANCE":
+      return `/admin/customer-advances/${sourceId}`;
     case "PURCHASE":
       return `/admin/purchases/${sourceId}`;
     case "EXPENSE":
@@ -38,6 +40,8 @@ export function getCashBankSourceLabel(sourceType: CashBankSourceType): string {
       return "ขายสินค้า";
     case "RECEIPT":
       return "รับชำระหนี้";
+    case "CUSTOMER_ADVANCE":
+      return "รับเงินมัดจำลูกค้า";
     case "PURCHASE":
       return "ซื้อสินค้า";
     case "EXPENSE":
