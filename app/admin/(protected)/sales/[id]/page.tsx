@@ -285,7 +285,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
               )}
             </div>
             <div className="flex items-center gap-2">
-              {sale.status === "ACTIVE" && canUpdate ? (
+              {sale.status === "ACTIVE" && canUpdate && sale.channel !== "SHOPEE" ? (
                 <NavLink
                   href={`/admin/sales/${id}/edit`}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"

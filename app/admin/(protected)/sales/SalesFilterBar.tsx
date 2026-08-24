@@ -13,24 +13,8 @@ const SalesFilterBar = () => {
   const current = searchParams.get("paymentType") ?? "ALL";
   const currentShip = searchParams.get("shippingStatus") ?? "";
   const currentFulfillment = searchParams.get("fulfillmentType") ?? "";
-  const currentChannel = searchParams.get("channel") ?? "ALL";
   const currentPaymentStatus = searchParams.get("paymentStatus") ?? "ALL";
 
-  const setChannel = (value: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value === "ALL") params.delete("channel");
-    else params.set("channel", value);
-    params.delete("page");
-    startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
-    });
-  };
-
-  const channelOptions = [
-    { value: "ALL", label: "ทุกช่องทาง" },
-    { value: "STORE", label: "หน้าร้าน" },
-    { value: "SHOPEE", label: "Shopee" },
-  ];
 
   const setFilter = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -137,23 +121,6 @@ const SalesFilterBar = () => {
         </button>
       ))}
 
-      <span className="mx-1 hidden h-5 w-px bg-gray-200 dark:bg-white/10 sm:inline-block" />
-      <span className="text-sm text-gray-500 dark:text-slate-400">ช่องทาง:</span>
-      {channelOptions.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => setChannel(opt.value)}
-          disabled={isPending}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:cursor-wait disabled:opacity-80 ${
-            currentChannel === opt.value
-              ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-500 dark:border-sky-500"
-              : "bg-white text-gray-600 border-gray-200 hover:border-gray-400 dark:bg-slate-950 dark:text-slate-300 dark:border-white/10 dark:hover:border-white/20"
-          }`}
-        >
-          {currentChannel === opt.value && isPending ? <LoaderCircle size={13} className="mr-1 inline animate-spin" /> : null}
-          {opt.label}
-        </button>
-      ))}
     </div>
   );
 };

@@ -10,7 +10,8 @@ export type MutableDocumentEntityType =
   | "SupplierAdvanceRefund"
   | "CustomerAdvanceRefund"
   | "Expense"
-  | "WarrantyClaim";
+  | "WarrantyClaim"
+  | "ShopeeSettlement";
 
 export type DocumentMutationAction = "update" | "cancel" | "reopen";
 
@@ -37,6 +38,7 @@ type GuardDb = {
   supplierPaymentItem?: { findMany(args: FindManyArgs): FindManyResult };
   supplierAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
   customerAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
+  shopeeSettlementSale?: { findMany(args: FindManyArgs): FindManyResult };
 };
 
 const allow = (): MutationBlockResult => ({
@@ -123,6 +125,7 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   CustomerAdvanceRefund: "/admin/customer-advance-refunds",
   Expense: "/admin/expenses",
   WarrantyClaim: "/admin/warranty-claims",
+  ShopeeSettlement: "/admin/sales/shopee/settlements",
 };
 
 export type MutationBlockReferenceLink = {
@@ -149,7 +152,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
       if (!entityId) return allow();
 
       if (entityType === "Sale") {
-        const [creditNotes, receiptItems, claims] = await Promise.all([
+        const [creditNotes, receiptItems, claims, settlements] = await Promise.all([
           database.creditNote?.findMany({
             where: { saleId: entityId, status: "ACTIVE" },
             select: { id: true, cnNo: true },
@@ -163,11 +166,16 @@ export function createDocumentMutationGuard(database: GuardDb) {
             },
             select: { id: true, claimNo: true },
           }) ?? Promise.resolve([]),
+          database.shopeeSettlementSale?.findMany({
+            where: { saleId: entityId, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
+            select: { settlement: { select: { id: true, settlementNo: true } } },
+          }) ?? Promise.resolve([]),
         ]);
         return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
           ...mapDirectRefs(creditNotes, "CreditNote", "cnNo"),
           ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
           ...mapDirectRefs(claims, "WarrantyClaim", "claimNo"),
+          ...mapNestedRefs(settlements, "settlement", "ShopeeSettlement", "settlementNo"),
         ]);
       }
 

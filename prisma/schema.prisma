@@ -55,6 +55,7 @@ model User {
   notifications                  Notification[]
   backupJobs                     BackupJob[]
   shopeeShopsAuthorized          ShopeeShop[]
+  shopeeSettlementsCreated       ShopeeSettlement[]          @relation("ShopeeSettlementCreatedBy")
   supplierAdvances               SupplierAdvance[]
   supplierPayments               SupplierPayment[]
   customerAdvances               CustomerAdvance[]
@@ -1444,6 +1445,7 @@ model Customer {
   receipts               Receipt[]
   sales                  Sale[]
   warranties             Warranty[]
+  shopeeManualShops      ShopeeShop[]
 
   @@index([name])
   @@index([lineLinkedAt])
@@ -1525,6 +1527,7 @@ model Sale {
   warranties              Warranty[]
   paymentSlips            PaymentSlip[]
   shopeeOrderImport       ShopeeOrderImport?
+  shopeeSettlementLines   ShopeeSettlementSale[]
 
   @@index([cashBankAccountId])
   @@index([trackingToken])
@@ -1537,7 +1540,7 @@ model Sale {
   @@index([customerId, paymentType, status, amountRemain])
   @@index([saleDate(sort: Desc), status])
   @@index([channel, status, saleDate])
-  @@index([channelRefNo])
+  @@unique([channel, channelRefNo])
 }
 
 model DeliveryProof {
@@ -1759,9 +1762,11 @@ model Expense {
   totalAmount           Decimal                @db.Decimal(10, 2)
   updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
   cashBankAccountId     String?
+  channel               SaleChannel?
   deliveryCommissionRun DeliveryCommissionRun?
   cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
   shopeeEscrowOrder     ShopeeOrderImport?     @relation("ShopeeEscrowExpense")
+  shopeeSettlement      ShopeeSettlement?
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
   attachments           ExpenseAttachment[]
@@ -1769,6 +1774,7 @@ model Expense {
   @@index([cashBankAccountId])
   @@index([expenseDate(sort: Desc), status])
   @@index([cashBankAccountId, expenseDate(sort: Desc), status])
+  @@index([channel, expenseDate(sort: Desc), status])
 }
 
 model DeliveryCommissionRun {
@@ -2128,6 +2134,8 @@ model CashBankAccount {
   receipts                 Receipt[]
   sales                    Sale[]
   shopeeSettlementShops    ShopeeShop[]
+  shopeeSettlementsFrom    ShopeeSettlement[]       @relation("ShopeeSettlementSourceAccount")
+  shopeeSettlementsTo      ShopeeSettlement[]       @relation("ShopeeSettlementDestinationAccount")
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
   customerAdvances         CustomerAdvance[]
@@ -2176,6 +2184,7 @@ model CashBankTransfer {
   fromAccount   CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
   toAccount     CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
   user          User                   @relation(fields: [userId], references: [id])
+  shopeeSettlement ShopeeSettlement?
 
   @@index([transferDate])
   @@index([fromAccountId])
@@ -3163,6 +3172,7 @@ model ShopeeShop {
   tokenExpiresAt              DateTime?              @db.Timestamptz(3)
   scope                       String?
   syncEnabled                 Boolean                @default(false)
+  manualMode                  Boolean                @default(false)
   stockBuffer                 Int                    @default(0)
   lastOrderSyncAt             DateTime?              @db.Timestamptz(3)
   lastOrderCursor             String?
@@ -3171,18 +3181,89 @@ model ShopeeShop {
   authorizedAt                DateTime?              @db.Timestamptz(3)
   authorizedByUserId          String?
   settlementCashBankAccountId String?
+  defaultCustomerId           String?
   createdAt                   DateTime               @default(now()) @db.Timestamptz(3)
   updatedAt                   DateTime               @updatedAt @db.Timestamptz(3)
   authorizedByUser            User?                  @relation(fields: [authorizedByUserId], references: [id])
   settlementCashBankAccount   CashBankAccount?       @relation(fields: [settlementCashBankAccountId], references: [id])
+  defaultCustomer             Customer?              @relation(fields: [defaultCustomerId], references: [id])
   mappings                    ShopeeProductMapping[]
   orders                      ShopeeOrderImport[]
   syncJobs                    ShopeeSyncJob[]
+  settlements                 ShopeeSettlement[]
 
   @@index([authStatus])
   @@index([tokenExpiresAt])
   @@index([authorizedByUserId])
   @@index([settlementCashBankAccountId])
+  @@index([defaultCustomerId])
+  @@index([manualMode, createdAt])
+}
+
+/// รอบรับเงิน Shopee แบบคีย์เอง: รวม Sale หลายใบ หักค่าธรรมเนียม แล้วโอนยอดสุทธิ
+/// จากบัญชีพักเงินไปบัญชีธนาคารจริงใน transaction เดียว
+model ShopeeSettlement {
+  id                   String                  @id @default(cuid())
+  settlementNo         String                  @unique
+  payoutRef            String                  @unique
+  settlementDate       DateTime                @db.Timestamptz(3)
+  shopRecordId         String
+  sourceAccountId      String
+  destinationAccountId String
+  salesAmount          Decimal                 @db.Decimal(10, 2)
+  feeAmount            Decimal                 @db.Decimal(10, 2)
+  payoutAmount         Decimal                 @db.Decimal(10, 2)
+  expenseId            String?                 @unique
+  cashBankTransferId   String                  @unique
+  status               DocStatus               @default(ACTIVE)
+  cancelNote           String?
+  cancelledAt          DateTime?               @db.Timestamptz(3)
+  note                 String?
+  userId               String
+  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
+  shop                  ShopeeShop              @relation(fields: [shopRecordId], references: [id])
+  sourceAccount         CashBankAccount         @relation("ShopeeSettlementSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount    CashBankAccount         @relation("ShopeeSettlementDestinationAccount", fields: [destinationAccountId], references: [id])
+  expense               Expense?                @relation(fields: [expenseId], references: [id])
+  cashBankTransfer      CashBankTransfer        @relation(fields: [cashBankTransferId], references: [id])
+  user                  User                    @relation("ShopeeSettlementCreatedBy", fields: [userId], references: [id])
+  sales                 ShopeeSettlementSale[]
+  fees                  ShopeeSettlementFee[]
+
+  @@index([settlementDate(sort: Desc), status])
+  @@index([shopRecordId, status, settlementDate(sort: Desc)])
+  @@index([sourceAccountId, settlementDate(sort: Desc)])
+  @@index([destinationAccountId, settlementDate(sort: Desc)])
+}
+
+model ShopeeSettlementSale {
+  id           String           @id @default(cuid())
+  settlementId String
+  saleId       String
+  activeSaleId String?          @unique
+  saleAmount   Decimal          @db.Decimal(10, 2)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  settlement   ShopeeSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  sale         Sale             @relation(fields: [saleId], references: [id])
+
+  @@unique([settlementId, saleId])
+  @@index([settlementId])
+  @@index([saleId])
+}
+
+model ShopeeSettlementFee {
+  id           String           @id @default(cuid())
+  settlementId String
+  lineNo       Int
+  feeCode      String
+  label        String
+  amount       Decimal          @db.Decimal(10, 2)
+  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
+  settlement   ShopeeSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@unique([settlementId, lineNo])
+  @@index([feeCode, createdAt])
 }
 
 model ShopeeProductMapping {

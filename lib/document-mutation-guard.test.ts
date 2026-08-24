@@ -28,6 +28,17 @@ describe("document mutation guard", () => {
     );
   });
 
+  it("blocks sale mutation after it is included in an active Shopee settlement", async () => {
+    const guard = createDocumentMutationGuard({
+      shopeeSettlementSale: {
+        findMany: async () => [{ settlement: { id: "settlement-1", settlementNo: "SST26080001" } }],
+      },
+    });
+    const result = await guard.check("Sale", "sale-1", "cancel");
+    assert.equal(result.blocked, true);
+    assert.deepEqual(result.references, [{ entityType: "ShopeeSettlement", id: "settlement-1", refNo: "SST26080001" }]);
+  });
+
   it("deduplicates supplier payment refs for purchase return and supplier advance", async () => {
     const guard = createDocumentMutationGuard({
       supplierPaymentItem: {

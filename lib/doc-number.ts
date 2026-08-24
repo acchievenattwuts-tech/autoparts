@@ -309,6 +309,19 @@ export async function generateCashBankTransferNo(date?: Date): Promise<string> {
   return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
+/** Manual Shopee payout settlement: SST{YYMM}{4-digit}. */
+export async function generateShopeeSettlementNo(date?: Date): Promise<string> {
+  const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
+  const pattern = `SST${year.slice(-2)}${month}`;
+  const last = await db.shopeeSettlement.findFirst({
+    where: { settlementNo: { startsWith: pattern } },
+    orderBy: { settlementNo: "desc" },
+    select: { settlementNo: true },
+  });
+  const seq = last ? parseInt(last.settlementNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
 /**
  * Generate cash/bank adjustment number using CashBankAdjustment table
  * Format: CBA{YYMM}{4-digit}

@@ -499,6 +499,7 @@ export async function rebuildExpenseProfitFacts(
       expenseNo: true,
       expenseDate: true,
       status: true,
+      channel: true,
       netAmount: true,
       items: {
         orderBy: { lineNo: "asc" },
@@ -545,6 +546,7 @@ export async function rebuildExpenseProfitFacts(
       sourceLineId: item.id,
       sourceDocNo: expense.expenseNo,
       sourceStatus: expense.status,
+      channel: expense.channel,
       versionNo,
       supplierId: null,
       supplierName: null,

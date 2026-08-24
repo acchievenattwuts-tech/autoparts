@@ -28,6 +28,7 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
   // Create
   { id: "create-sale", label: "สร้างใบขายใหม่", href: "/admin/sales/new", permission: "sales.create", group: "create", keywords: "sale ขาย invoice",
   },
+  { id: "create-shopee-sale", label: "บันทึกขาย Shopee", href: "/admin/sales/shopee/new", permission: "marketplace.manage", group: "create", keywords: "shopee marketplace ออเดอร์ พร้อมจัดส่ง" },
   { id: "create-purchase", label: "สร้างใบซื้อใหม่", href: "/admin/purchases/new", permission: "purchases.create", group: "create", keywords: "purchase ซื้อ",
   },
   { id: "create-purchase-return", label: "สร้างใบคืนซื้อใหม่", href: "/admin/purchase-returns/new", permission: "purchase_returns.create", group: "create", keywords: "return คืน",
@@ -86,6 +87,8 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
     group: "navigate",
     keywords: "รายงาน เคลม สต็อก สินค้าเคลม claim stock",
   },
+  { id: "nav-shopee-settlements", label: "กระทบยอดรับเงิน Shopee", href: "/admin/sales/shopee/settlements", permission: "marketplace.manage", group: "navigate", keywords: "shopee payout settlement ค่าธรรมเนียม รับเงิน" },
+  { id: "nav-reports-shopee", label: "รายงานผู้บริหาร Shopee", href: "/admin/reports/shopee", permission: "reports.view", group: "navigate", keywords: "shopee report กำไรขั้นต้น กำไรสุทธิ" },
 
   // Personal
   { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode",

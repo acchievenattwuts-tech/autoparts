@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Eye, Pencil, Plus } from "lucide-react";
+import { Eye, Pencil, Plus, WalletCards, BarChart3 } from "lucide-react";
 import { FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
@@ -99,10 +99,12 @@ const SalesPage = async ({
   const canCreate = hasPermissionAccess(role, permissions, "sales.create");
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const canCancel = hasPermissionAccess(role, permissions, "sales.cancel");
+  const canManageShopee = hasPermissionAccess(role, permissions, "marketplace.manage");
+  const canViewReports = hasPermissionAccess(role, permissions, "reports.view");
 
   const params = await searchParams;
   const paymentTypeFilter  = params.paymentType;
-  const channelFilter = params.channel;
+  const channelFilter = params.channel === SaleChannel.SHOPEE ? SaleChannel.SHOPEE : SaleChannel.STORE;
   const shippingStatusFilter = params.shippingStatus;
   const fulfillmentTypeFilter = params.fulfillmentType;
   const paymentStatusFilter = params.paymentStatus;
@@ -137,9 +139,7 @@ const SalesPage = async ({
     where.paymentType = SalePaymentType.CREDIT_SALE;
     where.amountRemain = { not: 0 };
   }
-  if (channelFilter && channelFilter !== "ALL") {
-    where.channel = channelFilter as SaleChannel;
-  }
+  where.channel = channelFilter;
   if (customerId) {
     where.customerId = customerId;
   }
@@ -156,6 +156,7 @@ const SalesPage = async ({
       {
         OR: [
           { saleNo:       { contains: q, mode: "insensitive" } },
+          { channelRefNo: { contains: q, mode: "insensitive" } },
           { customerName: { contains: q, mode: "insensitive" } },
           { customer:     { name: { contains: q, mode: "insensitive" } } },
         ],
@@ -197,7 +198,7 @@ const SalesPage = async ({
   if (q)                    paginationParams.q              = q;
   if (paymentTypeFilter)    paginationParams.paymentType    = paymentTypeFilter;
   if (paymentStatusFilter)  paginationParams.paymentStatus  = paymentStatusFilter;
-  if (channelFilter)        paginationParams.channel        = channelFilter;
+  paginationParams.channel = channelFilter;
   if (from)                 paginationParams.from           = from;
   if (to)                   paginationParams.to             = to;
   if (shippingStatusFilter) paginationParams.shippingStatus = shippingStatusFilter;
@@ -209,18 +210,31 @@ const SalesPage = async ({
     <div className="space-y-4">
       <AdminPageHeader
         title="บันทึกการขาย"
-        description="ค้นหา ดูรายละเอียด และจัดการใบขายสินค้า"
+        description={channelFilter === SaleChannel.SHOPEE ? "ออเดอร์ Shopee ที่คีย์เมื่อตอนพร้อมจัดส่ง" : "ค้นหา ดูรายละเอียด และจัดการใบขายหน้าร้าน"}
         actions={
-          canCreate ? (
+          canCreate && (channelFilter === SaleChannel.STORE || canManageShopee) ? (
             <Link
-              href="/admin/sales/new"
+              href={channelFilter === SaleChannel.SHOPEE ? "/admin/sales/shopee/new" : "/admin/sales/new"}
               className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
             >
-              <Plus size={16} /> บันทึกการขายใหม่
+              <Plus size={16} /> {channelFilter === SaleChannel.SHOPEE ? "บันทึกขาย Shopee" : "บันทึกการขายใหม่"}
             </Link>
           ) : null
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-white/10">
+        {[
+          { channel: SaleChannel.STORE, label: "ขายหน้าร้าน" },
+          { channel: SaleChannel.SHOPEE, label: "Shopee" },
+        ].map((tab) => (
+          <Link key={tab.channel} href={`/admin/sales?channel=${tab.channel}`} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${channelFilter === tab.channel ? "border-orange-500 text-orange-700 dark:text-orange-300" : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>{tab.label}</Link>
+        ))}
+        {channelFilter === SaleChannel.SHOPEE && canManageShopee ? <div className="ml-auto flex gap-2 pb-2">
+          <Link href="/admin/sales/shopee/settlements" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><WalletCards size={15}/> กระทบยอดรับเงิน</Link>
+          {canViewReports ? <Link href="/admin/reports/shopee" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><BarChart3 size={15}/> รายงาน Shopee</Link> : null}
+        </div> : null}
+      </div>
 
       <AdminFilterToolbar
         className="mb-0"
@@ -295,7 +309,7 @@ const SalesPage = async ({
                     }`}
                   >
                     <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}</td>
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">Shopee: {s.channelRefNo}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
                     <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={channelTone[s.channel]}>{channelLabel[s.channel]}</AdminStatusBadge></td>
@@ -325,7 +339,7 @@ const SalesPage = async ({
                         </Link>
                         {s.status === "ACTIVE" ? (
                           <>
-                            {canUpdate ? (
+                            {canUpdate && s.channel !== SaleChannel.SHOPEE ? (
                               <Link href={`/admin/sales/${s.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                                 <Pencil size={14} /> แก้ไข
                               </Link>
