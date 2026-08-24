@@ -1,5 +1,5 @@
-import BrandLoader from "@/components/shared/BrandLoader";
+import AdminRouteLoading from "@/components/shared/AdminRouteLoading";
 
 export default function Loading() {
-  return <BrandLoader variant="page" label="กำลังโหลดฟอร์มบันทึกขาย Shopee..." />;
+  return <AdminRouteLoading label="กำลังโหลดฟอร์มบันทึกขาย Shopee..." />;
 }
