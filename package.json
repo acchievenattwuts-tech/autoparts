@@ -71,6 +71,7 @@
     "evaluate:knowledge-rag": "tsx --env-file=.env.local prisma/scripts/evaluate-knowledge-rag-retrieval.ts",
     "aggregate:knowledge-rag-telemetry": "tsx prisma/scripts/aggregate-knowledge-rag-telemetry.ts",
     "check:knowledge-cms": "tsx --env-file=.env.local prisma/scripts/check-knowledge-cms.ts",
+    "sync:return-warranty-policy": "tsx --env-file=.env.local prisma/scripts/sync-return-warranty-policy.ts",
     "check:search-v2-health": "tsx --env-file=.env.local prisma/scripts/check-search-v2-health.ts",
     "evaluate:search-v2": "tsx --env-file=.env.local prisma/scripts/evaluate-search-v2.ts",
     "refresh:search-popularity": "tsx --env-file=.env.local prisma/scripts/refresh-search-popularity.ts",
