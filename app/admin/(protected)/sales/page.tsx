@@ -6,6 +6,7 @@ import { Eye, Pencil, Plus, WalletCards, BarChart3 } from "lucide-react";
 import { FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
+import SalesChannelTabs from "./SalesChannelTabs";
 import SearchBar from "@/components/shared/SearchBar";
 import SaleCancelButton from "./SaleCancelButton";
 import Pagination from "@/components/shared/Pagination";
@@ -223,13 +224,8 @@ const SalesPage = async ({
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-white/10">
-        {[
-          { channel: SaleChannel.STORE, label: "ขายหน้าร้าน" },
-          { channel: SaleChannel.SHOPEE, label: "Shopee" },
-        ].map((tab) => (
-          <Link key={tab.channel} href={`/admin/sales?channel=${tab.channel}`} className={`border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${channelFilter === tab.channel ? "border-orange-500 text-orange-700 dark:text-orange-300" : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"}`}>{tab.label}</Link>
-        ))}
+      <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 dark:border-white/10">
+        <SalesChannelTabs currentChannel={channelFilter} />
         {channelFilter === SaleChannel.SHOPEE && canManageShopee ? <div className="ml-auto flex gap-2 pb-2">
           <Link href="/admin/sales/shopee/settlements" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><WalletCards size={15}/> กระทบยอดรับเงิน</Link>
           {canViewReports ? <Link href="/admin/reports/shopee" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><BarChart3 size={15}/> รายงาน Shopee</Link> : null}

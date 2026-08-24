@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { LoaderCircle } from "lucide-react";
 import { calculateShopeeSettlement, SHOPEE_SETTLEMENT_FEE_OPTIONS } from "@/lib/shopee/manual";
 import { cancelShopeeSettlement, createShopeeSettlement } from "./actions";
 
@@ -15,6 +16,7 @@ export default function SettlementManager({ sales, accounts, recent, today, canC
   const [payout, setPayout] = useState(0);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
+  const [pendingAction, setPendingAction] = useState<"create" | string | null>(null);
   const salesAmount = useMemo(() => sales.filter((sale) => selected.includes(sale.id)).reduce((sum, sale) => sum + sale.amount, 0), [sales, selected]);
   const calculation = calculateShopeeSettlement(salesAmount, fees.filter((fee) => fee.amount > 0).map((fee) => fee.amount), payout);
   const money = (value: number) => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,9 +24,14 @@ export default function SettlementManager({ sales, accounts, recent, today, canC
   return <div className="space-y-6">
     <form className="space-y-5 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#101b2e]" onSubmit={(event) => {
       event.preventDefault(); const data = new FormData(event.currentTarget);
+      setPendingAction("create");
       startTransition(async () => {
-        const result = await createShopeeSettlement({ settlementDate: data.get("settlementDate"), payoutRef: data.get("payoutRef"), destinationAccountId: data.get("destinationAccountId"), payoutAmount: payout, saleIds: selected, fees: fees.filter((fee) => fee.amount > 0), note: data.get("note") || undefined });
-        setMessage(result.error ?? `บันทึกสำเร็จ ${result.settlementNo}`); if (result.success) { setSelected([]); setFees([{ code: "COMMISSION", label: "ค่าคอมมิชชัน", amount: 0 }]); setPayout(0); }
+        try {
+          const result = await createShopeeSettlement({ settlementDate: data.get("settlementDate"), payoutRef: data.get("payoutRef"), destinationAccountId: data.get("destinationAccountId"), payoutAmount: payout, saleIds: selected, fees: fees.filter((fee) => fee.amount > 0), note: data.get("note") || undefined });
+          setMessage(result.error ?? `บันทึกสำเร็จ ${result.settlementNo}`); if (result.success) { setSelected([]); setFees([{ code: "COMMISSION", label: "ค่าคอมมิชชัน", amount: 0 }]); setPayout(0); }
+        } finally {
+          setPendingAction(null);
+        }
       });
     }}>
       <div><h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">สร้างรอบรับเงิน</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">เลือกใบขายตามรายละเอียดการถอนเงินใน Shopee แล้วคีย์ค่าธรรมเนียมแยกประเภท ยอดต้องตรงก่อนบันทึก</p></div>
@@ -45,8 +52,8 @@ export default function SettlementManager({ sales, accounts, recent, today, canC
       <label className="block text-sm text-slate-700 dark:text-slate-300">ยอดเงินเข้าจริง<input type="number" min="0.01" step="0.01" value={payout || ""} onChange={(e) => setPayout(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-right text-lg font-semibold dark:border-white/20 dark:bg-slate-900"/></label>
       <div className="grid gap-3 rounded-xl bg-slate-50 p-4 text-sm dark:bg-white/5 sm:grid-cols-4"><div>ยอดขาย<br/><strong>{money(calculation.salesAmount)}</strong></div><div>ค่าธรรมเนียม<br/><strong className="text-red-600">-{money(calculation.feeAmount)}</strong></div><div>ยอดที่ควรเข้า<br/><strong>{money(calculation.expectedPayout)}</strong></div><div>ผลต่าง<br/><strong className={Math.abs(calculation.difference) < 0.005 ? "text-emerald-600" : "text-red-600"}>{money(calculation.difference)}</strong></div></div>
       <input name="note" maxLength={500} placeholder="หมายเหตุ (ถ้ามี)" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-white/20 dark:bg-slate-900"/>
-      {message && <p className="text-sm text-slate-700 dark:text-slate-200">{message}</p>}<button disabled={pending || selected.length === 0 || Math.abs(calculation.difference) >= 0.005} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{pending ? "กำลังบันทึก..." : "ยืนยันรับเงินและบันทึกค่าธรรมเนียม"}</button>
+      {message && <p className="text-sm text-slate-700 dark:text-slate-200">{message}</p>}<button disabled={pending || selected.length === 0 || Math.abs(calculation.difference) >= 0.005} aria-busy={pending && pendingAction === "create"} className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50">{pending && pendingAction === "create" ? <><LoaderCircle size={15} className="animate-spin"/>กำลังบันทึก...</> : "ยืนยันรับเงินและบันทึกค่าธรรมเนียม"}</button>
     </form>
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#101b2e]"><h2 className="mb-4 font-kanit text-lg font-semibold dark:text-slate-100">ประวัติรอบรับเงิน</h2><div className="overflow-x-auto"><table className="w-full min-w-[860px] text-sm"><thead className="text-slate-500 dark:text-slate-300"><tr><th className="p-2 text-left">เลขที่</th><th className="p-2 text-left">อ้างอิง</th><th className="p-2 text-left">วันที่</th><th className="p-2 text-right">ยอดขาย</th><th className="p-2 text-right">ค่าธรรมเนียม</th><th className="p-2 text-right">รับจริง</th><th className="p-2 text-left">สถานะ</th><th/></tr></thead><tbody>{recent.map((row) => <tr key={row.id} className="border-t border-slate-100 dark:border-white/5"><td className="p-2 font-mono">{row.no}</td><td className="p-2">{row.ref}</td><td className="p-2">{row.date}</td><td className="p-2 text-right">{money(row.sales)}</td><td className="p-2 text-right">{money(row.fees)}</td><td className="p-2 text-right">{money(row.payout)}</td><td className="p-2">{row.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}</td><td className="p-2 text-right">{canCancel && row.status === "ACTIVE" ? <button type="button" className="text-red-600" onClick={() => { const reason = window.prompt("เหตุผลที่ยกเลิกการกระทบยอด"); if (!reason) return; startTransition(async () => { const result = await cancelShopeeSettlement(row.id, reason); setMessage(result.error ?? "ยกเลิกแล้ว"); }); }}>ยกเลิก</button> : null}</td></tr>)}</tbody></table></div></div>
+    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#101b2e]"><h2 className="mb-4 font-kanit text-lg font-semibold dark:text-slate-100">ประวัติรอบรับเงิน</h2><div className="overflow-x-auto"><table className="w-full min-w-[860px] text-sm"><thead className="text-slate-500 dark:text-slate-300"><tr><th className="p-2 text-left">เลขที่</th><th className="p-2 text-left">อ้างอิง</th><th className="p-2 text-left">วันที่</th><th className="p-2 text-right">ยอดขาย</th><th className="p-2 text-right">ค่าธรรมเนียม</th><th className="p-2 text-right">รับจริง</th><th className="p-2 text-left">สถานะ</th><th/></tr></thead><tbody>{recent.map((row) => <tr key={row.id} className="border-t border-slate-100 dark:border-white/5"><td className="p-2 font-mono">{row.no}</td><td className="p-2">{row.ref}</td><td className="p-2">{row.date}</td><td className="p-2 text-right">{money(row.sales)}</td><td className="p-2 text-right">{money(row.fees)}</td><td className="p-2 text-right">{money(row.payout)}</td><td className="p-2">{row.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}</td><td className="p-2 text-right">{canCancel && row.status === "ACTIVE" ? <button type="button" disabled={pending} aria-busy={pending && pendingAction === row.id} className="inline-flex items-center gap-1.5 text-red-600 disabled:cursor-wait disabled:opacity-60" onClick={() => { const reason = window.prompt("เหตุผลที่ยกเลิกการกระทบยอด"); if (!reason) return; setPendingAction(row.id); startTransition(async () => { try { const result = await cancelShopeeSettlement(row.id, reason); setMessage(result.error ?? "ยกเลิกแล้ว"); } finally { setPendingAction(null); } }); }}>{pending && pendingAction === row.id ? <LoaderCircle size={14} className="animate-spin"/> : null}{pending && pendingAction === row.id ? "กำลังยกเลิก..." : "ยกเลิก"}</button> : null}</td></tr>)}</tbody></table></div></div>
   </div>;
 }

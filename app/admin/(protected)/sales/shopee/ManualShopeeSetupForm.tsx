@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { LoaderCircle } from "lucide-react";
 import { saveManualShopeeSetup } from "./actions";
 
 type Option = { id: string; label: string };
@@ -53,7 +54,7 @@ export default function ManualShopeeSetupForm({
         </label>
       </div>
       {message && <p className="text-sm text-slate-700 dark:text-slate-200">{message}</p>}
-      <button disabled={pending} className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{pending ? "กำลังบันทึก..." : "บันทึกการตั้งค่า"}</button>
+      <button disabled={pending} aria-busy={pending} className="inline-flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-60">{pending ? <><LoaderCircle size={15} className="animate-spin"/>กำลังบันทึก...</> : "บันทึกการตั้งค่า"}</button>
     </form>
   );
 }

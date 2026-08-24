@@ -10,6 +10,7 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import SaleForm from "../../new/SaleForm";
 import ManualShopeeSetupForm from "../ManualShopeeSetupForm";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 
 export default async function NewShopeeSalePage() {
   await requirePermission("sales.create");
@@ -24,7 +25,7 @@ export default async function NewShopeeSalePage() {
   const ready = Boolean(shop?.settlementCashBankAccountId && shop.defaultCustomerId);
 
   return <div className="space-y-6">
-    <Link href="/admin/sales?channel=SHOPEE" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600 dark:text-slate-400"><ChevronLeft size={16}/> รายการขาย Shopee</Link>
+    <Link href="/admin/sales?channel=SHOPEE" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600 dark:text-slate-400"><ChevronLeft size={16}/> รายการขาย Shopee<LinkPendingIndicator /></Link>
     <div><h1 className="font-kanit text-2xl font-bold text-slate-900 dark:text-slate-100">บันทึกขาย Shopee</h1><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">ใช้เมื่อออเดอร์ขึ้นสถานะพร้อมจัดส่งและ Seller SKU ตรงกับรหัสสินค้าในระบบ</p></div>
     {!ready ? <ManualShopeeSetupForm
       accounts={accounts.map((account) => ({ id: account.id, label: `${account.code} — ${account.name}` }))}

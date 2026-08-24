@@ -8,6 +8,7 @@ import { ProfitSourceType, SaleChannel } from "@/lib/generated/prisma";
 import { getThailandDateKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
+import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 
 function firstDayOfMonth(dateKey: string) { return `${dateKey.slice(0, 7)}-01`; }
 
@@ -34,7 +35,7 @@ export default async function ShopeeReportPage({ searchParams }: { searchParams:
   const cancelledSales = saleCounts.find((row) => row.status === "CANCELLED");
 
   return <div className="space-y-6">
-    <Link href="/admin/sales?channel=SHOPEE" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600 dark:text-slate-400"><ChevronLeft size={16}/> รายการขาย Shopee</Link>
+    <Link href="/admin/sales?channel=SHOPEE" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-orange-600 dark:text-slate-400"><ChevronLeft size={16}/> รายการขาย Shopee<LinkPendingIndicator /></Link>
     <div><h1 className="font-kanit text-2xl font-bold text-slate-900 dark:text-slate-100">รายงานผู้บริหาร — Shopee</h1><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">แยกผลประกอบการออกจากหน้าร้าน และอ้างอิง FactProfit ชุดเดียวกับรายงานกำไรหลัก</p></div>
     <AdminSearchForm action="/admin/reports/shopee" className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#101b2e]"><label className="text-sm text-slate-600 dark:text-slate-300">จาก<input type="date" name="from" defaultValue={from} className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"/></label><label className="text-sm text-slate-600 dark:text-slate-300">ถึง<input type="date" name="to" defaultValue={to} className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"/></label><AdminSearchSubmitButton>แสดงรายงาน</AdminSearchSubmitButton></AdminSearchForm>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
