@@ -1,4 +1,4 @@
-import { db, dbSearchRaw, dbSearchTx } from "@/lib/db";
+import { db, dbSearchRaw, dbSearchTx, withDbRetry } from "@/lib/db";
 import { Prisma } from "@/lib/generated/prisma";
 import type { Product, Prisma as PrismaTypes } from "@/lib/generated/prisma";
 import { unstable_cache } from "next/cache";
@@ -1002,13 +1002,20 @@ async function searchProductIdsFallback(
   const take = input.take ?? 30;
   const order = input.order ?? "createdAtDesc";
 
-  const rows = await db.product.findMany({
-    where,
-    select: { id: true },
-    orderBy: getFallbackOrderBy(order),
-    skip,
-    take,
-  });
+  // Retry once on a transient pooler drop / pool-acquire timeout. This path runs
+  // precisely when the pool is starved (it is the fallback for a search engine
+  // that already failed, and it is the ONLY path for a filter-only browse with no
+  // query), so a single dropped connection here would otherwise fail the whole
+  // request — including a background ISR revalidation. Read-only, so safe.
+  const rows = await withDbRetry(() =>
+    db.product.findMany({
+      where,
+      select: { id: true },
+      orderBy: getFallbackOrderBy(order),
+      skip,
+      take,
+    }),
+  );
   // `where` here is an OR of 12 ILIKE '%q%' branches (7 of them correlated
   // EXISTS) that Postgres can serve only by sequentially scanning Product,
   // ProductAlias (~39k rows) and ProductCarModel four times over — measured at
@@ -1022,7 +1029,9 @@ async function searchProductIdsFallback(
   // (more rows may exist), or when an empty page at a non-zero offset leaves the
   // true total genuinely unknown.
   const isProvablyLastPage = rows.length < take && (rows.length > 0 || skip === 0);
-  const total = isProvablyLastPage ? skip + rows.length : await db.product.count({ where });
+  const total = isProvablyLastPage
+    ? skip + rows.length
+    : await withDbRetry(() => db.product.count({ where }));
 
   return {
     ids: rows.map((row) => row.id),

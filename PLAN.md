@@ -726,6 +726,17 @@
 - [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `EAUTHTIMEOUT` และ `Connection terminated` — ควรลดลงชัดเจน
 - [ ] เปิด Supabase → Database → Connection Pooling ดูกราฟ client count ย้อนหลังช่วง 11/08 18:39 และ 12/08 05:38 GMT+7 เพื่อตัดข้อสงสัยเรื่องชนเพดาน 200 (ถ้าไม่แตะ = ปัญหาฝั่ง Supavisor ล้วน ๆ ไม่ต้องขยาย pool)
 
+## Log noise — `timeout exceeded when trying to connect` ตอน revalidate cache หน้าค้นหาสินค้า (2026-08-24)
+- บริบท: เจ้าของส่ง Vercel log `level:error` (22/08 22:05 GMT+7) — request ตอบ **HTTP 200** ทั้งหมด แต่ background revalidate cache key `storefront-product-search-page-data` ล้มด้วย `prisma:error timeout exceeded when trying to connect` · คีย์ที่ล้มคือ filter-only browse `carBrands: ["Roewe"]` (ไม่มี `q`) · timeline เห็น error 3 จุดใน 3 วัน (21–23 ส.ค.) = burst ประปราย ไม่ใช่ระบบล่ม
+- **สาเหตุ**: error กลุ่มนี้ถูก retry ได้อยู่แล้วผ่าน `withDbRetry` + `POOL_ACQUIRE_TIMEOUT_PATTERN` ใน [lib/db.ts](lib/db.ts) (แก้ไว้รอบ 2026-07-31) แต่ **เส้นทางค้นหาไม่ได้เรียก `withDbRetry` เลย** — โมดูล storefront พี่น้อง (`storefront-catalog` / `storefront-home` / `storefront-product`) มีครบหมด ยกเว้น [lib/storefront-product-search.ts](lib/storefront-product-search.ts) และ [lib/product-search.ts](lib/product-search.ts) · เมื่อไม่มี `q` → `searchProductIdsV2()` ตกไป `searchProductIdsFallback()` ตรง ๆ ก่อนเข้า `try/catch` ที่ครอบ V2 อยู่ ทำให้ไม่มีทั้ง retry และ catch
+- [x] ครอบ `withDbRetry` ให้ `db.product.findMany` + `db.product.count` ใน `searchProductIdsFallback()` ([lib/product-search.ts](lib/product-search.ts)) — path นี้ทำงาน "ตอน pool ตึงพอดี" (เป็น fallback ของ engine ที่ล้มไปแล้ว และเป็น path เดียวของ filter-only browse)
+- [x] ครอบ `withDbRetry` ให้ `db.product.findMany(PRODUCT_SELECT)` ใน `getCachedStorefrontProductSearchPageData` ([lib/storefront-product-search.ts](lib/storefront-product-search.ts))
+- [x] read-only ล้วน (`findMany`/`count`) จึง retry ปลอดภัย ไม่มีความเสี่ยง double-apply · pool-acquire timeout ยังจำกัด 1 retry ตามเดิม (worst case ~30s)
+- [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, query, cache config, business logic หรือ ranking — ผลลัพธ์ค้นหาเหมือนเดิมทุกไบต์ ต่างแค่ revalidate สำเร็จบ่อยขึ้น
+- [x] `npx tsc --noEmit` 0 error · `npm run build` ผ่าน
+- [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `timeout exceeded` ควรไม่เหลือเคสของ `storefront-product-search-page-data`
+- [ ] แยกเรื่อง (ไม่ใช่งานโค้ด): ตั้ง `MESSENGER_APP_SECRET` ใน Vercel env — ตอนนี้ `verifyMessengerSignature()` fail-closed → webhook ตอบ 401 ทุกข้อความ = Messenger ขาเข้าใช้งานไม่ได้เลย (ดู `docs/messenger/META-APP-SETUP.md` ขั้น 4)
+
 ## คิวจัดส่ง — ตัวกรองช่วงวันที่ + popup เลือกผู้ส่งตอนกด "ส่งแล้ว" (2026-07-30)
 - บริบท: เจ้าของสั่งเพิ่มตัวกรอง `ตั้งแต่ - ถึง` ทั้ง `/admin/delivery` และ `/admin/delivery/update` และให้ปุ่ม "ส่งแล้ว" หน้าเดสก์ท็อปเด้ง popup เลือกชื่อผู้ส่ง (เดิม stamp ผู้ล็อกอินอัตโนมัติเท่านั้น)
 - **ตัวกรองช่วงวันที่** — helper ใหม่ [lib/delivery-date-filter.ts](lib/delivery-date-filter.ts) (`resolveDeliveryDateRange` / `appendDeliveryDateParams`) ใช้ร่วมกันทั้งสองหน้า

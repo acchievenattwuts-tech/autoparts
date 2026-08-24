@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 import {
   PRODUCT_SEARCH_TAG,
@@ -272,16 +272,20 @@ const getCachedStorefrontProductSearchPageData = unstable_cache(
       cacheProfile: "storefront",
     });
 
-    const products = await db.product.findMany({
-      where: {
-        isActive: true,
-        isStorefrontVisible: true,
-        id: {
-          in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"],
+    // Retry once on a transient pooler drop so a background ISR revalidation does
+    // not fail (and log an error) on a single dropped connection during a crawl.
+    const products = await withDbRetry(() =>
+      db.product.findMany({
+        where: {
+          isActive: true,
+          isStorefrontVisible: true,
+          id: {
+            in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"],
+          },
         },
-      },
-      select: PRODUCT_SELECT,
-    });
+        select: PRODUCT_SELECT,
+      }),
+    );
 
     const serializedProducts = sortProductsByIds(products, searchResult.ids).map(
       serializeSearchProduct,
