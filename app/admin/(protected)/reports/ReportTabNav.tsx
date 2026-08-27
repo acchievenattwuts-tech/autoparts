@@ -17,6 +17,7 @@ const TABS = [
   { label: "บัญชีเงินสด / ธนาคาร", href: "/admin/reports/cash-bank-ledger" },
   { label: "ประวัติโอนเงิน", href: "/admin/reports/cash-bank-transfers" },
   { label: "ประวัติปรับยอดเงิน", href: "/admin/reports/cash-bank-adjustments" },
+  { label: "ช่องทางขายออนไลน์", href: "/admin/reports/marketplace" },
   { label: "สรุปภาพรวม", href: "/admin/reports/summary" },
   { label: "LINE สรุปรายวัน", href: "/admin/reports/line-daily-summary" },
 ];

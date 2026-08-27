@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic";
 
-import Link from "next/link";
-import { ChevronLeft, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { requirePermission } from "@/lib/require-auth";
 import {
   getThailandDateKey,
@@ -22,9 +21,9 @@ import {
   getMarketplaceChannelSetting,
   getMarketplaceProfitOverview,
 } from "@/lib/marketplace/queries";
+import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
-import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -122,23 +121,11 @@ export default async function MarketplaceReportPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/admin/sales?channel=LAZADA"
-        className="inline-flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-sky-600 dark:text-slate-400"
-      >
-        <ChevronLeft size={16} /> รายการขายช่องทางออนไลน์
-        <LinkPendingIndicator />
-      </Link>
-
-      <div>
-        <h1 className="font-kanit text-2xl font-bold text-slate-900 dark:text-slate-100">
-          รายงานผู้บริหาร — ช่องทางขาย
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          เทียบผลประกอบการหน้าร้านกับแพลตฟอร์มออนไลน์จากชุดข้อมูลกำไรเดียวกับรายงานกำไรหลัก
-          ค่าธรรมเนียมถูกรับรู้ที่วันขายของแต่ละออเดอร์ ไม่ใช่วันที่แพลตฟอร์มโอนเงิน
-        </p>
-      </div>
+      <AdminPageHeader
+        eyebrow="รายงานผู้บริหาร"
+        title="ช่องทางขายออนไลน์"
+        description="เทียบผลประกอบการหน้าร้านกับแพลตฟอร์มออนไลน์จากชุดข้อมูลกำไรเดียวกับรายงานกำไรหลัก — ค่าธรรมเนียมถูกรับรู้ที่วันขายของแต่ละออเดอร์ ไม่ใช่วันที่แพลตฟอร์มโอนเงิน"
+      />
 
       <AdminSearchForm
         action="/admin/reports/marketplace"
