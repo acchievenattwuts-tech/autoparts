@@ -77,12 +77,6 @@ const channelLabel: Record<SaleChannel, string> = {
   SHOPEE: "Shopee",
   LAZADA: "Lazada",
 };
-const channelTone: Record<SaleChannel, "neutral" | "info" | "pending"> = {
-  STORE:  "neutral",
-  SHOPEE: "info",
-  LAZADA: "pending",
-};
-
 
 const SalesPage = async ({
   searchParams,
@@ -285,14 +279,13 @@ const SalesPage = async ({
       {q && <p className="text-sm text-slate-500 dark:text-slate-400">ผลการค้นหา &quot;{q}&quot;: {totalCount} รายการ</p>}
 
       <AdminTableSection>
-        <table className="min-w-[1360px] w-full text-sm">
+        <table className="min-w-[1240px] w-full text-sm">
           <thead className="bg-slate-50 text-slate-500 dark:bg-white/5 dark:text-slate-300">
             <tr>
               <th className="w-10 px-4 py-3 text-center font-medium">#</th>
               <th className="px-4 py-3 text-left font-medium">เลขที่ใบขาย</th>
               <th className="px-4 py-3 text-left font-medium">วันที่</th>
               <th className="w-[220px] px-4 py-3 text-left font-medium">ลูกค้า</th>
-              <th className="px-4 py-3 text-left font-medium">ช่องทาง</th>
               <th className="px-4 py-3 text-left font-medium">ขายสด/เชื่อ</th>
               <th className="px-4 py-3 text-left font-medium">สถานะการชำระ</th>
               <th className="px-4 py-3 text-left font-medium">การจัดส่ง</th>
@@ -307,7 +300,7 @@ const SalesPage = async ({
           <tbody>
             {sales.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={13} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
                   {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีรายการขาย"}
                 </td>
               </tr>
@@ -326,7 +319,6 @@ const SalesPage = async ({
                     <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">{channelLabel[s.channel]}: {s.channelRefNo}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
                     <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
-                    <td className="px-4 py-3"><AdminStatusBadge tone={channelTone[s.channel]}>{channelLabel[s.channel]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentTypeTone[s.paymentType]}>{paymentTypeLabel[s.paymentType]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentStatusTone[paymentStatus]}>{paymentStatusLabel[paymentStatus]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={fulfillmentTone[s.fulfillmentType]}>{fulfillmentLabel[s.fulfillmentType]}</AdminStatusBadge></td>
