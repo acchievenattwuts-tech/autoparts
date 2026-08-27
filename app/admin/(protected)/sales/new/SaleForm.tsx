@@ -14,6 +14,10 @@ import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSO
 import { fetchProductLots } from "../actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import {
+  getDefaultMarketplaceShippingAddress,
+  type ManualMarketplaceChannel,
+} from "@/lib/marketplace/config";
 import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
 import {
   buildSaleDraft,
@@ -229,7 +233,15 @@ const SaleForm = ({
   );
   const primaryAccountId = payments[0]?.cashBankAccountId ?? "";
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? (isMarketplace ? "DELIVERY" : "PICKUP"));
-  const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? (isMarketplace ? `จัดส่งตามที่อยู่ในคำสั่งซื้อ ${marketplaceLabel}` : ""));
+  // ช่องทาง marketplace เติมข้อความตั้งต้นตามช่องทางให้ก่อน (ที่อยู่จริงอยู่ในคำสั่งซื้อ
+  // ของแพลตฟอร์ม) แอดมินพิมพ์ทับด้วยที่อยู่ผู้ซื้อจริงได้ และค่าที่อยู่ในช่องนี้จะถูก
+  // พิมพ์บนใบเสร็จที่แนบไปในกล่อง
+  const [shippingAddress, setShippingAddress] = useState(
+    initialData?.shippingAddress ??
+      (isMarketplace
+        ? getDefaultMarketplaceShippingAddress(channel as ManualMarketplaceChannel)
+        : ""),
+  );
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
   const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? (isMarketplace ? "OTHER" : "NONE"));
   const [destLat, setDestLat] = useState<number | null>(initialData?.destLatitude ?? null);
@@ -1086,7 +1098,7 @@ const SaleForm = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               <div className="md:col-span-2">
                 <label className={labelCls}>
-                  ที่อยู่จัดส่ง <span className="text-red-500">*</span>
+                  {isMarketplace ? "ที่อยู่ผู้ซื้อ" : "ที่อยู่จัดส่ง"} <span className="text-red-500">*</span>
                 </label>
                 <textarea
                   rows={3}
@@ -1094,8 +1106,17 @@ const SaleForm = ({
                   value={shippingAddress}
                   onChange={(e) => setShippingAddress(e.target.value)}
                   className={inputCls}
-                  placeholder="ที่อยู่จัดส่งสินค้า"
+                  placeholder={
+                    isMarketplace
+                      ? `ที่อยู่ผู้ซื้อตามคำสั่งซื้อ ${marketplaceLabel}`
+                      : "ที่อยู่จัดส่งสินค้า"
+                  }
                 />
+                {isMarketplace ? (
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    พิมพ์ทับด้วยที่อยู่ผู้ซื้อจริงเพื่อให้ขึ้นบนใบเสร็จที่แนบไปในกล่อง — ถ้าปล่อยเป็นข้อความตั้งต้น ใบเสร็จจะไม่แสดงแถวที่อยู่
+                  </p>
+                ) : null}
               </div>
               <div className="md:col-span-2">
                 <label className={labelCls}>ปักหมุดที่อยู่จัดส่ง</label>

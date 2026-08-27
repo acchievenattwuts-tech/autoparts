@@ -6,6 +6,7 @@ import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocument
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
 import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
+  getDefaultMarketplaceShippingAddress,
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
   type ManualMarketplaceChannel,
@@ -177,6 +178,16 @@ const SharedSalesDeliveryPrintDocument = ({
   const customerPhone = isMarketplaceSale
     ? sale.customerPhone?.trim() || null
     : sale.customer?.phone ?? sale.customerPhone ?? null;
+  // ที่อยู่ของลูกค้ากลางไม่ใช่ที่อยู่ผู้ซื้อ ใบ marketplace จึงใช้ที่อยู่ที่คีย์ไว้กับใบขายแทน
+  // และถ้ายังเป็นข้อความตั้งต้นของช่องทาง แปลว่าไม่ได้คีย์ที่อยู่จริง — ซ่อนแถวไปเลย
+  const marketplaceAddress = isMarketplaceSale ? sale.shippingAddress?.trim() || null : null;
+  const customerAddress = isMarketplaceSale
+    ? marketplaceAddress &&
+      marketplaceAddress !==
+        getDefaultMarketplaceShippingAddress(sale.channel as ManualMarketplaceChannel)
+      ? marketplaceAddress
+      : null
+    : sale.customer?.address ?? null;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const documentDateText = formatPrintDate(sale.saleDate);
   const netAmountInWords = formatThaiBahtText(Number(sale.netAmount));
@@ -221,10 +232,10 @@ const SharedSalesDeliveryPrintDocument = ({
             <span className="text-gray-700">ชื่อ: </span>
             <span className="font-semibold">{customerName}</span>
           </p>
-          {sale.customer?.address ? (
+          {customerAddress ? (
             <p>
               <span className="text-gray-700">ที่อยู่: </span>
-              {sale.customer.address}
+              {customerAddress}
             </p>
           ) : null}
           {customerPhone ? (

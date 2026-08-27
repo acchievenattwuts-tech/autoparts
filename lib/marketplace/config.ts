@@ -70,6 +70,21 @@ export function resolveChannelFromSlug(slug: string): ManualMarketplaceChannel |
   return match ?? null;
 }
 
+/**
+ * ข้อความตั้งต้นของช่องที่อยู่บนใบขาย marketplace
+ *
+ * ที่อยู่จริงของผู้ซื้ออยู่ในระบบของแพลตฟอร์ม แต่ `shippingAddress` เป็นฟิลด์บังคับ
+ * ของการขายแบบจัดส่ง จึงเติมข้อความนี้ให้ก่อน แอดมินพิมพ์ทับด้วยที่อยู่จริงได้
+ *
+ * ใบเสร็จใช้ค่านี้เทียบเพื่อ "ซ่อนแถวที่อยู่" เมื่อยังไม่มีการคีย์ที่อยู่จริง —
+ * ลูกค้าจะได้ไม่เห็นประโยคที่เขียนไว้คุยกันเองภายในร้าน
+ */
+export function getDefaultMarketplaceShippingAddress(
+  channel: ManualMarketplaceChannel,
+): string {
+  return `จัดส่งตามที่อยู่ในคำสั่งซื้อ ${CHANNEL_CONFIG[channel].label}`;
+}
+
 export type MarketplaceFeeOption = {
   code: string;
   label: string;
