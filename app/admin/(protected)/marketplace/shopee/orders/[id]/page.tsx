@@ -11,6 +11,8 @@ import { formatDateTimeThai } from "@/lib/th-date";
 import { buildShopeeSaleDraftFromOrderImport } from "@/lib/shopee/services/create-sale";
 import { buildShopeeFeeExpenseDraftFromOrderImport } from "@/lib/shopee/services/escrow";
 import { getShopeeReturnReviewDetailFromOrderImport } from "@/lib/shopee/services/returns";
+import { getMarketplaceHoldingAccountId } from "@/lib/marketplace/queries";
+import { SaleChannel } from "@/lib/generated/prisma";
 
 import CreateSaleConfirm, { type LotLine } from "./CreateSaleConfirm";
 import CreateFeeExpenseButton from "./CreateFeeExpenseButton";
@@ -45,7 +47,6 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
       escrowLastError: true,
       returnReviewRequired: true,
       returnReviewReason: true,
-      shop: { select: { settlementCashBankAccountId: true } },
       sale: {
         select: {
           id: true,
@@ -71,7 +72,12 @@ const ShopeeOrderPreviewPage = async ({ params }: PageProps) => {
   });
   const draft = orderImport ? await buildShopeeSaleDraftFromOrderImport(orderImport) : null;
   const reviewDetail = orderImport ? getShopeeReturnReviewDetailFromOrderImport(orderImport) : null;
-  const feeDraft = orderImport ? buildShopeeFeeExpenseDraftFromOrderImport(orderImport) : null;
+  const feeDraft = orderImport
+    ? buildShopeeFeeExpenseDraftFromOrderImport(
+        orderImport,
+        await getMarketplaceHoldingAccountId(SaleChannel.SHOPEE),
+      )
+    : null;
 
   // Lot picker: hard blockers are everything except the "select lot" notice,
   // which the inline lot picker resolves instead of hard-blocking.

@@ -28,15 +28,43 @@ describe("document mutation guard", () => {
     );
   });
 
-  it("blocks sale mutation after it is included in an active Shopee settlement", async () => {
+  it("blocks sale mutation after it is included in an active marketplace settlement", async () => {
     const guard = createDocumentMutationGuard({
-      shopeeSettlementSale: {
-        findMany: async () => [{ settlement: { id: "settlement-1", settlementNo: "SST26080001" } }],
+      marketplaceSettlementLine: {
+        findMany: async () => [{ settlement: { id: "settlement-1", settlementNo: "LZS26080001" } }],
       },
     });
     const result = await guard.check("Sale", "sale-1", "cancel");
     assert.equal(result.blocked, true);
-    assert.deepEqual(result.references, [{ entityType: "ShopeeSettlement", id: "settlement-1", refNo: "SST26080001" }]);
+    assert.deepEqual(result.references, [
+      { entityType: "MarketplaceSettlement", id: "settlement-1", refNo: "LZS26080001" },
+    ]);
+  });
+
+  it("blocks credit note cancellation after it is deducted in an active settlement", async () => {
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlementLine: {
+        findMany: async () => [{ settlement: { id: "settlement-2", settlementNo: "LZS26080002" } }],
+      },
+    });
+    const result = await guard.check("CreditNote", "cn-1", "cancel");
+    assert.equal(result.blocked, true);
+    assert.deepEqual(result.references, [
+      { entityType: "MarketplaceSettlement", id: "settlement-2", refNo: "LZS26080002" },
+    ]);
+  });
+
+  it("blocks cancelling the fee expense a settlement created", async () => {
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlement: {
+        findMany: async () => [{ id: "settlement-3", settlementNo: "LZS26080003" }],
+      },
+    });
+    const result = await guard.check("Expense", "expense-1", "cancel");
+    assert.equal(result.blocked, true);
+    assert.deepEqual(result.references, [
+      { entityType: "MarketplaceSettlement", id: "settlement-3", refNo: "LZS26080003" },
+    ]);
   });
 
   it("deduplicates supplier payment refs for purchase return and supplier advance", async () => {

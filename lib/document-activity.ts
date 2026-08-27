@@ -207,9 +207,9 @@ async function getSaleRelationEvents(id: string,
     where: { warranty: { saleId: id } },
     select: { id: true, claimNo: true, claimDate: true, createdAt: true },
   });
-  const settlements = await db.shopeeSettlementSale.findMany({
+  const settlements = await db.marketplaceSettlementLine.findMany({
     where: { saleId: id, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
-    select: { saleAmount: true, settlement: { select: { id: true, settlementNo: true, settlementDate: true, createdAt: true } } },
+    select: { amount: true, settlement: { select: { id: true, settlementNo: true, settlementDate: true, createdAt: true } } },
   });
 
   return [
@@ -246,12 +246,12 @@ async function getSaleRelationEvents(id: string,
     }),
     ),
     ...settlements.map((item) => buildRelationActivityEvent({
-      id: `sale-${id}-shopee-settlement-${item.settlement.id}`,
+      id: `sale-${id}-marketplace-settlement-${item.settlement.id}`,
       kind: "USED_BY",
       occurredAt: item.settlement.createdAt ?? item.settlement.settlementDate,
-      title: "ถูกนำไปใช้ที่รอบรับเงิน Shopee",
-      description: `ยอดจับคู่ ${formatMoneyActivity(String(item.saleAmount))}`,
-      href: `/admin/sales/shopee/settlements/${item.settlement.id}`,
+      title: "ถูกนำไปใช้ที่รอบรับเงินช่องทางขาย",
+      description: `ยอดจับคู่ ${formatMoneyActivity(String(item.amount))}`,
+      href: `/admin/marketplace/settlements/${item.settlement.id}`,
       hrefLabel: item.settlement.settlementNo,
       tone: "used",
     })),

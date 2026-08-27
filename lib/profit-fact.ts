@@ -1,5 +1,12 @@
 import { db } from "@/lib/db";
-import { Prisma, CreditNoteType, DocStatus, ProfitSourceType, SaleChannel } from "@/lib/generated/prisma";
+import {
+  Prisma,
+  CreditNoteType,
+  DocStatus,
+  MarketplaceSettlementDocType,
+  ProfitSourceType,
+  SaleChannel,
+} from "@/lib/generated/prisma";
 import { calcItemSubtotal } from "@/lib/vat";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
@@ -364,6 +371,7 @@ export async function rebuildCreditNoteProfitFacts(
       status: true,
       type: true,
       saleId: true,
+      channel: true,
       totalAmount: true,
       subtotalAmount: true,
       customerId: true,
@@ -371,6 +379,7 @@ export async function rebuildCreditNoteProfitFacts(
       sale: {
         select: {
           saleNo: true,
+          channel: true,
           items: {
             orderBy: { lineNo: "asc" },
             select: {
@@ -485,6 +494,11 @@ export async function rebuildCreditNoteProfitFacts(
     };
   });
 
+  // ยอดคืนต้องถูกหักออกจากกำไรของช่องทางเดียวกับใบขายต้นทาง ไม่งั้นรายงานแยกช่องทาง
+  // จะเห็นแต่ยอดขาย ทำให้กำไรขั้นต้นสูงเกินจริงเท่ากับยอดที่คืนไปทั้งจำนวน
+  const channel = creditNote.channel ?? creditNote.sale?.channel ?? null;
+  for (const row of rows) row.channel = channel;
+
   await createFactProfitRows(tx, rows);
 }
 
@@ -567,6 +581,141 @@ export async function rebuildExpenseProfitFacts(
       marginPct: 0,
     };
   });
+
+  await createFactProfitRows(tx, rows);
+}
+
+/**
+ * เขียน FactProfit ของรอบรับเงิน marketplace (ค่าธรรมเนียม + รายรับพิเศษ)
+ *
+ * ค่าธรรมเนียมถูกปันกลับไปยังใบขายแต่ละใบตามสัดส่วนยอดขาย และลงวันที่เป็น "วันที่ขาย"
+ * ของใบนั้น ไม่ใช่วันที่เงินเข้า — ขายสิ้นเดือนแต่แพลตฟอร์มโอนเดือนถัดไปจึงไม่ทำให้
+ * กำไรเดือนที่ขายพองเกินและกำไรเดือนที่รับเงินหดผิดปกติ (matching principle)
+ *
+ * เพราะฟังก์ชันนี้เป็นผู้เขียน EXPENSE facts ของใบค่าธรรมเนียมเอง จึงต้องไม่เรียก
+ * rebuildExpenseProfitFacts() กับใบเดียวกัน มิฉะนั้นวันที่จะถูกเขียนทับกลับไปเป็น
+ * expenseDate และการปันตามใบขายจะหายไป
+ *
+ * รายรับพิเศษ (subsidy / bonus / ชดเชย) บันทึกเป็น OTHER_INCOME แยกจากยอดขาย
+ * เพื่อให้เข้ากำไรสุทธิเต็มจำนวนโดยไม่ไปเพิ่มฐานยอดขายจนทำให้ %margin เพี้ยน
+ */
+export async function rebuildMarketplaceSettlementProfitFacts(
+  tx: ProfitFactTx,
+  settlementId: string,
+): Promise<void> {
+  const settlement = await tx.marketplaceSettlement.findUnique({
+    where: { id: settlementId },
+    select: {
+      id: true,
+      settlementNo: true,
+      settlementDate: true,
+      status: true,
+      channel: true,
+      expenseId: true,
+      feeAmount: true,
+      incomeAmount: true,
+      expense: { select: { expenseNo: true } },
+      lines: {
+        where: { docType: MarketplaceSettlementDocType.SALE },
+        orderBy: [{ docDate: "asc" }, { docNo: "asc" }],
+        select: { docNo: true, docDate: true, amount: true },
+      },
+    },
+  });
+
+  if (!settlement) {
+    return;
+  }
+
+  if (settlement.expenseId) {
+    await deactivateCurrentFacts(tx, ProfitSourceType.EXPENSE, settlement.expenseId);
+  }
+  await deactivateCurrentFacts(tx, ProfitSourceType.OTHER_INCOME, settlement.id);
+
+  if (settlement.status !== DocStatus.ACTIVE) {
+    return;
+  }
+
+  const feeAmount = roundMoney(Number(settlement.feeAmount));
+  const incomeAmount = roundMoney(Number(settlement.incomeAmount));
+  if (feeAmount <= 0 && incomeAmount <= 0) {
+    return;
+  }
+
+  // รอบที่ไม่มีใบขายเลย (เช่น รอบที่มีแต่ใบคืนกับค่าปรับ) ไม่มีวันขายให้ปันกลับ
+  // จึงรับรู้ที่วันที่ของรอบรับเงินแทน
+  const hasSaleLines = settlement.lines.length > 0;
+  const targets = hasSaleLines
+    ? settlement.lines.map((line) => ({ businessDate: line.docDate, referenceDocNo: line.docNo }))
+    : [{ businessDate: settlement.settlementDate, referenceDocNo: null }];
+  const weights = hasSaleLines ? settlement.lines.map((line) => Number(line.amount)) : [1];
+
+  const emptyMoneyFields = {
+    quantity: 0,
+    salesAmountExVat: 0,
+    salesAmountIncVat: 0,
+    salesAmount: 0,
+    costAmount: 0,
+    grossProfit: 0,
+    unitSalePriceExVat: 0,
+    unitSalePriceIncVat: 0,
+    unitSalePrice: 0,
+    unitCostPrice: 0,
+    unitProfit: 0,
+    marginPct: 0,
+  };
+
+  const rows: FactProfitRowInput[] = [];
+
+  if (feeAmount > 0 && settlement.expenseId) {
+    const versionNo = await getNextVersion(tx, ProfitSourceType.EXPENSE, settlement.expenseId);
+    const shares = allocateByWeights(feeAmount, weights);
+    targets.forEach((target, index) => {
+      const expenseAmount = roundMoney(shares[index] ?? 0);
+      if (Math.abs(expenseAmount) < 0.005) return;
+      rows.push({
+        ...emptyMoneyFields,
+        businessDate: target.businessDate,
+        sourceType: ProfitSourceType.EXPENSE,
+        sourceSubtype: "MARKETPLACE_FEE",
+        sourceId: settlement.expenseId as string,
+        sourceLineId: `${settlement.id}:fee:${index}`,
+        sourceDocNo: settlement.expense?.expenseNo ?? settlement.settlementNo,
+        referenceDocNo: target.referenceDocNo,
+        sourceStatus: DocStatus.ACTIVE,
+        channel: settlement.channel,
+        versionNo,
+        lineLabel: "ค่าธรรมเนียมช่องทางขาย",
+        expenseAmount,
+        netProfitAmount: roundMoney(-expenseAmount),
+      });
+    });
+  }
+
+  if (incomeAmount > 0) {
+    const versionNo = await getNextVersion(tx, ProfitSourceType.OTHER_INCOME, settlement.id);
+    const shares = allocateByWeights(incomeAmount, weights);
+    targets.forEach((target, index) => {
+      const income = roundMoney(shares[index] ?? 0);
+      if (Math.abs(income) < 0.005) return;
+      rows.push({
+        ...emptyMoneyFields,
+        businessDate: target.businessDate,
+        sourceType: ProfitSourceType.OTHER_INCOME,
+        sourceSubtype: "MARKETPLACE_INCOME",
+        sourceId: settlement.id,
+        sourceLineId: `${settlement.id}:income:${index}`,
+        sourceDocNo: settlement.settlementNo,
+        referenceDocNo: target.referenceDocNo,
+        sourceStatus: DocStatus.ACTIVE,
+        channel: settlement.channel,
+        versionNo,
+        lineLabel: "รายรับพิเศษจากช่องทางขาย",
+        expenseAmount: 0,
+        netProfitAmount: income,
+      });
+    });
+  }
 
   await createFactProfitRows(tx, rows);
 }

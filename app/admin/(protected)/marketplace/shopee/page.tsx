@@ -11,7 +11,6 @@ import { isShopeeConfigured } from "@/lib/shopee/config";
 import { formatDateTimeThai } from "@/lib/th-date";
 
 import { disconnectShopeeShop, startShopeeAuthorization } from "./actions";
-import SettlementAccountForm from "./SettlementAccountForm";
 import SyncEnabledToggle from "./SyncEnabledToggle";
 import SyncHealthPanel from "./SyncHealthPanel";
 
@@ -69,17 +68,8 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
       syncEnabled: true,
       lastError: true,
       authorizedAt: true,
-      settlementCashBankAccountId: true,
     },
   });
-
-  const cashBankAccounts = canManage
-    ? await db.cashBankAccount.findMany({
-        where: { isActive: true },
-        orderBy: { code: "asc" },
-        select: { id: true, code: true, name: true },
-      })
-    : [];
 
   const errorMessage = params.error
     ? params.error === "invalid_state"
@@ -230,14 +220,16 @@ const ShopeeOverviewPage = async ({ searchParams }: ShopeePageProps) => {
                   </div>
                   {canManage && shop.authStatus === ShopeeAuthStatus.AUTHORIZED ? (
                     <div className="border-t border-slate-200 pt-3 dark:border-white/10">
-                      <label className="mb-1.5 block text-xs font-medium text-slate-600 dark:text-slate-300">
-                        บัญชี &quot;Shopee พักเงิน&quot; (ใช้ตอนสร้างบิลจากออเดอร์)
-                      </label>
-                      <SettlementAccountForm
-                        shopRecordId={shop.id}
-                        currentAccountId={shop.settlementCashBankAccountId}
-                        accounts={cashBankAccounts}
-                      />
+                      <p className="mb-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+                        บัญชีพักเงิน Shopee ย้ายไปตั้งค่าที่หน้ากระทบยอดรับเงินแล้ว
+                        เพื่อใช้ร่วมกันทั้งโหมด API และโหมดคีย์เอง
+                      </p>
+                      <Link
+                        href="/admin/sales/shopee/settlements"
+                        className="inline-flex min-h-11 items-center text-sm font-medium text-sky-600 hover:underline dark:text-sky-300"
+                      >
+                        ไปที่การตั้งค่าบัญชีพักเงิน Shopee
+                      </Link>
                       <div className="mt-3 border-t border-slate-200 pt-3 dark:border-white/10">
                         <SyncEnabledToggle shopRecordId={shop.id} enabled={shop.syncEnabled} />
                       </div>

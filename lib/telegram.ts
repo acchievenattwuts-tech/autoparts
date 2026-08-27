@@ -31,6 +31,9 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   STOCK_OUT_REALTIME: "สินค้าหมดสต๊อก (เรียลไทม์จากการขาย)",
   PROFIT_DISTRIBUTION_DECLARED: "ประกาศแบ่งกำไรผู้ร่วมทุน",
   PROFIT_DISTRIBUTION_CANCELLED: "ยกเลิกเอกสารแบ่งกำไรผู้ร่วมทุน",
+  MARKETPLACE_SETTLEMENT_RECORDED: "บันทึกรอบรับเงินช่องทางขาย",
+  MARKETPLACE_SETTLEMENT_CANCELLED: "ยกเลิกรอบรับเงินช่องทางขาย",
+  MARKETPLACE_RETURN_RECORDED: "บันทึกคืนสินค้าช่องทางขาย",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -105,6 +108,9 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   STOCK_OUT_REALTIME: "🔴",
   PROFIT_DISTRIBUTION_DECLARED: "🥧",
   PROFIT_DISTRIBUTION_CANCELLED: "🥧",
+  MARKETPLACE_SETTLEMENT_RECORDED: "🏦",
+  MARKETPLACE_SETTLEMENT_CANCELLED: "🚫",
+  MARKETPLACE_RETURN_RECORDED: "↩️",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

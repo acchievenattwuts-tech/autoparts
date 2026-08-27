@@ -14,6 +14,7 @@ import {
   VatType,
 } from "@/lib/generated/prisma";
 import { replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { getMarketplaceHoldingAccountId } from "@/lib/marketplace/queries";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 import {
   validateLotRows,
@@ -116,7 +117,6 @@ export type ShopeeSaleDraftOrderImport = {
   saleId: string | null;
   shopRecordId: string;
   returnReviewRequired?: boolean;
-  shop: { settlementCashBankAccountId: string | null };
   sale: { saleNo: string } | null;
 };
 
@@ -164,7 +164,6 @@ export async function buildShopeeSaleDraft(orderImportId: string): Promise<Shope
       saleId: true,
       shopRecordId: true,
       returnReviewRequired: true,
-      shop: { select: { settlementCashBankAccountId: true } },
       sale: { select: { saleNo: true } },
     },
   });
@@ -252,7 +251,9 @@ export async function buildShopeeSaleDraftFromOrderImport(
   if (lines.length === 0) blockers.push("ออเดอร์ไม่มีรายการสินค้า");
   if (lines.some((l) => l.error === "ยังไม่ได้ map สินค้า")) blockers.push("มีสินค้าที่ยังไม่ได้ map");
   if (lines.some((l) => l.error && l.error !== "ยังไม่ได้ map สินค้า")) blockers.push("มีรายการสินค้าจำนวนหรือราคาไม่ถูกต้อง");
-  if (!orderImport.shop.settlementCashBankAccountId) blockers.push("ยังไม่ได้ตั้งบัญชี Shopee พักเงิน");
+  // บัญชีพักเงินย้ายไปอยู่ที่การตั้งค่าช่องทาง marketplace แล้ว (ใช้ร่วมกับโหมดคีย์เอง)
+  const settlementAccountId = await getMarketplaceHoldingAccountId(SaleChannel.SHOPEE);
+  if (!settlementAccountId) blockers.push("ยังไม่ได้ตั้งบัญชีพักเงิน Shopee");
   if (
     shopeeTotalAmount != null &&
     Math.abs(totalAmount - shopeeTotalAmount) > MONEY_TOLERANCE
@@ -269,7 +270,7 @@ export async function buildShopeeSaleDraftFromOrderImport(
     lines,
     totalAmount,
     shopeeTotalAmount,
-    settlementAccountId: orderImport.shop.settlementCashBankAccountId,
+    settlementAccountId,
     alreadyImported: Boolean(orderImport.saleId),
     saleId: orderImport.saleId,
     saleNo: orderImport.sale?.saleNo ?? null,

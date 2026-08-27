@@ -55,7 +55,7 @@ model User {
   notifications                  Notification[]
   backupJobs                     BackupJob[]
   shopeeShopsAuthorized          ShopeeShop[]
-  shopeeSettlementsCreated       ShopeeSettlement[]          @relation("ShopeeSettlementCreatedBy")
+  marketplaceSettlementsCreated  MarketplaceSettlement[]    @relation("MarketplaceSettlementCreatedBy")
   supplierAdvances               SupplierAdvance[]
   supplierPayments               SupplierPayment[]
   customerAdvances               CustomerAdvance[]
@@ -1419,25 +1419,25 @@ model PurchaseItem {
 }
 
 model Customer {
-  id                     String                  @id @default(cuid())
-  code                   String?                 @unique
+  id                     String                      @id @default(cuid())
+  code                   String?                     @unique
   name                   String
-  phone                  String?                 @unique
+  phone                  String?                     @unique
   address                String?
   taxId                  String?
   note                   String?
-  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime                @updatedAt @db.Timestamptz(3)
+  createdAt              DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                    @updatedAt @db.Timestamptz(3)
   shippingAddress        String?
-  isActive               Boolean                 @default(true)
+  isActive               Boolean                     @default(true)
   creditTerm             Int?
-  lineLinkedAt           DateTime?               @db.Timestamptz(3)
-  lineUserId             String?                 @unique
-  source                 String                  @default("ADMIN")
+  lineLinkedAt           DateTime?                   @db.Timestamptz(3)
+  lineUserId             String?                     @unique
+  source                 String                      @default("ADMIN")
   defaultLatitude        Float?
   defaultLongitude       Float?
   customerTypeId         String?
-  customerType           CustomerType?           @relation(fields: [customerTypeId], references: [id])
+  customerType           CustomerType?               @relation(fields: [customerTypeId], references: [id])
   lineConversations      LineConversation[]
   messengerConversations MessengerConversation[]
   creditNotes            CreditNote[]
@@ -1445,7 +1445,7 @@ model Customer {
   receipts               Receipt[]
   sales                  Sale[]
   warranties             Warranty[]
-  shopeeManualShops      ShopeeShop[]
+  marketplaceChannels    MarketplaceChannelSetting[]
 
   @@index([name])
   @@index([lineLinkedAt])
@@ -1471,64 +1471,65 @@ model CustomerType {
 }
 
 model Sale {
-  id                      String                   @id @default(cuid())
-  saleNo                  String                   @unique
-  customerName            String?
-  customerPhone           String?
-  userId                  String
-  totalAmount             Decimal                  @db.Decimal(10, 2)
-  discount                Decimal                  @default(0) @db.Decimal(10, 2)
-  netAmount               Decimal                  @db.Decimal(10, 2)
-  paymentMethod           PaymentMethod?           @default(CASH)
-  note                    String?
-  saleDate                DateTime                 @default(now()) @db.Timestamptz(3)
-  createdAt               DateTime                 @default(now()) @db.Timestamptz(3)
-  updatedAt               DateTime                 @updatedAt @db.Timestamptz(3)
-  customerId              String?
-  saleType                SaleType                 @default(RETAIL)
-  fulfillmentType         FulfillmentType          @default(PICKUP)
-  shippingAddress         String?
-  shippingFee             Decimal?                 @db.Decimal(10, 2)
-  paymentType             SalePaymentType          @default(CASH_SALE)
-  subtotalAmount          Decimal                  @default(0) @db.Decimal(10, 2)
-  vatAmount               Decimal                  @default(0) @db.Decimal(10, 2)
-  vatRate                 Decimal                  @default(0) @db.Decimal(5, 2)
-  vatType                 VatType                  @default(NO_VAT)
-  cancelNote              String?
-  cancelledAt             DateTime?                @db.Timestamptz(3)
-  status                  DocStatus                @default(ACTIVE)
-  channel                 SaleChannel              @default(STORE)
-  channelRefNo            String?
-  amountRemain            Decimal                  @default(0) @db.Decimal(10, 2)
-  shippingMethod          ShippingMethod           @default(NONE)
-  shippingStatus          ShippingStatus           @default(PENDING)
-  trackingNo              String?
-  cashBankAccountId       String?
-  creditTerm              Int?
-  signedAt                DateTime?                @db.Timestamptz(3)
-  signerName              String?
-  signerSignatureUrl      String?
-  deliveryQueueOrder      Int?
-  deliveryStaffId         String?
-  trackingExpiry          DateTime?                @db.Timestamptz(3)
-  trackingToken           String?                  @unique
-  destLatitude            Float?
-  destLongitude           Float?
-  creditNotes             CreditNote[]
-  deliveryCommissionItems DeliveryCommissionItem[]
-  deliveryProofs          DeliveryProof[]
-  deliveryTracking        DeliveryTracking?
-  receipts                ReceiptItem[]
-  cashBankAccount         CashBankAccount?         @relation(fields: [cashBankAccountId], references: [id])
-  customer                Customer?                @relation(fields: [customerId], references: [id])
-  deliveryStaff           User?                    @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
-  user                    User                     @relation(fields: [userId], references: [id])
-  items                   SaleItem[]
-  warranties              Warranty[]
-  paymentSlips            PaymentSlip[]
-  shopeeOrderImport       ShopeeOrderImport?
-  shopeeSettlementLines   ShopeeSettlementSale[]
+  id                         String                      @id @default(cuid())
+  saleNo                     String                      @unique
+  customerName               String?
+  customerPhone              String?
+  userId                     String
+  totalAmount                Decimal                     @db.Decimal(10, 2)
+  discount                   Decimal                     @default(0) @db.Decimal(10, 2)
+  netAmount                  Decimal                     @db.Decimal(10, 2)
+  paymentMethod              PaymentMethod?              @default(CASH)
+  note                       String?
+  saleDate                   DateTime                    @default(now()) @db.Timestamptz(3)
+  createdAt                  DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                    @updatedAt @db.Timestamptz(3)
+  customerId                 String?
+  saleType                   SaleType                    @default(RETAIL)
+  fulfillmentType            FulfillmentType             @default(PICKUP)
+  shippingAddress            String?
+  shippingFee                Decimal?                    @db.Decimal(10, 2)
+  paymentType                SalePaymentType             @default(CASH_SALE)
+  subtotalAmount             Decimal                     @default(0) @db.Decimal(10, 2)
+  vatAmount                  Decimal                     @default(0) @db.Decimal(10, 2)
+  vatRate                    Decimal                     @default(0) @db.Decimal(5, 2)
+  vatType                    VatType                     @default(NO_VAT)
+  cancelNote                 String?
+  cancelledAt                DateTime?                   @db.Timestamptz(3)
+  status                     DocStatus                   @default(ACTIVE)
+  channel                    SaleChannel                 @default(STORE)
+  channelRefNo               String?
+  amountRemain               Decimal                     @default(0) @db.Decimal(10, 2)
+  shippingMethod             ShippingMethod              @default(NONE)
+  shippingStatus             ShippingStatus              @default(PENDING)
+  trackingNo                 String?
+  cashBankAccountId          String?
+  creditTerm                 Int?
+  signedAt                   DateTime?                   @db.Timestamptz(3)
+  signerName                 String?
+  signerSignatureUrl         String?
+  deliveryQueueOrder         Int?
+  deliveryStaffId            String?
+  trackingExpiry             DateTime?                   @db.Timestamptz(3)
+  trackingToken              String?                     @unique
+  destLatitude               Float?
+  destLongitude              Float?
+  creditNotes                CreditNote[]
+  deliveryCommissionItems    DeliveryCommissionItem[]
+  deliveryProofs             DeliveryProof[]
+  deliveryTracking           DeliveryTracking?
+  receipts                   ReceiptItem[]
+  cashBankAccount            CashBankAccount?            @relation(fields: [cashBankAccountId], references: [id])
+  customer                   Customer?                   @relation(fields: [customerId], references: [id])
+  deliveryStaff              User?                       @relation("SaleDeliveryStaff", fields: [deliveryStaffId], references: [id])
+  user                       User                        @relation(fields: [userId], references: [id])
+  items                      SaleItem[]
+  warranties                 Warranty[]
+  paymentSlips               PaymentSlip[]
+  shopeeOrderImport          ShopeeOrderImport?
+  marketplaceSettlementLines MarketplaceSettlementLine[]
 
+  @@unique([channel, channelRefNo])
   @@index([cashBankAccountId])
   @@index([trackingToken])
   @@index([trackingExpiry])
@@ -1540,7 +1541,6 @@ model Sale {
   @@index([customerId, paymentType, status, amountRemain])
   @@index([saleDate(sort: Desc), status])
   @@index([channel, status, saleDate])
-  @@unique([channel, channelRefNo])
 }
 
 model DeliveryProof {
@@ -1766,7 +1766,7 @@ model Expense {
   deliveryCommissionRun DeliveryCommissionRun?
   cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
   shopeeEscrowOrder     ShopeeOrderImport?     @relation("ShopeeEscrowExpense")
-  shopeeSettlement      ShopeeSettlement?
+  marketplaceSettlement MarketplaceSettlement?
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
   attachments           ExpenseAttachment[]
@@ -1936,40 +1936,44 @@ model AdjustmentItem {
 }
 
 model CreditNote {
-  id                String           @id @default(cuid())
-  cnNo              String           @unique
-  cnDate            DateTime         @default(now()) @db.Timestamptz(3)
-  saleId            String?
-  customerName      String?
-  customerPhone     String?
-  userId            String
-  type              CreditNoteType
-  totalAmount       Decimal          @db.Decimal(10, 2)
-  note              String?
-  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
-  settlementType    CNSettlementType @default(CASH_REFUND)
-  refundMethod      CNRefundMethod?
-  subtotalAmount    Decimal          @default(0) @db.Decimal(10, 2)
-  vatAmount         Decimal          @default(0) @db.Decimal(10, 2)
-  vatRate           Decimal          @default(0) @db.Decimal(5, 2)
-  vatType           VatType          @default(NO_VAT)
-  customerId        String?
-  cancelNote        String?
-  cancelledAt       DateTime?        @db.Timestamptz(3)
-  status            DocStatus        @default(ACTIVE)
-  amountRemain      Decimal          @default(0) @db.Decimal(10, 2)
-  cashBankAccountId String?
-  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  customer          Customer?        @relation(fields: [customerId], references: [id])
-  sale              Sale?            @relation(fields: [saleId], references: [id])
-  user              User             @relation(fields: [userId], references: [id])
-  items             CreditNoteItem[]
-  receiptItems      ReceiptItem[]
+  id                         String                      @id @default(cuid())
+  cnNo                       String                      @unique
+  cnDate                     DateTime                    @default(now()) @db.Timestamptz(3)
+  saleId                     String?
+  customerName               String?
+  customerPhone              String?
+  userId                     String
+  type                       CreditNoteType
+  totalAmount                Decimal                     @db.Decimal(10, 2)
+  note                       String?
+  createdAt                  DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime                    @updatedAt @db.Timestamptz(3)
+  settlementType             CNSettlementType            @default(CASH_REFUND)
+  refundMethod               CNRefundMethod?
+  subtotalAmount             Decimal                     @default(0) @db.Decimal(10, 2)
+  vatAmount                  Decimal                     @default(0) @db.Decimal(10, 2)
+  vatRate                    Decimal                     @default(0) @db.Decimal(5, 2)
+  vatType                    VatType                     @default(NO_VAT)
+  customerId                 String?
+  cancelNote                 String?
+  cancelledAt                DateTime?                   @db.Timestamptz(3)
+  status                     DocStatus                   @default(ACTIVE)
+  amountRemain               Decimal                     @default(0) @db.Decimal(10, 2)
+  cashBankAccountId          String?
+  /// ช่องทางที่ใบลดหนี้นี้สังกัด — คัดลอกจากใบขายต้นทางตอนสร้าง (null = หน้าร้านเดิมก่อนมีฟีลด์นี้)
+  channel                    SaleChannel?
+  cashBankAccount            CashBankAccount?            @relation(fields: [cashBankAccountId], references: [id])
+  customer                   Customer?                   @relation(fields: [customerId], references: [id])
+  sale                       Sale?                       @relation(fields: [saleId], references: [id])
+  user                       User                        @relation(fields: [userId], references: [id])
+  items                      CreditNoteItem[]
+  receiptItems               ReceiptItem[]
+  marketplaceSettlementLines MarketplaceSettlementLine[]
 
   @@index([cashBankAccountId])
   @@index([cnDate(sort: Desc), status])
   @@index([cashBankAccountId, cnDate(sort: Desc), status])
+  @@index([channel, status, cnDate(sort: Desc)])
 }
 
 model CreditNoteItem {
@@ -2106,25 +2110,25 @@ model Receipt {
 }
 
 model CashBankAccount {
-  id                       String                  @id @default(cuid())
-  code                     String                  @unique
+  id                       String                      @id @default(cuid())
+  code                     String                      @unique
   name                     String
   type                     CashBankAccountType
   bankName                 String?
   accountNo                String?
-  openingBalance           Decimal                 @default(0) @db.Decimal(10, 2)
-  openingDate              DateTime                @db.Timestamptz(3)
-  isActive                 Boolean                 @default(true)
-  createdAt                DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
-  isPrimaryTransferAccount Boolean                 @default(false)
+  openingBalance           Decimal                     @default(0) @db.Decimal(10, 2)
+  openingDate              DateTime                    @db.Timestamptz(3)
+  isActive                 Boolean                     @default(true)
+  createdAt                DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                    @updatedAt @db.Timestamptz(3)
+  isPrimaryTransferAccount Boolean                     @default(false)
   promptPayId              String?
-  lowBalanceThreshold      Decimal                 @default(0) @db.Decimal(10, 2)
+  lowBalanceThreshold      Decimal                     @default(0) @db.Decimal(10, 2)
   adjustments              CashBankAdjustment[]
   documentPayments         DocumentPayment[]
   movements                CashBankMovement[]
-  transfersFrom            CashBankTransfer[]      @relation("CashBankTransferFrom")
-  transfersTo              CashBankTransfer[]      @relation("CashBankTransferTo")
+  transfersFrom            CashBankTransfer[]          @relation("CashBankTransferFrom")
+  transfersTo              CashBankTransfer[]          @relation("CashBankTransferTo")
   creditNotes              CreditNote[]
   deliveryCommissionRuns   DeliveryCommissionRun[]
   expenses                 Expense[]
@@ -2133,9 +2137,9 @@ model CashBankAccount {
   purchaseReturns          PurchaseReturn[]
   receipts                 Receipt[]
   sales                    Sale[]
-  shopeeSettlementShops    ShopeeShop[]
-  shopeeSettlementsFrom    ShopeeSettlement[]       @relation("ShopeeSettlementSourceAccount")
-  shopeeSettlementsTo      ShopeeSettlement[]       @relation("ShopeeSettlementDestinationAccount")
+  marketplaceChannels      MarketplaceChannelSetting[]
+  marketplaceSettleFrom    MarketplaceSettlement[]     @relation("MarketplaceSettlementSourceAccount")
+  marketplaceSettleTo      MarketplaceSettlement[]     @relation("MarketplaceSettlementDestinationAccount")
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
   customerAdvances         CustomerAdvance[]
@@ -2168,23 +2172,23 @@ model CashBankMovement {
 }
 
 model CashBankTransfer {
-  id            String                 @id @default(cuid())
-  transferNo    String                 @unique
-  transferDate  DateTime               @db.Timestamptz(3)
-  fromAccountId String
-  toAccountId   String
-  amount        Decimal                @db.Decimal(10, 2)
-  note          String?
-  userId        String
-  status        CashBankTransferStatus @default(ACTIVE)
-  cancelNote    String?
-  cancelledAt   DateTime?              @db.Timestamptz(3)
-  createdAt     DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime               @updatedAt @db.Timestamptz(3)
-  fromAccount   CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
-  toAccount     CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
-  user          User                   @relation(fields: [userId], references: [id])
-  shopeeSettlement ShopeeSettlement?
+  id                    String                 @id @default(cuid())
+  transferNo            String                 @unique
+  transferDate          DateTime               @db.Timestamptz(3)
+  fromAccountId         String
+  toAccountId           String
+  amount                Decimal                @db.Decimal(10, 2)
+  note                  String?
+  userId                String
+  status                CashBankTransferStatus @default(ACTIVE)
+  cancelNote            String?
+  cancelledAt           DateTime?              @db.Timestamptz(3)
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @db.Timestamptz(3)
+  fromAccount           CashBankAccount        @relation("CashBankTransferFrom", fields: [fromAccountId], references: [id])
+  toAccount             CashBankAccount        @relation("CashBankTransferTo", fields: [toAccountId], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id])
+  marketplaceSettlement MarketplaceSettlement?
 
   @@index([transferDate])
   @@index([fromAccountId])
@@ -2193,22 +2197,23 @@ model CashBankTransfer {
 }
 
 model CashBankAdjustment {
-  id          String                   @id @default(cuid())
-  adjustNo    String                   @unique
-  adjustDate  DateTime                 @db.Timestamptz(3)
-  accountId   String
-  direction   CashBankDirection
-  amount      Decimal                  @db.Decimal(10, 2)
-  reason      String
-  note        String?
-  userId      String
-  status      CashBankAdjustmentStatus @default(ACTIVE)
-  cancelNote  String?
-  cancelledAt DateTime?                @db.Timestamptz(3)
-  createdAt   DateTime                 @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime                 @updatedAt @db.Timestamptz(3)
-  account     CashBankAccount          @relation(fields: [accountId], references: [id])
-  user        User                     @relation(fields: [userId], references: [id])
+  id                    String                   @id @default(cuid())
+  adjustNo              String                   @unique
+  adjustDate            DateTime                 @db.Timestamptz(3)
+  accountId             String
+  direction             CashBankDirection
+  amount                Decimal                  @db.Decimal(10, 2)
+  reason                String
+  note                  String?
+  userId                String
+  status                CashBankAdjustmentStatus @default(ACTIVE)
+  cancelNote            String?
+  cancelledAt           DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                 @updatedAt @db.Timestamptz(3)
+  account               CashBankAccount          @relation(fields: [accountId], references: [id])
+  user                  User                     @relation(fields: [userId], references: [id])
+  marketplaceSettlement MarketplaceSettlement?
 
   @@index([adjustDate])
   @@index([accountId, status])
@@ -2367,24 +2372,24 @@ model ReceiptItem {
 }
 
 model CustomerAdvance {
-  id                String           @id @default(cuid())
-  advanceNo         String           @unique
-  advanceDate       DateTime         @default(now()) @db.Timestamptz(3)
+  id                String                  @id @default(cuid())
+  advanceNo         String                  @unique
+  advanceDate       DateTime                @default(now()) @db.Timestamptz(3)
   customerId        String
   userId            String
-  totalAmount       Decimal          @db.Decimal(10, 2)
-  amountRemain      Decimal          @default(0) @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod    @default(TRANSFER)
+  totalAmount       Decimal                 @db.Decimal(10, 2)
+  amountRemain      Decimal                 @default(0) @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod           @default(TRANSFER)
   note              String?
-  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
   cancelNote        String?
-  cancelledAt       DateTime?        @db.Timestamptz(3)
-  status            DocStatus        @default(ACTIVE)
+  cancelledAt       DateTime?               @db.Timestamptz(3)
+  status            DocStatus               @default(ACTIVE)
   cashBankAccountId String?
-  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  customer          Customer         @relation(fields: [customerId], references: [id])
-  user              User             @relation(fields: [userId], references: [id])
+  cashBankAccount   CashBankAccount?        @relation(fields: [cashBankAccountId], references: [id])
+  customer          Customer                @relation(fields: [customerId], references: [id])
+  user              User                    @relation(fields: [userId], references: [id])
   receiptItems      ReceiptItem[]
   refunds           CustomerAdvanceRefund[]
 
@@ -2422,24 +2427,24 @@ model CustomerAdvanceRefund {
 }
 
 model SupplierAdvance {
-  id                String                @id @default(cuid())
-  advanceNo         String                @unique
-  advanceDate       DateTime              @default(now()) @db.Timestamptz(3)
+  id                String                  @id @default(cuid())
+  advanceNo         String                  @unique
+  advanceDate       DateTime                @default(now()) @db.Timestamptz(3)
   supplierId        String
   userId            String
-  totalAmount       Decimal               @db.Decimal(10, 2)
-  amountRemain      Decimal               @default(0) @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod         @default(TRANSFER)
+  totalAmount       Decimal                 @db.Decimal(10, 2)
+  amountRemain      Decimal                 @default(0) @db.Decimal(10, 2)
+  paymentMethod     PaymentMethod           @default(TRANSFER)
   note              String?
-  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime              @updatedAt @db.Timestamptz(3)
+  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
   cancelNote        String?
-  cancelledAt       DateTime?             @db.Timestamptz(3)
-  status            DocStatus             @default(ACTIVE)
+  cancelledAt       DateTime?               @db.Timestamptz(3)
+  status            DocStatus               @default(ACTIVE)
   cashBankAccountId String?
-  cashBankAccount   CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
-  supplier          Supplier              @relation(fields: [supplierId], references: [id])
-  user              User                  @relation(fields: [userId], references: [id])
+  cashBankAccount   CashBankAccount?        @relation(fields: [cashBankAccountId], references: [id])
+  supplier          Supplier                @relation(fields: [supplierId], references: [id])
+  user              User                    @relation(fields: [userId], references: [id])
   supplierPayments  SupplierPaymentItem[]
   refunds           SupplierAdvanceRefund[]
 
@@ -2978,6 +2983,7 @@ enum PriceTier {
 enum SaleChannel {
   STORE
   SHOPEE
+  LAZADA
 }
 
 enum FulfillmentType {
@@ -3145,6 +3151,19 @@ enum ProfitSourceType {
   SALE
   SALE_RETURN
   EXPENSE
+  /// รายรับพิเศษที่ marketplace จ่ายเพิ่มในรอบรับเงิน (subsidy / bonus / ชดเชย)
+  /// บันทึกเป็น netProfitAmount บวก โดยไม่แตะ salesAmount เพื่อไม่ปนกับยอดขายจริง
+  OTHER_INCOME
+}
+
+enum MarketplaceSettlementDocType {
+  SALE
+  CREDIT_NOTE
+}
+
+enum MarketplaceFeeKind {
+  FEE
+  ADJUSTMENT
 }
 
 enum LotIssueMethod {
@@ -3162,105 +3181,144 @@ enum LotIssueMethod {
 // ─────────────────────────────────────────────────────────────
 
 model ShopeeShop {
-  id                          String                 @id @default(cuid())
-  shopId                      String                 @unique // Shopee shop_id (real marketplace id)
-  shopName                    String?
-  region                      String?
-  authStatus                  ShopeeAuthStatus       @default(PENDING)
-  accessToken                 String? // server-side only — never returned to client
-  refreshToken                String?
-  tokenExpiresAt              DateTime?              @db.Timestamptz(3)
-  scope                       String?
-  syncEnabled                 Boolean                @default(false)
-  manualMode                  Boolean                @default(false)
-  stockBuffer                 Int                    @default(0)
-  lastOrderSyncAt             DateTime?              @db.Timestamptz(3)
-  lastOrderCursor             String?
-  lastStockSyncAt             DateTime?              @db.Timestamptz(3)
-  lastError                   String?
-  authorizedAt                DateTime?              @db.Timestamptz(3)
-  authorizedByUserId          String?
-  settlementCashBankAccountId String?
-  defaultCustomerId           String?
-  createdAt                   DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt                   DateTime               @updatedAt @db.Timestamptz(3)
-  authorizedByUser            User?                  @relation(fields: [authorizedByUserId], references: [id])
-  settlementCashBankAccount   CashBankAccount?       @relation(fields: [settlementCashBankAccountId], references: [id])
-  defaultCustomer             Customer?              @relation(fields: [defaultCustomerId], references: [id])
-  mappings                    ShopeeProductMapping[]
-  orders                      ShopeeOrderImport[]
-  syncJobs                    ShopeeSyncJob[]
-  settlements                 ShopeeSettlement[]
+  id                 String                 @id @default(cuid())
+  shopId             String                 @unique // Shopee shop_id (real marketplace id)
+  shopName           String?
+  region             String?
+  authStatus         ShopeeAuthStatus       @default(PENDING)
+  accessToken        String? // server-side only — never returned to client
+  refreshToken       String?
+  tokenExpiresAt     DateTime?              @db.Timestamptz(3)
+  scope              String?
+  syncEnabled        Boolean                @default(false)
+  stockBuffer        Int                    @default(0)
+  lastOrderSyncAt    DateTime?              @db.Timestamptz(3)
+  lastOrderCursor    String?
+  lastStockSyncAt    DateTime?              @db.Timestamptz(3)
+  lastError          String?
+  authorizedAt       DateTime?              @db.Timestamptz(3)
+  authorizedByUserId String?
+  createdAt          DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime               @updatedAt @db.Timestamptz(3)
+  authorizedByUser   User?                  @relation(fields: [authorizedByUserId], references: [id])
+  mappings           ShopeeProductMapping[]
+  orders             ShopeeOrderImport[]
+  syncJobs           ShopeeSyncJob[]
 
   @@index([authStatus])
   @@index([tokenExpiresAt])
   @@index([authorizedByUserId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Marketplace แบบคีย์เอง (Shopee / Lazada) — ใช้โครงเดียวกันทุกช่องทาง
+//   - ยอดขายทุกใบพักไว้ในบัญชีพักเงินของช่องทาง จนกว่า marketplace จะโอนจริง
+//   - รอบรับเงิน (settlement) รวมได้ทั้งใบขาย (+) และใบลดหนี้ (−) พร้อมค่าธรรมเนียม
+//     และรายการปรับปรุงบวก/ลบ แล้วออกเอกสารการเงินให้ครบใน transaction เดียว
+//   - ยอดคงเหลือบัญชีพักเงิน = ยอดที่ marketplace ยังไม่โอน เสมอ
+// ─────────────────────────────────────────────────────────────
+
+/// ตั้งค่าช่องทาง marketplace ที่คีย์เอง — 1 แถวต่อ 1 ช่องทาง
+/// prefix เอกสาร/ชื่อแสดงผลอยู่ในโค้ด (lib/marketplace/config.ts) เพื่อคง type safety
+model MarketplaceChannelSetting {
+  id                          String                  @id @default(cuid())
+  channel                     SaleChannel             @unique
+  settlementCashBankAccountId String
+  defaultCustomerId           String
+  isActive                    Boolean                 @default(true)
+  createdAt                   DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                   DateTime                @updatedAt @db.Timestamptz(3)
+  settlementCashBankAccount   CashBankAccount         @relation(fields: [settlementCashBankAccountId], references: [id])
+  defaultCustomer             Customer                @relation(fields: [defaultCustomerId], references: [id])
+  settlements                 MarketplaceSettlement[]
+
+  @@index([isActive, channel])
   @@index([settlementCashBankAccountId])
   @@index([defaultCustomerId])
-  @@index([manualMode, createdAt])
 }
 
-/// รอบรับเงิน Shopee แบบคีย์เอง: รวม Sale หลายใบ หักค่าธรรมเนียม แล้วโอนยอดสุทธิ
-/// จากบัญชีพักเงินไปบัญชีธนาคารจริงใน transaction เดียว
-model ShopeeSettlement {
-  id                   String                  @id @default(cuid())
-  settlementNo         String                  @unique
-  payoutRef            String                  @unique
-  settlementDate       DateTime                @db.Timestamptz(3)
-  shopRecordId         String
+/// รอบรับเงินจาก marketplace
+/// payoutAmount = salesAmount − returnAmount − feeAmount + incomeAmount
+model MarketplaceSettlement {
+  id                   String                      @id @default(cuid())
+  settlementNo         String                      @unique
+  channel              SaleChannel
+  payoutRef            String
+  settlementDate       DateTime                    @db.Timestamptz(3)
+  channelSettingId     String
   sourceAccountId      String
   destinationAccountId String
-  salesAmount          Decimal                 @db.Decimal(10, 2)
-  feeAmount            Decimal                 @db.Decimal(10, 2)
-  payoutAmount         Decimal                 @db.Decimal(10, 2)
-  expenseId            String?                 @unique
-  cashBankTransferId   String                  @unique
-  status               DocStatus               @default(ACTIVE)
+  salesAmount          Decimal                     @default(0) @db.Decimal(10, 2)
+  returnAmount         Decimal                     @default(0) @db.Decimal(10, 2)
+  feeAmount            Decimal                     @default(0) @db.Decimal(10, 2)
+  incomeAmount         Decimal                     @default(0) @db.Decimal(10, 2)
+  payoutAmount         Decimal                     @db.Decimal(10, 2)
+  expenseId            String?                     @unique
+  cashBankAdjustmentId String?                     @unique
+  cashBankTransferId   String                      @unique
+  status               DocStatus                   @default(ACTIVE)
   cancelNote           String?
-  cancelledAt          DateTime?               @db.Timestamptz(3)
+  cancelledAt          DateTime?                   @db.Timestamptz(3)
   note                 String?
   userId               String
-  createdAt            DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt            DateTime                @updatedAt @db.Timestamptz(3)
-  shop                  ShopeeShop              @relation(fields: [shopRecordId], references: [id])
-  sourceAccount         CashBankAccount         @relation("ShopeeSettlementSourceAccount", fields: [sourceAccountId], references: [id])
-  destinationAccount    CashBankAccount         @relation("ShopeeSettlementDestinationAccount", fields: [destinationAccountId], references: [id])
-  expense               Expense?                @relation(fields: [expenseId], references: [id])
-  cashBankTransfer      CashBankTransfer        @relation(fields: [cashBankTransferId], references: [id])
-  user                  User                    @relation("ShopeeSettlementCreatedBy", fields: [userId], references: [id])
-  sales                 ShopeeSettlementSale[]
-  fees                  ShopeeSettlementFee[]
+  createdAt            DateTime                    @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime                    @updatedAt @db.Timestamptz(3)
+  channelSetting       MarketplaceChannelSetting   @relation(fields: [channelSettingId], references: [id])
+  sourceAccount        CashBankAccount             @relation("MarketplaceSettlementSourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount   CashBankAccount             @relation("MarketplaceSettlementDestinationAccount", fields: [destinationAccountId], references: [id])
+  expense              Expense?                    @relation(fields: [expenseId], references: [id])
+  cashBankAdjustment   CashBankAdjustment?         @relation(fields: [cashBankAdjustmentId], references: [id])
+  cashBankTransfer     CashBankTransfer            @relation(fields: [cashBankTransferId], references: [id])
+  user                 User                        @relation("MarketplaceSettlementCreatedBy", fields: [userId], references: [id])
+  lines                MarketplaceSettlementLine[]
+  fees                 MarketplaceSettlementFee[]
 
+  @@unique([channel, payoutRef])
   @@index([settlementDate(sort: Desc), status])
-  @@index([shopRecordId, status, settlementDate(sort: Desc)])
+  @@index([channel, status, settlementDate(sort: Desc)])
   @@index([sourceAccountId, settlementDate(sort: Desc)])
   @@index([destinationAccountId, settlementDate(sort: Desc)])
+  @@index([channelSettingId])
 }
 
-model ShopeeSettlementSale {
-  id           String           @id @default(cuid())
-  settlementId String
-  saleId       String
-  activeSaleId String?          @unique
-  saleAmount   Decimal          @db.Decimal(10, 2)
-  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
-  settlement   ShopeeSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
-  sale         Sale             @relation(fields: [saleId], references: [id])
+/// เอกสารที่ถูกกระทบยอดในรอบ — amount เป็นค่าบวกสำหรับใบขาย และค่าลบสำหรับใบลดหนี้
+/// activeSaleId / activeCreditNoteId เป็น unique guard ระดับ DB กันกระทบยอดซ้ำ
+/// (ตั้งเป็น null ตอนยกเลิกรอบ เพื่อปล่อยเอกสารกลับมาเลือกได้อีก)
+model MarketplaceSettlementLine {
+  id                 String                       @id @default(cuid())
+  settlementId       String
+  docType            MarketplaceSettlementDocType
+  saleId             String?
+  creditNoteId       String?
+  activeSaleId       String?                      @unique
+  activeCreditNoteId String?                      @unique
+  docNo              String
+  docDate            DateTime                     @db.Timestamptz(3)
+  amount             Decimal                      @db.Decimal(10, 2)
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(3)
+  settlement         MarketplaceSettlement        @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  sale               Sale?                        @relation(fields: [saleId], references: [id])
+  creditNote         CreditNote?                  @relation(fields: [creditNoteId], references: [id])
 
   @@unique([settlementId, saleId])
-  @@index([settlementId])
+  @@unique([settlementId, creditNoteId])
+  @@index([settlementId, docType])
   @@index([saleId])
+  @@index([creditNoteId])
 }
 
-model ShopeeSettlementFee {
-  id           String           @id @default(cuid())
+/// ค่าธรรมเนียมและรายการปรับปรุงของรอบ — amount เป็นค่าติดลบเมื่อถูกหักออกจากยอดโอน
+/// และเป็นบวกเมื่อ marketplace จ่ายเพิ่ม (subsidy / bonus / ชดเชย)
+model MarketplaceSettlementFee {
+  id           String                @id @default(cuid())
   settlementId String
   lineNo       Int
+  kind         MarketplaceFeeKind    @default(FEE)
   feeCode      String
   label        String
-  amount       Decimal          @db.Decimal(10, 2)
-  createdAt    DateTime         @default(now()) @db.Timestamptz(3)
-  settlement   ShopeeSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  amount       Decimal               @db.Decimal(10, 2)
+  createdAt    DateTime              @default(now()) @db.Timestamptz(3)
+  settlement   MarketplaceSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
 
   @@unique([settlementId, lineNo])
   @@index([feeCode, createdAt])
@@ -3429,6 +3487,9 @@ enum NotificationType {
   STOCK_OUT_REALTIME
   PROFIT_DISTRIBUTION_DECLARED
   PROFIT_DISTRIBUTION_CANCELLED
+  MARKETPLACE_SETTLEMENT_RECORDED
+  MARKETPLACE_SETTLEMENT_CANCELLED
+  MARKETPLACE_RETURN_RECORDED
 }
 
 enum NotificationSeverity {

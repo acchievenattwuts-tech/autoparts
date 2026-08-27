@@ -12,6 +12,24 @@ import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/share
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
+export type MarketplaceReturnPreset = {
+  channelLabel: string;
+  channelSlug: string;
+  saleId: string;
+  saleNo: string;
+  orderRefLabel: string;
+  orderRefNo: string;
+  customerId: string;
+  customerName: string;
+  cashBankAccountId: string;
+  holdingAccountLabel: string;
+  /** รายการของใบขายต้นทาง โหลดมาจากฝั่ง server แล้วเพื่อไม่ต้องยิงซ้ำตอน mount */
+  items: LineItem[];
+  products: ProductOption[];
+  vatType: string;
+  vatRate: number;
+};
+
 interface CustomerOption {
   id: string;
   name: string;
@@ -93,6 +111,7 @@ const CreditNoteForm = ({
   defaultVatRate,
   initialData,
   submitLocked = false,
+  marketplacePreset,
 }: {
   products: ProductOption[];
   customers: CustomerOption[];
@@ -102,18 +121,26 @@ const CreditNoteForm = ({
   defaultVatRate: number;
   initialData?: InitialData;
   submitLocked?: boolean;
+  /** โหมดคืนสินค้าช่องทางขาย: ล็อกลูกค้า/ใบขาย/บัญชีคืนเงินไว้ตามการตั้งค่าของช่องทาง */
+  marketplacePreset?: MarketplaceReturnPreset;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [customerId, setCustomerId] = useState(initialData?.customerId ?? "");
-  const [customerName, setCustomerName] = useState(initialData?.customerName ?? "");
+  const [customerId, setCustomerId] = useState(
+    initialData?.customerId ?? marketplacePreset?.customerId ?? "",
+  );
+  const [customerName, setCustomerName] = useState(
+    initialData?.customerName ?? marketplacePreset?.customerName ?? "",
+  );
   const [filteredSales, setFilteredSales] = useState<SaleOption[]>(initialSales ?? []);
   const [loadingSales, setLoadingSales] = useState(false);
-  const [saleId, setSaleId] = useState(initialData?.saleId ?? "");
-  const [items, setItems] = useState<LineItem[]>(initialData?.items ?? [emptyItem()]);
+  const [saleId, setSaleId] = useState(initialData?.saleId ?? marketplacePreset?.saleId ?? "");
+  const [items, setItems] = useState<LineItem[]>(
+    initialData?.items ?? marketplacePreset?.items ?? [emptyItem()],
+  );
   const [cnType, setCnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
   const [payments, setPayments] = useState<PaymentChannelRow[]>(
@@ -121,11 +148,17 @@ const CreditNoteForm = ({
       ? initialData.payments
       : initialData?.cashBankAccountId
         ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
-        : [{ cashBankAccountId: "", amount: 0 }],
+        : [{ cashBankAccountId: marketplacePreset?.cashBankAccountId ?? "", amount: 0 }],
   );
-  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
-  const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
+  const [vatType, setVatType] = useState<string>(
+    initialData?.vatType ?? marketplacePreset?.vatType ?? defaultVatType,
+  );
+  const [vatRate, setVatRate] = useState<number>(
+    initialData?.vatRate ?? marketplacePreset?.vatRate ?? defaultVatRate,
+  );
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(
+    marketplacePreset ? [...products, ...marketplacePreset.products] : products,
+  );
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
@@ -317,7 +350,13 @@ const CreditNoteForm = ({
     }
 
     let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
-    if (settlementType === "CASH_REFUND") {
+    if (marketplacePreset) {
+      // คืนเงินช่องทางขายต้องออกจากบัญชีพักเงินของช่องทางเต็มจำนวนเสมอ
+      // ไม่เปิดให้แยกช่องทางจ่ายเหมือนใบลดหนี้หน้าร้าน
+      submitPayments = [
+        { cashBankAccountId: marketplacePreset.cashBankAccountId, amount: netAmount },
+      ];
+    } else if (settlementType === "CASH_REFUND") {
       const activePayments = payments.filter((row) => row.amount > 0);
       if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
       if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
@@ -349,7 +388,10 @@ const CreditNoteForm = ({
           setError(result.error);
         } else {
           setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
-          setTimeout(() => router.push("/admin/credit-notes"), 1500);
+          const destination = marketplacePreset
+            ? `/admin/sales/${marketplacePreset.channelSlug}/settlements`
+            : "/admin/credit-notes";
+          setTimeout(() => router.push(destination), 1500);
         }
       }
     });
@@ -357,6 +399,35 @@ const CreditNoteForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {marketplacePreset ? (
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-5 dark:border-sky-400/30 dark:bg-sky-500/10">
+          <h2 className="font-kanit text-lg font-semibold text-sky-900 dark:text-sky-100">
+            รับคืนสินค้า {marketplacePreset.channelLabel}
+          </h2>
+          <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-sky-700 dark:text-sky-300">ใบขายอ้างอิง</dt>
+              <dd className="font-mono font-medium text-sky-950 dark:text-sky-50">{marketplacePreset.saleNo}</dd>
+            </div>
+            <div>
+              <dt className="text-sky-700 dark:text-sky-300">{marketplacePreset.orderRefLabel}</dt>
+              <dd className="font-medium text-sky-950 dark:text-sky-50">{marketplacePreset.orderRefNo}</dd>
+            </div>
+            <div>
+              <dt className="text-sky-700 dark:text-sky-300">ลูกค้า</dt>
+              <dd className="font-medium text-sky-950 dark:text-sky-50">{marketplacePreset.customerName}</dd>
+            </div>
+            <div>
+              <dt className="text-sky-700 dark:text-sky-300">คืนเงินออกจาก</dt>
+              <dd className="font-medium text-sky-950 dark:text-sky-50">{marketplacePreset.holdingAccountLabel}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-sm text-sky-800 dark:text-sky-200">
+            เก็บเฉพาะรายการที่ได้ของกลับมาจริง แล้วแก้จำนวนให้ตรงกับที่รับคืน ระบบจะรับสินค้าเข้าสต็อกและตัดยอดคืนออกจากบัญชีพักเงินให้อัตโนมัติ
+            จากนั้นใบลดหนี้นี้จะไปหักในรอบรับเงินรอบถัดไปเอง
+          </p>
+        </div>
+      ) : null}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="font-kanit text-lg font-semibold text-[#1e3a5f] mb-5 pb-3 border-b border-gray-100 dark:text-sky-300 dark:border-white/10">
           ข้อมูลใบลดหนี้ (Credit Note)
@@ -372,6 +443,7 @@ const CreditNoteForm = ({
               className={inputCls}
             />
           </div>
+          {marketplacePreset ? null : (
           <div>
             <label className={labelCls}>ลูกค้า <span className="text-red-500">*</span></label>
             <SearchableSelect
@@ -383,6 +455,8 @@ const CreditNoteForm = ({
               placeholder="โปรดระบุลูกค้า"
             />
           </div>
+          )}
+          {marketplacePreset ? null : (
           <div>
             <label className={labelCls}>อ้างอิงใบขาย</label>
             <SearchableSelect
@@ -399,8 +473,10 @@ const CreditNoteForm = ({
               placeholder={loadingSales ? "กำลังโหลด..." : customerId ? "-- ไม่อ้างอิง --" : "เลือกลูกค้าก่อน"}
               disabled={!customerId || loadingSales}
             />
-            <input type="hidden" name="saleId" value={saleId} />
           </div>
+          )}
+          <input type="hidden" name="saleId" value={saleId} />
+          {marketplacePreset ? <input type="hidden" name="settlementType" value="CASH_REFUND" /> : (
           <div>
             <label className={labelCls}>การชำระ CN</label>
             <input type="hidden" name="settlementType" value={settlementType} />
@@ -425,7 +501,8 @@ const CreditNoteForm = ({
               </button>
             </div>
           </div>
-          {settlementType === "CASH_REFUND" ? (
+          )}
+          {marketplacePreset ? null : settlementType === "CASH_REFUND" ? (
             <div>
               <PaymentChannelsInput
                 accounts={cashBankAccounts}
@@ -442,6 +519,7 @@ const CreditNoteForm = ({
               ตั้งหนี้จะยังไม่สร้างรายการเงินออก และไม่ต้องระบุบัญชีจ่ายเงิน
             </div>
           )}
+          {marketplacePreset ? <input type="hidden" name="type" value="RETURN" /> : (
           <div>
             <label className={labelCls}>ประเภท CN <span className="text-red-500">*</span></label>
             <select
@@ -455,6 +533,7 @@ const CreditNoteForm = ({
               <option value="OTHER">อื่น ๆ</option>
             </select>
           </div>
+          )}
           <div className="md:col-span-3">
             <label className={labelCls}>หมายเหตุ</label>
             <input

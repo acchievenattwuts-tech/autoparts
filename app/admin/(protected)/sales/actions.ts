@@ -31,6 +31,10 @@ import {
 } from "@/lib/generated/prisma";
 import { generateTrackingToken } from "@/lib/delivery-tracking";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import {
+  getMarketplaceChannelConfig,
+  isManualMarketplaceChannel,
+} from "@/lib/marketplace/config";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
@@ -444,31 +448,36 @@ export async function createSale(
     items: validItems,
   } = parsed.data;
 
-  let manualShopeeShop: {
-    settlementCashBankAccountId: string | null;
-    defaultCustomerId: string | null;
+  // ใบขาย marketplace ถูกล็อกรูปแบบไว้ (ขายสด + จัดส่ง + ไม่คิด VAT + รับเข้าบัญชีพักเงิน)
+  // เพื่อให้ยอดคงเหลือบัญชีพักเงินเท่ากับเงินที่แพลตฟอร์มยังไม่โอนเสมอ
+  let marketplaceSetting: {
+    settlementCashBankAccountId: string;
+    defaultCustomerId: string;
   } | null = null;
-  if (channel === SaleChannel.SHOPEE) {
+  const isMarketplaceSale = isManualMarketplaceChannel(channel);
+  if (isMarketplaceSale) {
+    const channelConfig = getMarketplaceChannelConfig(channel);
     const marketplaceSession = await requirePermission("marketplace.manage").catch(() => null);
-    if (!marketplaceSession?.user?.id) return { error: "ไม่มีสิทธิ์บันทึกการขาย Shopee" };
-    if (!channelRefNo) return { error: "กรุณาระบุเลขคำสั่งซื้อ Shopee" };
+    if (!marketplaceSession?.user?.id) {
+      return { error: `ไม่มีสิทธิ์บันทึกการขาย ${channelConfig.label}` };
+    }
+    if (!channelRefNo) return { error: `กรุณาระบุ${channelConfig.orderRefLabel}` };
     if (
       paymentType !== SalePaymentType.CASH_SALE ||
       fulfillmentType !== FulfillmentType.DELIVERY ||
       vatType !== VatType.NO_VAT
     ) {
-      return { error: "รายการ Shopee ต้องเป็นขายสด จัดส่ง และไม่คิด VAT" };
+      return { error: `รายการ ${channelConfig.label} ต้องเป็นขายสด จัดส่ง และไม่คิด VAT` };
     }
-    manualShopeeShop = await db.shopeeShop.findFirst({
-      where: { manualMode: true },
-      orderBy: { createdAt: "asc" },
+    marketplaceSetting = await db.marketplaceChannelSetting.findFirst({
+      where: { channel, isActive: true },
       select: { settlementCashBankAccountId: true, defaultCustomerId: true },
     });
-    if (!manualShopeeShop?.settlementCashBankAccountId || !manualShopeeShop.defaultCustomerId) {
-      return { error: "กรุณาตั้งค่าบัญชีพักเงินและลูกค้าเริ่มต้นของ Shopee ก่อน" };
+    if (!marketplaceSetting) {
+      return { error: `กรุณาตั้งค่าบัญชีพักเงินและลูกค้าเริ่มต้นของ ${channelConfig.label} ก่อน` };
     }
-    if (customerId !== manualShopeeShop.defaultCustomerId) {
-      return { error: "ลูกค้าอ้างอิงไม่ตรงกับการตั้งค่า Shopee" };
+    if (customerId !== marketplaceSetting.defaultCustomerId) {
+      return { error: `ลูกค้าอ้างอิงไม่ตรงกับการตั้งค่า ${channelConfig.label}` };
     }
   }
 
@@ -501,15 +510,23 @@ export async function createSale(
     }
   }
   if (
-    channel === SaleChannel.SHOPEE &&
-    (payments.length !== 1 || payments[0]?.cashBankAccountId !== manualShopeeShop?.settlementCashBankAccountId)
+    isMarketplaceSale &&
+    (payments.length !== 1 ||
+      payments[0]?.cashBankAccountId !== marketplaceSetting?.settlementCashBankAccountId)
   ) {
-    return { error: "รายการ Shopee ต้องรับยอดเต็มเข้าบัญชีพักเงิน Shopee ที่ตั้งค่าไว้" };
+    const channelConfig = getMarketplaceChannelConfig(channel);
+    return {
+      error: `รายการ ${channelConfig.label} ต้องรับยอดเต็มเข้า${channelConfig.holdingAccountLabel}ที่ตั้งค่าไว้`,
+    };
   }
 
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(saleDate);
-  const salePrefix = channel === SaleChannel.SHOPEE ? "SP" : paymentType === "CREDIT_SALE" ? "SAC" : "SA";
+  const salePrefix = isManualMarketplaceChannel(channel)
+    ? getMarketplaceChannelConfig(channel).saleDocPrefix
+    : paymentType === "CREDIT_SALE"
+      ? "SAC"
+      : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
   let createdSaleId = "";
   const stockCrossedToZero: string[] = [];
@@ -752,8 +769,12 @@ export async function createSale(
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
     await reportCriticalError(err, { scope: "sales.create" });
-    if (channel === SaleChannel.SHOPEE && err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return { error: "เลขคำสั่งซื้อ Shopee นี้ถูกบันทึกแล้ว" };
+    if (
+      isManualMarketplaceChannel(channel) &&
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return { error: `${getMarketplaceChannelConfig(channel).orderRefLabel}นี้ถูกบันทึกแล้ว` };
     }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -930,8 +951,10 @@ export async function updateSale(
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
-  if (existing.channel === SaleChannel.SHOPEE) {
-    return { error: "ใบขาย Shopee ไม่เปิดให้แก้ไข เพื่อรักษายอดตัดสต็อกและยอดกระทบยอด กรุณายกเลิกแล้วบันทึกใหม่" };
+  if (isManualMarketplaceChannel(existing.channel)) {
+    return {
+      error: `ใบขาย ${getMarketplaceChannelConfig(existing.channel).label} ไม่เปิดให้แก้ไข เพื่อรักษายอดตัดสต็อกและยอดกระทบยอด กรุณายกเลิกแล้วบันทึกใหม่`,
+    };
   }
   const mutationBlockMessage = await getDocumentMutationBlockMessage("Sale", id, "update");
   if (mutationBlockMessage) return { error: mutationBlockMessage };

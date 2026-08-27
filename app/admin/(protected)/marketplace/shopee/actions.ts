@@ -111,46 +111,6 @@ export async function disconnectShopeeShop(formData: FormData): Promise<void> {
 
 export type SettlementActionResult = { ok: true } | { ok: false; error: string };
 
-/** Sets the "Shopee พักเงิน" cash/bank account that Shopee sales settle into. */
-export async function setSettlementAccountAction(formData: FormData): Promise<SettlementActionResult> {
-  let session;
-  try {
-    session = await requirePermission("marketplace.manage");
-  } catch {
-    return { ok: false, error: "ไม่มีสิทธิ์จัดการการตั้งค่า" };
-  }
-
-  const shopRecordId = String(formData.get("shopRecordId") ?? "").trim();
-  const accountIdRaw = String(formData.get("accountId") ?? "").trim();
-  const accountId = accountIdRaw || null;
-  if (!shopRecordId) return { ok: false, error: "ไม่พบร้าน" };
-
-  if (accountId) {
-    const account = await db.cashBankAccount.findUnique({
-      where: { id: accountId },
-      select: { id: true, isActive: true },
-    });
-    if (!account || !account.isActive) return { ok: false, error: "ไม่พบบัญชีที่เลือก" };
-  }
-
-  await db.shopeeShop.update({
-    where: { id: shopRecordId },
-    data: { settlementCashBankAccountId: accountId },
-  });
-
-  await safeWriteAuditLog({
-    ...getAuditActorFromSession(session),
-    ...(await getRequestContext()),
-    action: AuditAction.UPDATE,
-    entityType: "ShopeeShop",
-    entityId: shopRecordId,
-    meta: { event: "SHOPEE_SET_SETTLEMENT_ACCOUNT", accountId },
-  });
-
-  revalidatePath(OVERVIEW_PATH);
-  return { ok: true };
-}
-
 /** Enables/disables automatic order pull (cron) for a shop. */
 export async function setSyncEnabledAction(formData: FormData): Promise<SettlementActionResult> {
   let session;

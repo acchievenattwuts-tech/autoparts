@@ -222,7 +222,7 @@ export async function generatePurchaseReturnNo(date?: Date): Promise<string> {
  * prefix: SA (cash) or SAC (credit)
  * Format: {prefix}{YYMM}{4-digit}
  */
-export async function generateSaleNo(prefix: "SA" | "SAC" | "SP", date?: Date,
+export async function generateSaleNo(prefix: "SA" | "SAC" | "SP" | "LZ", date?: Date,
 ): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
@@ -309,11 +309,18 @@ export async function generateCashBankTransferNo(date?: Date): Promise<string> {
   return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
-/** Manual Shopee payout settlement: SST{YYMM}{4-digit}. */
-export async function generateShopeeSettlementNo(date?: Date): Promise<string> {
+/**
+ * Manual marketplace payout settlement: {PREFIX}{YYMM}{4-digit}.
+ * prefix มาจาก config ของช่องทาง (SST = Shopee, LZS = Lazada) เพื่อให้เลขเอกสาร
+ * ของแต่ละช่องทางเดินคนละชุด อ่านแล้วรู้ทันทีว่าเป็นรอบของแพลตฟอร์มไหน
+ */
+export async function generateMarketplaceSettlementNo(
+  prefix: string,
+  date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
-  const pattern = `SST${year.slice(-2)}${month}`;
-  const last = await db.shopeeSettlement.findFirst({
+  const pattern = `${prefix}${year.slice(-2)}${month}`;
+  const last = await db.marketplaceSettlement.findFirst({
     where: { settlementNo: { startsWith: pattern } },
     orderBy: { settlementNo: "desc" },
     select: { settlementNo: true },

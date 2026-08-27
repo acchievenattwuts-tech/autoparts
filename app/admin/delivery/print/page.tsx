@@ -90,6 +90,8 @@ const DeliveryPrintPage = async ({
         saleNo: true,
         saleDate: true,
         status: true,
+        channel: true,
+        channelRefNo: true,
         customerName: true,
         customerPhone: true,
         shippingAddress: true,

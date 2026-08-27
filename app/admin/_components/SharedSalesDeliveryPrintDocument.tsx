@@ -6,6 +6,11 @@ import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocument
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
 import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
+  getMarketplaceChannelConfig,
+  isManualMarketplaceChannel,
+  type ManualMarketplaceChannel,
+} from "@/lib/marketplace/config";
+import {
   PRINT_BODY_BORDER_CLASS,
   PRINT_HEADER_CELL_CLASS,
   PRINT_SECTION_BORDER_CLASS,
@@ -56,6 +61,10 @@ type SalePrintItem = {
 type SalePrintSale = {
   saleNo: string;
   saleDate: Date | string;
+  /** ช่องทางขาย — ใบขาย marketplace ซ่อนข้อมูลการชำระเงินของร้าน */
+  channel?: string | null;
+  /** เลขคำสั่งซื้อของแพลตฟอร์ม ใช้จับคู่ตอนแพ็คของ */
+  channelRefNo?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   shippingAddress?: string | null;
@@ -140,6 +149,18 @@ const SharedSalesDeliveryPrintDocument = ({
   rootId?: string;
   rootClassName?: string;
 }) => {
+  // ใบขาย marketplace: ลูกค้าจ่ายเงินให้แพลตฟอร์มไปแล้ว เอกสารนี้เป็นใบเสร็จที่แนบไป
+  // ในกล่องให้ลูกค้า จึงไม่พิมพ์เลขบัญชี/QR/ช่องทางรับเงินของร้าน และไม่มีช่องลายเซ็น
+  const isMarketplaceSale = isManualMarketplaceChannel(sale.channel ?? "");
+  const marketplaceLabel = isMarketplaceSale
+    ? getMarketplaceChannelConfig(sale.channel as ManualMarketplaceChannel).label
+    : null;
+  // ใบเสร็จในกล่องเป็นจุดเดียวที่ลูกค้า marketplace เห็นช่องทางติดต่อร้านโดยตรง
+  const shopContactLines = [
+    shopConfig.shopPhone ? `โทร ${shopConfig.shopPhone}` : null,
+    shopConfig.shopLineId ? `LINE ${shopConfig.shopLineId}` : null,
+    shopConfig.shopWebsiteUrl,
+  ].filter((line): line is string => Boolean(line));
   const hasPaymentBreakdown = Boolean(payments && payments.length > 0);
   const paymentsTotal = payments?.reduce((sum, payment) => sum + Number(payment.amount), 0) ?? 0;
   const hasCash = hasPaymentBreakdown
@@ -148,13 +169,20 @@ const SharedSalesDeliveryPrintDocument = ({
   const hasTransfer = hasPaymentBreakdown
     ? payments!.some((payment) => payment.accountType === "BANK")
     : sale.paymentMethod === "TRANSFER";
-  const customerName = sale.customer?.name ?? sale.customerName ?? "-";
-  const customerPhone = sale.customer?.phone ?? sale.customerPhone ?? null;
+  // ใบขาย marketplace ผูกกับ "ลูกค้ากลาง" ของช่องทางเพื่อให้บัญชีเดินได้ แต่ใบเสร็จที่
+  // แนบไปในกล่องต้องเป็นชื่อผู้ซื้อจริงที่แอดมินคีย์ไว้ ไม่ใช่ชื่อลูกค้ากลาง
+  const customerName = isMarketplaceSale
+    ? sale.customerName?.trim() || sale.customer?.name || "-"
+    : sale.customer?.name ?? sale.customerName ?? "-";
+  const customerPhone = isMarketplaceSale
+    ? sale.customerPhone?.trim() || null
+    : sale.customer?.phone ?? sale.customerPhone ?? null;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const documentDateText = formatPrintDate(sale.saleDate);
   const netAmountInWords = formatThaiBahtText(Number(sale.netAmount));
   const hasPrintNotice = printNoticeLines.length > 0;
-  const hasPrintSupportBlock = Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE";
+  const hasPrintSupportBlock =
+    !isMarketplaceSale && (Boolean(transferPrimaryAccount) || sale.paymentType === "CASH_SALE");
   const shouldUsePromptPayCard = sale.paymentType === "CREDIT_SALE";
   const transferSlipLineId = shopConfig.shopLineId?.trim() || null;
   const isCancelled = sale.status === "CANCELLED";
@@ -177,7 +205,13 @@ const SharedSalesDeliveryPrintDocument = ({
 
       <PrintDocumentHeader
         shopConfig={shopConfig}
-        title={sale.paymentType === "CREDIT_SALE" ? "ใบแจ้งหนี้ / ใบส่งของ" : "ใบเสร็จรับเงิน"}
+        title={
+          isMarketplaceSale
+            ? "ใบเสร็จรับเงิน / ใบส่งสินค้า"
+            : sale.paymentType === "CREDIT_SALE"
+              ? "ใบแจ้งหนี้ / ใบส่งของ"
+              : "ใบเสร็จรับเงิน"
+        }
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
@@ -215,18 +249,30 @@ const SharedSalesDeliveryPrintDocument = ({
                 <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เลขที่เอกสาร</td>
                 <td className="font-mono font-semibold">{sale.saleNo}</td>
               </tr>
+              {isMarketplaceSale ? (
+                <tr>
+                  <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">
+                    เลขคำสั่งซื้อ {marketplaceLabel}
+                  </td>
+                  <td className="font-mono font-semibold">{sale.channelRefNo ?? "-"}</td>
+                </tr>
+              ) : null}
               <tr>
                 <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันที่เอกสาร</td>
                 <td>{formatPrintDate(sale.saleDate)}</td>
               </tr>
-              <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เงื่อนไขชำระ</td>
-                <td>{`${sale.creditTerm ?? 0} วัน`}</td>
-              </tr>
-              <tr>
-                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันครบกำหนด</td>
-                <td>{formatPrintDate(dueDate)}</td>
-              </tr>
+              {isMarketplaceSale ? null : (
+                <>
+                  <tr>
+                    <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เงื่อนไขชำระ</td>
+                    <td>{`${sale.creditTerm ?? 0} วัน`}</td>
+                  </tr>
+                  <tr>
+                    <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันครบกำหนด</td>
+                    <td>{formatPrintDate(dueDate)}</td>
+                  </tr>
+                </>
+              )}
             </tbody>
           </table>
         </div>
@@ -316,10 +362,24 @@ const SharedSalesDeliveryPrintDocument = ({
       </div>
 
       <div className="mt-auto">
-        {transferPrimaryAccount || sale.paymentType === "CASH_SALE" || hasPrintNotice ? (
+        {isMarketplaceSale ? (
+          <div className={`mb-5 ${PRINT_SECTION_BORDER_CLASS} px-3 py-2.5 text-xs`}>
+            <p className="font-semibold text-gray-900">
+              ขอบคุณที่อุดหนุน{shopConfig.shopName ? ` ${shopConfig.shopName}` : "ร้านของเรา"} ค่ะ
+            </p>
+            <p className="mt-1 text-gray-700">
+              สินค้ามีปัญหาหรือสอบถามอะไหล่เพิ่มเติม ติดต่อร้านได้โดยตรง ยินดีให้คำแนะนำ
+            </p>
+            {shopContactLines.length > 0 ? (
+              <p className="mt-1 font-medium text-gray-900">{shopContactLines.join("  |  ")}</p>
+            ) : null}
+          </div>
+        ) : null}
+        {hasPrintSupportBlock || hasPrintNotice ? (
           <div
             className={`mb-5 grid gap-4 ${hasPrintNotice && hasPrintSupportBlock ? "grid-cols-[minmax(0,6fr)_minmax(0,4fr)]" : "grid-cols-1"}`}
           >
+            {hasPrintSupportBlock ? (
             <div>
               {transferPrimaryAccount ? (
                 <div className={`grid grid-cols-[1fr_140px] gap-4 ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}>
@@ -458,6 +518,7 @@ const SharedSalesDeliveryPrintDocument = ({
                 </div>
               ) : null}
             </div>
+            ) : null}
 
             {hasPrintNotice ? (
               <div className={`${PRINT_SECTION_BORDER_CLASS} p-3`}>
@@ -473,7 +534,7 @@ const SharedSalesDeliveryPrintDocument = ({
         ) : null}
 
         <div className="receipt-footer">
-          {sale.paymentType === "CREDIT_SALE" ? (
+          {isMarketplaceSale ? null : sale.paymentType === "CREDIT_SALE" ? (
             <PrintSignatureGrid
               reserveVerifySpace={Boolean(verify)}
               columns={[

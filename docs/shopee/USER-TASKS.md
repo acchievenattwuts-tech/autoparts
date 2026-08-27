@@ -33,6 +33,7 @@
 - [ ] ตั้ง **stock buffer** ต่อร้าน/ต่อ mapping (กันขายเกิน เช่น สต็อกจริง 5 กันไว้ 1 → push 4)
 - [ ] เลือก **sync mode** ต่อ mapping: `monitor_only` / `push_internal_to_shopee` / `disabled`
 - [ ] รัน **dry-run** (จำลอง import โดยไม่สร้าง Sale จริง) แล้วตรวจผลก่อน approve
+- [ ] ตั้งค่า **บัญชีพักเงิน Shopee + ลูกค้าเริ่มต้น** ที่ `/admin/sales/shopee/settlements` (ใช้ร่วมกันทั้งโหมด API และโหมดคีย์เอง — ต้องเป็นบัญชีคนละใบกับช่องทางอื่น)
 
 ## 5. ยืนยันกฎธุรกิจ (Open business decisions — ต้องตอบก่อน implement Phase F+)
 

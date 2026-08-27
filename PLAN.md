@@ -41,6 +41,7 @@
   - [x] **ตัดสินใจไม่ใส่ toggle** ที่ `PrintFromListButton` (ปุ่ม "พิมพ์" เล็กต่อแถวใน 4 หน้ารายการ: sales, receipts, delivery, warranty-claims) — จะทำให้คอลัมน์ action รกทุกหน้ารายการ. ปุ่มนี้พิมพ์ผ่าน hidden iframe และยังได้ต้นฉบับอย่างเดียวตาม default ถูกต้อง (ถ้า hydrate ไม่ทันก่อน `print()` attribute จะไม่ถูกตั้ง ซึ่ง CSS `html:not([data-print-copies="2"])` ก็ fallback เป็นต้นฉบับอยู่แล้ว)
   - [x] `tsc --noEmit` + `eslint` (0 error) + `npm run build` + `npm test` (802 pass / 2 skip) ผ่านทั้ง 2 รอบ
   - [ ] เหลือทดสอบพิมพ์จริงกับเครื่องพิมพ์: ยืนยันโหมดต้นฉบับได้ 1 หน้าเป๊ะไม่มีหน้าว่างท้าย, `/admin/delivery/print` จำนวนหน้าโหมดต้นฉบับเท่าเดิมกับก่อนแก้ และปุ่มพิมพ์จากฟอร์ม/คิวจัดส่งส่ง `copies=2` ไปถึงปลายทางจริง
+- **Marketplace แบบคีย์เอง Shopee + Lazada (2026-08-27)** — ยุบโมดูล Shopee เดิมเป็นโครง marketplace เดียว (คีย์ขาย / คืนสินค้า / กระทบยอดรับเงิน) + แก้จุดที่กำไรคิดผิด 6 จุด + รายงานผู้บริหารเทียบช่องทาง. schema ขึ้น production แล้ว เหลือผู้ใช้ตั้งค่าบัญชีพักเงินและลูกค้าเริ่มต้น รายละเอียดด้านล่างหัวข้อ "Marketplace แบบคีย์เอง"
 - รักษาเอกสารให้ AI อ่านง่าย: ใช้ไฟล์นี้เป็น index และย้ายรายละเอียดลงเอกสารเฉพาะเรื่อง
 
 ## Current Priorities
@@ -510,6 +511,57 @@
 - [ ] ตั้งค่าเริ่มต้นหลัง db push: เข้า `/admin/profit-distributions/partners` เพิ่มผู้ร่วมทุน 4 คน + สัดส่วนตั้งต้นให้รวมได้ 100%
 - [ ] มอบสิทธิ์: grant `profit_distributions.*` รายคนที่หน้าผู้ใช้ (ผู้ที่ไม่ใช่ ADMIN จะไม่เห็นเมนูจนกว่าจะได้รับสิทธิ์)
 - ไม่แตะ: สต็อก/MAVG/`writeStockCard()`, เอกสารขาย-ซื้อ-รับชำระ, `FactProfit`/Profit Dashboard, ระบบสิทธิ์เดิม, storefront
+
+## Marketplace แบบคีย์เอง — Shopee + Lazada (2026-08-27)
+
+- สถานะ: **IMPLEMENTED + db push ขึ้น production แล้ว** เหลือขั้นตอนตั้งค่าโดยผู้ใช้ (ดู checklist ท้ายหัวข้อ)
+- ที่มา: จะเริ่มขายบน Lazada แต่ยังต่อ API ไม่ได้ จึงต้องคีย์เอง — ตอนตรวจ production พบว่าโมดูล "คีย์ขาย Shopee" ที่ทำไว้เมื่อ 2026-08-24 **ยังไม่เคยถูกใช้จริงเลยสักใบ** (ทุกตาราง Shopee 0 แถว) จึงยุบรวมเป็นโมดูล marketplace เดียวได้โดยไม่ต้อง migrate ข้อมูล
+
+### สิ่งที่เปลี่ยน (schema)
+- [x] `SaleChannel` เพิ่ม `LAZADA`
+- [x] `ProfitSourceType` เพิ่ม `OTHER_INCOME` — รายรับพิเศษที่แพลตฟอร์มจ่ายเพิ่ม (subsidy/bonus/ชดเชย) เข้ากำไรสุทธิเต็มจำนวนโดยไม่ไปเพิ่มฐานยอดขายจน %margin เพี้ยน
+- [x] ตารางใหม่ `MarketplaceChannelSetting` / `MarketplaceSettlement` / `MarketplaceSettlementLine` / `MarketplaceSettlementFee` (+ enum `MarketplaceSettlementDocType`, `MarketplaceFeeKind`)
+- [x] drop `ShopeeSettlement` / `ShopeeSettlementSale` / `ShopeeSettlementFee` (0 แถว) และตัด `manualMode` / `settlementCashBankAccountId` / `defaultCustomerId` ออกจาก `ShopeeShop` — เหลือแหล่งตั้งค่าเดียวคือ `MarketplaceChannelSetting`
+- [x] `CreditNote.channel` + index `[channel, status, cnDate]`
+
+### 3 flow ที่ใช้ร่วมกันทุกช่องทาง
+- [x] **คีย์ขาย** `/admin/sales/{shopee|lazada}/new` — ล็อก ขายสด + จัดส่ง + NO_VAT + ลูกค้าเริ่มต้น + รับยอดเต็มเข้าบัญชีพักเงินของช่องทาง, เลขที่ `SP`/`LZ`, บังคับเลขคำสั่งซื้อ (unique ต่อ channel), แก้ไขไม่ได้ (ยกเลิกแล้วคีย์ใหม่)
+- [x] **คืนสินค้า** `/admin/sales/{slug}/returns/new` — เลือกใบขาย → ฟอร์ม CN ที่ล็อก `RETURN` + `CASH_REFUND` + คืนเงินออกจากบัญชีพักเงิน, รายการสินค้าโหลดจาก server มาให้แก้จำนวน, สินค้าเข้าสต็อกคืนแบบ `RETURN_IN` ตามกลไก CN เดิมทุกอย่าง
+- [x] **รับเงิน** `/admin/sales/{slug}/settlements` — เลือกใบขาย (+) และใบลดหนี้ (−) พร้อมกัน คีย์ค่าธรรมเนียม (ยอดติดลบ) และรายการปรับปรุง (บวก/ลบ) → `ยอดขาย − ยอดคืน − ค่าธรรมเนียม + รายรับพิเศษ = เงินเข้าจริง` ต่างเกิน 0.005 บันทึกไม่ได้
+- [x] เอกสารที่ระบบสร้างใน transaction เดียว: `Expense` (ค่าธรรมเนียมสุทธิ, channel-tagged) + `CashBankAdjustment` IN (เฉพาะเมื่อมีรายรับพิเศษ) + `CashBankTransfer` (บัญชีพัก → ธนาคารจริง) + `MarketplaceSettlement` + lines + fees
+- [x] ยกเลิกรอบ = กลับรายการทั้ง 4 ชิ้น + ปลด `activeSaleId` / `activeCreditNoteId` ให้เอกสารกลับมาเลือกได้ + deactivate FactProfit
+
+### กำไรถูกต้อง — 6 จุดที่แก้
+- [x] **ยอดคืนถูกหักจากกำไรของช่องทางแล้ว** — `rebuildCreditNoteProfitFacts()` set `channel` จากใบลดหนี้/ใบขายต้นทาง (เดิม null เสมอ ทำให้กำไรขั้นต้นของช่องทางสูงเกินจริงเต็มจำนวนที่คืน)
+- [x] **ค่าธรรมเนียมข้ามเดือนแก้ด้วย matching** — `rebuildMarketplaceSettlementProfitFacts()` ปันค่าธรรมเนียมกลับไปยังใบขายแต่ละใบตามสัดส่วนยอดขาย และลงวันที่เป็น **วันที่ขาย** ไม่ใช่วันที่เงินเข้า → ขายสิ้นเดือนแต่โอนเดือนถัดไปไม่ทำให้กำไรสองเดือนเพี้ยน (ห้ามเรียก `rebuildExpenseProfitFacts()` กับใบค่าธรรมเนียมนี้ เพราะจะเขียนทับวันที่กลับเป็น `expenseDate`)
+- [x] **รายรับพิเศษเข้ากำไร** ผ่าน `OTHER_INCOME` (เงินเข้าบัญชีพักผ่าน `CashBankAdjustment` ซึ่งไม่แตะ FactProfit ตัวมันเอง)
+- [x] **อุดช่องยกเลิกเอกสารข้ามหลัง** — เพิ่ม guard ใน `document-mutation-guard` ให้ `Expense` / `CashBankTransfer` / `CashBankAdjustment` / `CreditNote` ที่ผูกกับรอบ ACTIVE ยกเลิกตรง ๆ ไม่ได้ และ wire เข้า `cancelExpense`, `cancelCashBankTransfer`, `cancelCashBankAdjustment` (เดิมทั้งสามไม่มี reference-chain check เลย — ผิด `.rules` §8)
+- [x] **เลิกใช้คำว่า "กำไรสุทธิ" กับตัวเลขระดับช่องทาง** — ใช้ "เหลือจริง (หลังค่าธรรมเนียม)" แทน เพราะค่าใช้จ่ายส่วนกลาง (`Expense.channel = null`) ไม่ได้ปันเข้าช่องทาง
+- [x] backfill `CreditNote.channel` + `FactProfit.channel` ของ `SALE_RETURN`/`EXPENSE` (`prisma/scripts/backfill-fact-profit-channel.ts` — รันบน production แล้ว 449 rows, ตรวจ identity `Σnet = Σgross − Σexpense` ได้ผลต่าง 0.00)
+
+### รายงานผู้บริหาร `/admin/reports/marketplace`
+- [x] การ์ดสรุป: ยอดขายสุทธิ / กำไรขั้นต้น / ค่าธรรมเนียม (+% ของยอดขาย) / เหลือจริง
+- [x] ตารางเทียบช่องทาง หน้าร้าน vs Shopee vs Lazada → แถวค่าใช้จ่ายส่วนกลาง → **กำไรสุทธิทั้งร้าน**
+- [x] เตือนค่าธรรมเนียมที่ยังไม่รับรู้ (ประมาณจาก %ค่าธรรมเนียมเฉลี่ยของรอบที่ผ่านมา × ยอดขายที่ยังไม่กระทบยอด)
+- [x] สินค้ากำไรดีที่สุด / **สินค้าที่ขาดทุนหลังค่าธรรมเนียม**
+- [x] ค่าธรรมเนียมแยกประเภท + สุขภาพช่องทาง (ยอดค้างรับ, ออเดอร์เก่าสุดที่ยังไม่ได้เงิน, อัตราคืนสินค้า)
+
+### เชื่อมกับโมดูลแบ่งกำไรผู้ร่วมทุน
+- [x] `buildDistributionPreview()` เพิ่ม `pendingChannelFees` และหน้า `/admin/profit-distributions/new` ขึ้นแบนเนอร์เตือนก่อนประกาศงวด
+- ถ้าประกาศแบ่งกำไรไปก่อนแล้วค่าธรรมเนียมเพิ่งมาทีหลัง ระบบเดิมรองรับอยู่แล้ว: ส่วนต่างจะไปโผล่เป็นยอดยกมาแบบ `RESTATED` ของงวดถัดไป (`computeCarryForward()`, lookback 36 เดือน)
+
+### ฟอร์มพิมพ์ — ใบเสร็จแนบในกล่อง (ไม่ใช่ใบติดหน้ากล่อง)
+- [x] `SharedSalesDeliveryPrintDocument` รู้จัก `sale.channel` — ใบ marketplace ใช้หัวเอกสาร "ใบเสร็จรับเงิน / ใบส่งสินค้า", เพิ่มแถวเลขคำสั่งซื้อ, ตัดแถวเงื่อนไขชำระ/วันครบกำหนด
+- [x] **ซ่อนบล็อกการชำระเงินทั้งก้อน** (เลขบัญชี/PromptPay QR/ตารางช่องทางรับเงิน) แล้วใส่ข้อความขอบคุณ + ชวนติดต่อร้านโดยตรง + ช่องทางติดต่อร้านแทน
+- [x] **ตัดช่องลายเซ็นออกทั้งแถว** — ใบที่แนบในกล่องไม่มีใครเซ็น
+- [x] ชื่อบนใบเสร็จใช้ **ชื่อผู้ซื้อที่คีย์เอง** มาก่อนลูกค้ากลางของช่องทาง + ฟอร์มคีย์ขายเพิ่มช่อง "ชื่อผู้ซื้อ / เบอร์โทรผู้ซื้อ" และซ่อนช่องเครดิต
+- [x] อัปเดตผู้ใช้ทุกทาง: หน้า `/admin/sales/[id]` และ `/admin/delivery/print` (เพิ่ม `channel`/`channelRefNo` ใน select)
+
+### ต้องทำโดยผู้ใช้ก่อนเริ่มคีย์จริง
+- [ ] สร้าง `CashBankAccount` บัญชีพักเงินแยกใบต่อช่องทาง (เช่น `MKT-LAZADA` "พักเงิน Lazada") — ห้ามใช้บัญชีเดียวกันสองช่องทาง ระบบบล็อกไว้แล้ว
+- [ ] สร้าง/เลือกลูกค้าเริ่มต้นของแต่ละช่องทาง
+- [ ] เข้า `/admin/sales/lazada/settlements` แล้วบันทึกการตั้งค่าครั้งแรก (Shopee โค้ดพร้อมแล้วแต่ยังไม่ต้องตั้งจนกว่าจะเริ่มขายจริง)
+- [ ] มอบสิทธิ์ `marketplace.manage` + `expenses.create/cancel` + `cash_bank.transfers.create/cancel` + `cash_bank.adjustments.create/cancel` ให้ผู้ที่จะกระทบยอด
 
 ## AI chat model grounding shadow — Option B (2026-08-14)
 - สถานะ: **IMPLEMENTED SHADOW / ยังไม่ flip hard filter** — production reply/search/filter เหมือน baseline ทุกกรณี

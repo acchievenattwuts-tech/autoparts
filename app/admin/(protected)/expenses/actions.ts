@@ -13,6 +13,7 @@ import {
 import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, VatType } from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
@@ -259,6 +260,13 @@ export async function cancelExpense(
     if (!expense)                        return { error: "ไม่พบเอกสาร" };
     if (expense.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
+    const mutationBlockMessage = await getDocumentMutationBlockMessage(
+      "Expense",
+      expenseId,
+      "cancel",
+    );
+    if (mutationBlockMessage) return { error: mutationBlockMessage };
+
     const beforeSnapshot = await getExpenseAuditSnapshot(expenseId);
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
@@ -315,6 +323,12 @@ export async function updateExpense(
   const existing = await db.expense.findUnique({ where: { id } });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+
+  // ใบค่าธรรมเนียมของรอบรับเงินช่องทางขายแก้ไขไม่ได้ — การบันทึกใหม่จะเรียก
+  // rebuildExpenseProfitFacts() ซึ่งเขียนทับ FactProfit ที่รอบรับเงินปันไว้ตามวันขาย
+  // ทำให้ค่าธรรมเนียมเด้งกลับไปตกเป็นต้นทุนของเดือนที่เงินเข้าแทน
+  const updateBlockMessage = await getDocumentMutationBlockMessage("Expense", id, "update");
+  if (updateBlockMessage) return { error: updateBlockMessage };
 
   let items: z.infer<typeof expenseItemSchema>[] = [];
   try {

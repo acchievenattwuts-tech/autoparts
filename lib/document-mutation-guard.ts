@@ -11,7 +11,9 @@ export type MutableDocumentEntityType =
   | "CustomerAdvanceRefund"
   | "Expense"
   | "WarrantyClaim"
-  | "ShopeeSettlement";
+  | "CashBankTransfer"
+  | "CashBankAdjustment"
+  | "MarketplaceSettlement";
 
 export type DocumentMutationAction = "update" | "cancel" | "reopen";
 
@@ -38,7 +40,8 @@ type GuardDb = {
   supplierPaymentItem?: { findMany(args: FindManyArgs): FindManyResult };
   supplierAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
   customerAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
-  shopeeSettlementSale?: { findMany(args: FindManyArgs): FindManyResult };
+  marketplaceSettlementLine?: { findMany(args: FindManyArgs): FindManyResult };
+  marketplaceSettlement?: { findMany(args: FindManyArgs): FindManyResult };
 };
 
 const allow = (): MutationBlockResult => ({
@@ -125,7 +128,9 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   CustomerAdvanceRefund: "/admin/customer-advance-refunds",
   Expense: "/admin/expenses",
   WarrantyClaim: "/admin/warranty-claims",
-  ShopeeSettlement: "/admin/sales/shopee/settlements",
+  CashBankTransfer: "/admin/cash-bank/transfers",
+  CashBankAdjustment: "/admin/cash-bank/adjustments",
+  MarketplaceSettlement: "/admin/marketplace/settlements",
 };
 
 export type MutationBlockReferenceLink = {
@@ -166,7 +171,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
             },
             select: { id: true, claimNo: true },
           }) ?? Promise.resolve([]),
-          database.shopeeSettlementSale?.findMany({
+          database.marketplaceSettlementLine?.findMany({
             where: { saleId: entityId, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
             select: { settlement: { select: { id: true, settlementNo: true } } },
           }) ?? Promise.resolve([]),
@@ -175,7 +180,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
           ...mapDirectRefs(creditNotes, "CreditNote", "cnNo"),
           ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
           ...mapDirectRefs(claims, "WarrantyClaim", "claimNo"),
-          ...mapNestedRefs(settlements, "settlement", "ShopeeSettlement", "settlementNo"),
+          ...mapNestedRefs(settlements, "settlement", "MarketplaceSettlement", "settlementNo"),
         ]);
       }
 
@@ -197,12 +202,48 @@ export function createDocumentMutationGuard(database: GuardDb) {
       }
 
       if (entityType === "CreditNote") {
-        const receiptItems =
-          (await database.receiptItem?.findMany({
-          where: { cnId: entityId, receipt: { status: "ACTIVE" } },
-          select: { receipt: { select: { id: true, receiptNo: true } } },
-        })) ?? [];
-        return block("ถูกนำไปใช้ที่ใบเสร็จรับเงิน", mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
+        const [receiptItems, settlements] = await Promise.all([
+          database.receiptItem?.findMany({
+            where: { cnId: entityId, receipt: { status: "ACTIVE" } },
+            select: { receipt: { select: { id: true, receiptNo: true } } },
+          }) ?? Promise.resolve([]),
+          database.marketplaceSettlementLine?.findMany({
+            where: {
+              creditNoteId: entityId,
+              activeCreditNoteId: { not: null },
+              settlement: { status: "ACTIVE" },
+            },
+            select: { settlement: { select: { id: true, settlementNo: true } } },
+          }) ?? Promise.resolve([]),
+        ]);
+        return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
+          ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
+          ...mapNestedRefs(settlements, "settlement", "MarketplaceSettlement", "settlementNo"),
+        ]);
+      }
+
+      // ใบค่าธรรมเนียม / ใบโอนเงิน / ใบปรับยอด ที่ถูกสร้างโดยรอบรับเงิน marketplace
+      // ต้องยกเลิกผ่านการยกเลิกรอบเท่านั้น มิฉะนั้นเอกสารรอบจะยัง ACTIVE ทั้งที่
+      // ค่าธรรมเนียมหายไปแล้ว ทำให้ทั้งกำไรและยอดบัญชีพักเงินเพี้ยน
+      if (
+        entityType === "Expense" ||
+        entityType === "CashBankTransfer" ||
+        entityType === "CashBankAdjustment"
+      ) {
+        const field =
+          entityType === "Expense"
+            ? "expenseId"
+            : entityType === "CashBankTransfer"
+              ? "cashBankTransferId"
+              : "cashBankAdjustmentId";
+        const settlements =
+          (await database.marketplaceSettlement?.findMany({
+            where: { [field]: entityId, status: "ACTIVE" },
+            select: { id: true, settlementNo: true },
+          })) ?? [];
+        return block(
+          "ถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน",
+          mapDirectRefs(settlements, "MarketplaceSettlement", "settlementNo"),
         );
       }
 

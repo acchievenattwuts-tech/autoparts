@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, dbTx } from "@/lib/db";
 import { generateCashBankAdjustmentNo, generateCashBankTransferNo } from "@/lib/doc-number";
+import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CashBankAccountType,
@@ -514,6 +515,13 @@ export async function cancelCashBankTransfer(transferId: string, formData: FormD
     const cancelNote = String(formData.get("cancelNote") || "").trim();
     if (!cancelNote) return { error: "กรุณาระบุเหตุผลที่ยกเลิกรายการโอนเงิน" };
 
+    const mutationBlockMessage = await getDocumentMutationBlockMessage(
+      "CashBankTransfer",
+      transferId,
+      "cancel",
+    );
+    if (mutationBlockMessage) return { error: mutationBlockMessage };
+
     const beforeSnapshot = await getCashBankTransferAuditSnapshot(transferId);
     await dbTx(async (tx) => {
       const transfer = await tx.cashBankTransfer.findUnique({
@@ -716,6 +724,13 @@ export async function cancelCashBankAdjustment(adjustmentId: string, formData: F
 
     const cancelNote = String(formData.get("cancelNote") || "").trim();
     if (!cancelNote) return { error: "กรุณาระบุเหตุผลที่ยกเลิกรายการปรับยอด" };
+
+    const mutationBlockMessage = await getDocumentMutationBlockMessage(
+      "CashBankAdjustment",
+      adjustmentId,
+      "cancel",
+    );
+    if (mutationBlockMessage) return { error: mutationBlockMessage };
 
     const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
     await dbTx(async (tx) => {

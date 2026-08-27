@@ -172,6 +172,8 @@ const SaleForm = ({
   submitLocked = false,
   canPrint = false,
   channel = "STORE",
+  channelLabel = "",
+  orderRefLabel = "",
   defaultCustomerId = "",
   defaultCashBankAccountId = "",
 }: {
@@ -186,11 +188,17 @@ const SaleForm = ({
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
   submitLocked?: boolean;
   canPrint?: boolean;
-  channel?: "STORE" | "SHOPEE";
+  channel?: "STORE" | "SHOPEE" | "LAZADA";
+  /** ชื่อช่องทางที่ใช้ในข้อความ เช่น "Lazada" — ว่างไว้เมื่อขายหน้าร้าน */
+  channelLabel?: string;
+  /** ป้ายช่องเลขคำสั่งซื้อ เช่น "เลขคำสั่งซื้อ Lazada" */
+  orderRefLabel?: string;
   defaultCustomerId?: string;
   defaultCashBankAccountId?: string;
 }) => {
-  const isShopee = channel === "SHOPEE";
+  const isMarketplace = channel !== "STORE";
+  const marketplaceLabel = channelLabel || channel;
+  const marketplaceRefLabel = orderRefLabel || `เลขคำสั่งซื้อ ${marketplaceLabel}`;
   const router = useRouter();
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -220,16 +228,16 @@ const SaleForm = ({
         : [{ cashBankAccountId: defaultCashBankAccountId, amount: 0 }],
   );
   const primaryAccountId = payments[0]?.cashBankAccountId ?? "";
-  const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? (isShopee ? "DELIVERY" : "PICKUP"));
-  const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? (isShopee ? "จัดส่งตามที่อยู่ในคำสั่งซื้อ Shopee" : ""));
+  const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? (isMarketplace ? "DELIVERY" : "PICKUP"));
+  const [shippingAddress, setShippingAddress] = useState(initialData?.shippingAddress ?? (isMarketplace ? `จัดส่งตามที่อยู่ในคำสั่งซื้อ ${marketplaceLabel}` : ""));
   const [shippingFee, setShippingFee]         = useState(initialData?.shippingFee ?? 0);
-  const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? (isShopee ? "OTHER" : "NONE"));
+  const [shippingMethod, setShippingMethod]   = useState<string>(initialData?.shippingMethod ?? (isMarketplace ? "OTHER" : "NONE"));
   const [destLat, setDestLat] = useState<number | null>(initialData?.destLatitude ?? null);
   const [destLon, setDestLon] = useState<number | null>(initialData?.destLongitude ?? null);
   const [pinSheetOpen, setPinSheetOpen] = useState(false);
   const [saveAsCustomerDefault, setSaveAsCustomerDefault] = useState(false);
 
-  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? (isShopee ? "NO_VAT" : defaultVatType));
+  const [vatType, setVatType] = useState<string>(initialData?.vatType ?? (isMarketplace ? "NO_VAT" : defaultVatType));
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
   const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
   const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
@@ -244,7 +252,7 @@ const SaleForm = ({
   const activeTier = deriveTier(selectedCustomerId);
   const draftKey = `${getSaleDraftKey(
     persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
-  )}${isShopee && !persistedSaleId ? ":shopee" : ""}`;
+  )}${isMarketplace && !persistedSaleId ? `:${channel.toLowerCase()}` : ""}`;
   const lastPersistedDraftRef = useRef("");
 
   const getDraftSnapshot = useCallback(() =>
@@ -596,9 +604,9 @@ const SaleForm = ({
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
   useEffect(() => {
-    if (!isShopee || !defaultCashBankAccountId) return;
+    if (!isMarketplace || !defaultCashBankAccountId) return;
     setPayments([{ cashBankAccountId: defaultCashBankAccountId, amount: netAmount }]);
-  }, [defaultCashBankAccountId, isShopee, netAmount]);
+  }, [defaultCashBankAccountId, isMarketplace, netAmount]);
 
   /** Re-apply the tier price to every line that already has a product selected. */
   const repriceItemsToTier = (tier: SalePriceTier) => {
@@ -653,7 +661,7 @@ const SaleForm = ({
 
     if (submitLocked) return;
 
-    if (isShopee && !channelRefNo.trim()) { setError("กรุณาระบุเลขคำสั่งซื้อ Shopee"); return; }
+    if (isMarketplace && !channelRefNo.trim()) { setError(`กรุณาระบุ${marketplaceRefLabel}`); return; }
 
     if (!selectedCustomerId) { setError("กรุณาเลือกลูกค้า"); return; }
 
@@ -710,7 +718,7 @@ const SaleForm = ({
     const formData = new FormData(form);
     formData.set("saleDate", saleDate);
     formData.set("channel", channel);
-    if (isShopee) formData.set("channelRefNo", channelRefNo.trim());
+    if (isMarketplace) formData.set("channelRefNo", channelRefNo.trim());
     formData.set("saleType", saleType);
     formData.set("customerId", selectedCustomerId);
     formData.set("customerName", customerNameOverride);
@@ -761,7 +769,7 @@ const SaleForm = ({
           setAvailableDraft(null);
           setDraftStatus("");
           if (result.saleId) {
-            if (isShopee) {
+            if (isMarketplace) {
               router.replace(`/admin/sales/${result.saleId}`);
               router.refresh();
               return;
@@ -807,11 +815,11 @@ const SaleForm = ({
       )}
 
       {/* Header card */}
-      {isShopee && (
+      {isMarketplace && (
         <div className="rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-400/30 dark:bg-orange-500/10">
           <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:items-end">
             <div>
-              <label className={labelCls}>เลขคำสั่งซื้อ Shopee <span className="text-red-500">*</span></label>
+              <label className={labelCls}>{marketplaceRefLabel} <span className="text-red-500">*</span></label>
               <input
                 value={channelRefNo}
                 onChange={(event) => setChannelRefNo(event.target.value)}
@@ -822,7 +830,7 @@ const SaleForm = ({
               />
             </div>
             <p className="text-sm text-orange-800 dark:text-orange-200">
-              บันทึกเมื่อคำสั่งซื้อขึ้นสถานะพร้อมจัดส่ง ระบบจะตัดสต็อกและพักยอดขายเต็มจำนวนไว้ในบัญชี Shopee จากนั้นค่อยหักค่าธรรมเนียมในหน้ากระทบยอด
+              บันทึกเมื่อคำสั่งซื้อขึ้นสถานะพร้อมจัดส่ง ระบบจะตัดสต็อกและพักยอดขายเต็มจำนวนไว้ในบัญชีพักเงิน {marketplaceLabel} จากนั้นค่อยหักค่าธรรมเนียมในหน้ากระทบยอด
             </p>
           </div>
         </div>
@@ -834,7 +842,7 @@ const SaleForm = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className={labelCls}>
-              {isShopee ? "วันที่พร้อมจัดส่ง" : "วันที่ขาย"} <span className="text-red-500">*</span>
+              {isMarketplace ? "วันที่พร้อมจัดส่ง" : "วันที่ขาย"} <span className="text-red-500">*</span>
             </label>
             <input
               type="date"
@@ -847,9 +855,9 @@ const SaleForm = ({
           </div>
           <div>
             <label className={labelCls}>ลูกค้า</label>
-            {isShopee ? (
+            {isMarketplace ? (
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                {customerMap.get(selectedCustomerId)?.name ?? "ลูกค้า Shopee"}
+                {customerMap.get(selectedCustomerId)?.name ?? `ลูกค้า ${marketplaceLabel}`}
               </div>
             ) : <SearchableSelect
               options={customerOptions.map((c): SelectOption => ({
@@ -882,7 +890,7 @@ const SaleForm = ({
             </select>
           </div>
           <div>
-            <label className={labelCls}>ชื่อลูกค้า</label>
+            <label className={labelCls}>{isMarketplace ? "ชื่อผู้ซื้อ" : "ชื่อลูกค้า"}</label>
             <input
               type="text"
               name="customerName"
@@ -890,11 +898,16 @@ const SaleForm = ({
               value={customerNameOverride}
               onChange={(e) => setCustomerNameOverride(e.target.value)}
               className={inputCls}
-              placeholder="ไม่ระบุ (หรือพิมพ์ชื่อเอง)"
+              placeholder={isMarketplace ? `ชื่อผู้ซื้อตามคำสั่งซื้อ ${marketplaceLabel}` : "ไม่ระบุ (หรือพิมพ์ชื่อเอง)"}
             />
+            {isMarketplace ? (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                ชื่อนี้จะพิมพ์บนใบเสร็จที่แนบไปในกล่อง — ถ้าเว้นว่างจะขึ้นเป็นชื่อลูกค้ากลางของช่องทางแทน
+              </p>
+            ) : null}
           </div>
           <div>
-            <label className={labelCls}>เบอร์โทร</label>
+            <label className={labelCls}>{isMarketplace ? "เบอร์โทรผู้ซื้อ" : "เบอร์โทร"}</label>
             <input
               type="tel"
               name="customerPhone"
@@ -905,7 +918,7 @@ const SaleForm = ({
               placeholder="ไม่ระบุ"
             />
           </div>
-          <div>
+          {!isMarketplace && <div>
             <label className={labelCls}>เครดิต (วัน)</label>
             <AdminNumberInput
               name="creditTerm"
@@ -916,8 +929,8 @@ const SaleForm = ({
               className={inputCls}
               placeholder="0 = เงินสด, ว่าง = ไม่กำหนด"
             />
-          </div>
-          {!isShopee && <div>
+          </div>}
+          {!isMarketplace && <div>
             <label className={labelCls}>ประเภทการชำระ</label>
             <input type="hidden" name="paymentType" value={paymentType} />
             <div className="flex rounded-lg border border-gray-300 dark:border-white/20 overflow-hidden">
@@ -945,9 +958,9 @@ const SaleForm = ({
               </button>
             </div>
           </div>}
-          {isShopee ? (
+          {isMarketplace ? (
           <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200">
-            รับยอดเต็มเข้าบัญชีพักเงิน Shopee อัตโนมัติ (ยังไม่ใช่เงินเข้าธนาคารจริง)
+            รับยอดเต็มเข้าบัญชีพักเงิน {marketplaceLabel} อัตโนมัติ (ยังไม่ใช่เงินเข้าธนาคารจริง)
           </div>
           ) : paymentType === "CASH_SALE" ? (
           <div>
@@ -993,7 +1006,7 @@ const SaleForm = ({
           {/* VAT Settings */}
           <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">
             <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">ภาษี (VAT)</p>
-            {isShopee ? (
+            {isMarketplace ? (
               <p className="text-sm text-slate-600 dark:text-slate-300">ไม่คิด VAT ตามสถานะร้านที่ตั้งไว้</p>
             ) : (
             <div className="flex flex-wrap gap-2 items-center">
@@ -1035,7 +1048,7 @@ const SaleForm = ({
           การจัดส่ง
         </h2>
         <div className="space-y-4">
-          {!isShopee && <div className="flex items-center gap-3">
+          {!isMarketplace && <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700 dark:text-slate-300 w-24 shrink-0">การจัดส่ง</label>
             <div className="flex rounded-lg border border-gray-300 dark:border-white/20 overflow-hidden">
               <button

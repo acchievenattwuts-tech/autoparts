@@ -29,6 +29,9 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
   { id: "create-sale", label: "สร้างใบขายใหม่", href: "/admin/sales/new", permission: "sales.create", group: "create", keywords: "sale ขาย invoice",
   },
   { id: "create-shopee-sale", label: "บันทึกขาย Shopee", href: "/admin/sales/shopee/new", permission: "marketplace.manage", group: "create", keywords: "shopee marketplace ออเดอร์ พร้อมจัดส่ง" },
+  { id: "create-lazada-sale", label: "บันทึกขาย Lazada", href: "/admin/sales/lazada/new", permission: "marketplace.manage", group: "create", keywords: "lazada marketplace ออเดอร์ พร้อมจัดส่ง ลาซาด้า" },
+  { id: "create-lazada-return", label: "บันทึกคืนสินค้า Lazada", href: "/admin/sales/lazada/returns/new", permission: "marketplace.manage", group: "create", keywords: "lazada คืนสินค้า refund return ลาซาด้า" },
+  { id: "create-shopee-return", label: "บันทึกคืนสินค้า Shopee", href: "/admin/sales/shopee/returns/new", permission: "marketplace.manage", group: "create", keywords: "shopee คืนสินค้า refund return" },
   { id: "create-purchase", label: "สร้างใบซื้อใหม่", href: "/admin/purchases/new", permission: "purchases.create", group: "create", keywords: "purchase ซื้อ",
   },
   { id: "create-purchase-return", label: "สร้างใบคืนซื้อใหม่", href: "/admin/purchase-returns/new", permission: "purchase_returns.create", group: "create", keywords: "return คืน",
@@ -88,7 +91,8 @@ export const QUICK_COMMANDS: readonly QuickCommand[] = [
     keywords: "รายงาน เคลม สต็อก สินค้าเคลม claim stock",
   },
   { id: "nav-shopee-settlements", label: "กระทบยอดรับเงิน Shopee", href: "/admin/sales/shopee/settlements", permission: "marketplace.manage", group: "navigate", keywords: "shopee payout settlement ค่าธรรมเนียม รับเงิน" },
-  { id: "nav-reports-shopee", label: "รายงานผู้บริหาร Shopee", href: "/admin/reports/shopee", permission: "reports.view", group: "navigate", keywords: "shopee report กำไรขั้นต้น กำไรสุทธิ" },
+  { id: "nav-lazada-settlements", label: "กระทบยอดรับเงิน Lazada", href: "/admin/sales/lazada/settlements", permission: "marketplace.manage", group: "navigate", keywords: "lazada payout settlement ค่าธรรมเนียม รับเงิน ลาซาด้า" },
+  { id: "nav-reports-marketplace", label: "รายงานผู้บริหาร ช่องทางขาย", href: "/admin/reports/marketplace", permission: "reports.view", group: "navigate", keywords: "shopee lazada report กำไรขั้นต้น กำไรสุทธิ ค่าธรรมเนียม ช่องทาง" },
 
   // Personal
   { id: "personal-toggle-theme", label: "สลับ Dark / Light mode", action: "toggle-theme", group: "personal", keywords: "dark light theme mode",

@@ -1,6 +1,10 @@
 import { db } from "@/lib/db";
 import { DocStatus } from "@/lib/generated/prisma";
 import { aggregateProfitSummary, type ProfitSummary } from "@/lib/profit-dashboard";
+import {
+  estimatePendingChannelFees,
+  type ChannelFeeRateEstimate,
+} from "@/lib/marketplace/queries";
 import { getThailandMonthKey, parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 /**
@@ -411,6 +415,14 @@ export type DistributionPreview = {
   partners: PartnerOption[];
   cashHealth: CashHealth;
   hasActiveDistribution: boolean;
+  /**
+   * ค่าธรรมเนียมช่องทางขายที่ยังไม่รับรู้ในงวดนี้
+   *
+   * ค่าธรรมเนียม marketplace จะเข้ากำไรก็ต่อเมื่อกระทบยอดแล้ว และถูกลงวันที่ย้อนกลับ
+   * ไปวันขาย ดังนั้นงวดที่ยังมีออเดอร์ค้างรับเงินจะแสดงกำไรสูงกว่าความจริงชั่วคราว
+   * ถ้าประกาศแบ่งกำไรก่อน ส่วนต่างจะไปโผล่เป็นยอดยกมาแบบ RESTATED ของงวดถัดไป
+   */
+  pendingChannelFees: ChannelFeeRateEstimate;
 };
 
 export async function buildDistributionPreview(
@@ -420,16 +432,18 @@ export async function buildDistributionPreview(
   const { start, end } = getPeriodBounds(year, month);
   const periodKey = getPeriodKey(year, month);
 
-  const [summary, carryForward, partners, cashHealth, existing] = await Promise.all([
-    getPeriodProfitSummary(year, month),
-    computeCarryForward(year, month),
-    listActivePartners(),
-    getCashHealth(),
-    db.profitDistribution.findUnique({
-      where: { activePeriodKey: periodKey },
-      select: { id: true },
-    }),
-  ]);
+  const [summary, carryForward, partners, cashHealth, existing, pendingChannelFees] =
+    await Promise.all([
+      getPeriodProfitSummary(year, month),
+      computeCarryForward(year, month),
+      listActivePartners(),
+      getCashHealth(),
+      db.profitDistribution.findUnique({
+        where: { activePeriodKey: periodKey },
+        select: { id: true },
+      }),
+      estimatePendingChannelFees(start, end),
+    ]);
 
   return {
     year,
@@ -444,6 +458,7 @@ export async function buildDistributionPreview(
     partners,
     cashHealth,
     hasActiveDistribution: Boolean(existing),
+    pendingChannelFees,
   };
 }
 

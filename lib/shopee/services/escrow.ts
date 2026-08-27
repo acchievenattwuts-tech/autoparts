@@ -1,6 +1,13 @@
 import { db, dbTx } from "@/lib/db";
 import { generateExpenseNo } from "@/lib/doc-number";
-import { CashBankDirection, CashBankSourceType, Prisma, VatType } from "@/lib/generated/prisma";
+import {
+  CashBankDirection,
+  CashBankSourceType,
+  Prisma,
+  SaleChannel,
+  VatType,
+} from "@/lib/generated/prisma";
+import { getMarketplaceHoldingAccountId } from "@/lib/marketplace/queries";
 import { replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import {
@@ -40,7 +47,7 @@ export type ShopeeFeeExpenseDraftOrderImport = {
   saleId: string | null;
   rawPayload: Prisma.JsonValue | null;
   escrowLastError: string | null;
-  shop: { settlementCashBankAccountId: string | null };
+
   escrowExpense: { id: string; expenseNo: string; status: string } | null;
 };
 
@@ -110,16 +117,20 @@ export async function buildShopeeFeeExpenseDraft(orderImportId: string): Promise
       saleId: true,
       rawPayload: true,
       escrowLastError: true,
-      shop: { select: { settlementCashBankAccountId: true } },
       escrowExpense: { select: { id: true, expenseNo: true, status: true } },
     },
   });
   if (!order) return null;
-  return buildShopeeFeeExpenseDraftFromOrderImport(order);
+  return buildShopeeFeeExpenseDraftFromOrderImport(
+    order,
+    await getMarketplaceHoldingAccountId(SaleChannel.SHOPEE),
+  );
 }
 
 export function buildShopeeFeeExpenseDraftFromOrderImport(
   order: ShopeeFeeExpenseDraftOrderImport,
+  /** บัญชีพักเงินของช่องทาง — ย้ายมาอยู่ที่การตั้งค่า marketplace แล้ว */
+  settlementAccountId: string | null,
 ): ShopeeFeeExpenseDraft {
   const lines = extractShopeeEscrowFeeLines(order.rawPayload);
   const totalAmount = roundMoney(lines.reduce((sum, line) => sum + line.amount, 0));
@@ -131,8 +142,8 @@ export function buildShopeeFeeExpenseDraftFromOrderImport(
   if (!order.saleId) {
     blockers.push("ต้องสร้างบิลขายจาก Shopee order ก่อน");
   }
-  if (!order.shop.settlementCashBankAccountId) {
-    blockers.push("ยังไม่ได้ตั้งบัญชี Shopee พักเงิน");
+  if (!settlementAccountId) {
+    blockers.push("ยังไม่ได้ตั้งบัญชีพักเงิน Shopee");
   }
   if (lines.length === 0) {
     blockers.push("ยังไม่มี escrow_detail ใน snapshot ที่รองรับ ต้องรอ sync/live payload ที่ยืนยันแล้ว");
@@ -143,7 +154,7 @@ export function buildShopeeFeeExpenseDraftFromOrderImport(
     orderSn: order.orderSn,
     lines,
     totalAmount,
-    settlementAccountId: order.shop.settlementCashBankAccountId,
+    settlementAccountId,
     existingExpense: order.escrowExpense,
     blockers,
     lastError: order.escrowLastError,

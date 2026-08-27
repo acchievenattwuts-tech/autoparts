@@ -326,6 +326,64 @@ export async function notifyProfitDistributionCancelled(input: {
   });
 }
 
+/**
+ * แจ้งเตือนรอบรับเงินจากช่องทางขาย (Shopee / Lazada) — ทั้งกระดิ่งและ Telegram
+ * ผู้เรียกต้องห่อด้วย try/catch เสมอ เพื่อไม่ให้การแจ้งเตือนล้มเหลวไปทำให้
+ * ธุรกรรมการเงินที่บันทึกสำเร็จแล้วพัง
+ */
+export async function notifyMarketplaceSettlementRecorded(input: {
+  settlementId: string;
+  settlementNo: string;
+  channelLabel: string;
+  payoutAmount: string;
+  feeAmount: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.MARKETPLACE_SETTLEMENT_RECORDED,
+    severity: NotificationSeverity.INFO,
+    title: `รับเงิน ${input.channelLabel} ${input.settlementNo}`,
+    body: `เงินเข้าบัญชี ${input.payoutAmount} บาท หักค่าธรรมเนียม ${input.feeAmount} บาท`,
+    link: `/admin/marketplace/settlements/${input.settlementId}`,
+    entityType: "MarketplaceSettlement",
+    entityId: input.settlementId,
+  });
+}
+
+export async function notifyMarketplaceSettlementCancelled(input: {
+  settlementId: string;
+  settlementNo: string;
+  channelLabel: string;
+  cancelNote: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.MARKETPLACE_SETTLEMENT_CANCELLED,
+    severity: NotificationSeverity.WARNING,
+    title: `ยกเลิกรอบรับเงิน ${input.channelLabel} ${input.settlementNo}`,
+    body: `เหตุผล: ${input.cancelNote}`,
+    link: `/admin/marketplace/settlements/${input.settlementId}`,
+    entityType: "MarketplaceSettlement",
+    entityId: input.settlementId,
+  });
+}
+
+export async function notifyMarketplaceReturnRecorded(input: {
+  creditNoteId: string;
+  cnNo: string;
+  channelLabel: string;
+  saleNo: string;
+  totalAmount: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.MARKETPLACE_RETURN_RECORDED,
+    severity: NotificationSeverity.INFO,
+    title: `คืนสินค้า ${input.channelLabel} ${input.cnNo}`,
+    body: `อ้างอิงใบขาย ${input.saleNo} — คืนเงิน ${input.totalAmount} บาท และรับสินค้าเข้าสต็อกแล้ว`,
+    link: `/admin/credit-notes/${input.creditNoteId}`,
+    entityType: "CreditNote",
+    entityId: input.creditNoteId,
+  });
+}
+
 export type NotificationListItem = {
   id: string;
   type: NotificationType;

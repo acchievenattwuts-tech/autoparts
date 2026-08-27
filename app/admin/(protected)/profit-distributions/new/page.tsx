@@ -69,6 +69,29 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
         </div>
       </div>
 
+      {preview.pendingChannelFees.pendingSalesAmount > 0 ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-400/30 dark:bg-amber-500/10">
+          <p className="font-medium text-amber-900 dark:text-amber-100">
+            งวดนี้ยังมีค่าธรรมเนียมช่องทางขายที่ยังไม่รับรู้ ประมาณ{" "}
+            {preview.pendingChannelFees.estimatedPendingFee.toLocaleString("th-TH", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{" "}
+            บาท
+          </p>
+          <p className="mt-1 text-amber-800 dark:text-amber-200">
+            มียอดขายออนไลน์{" "}
+            {preview.pendingChannelFees.pendingSalesAmount.toLocaleString("th-TH", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}{" "}
+            บาท ที่แพลตฟอร์มยังไม่โอน ค่าธรรมเนียมจะถูกบันทึกย้อนกลับมาที่วันขายเมื่อกระทบยอด
+            ทำให้กำไรของงวดนี้ลดลงภายหลัง และส่วนต่างจะไปโผล่เป็นยอดยกมาของงวดถัดไป —
+            แนะนำให้กระทบยอดรับเงินให้ครบก่อนประกาศแบ่งกำไร
+          </p>
+        </div>
+      ) : null}
+
       <DeclareForm
         periodOptions={periodOptions.map((option) => ({
           periodKey: option.periodKey,

@@ -69,7 +69,8 @@
 
 - หน้า preview ออเดอร์ (`/orders/[id]`) เป็น dry-run — แสดงรายการ/ราคา/blockers ก่อนสร้าง Sale
 - **ราคา line** อ่านจาก `model_discounted_price` — ตรวจให้ตรงกับยอด Shopee ก่อนยืนยันเสมอ
-- บิล Shopee = `CASH_SALE` เข้าบัญชี "Shopee พักเงิน" → เงินจริงเข้าธนาคารบันทึกผ่านเมนู "โอนเงินระหว่างบัญชี"
+- บิล Shopee = `CASH_SALE` เข้า **บัญชีพักเงิน Shopee** → เงินจริงเข้าธนาคารบันทึกผ่านหน้า "กระทบยอดรับเงิน" (`/admin/sales/shopee/settlements`) ซึ่งจะออกใบค่าธรรมเนียมและใบโอนเงินให้อัตโนมัติ ดู [docs/marketplace](../marketplace/README.md)
+- ตั้งแต่ 2026-08-27 บัญชีพักเงินและลูกค้าเริ่มต้นย้ายไปอยู่ที่ `MarketplaceChannelSetting` แล้ว (ตั้งค่าที่หน้ากระทบยอดรับเงิน) — คอลัมน์ `ShopeeShop.settlementCashBankAccountId` ถูกถอดออก โหมด API และโหมดคีย์เองจึงใช้บัญชีเดียวกัน
 - สินค้าคุม lot → ต้องเลือก lot ก่อน (ปัจจุบัน preview จะ block ไว้)
 
 ---

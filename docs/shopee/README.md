@@ -4,6 +4,11 @@
 > แยกช่องทางการขาย (in-store vs Shopee), แจ้งเตือนเจ้าของร้าน (กระดิ่งใน-app + LINE OA),
 > และ sync การจัดส่ง/tracking โดย **ไม่กระทบ logic เดิมของหน้าร้านและ backoffice**
 
+> **โหมดคีย์เอง (2026-08-27)** — การบันทึกขาย/คืนสินค้า/กระทบยอดรับเงินแบบคีย์มือ
+> ย้ายไปอยู่ในโมดูลกลาง [docs/marketplace](../marketplace/README.md) ซึ่งใช้ร่วมกับ Lazada
+> เอกสารฉบับนี้ครอบเฉพาะการเชื่อม API เท่านั้น ทั้งสองโหมดใช้บัญชีพักเงินและลูกค้าเริ่มต้น
+> ชุดเดียวกันจาก `MarketplaceChannelSetting`
+
 ## หลักการแยกโมดูล (Isolation Principles)
 
 1. **โค้ดอยู่แยก** — ทุกอย่างของ Shopee อยู่ใน `lib/shopee/*`, `app/admin/(protected)/marketplace/*`,

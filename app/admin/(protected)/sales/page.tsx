@@ -2,11 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import Link from "next/link";
-import { Eye, Pencil, Plus, WalletCards, BarChart3 } from "lucide-react";
+import { Eye, Pencil, Plus, RotateCcw, WalletCards, BarChart3 } from "lucide-react";
 import { FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SalesChannelTabs from "./SalesChannelTabs";
+import {
+  getMarketplaceChannelConfig,
+  isManualMarketplaceChannel,
+} from "@/lib/marketplace/config";
 import SearchBar from "@/components/shared/SearchBar";
 import SaleCancelButton from "./SaleCancelButton";
 import Pagination from "@/components/shared/Pagination";
@@ -71,11 +75,13 @@ function getPaymentStatus(paymentType: SalePaymentType, amountRemain: Prisma.Dec
 const channelLabel: Record<SaleChannel, string> = {
   STORE:  "หน้าร้าน",
   SHOPEE: "Shopee",
+  LAZADA: "Lazada",
 };
-const channelTone = {
+const channelTone: Record<SaleChannel, "neutral" | "info" | "pending"> = {
   STORE:  "neutral",
   SHOPEE: "info",
-} as const;
+  LAZADA: "pending",
+};
 
 
 const SalesPage = async ({
@@ -105,7 +111,13 @@ const SalesPage = async ({
 
   const params = await searchParams;
   const paymentTypeFilter  = params.paymentType;
-  const channelFilter = params.channel === SaleChannel.SHOPEE ? SaleChannel.SHOPEE : SaleChannel.STORE;
+  const channelFilter: SaleChannel =
+    params.channel && params.channel in SaleChannel
+      ? (params.channel as SaleChannel)
+      : SaleChannel.STORE;
+  const marketplaceConfig = isManualMarketplaceChannel(channelFilter)
+    ? getMarketplaceChannelConfig(channelFilter)
+    : null;
   const shippingStatusFilter = params.shippingStatus;
   const fulfillmentTypeFilter = params.fulfillmentType;
   const paymentStatusFilter = params.paymentStatus;
@@ -211,14 +223,19 @@ const SalesPage = async ({
     <div className="space-y-4">
       <AdminPageHeader
         title="บันทึกการขาย"
-        description={channelFilter === SaleChannel.SHOPEE ? "ออเดอร์ Shopee ที่คีย์เมื่อตอนพร้อมจัดส่ง" : "ค้นหา ดูรายละเอียด และจัดการใบขายหน้าร้าน"}
+        description={
+          marketplaceConfig
+            ? `ออเดอร์ ${marketplaceConfig.label} ที่คีย์เมื่อตอนพร้อมจัดส่ง`
+            : "ค้นหา ดูรายละเอียด และจัดการใบขายหน้าร้าน"
+        }
         actions={
-          canCreate && (channelFilter === SaleChannel.STORE || canManageShopee) ? (
+          canCreate && (!marketplaceConfig || canManageShopee) ? (
             <Link
-              href={channelFilter === SaleChannel.SHOPEE ? "/admin/sales/shopee/new" : "/admin/sales/new"}
+              href={marketplaceConfig ? `/admin/sales/${marketplaceConfig.slug}/new` : "/admin/sales/new"}
               className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
             >
-              <Plus size={16} /> {channelFilter === SaleChannel.SHOPEE ? "บันทึกขาย Shopee" : "บันทึกการขายใหม่"}
+              <Plus size={16} />{" "}
+              {marketplaceConfig ? `บันทึกขาย ${marketplaceConfig.label}` : "บันทึกการขายใหม่"}
             </Link>
           ) : null
         }
@@ -226,9 +243,10 @@ const SalesPage = async ({
 
       <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 dark:border-white/10">
         <SalesChannelTabs currentChannel={channelFilter} />
-        {channelFilter === SaleChannel.SHOPEE && canManageShopee ? <div className="ml-auto flex gap-2 pb-2">
-          <Link href="/admin/sales/shopee/settlements" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><WalletCards size={15}/> กระทบยอดรับเงิน</Link>
-          {canViewReports ? <Link href="/admin/reports/shopee" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><BarChart3 size={15}/> รายงาน Shopee</Link> : null}
+        {marketplaceConfig && canManageShopee ? <div className="ml-auto flex flex-wrap gap-2 pb-2">
+          <Link href={`/admin/sales/${marketplaceConfig.slug}/settlements`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><WalletCards size={15}/> กระทบยอดรับเงิน</Link>
+          <Link href={`/admin/sales/${marketplaceConfig.slug}/returns/new`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><RotateCcw size={15}/> บันทึกคืนสินค้า</Link>
+          {canViewReports ? <Link href="/admin/reports/marketplace" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><BarChart3 size={15}/> รายงานช่องทางขาย</Link> : null}
         </div> : null}
       </div>
 
@@ -305,7 +323,7 @@ const SalesPage = async ({
                     }`}
                   >
                     <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">Shopee: {s.channelRefNo}</span> : null}</td>
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">{channelLabel[s.channel]}: {s.channelRefNo}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
                     <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={channelTone[s.channel]}>{channelLabel[s.channel]}</AdminStatusBadge></td>

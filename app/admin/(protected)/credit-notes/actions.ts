@@ -19,6 +19,7 @@ import {
   CNRefundMethod,
   CNSettlementType,
   CreditNoteType,
+  SaleChannel,
   VatType,
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -44,6 +45,8 @@ import {
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
+import { notifyMarketplaceReturnRecorded } from "@/lib/notifications";
 
 type CreditNoteProductOption = {
   id: string;
@@ -244,12 +247,16 @@ async function resolveCreditNoteRefundMethod(
   return allCash ? CNRefundMethod.CASH : CNRefundMethod.TRANSFER;
 }
 
+/**
+ * ตรวจใบขายอ้างอิง และคืนช่องทางขายของใบนั้นกลับมา เพื่อประทับลงใบลดหนี้
+ * ยอดคืนจึงถูกหักออกจากกำไรของช่องทางเดียวกับที่ขายไป (รายงานแยกช่องทางถึงจะตรง)
+ */
 async function validateCreditNoteSourceSale(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   saleId: string | undefined,
   customerId: string,
-): Promise<void> {
-  if (!saleId) return;
+): Promise<SaleChannel | null> {
+  if (!saleId) return null;
 
   const sale = await tx.sale.findUnique({
     where: { id: saleId },
@@ -258,6 +265,7 @@ async function validateCreditNoteSourceSale(
       status: true,
       customerId: true,
       saleNo: true,
+      channel: true,
     },
   });
 
@@ -268,6 +276,8 @@ async function validateCreditNoteSourceSale(
   if (sale.customerId !== customerId) {
     throw new Error(`ใบขาย ${sale.saleNo} ไม่ได้เป็นของลูกค้ารายที่เลือก`);
   }
+
+  return sale.channel;
 }
 
 /**
@@ -369,6 +379,7 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
       creditNote.customer?.code ?? creditNote.customer?.name ?? creditNote.customerName ?? null,
     saleId: creditNote.saleId,
     saleNo: creditNote.sale?.saleNo ?? null,
+    channel: creditNote.channel,
     cashBankAccountId: creditNote.cashBankAccountId,
     totalAmount: creditNote.totalAmount,
     amountRemain: creditNote.amountRemain,
@@ -455,7 +466,7 @@ export async function createCreditNote(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
-      await validateCreditNoteSourceSale(tx, saleId, customerId);
+      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
       const referenceCostMap = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
         : new Map<string, number>();
@@ -465,6 +476,7 @@ export async function createCreditNote(
       const cn = await tx.creditNote.create({
         data: {
           cnNo,
+          channel:        sourceChannel,
           saleId:         saleId || null,
           customerId:     customerId || null,
           customerName:   customerName ?? null,
@@ -608,6 +620,25 @@ export async function createCreditNote(
         entityRef: afterSnapshot.cnNo,
         after: afterSnapshot,
       });
+    }
+
+    // แจ้งเตือนเฉพาะใบคืนของช่องทาง marketplace เพราะเป็นเหตุการณ์ที่กระทบยอดที่
+    // แพลตฟอร์มจะโอนให้ ทีมบัญชีจึงต้องรู้ทันทีโดยไม่ต้องเปิดหน้ากระทบยอด
+    if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
+      try {
+        await notifyMarketplaceReturnRecorded({
+          creditNoteId: afterSnapshot.id,
+          cnNo: afterSnapshot.cnNo,
+          channelLabel: getMarketplaceChannelConfig(afterSnapshot.channel).label,
+          saleNo: afterSnapshot.saleNo ?? "-",
+          totalAmount: Number(afterSnapshot.totalAmount).toLocaleString("th-TH", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+        });
+      } catch (notifyError) {
+        console.error("[credit-notes] MARKETPLACE_RETURN_NOTIFY_FAILED", notifyError);
+      }
     }
 
     revalidateProfitDashboardCache();
@@ -934,7 +965,7 @@ export async function updateCreditNote(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await validateCreditNoteSourceSale(tx, saleId, customerId);
+      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
       const referenceCostMap = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
         : new Map<string, number>();
@@ -988,6 +1019,7 @@ export async function updateCreditNote(
         where: { id },
         data: {
           cnDate:         docDate,
+          channel:        sourceChannel,
           saleId:         saleId || null,
           customerId:     customerId || null,
           customerName:   customerName ?? null,
