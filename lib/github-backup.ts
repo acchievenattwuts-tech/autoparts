@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+import {
+  deriveGithubBackupProgress,
+  type GithubBackupProgress,
+  type GithubWorkflowStep,
+} from "@/lib/github-backup-progress";
+
 /**
  * Thin client for the Weekly Backup GitHub Actions workflow
  * (.github/workflows/backup.yml).
@@ -27,6 +33,7 @@ export interface GithubBackupRun {
   createdAt: string;
   updatedAt: string;
   actor: string | null;
+  progress: GithubBackupProgress | null;
 }
 
 const workflowRunSchema = z.object({
@@ -42,6 +49,18 @@ const workflowRunSchema = z.object({
 
 const workflowRunsSchema = z.object({
   workflow_runs: z.array(workflowRunSchema),
+});
+
+const workflowJobsSchema = z.object({
+  jobs: z.array(z.object({
+    name: z.string(),
+    started_at: z.string().nullable(),
+    steps: z.array(z.object({
+      name: z.string(),
+      status: z.string().nullable(),
+      conclusion: z.string().nullable(),
+    })).nullish(),
+  })),
 });
 
 interface GithubBackupConfig {
@@ -128,7 +147,7 @@ export const getGithubBackupRuns = async (): Promise<GithubBackupRun[]> => {
   const parsed = workflowRunsSchema.safeParse(await response.json());
   if (!parsed.success) throw new Error("GITHUB_BACKUP_RUNS_UNEXPECTED_SHAPE");
 
-  return parsed.data.workflow_runs.map((run) => ({
+  const runs: GithubBackupRun[] = parsed.data.workflow_runs.map((run) => ({
     id: run.id,
     status: toRunStatus(run.status, run.conclusion),
     event: run.event,
@@ -136,5 +155,41 @@ export const getGithubBackupRuns = async (): Promise<GithubBackupRun[]> => {
     createdAt: run.created_at,
     updatedAt: run.updated_at,
     actor: run.actor?.login ?? null,
+    progress: null,
   }));
+
+  // Only the active run needs job details. Fetching jobs for all five history
+  // rows on every 10-second UI poll would waste GitHub API quota.
+  const activeIndex = runs.findIndex((run) => run.status === "QUEUED" || run.status === "RUNNING");
+  if (activeIndex === -1) return runs;
+
+  const activeRun = runs[activeIndex];
+  let progress = deriveGithubBackupProgress(activeRun.status, [], activeRun.createdAt);
+
+  try {
+    const jobsResponse = await githubFetch(
+      config,
+      `/repos/${config.owner}/${config.repo}/actions/runs/${activeRun.id}/jobs?filter=latest&per_page=10`,
+    );
+    if (jobsResponse.ok) {
+      const jobsParsed = workflowJobsSchema.safeParse(await jobsResponse.json());
+      if (jobsParsed.success) {
+        const backupJob = jobsParsed.data.jobs.find((job) => job.name === "backup") ?? jobsParsed.data.jobs[0];
+        if (backupJob) {
+          const steps: GithubWorkflowStep[] = (backupJob.steps ?? []).map((step) => ({
+            name: step.name,
+            status: step.status,
+            conclusion: step.conclusion,
+          }));
+          progress = deriveGithubBackupProgress(activeRun.status, steps, backupJob.started_at ?? activeRun.createdAt);
+        }
+      }
+    }
+  } catch {
+    // Run-level status remains useful if GitHub's secondary jobs endpoint is
+    // temporarily unavailable. The next poll can recover richer progress.
+  }
+
+  runs[activeIndex] = { ...activeRun, progress };
+  return runs;
 };

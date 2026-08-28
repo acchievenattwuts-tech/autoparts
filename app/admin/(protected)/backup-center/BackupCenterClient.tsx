@@ -8,6 +8,15 @@ type BackupKind = "BLOB" | "POSTGRES";
 type BackupStatus = "PENDING" | "RUNNING" | "SUCCESS" | "FAILED";
 type GithubRunStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED" | "CANCELLED" | "UNKNOWN";
 
+type GithubBackupProgress = {
+  percent: number;
+  stage: number;
+  totalStages: number;
+  label: string;
+  isIndeterminate: boolean;
+  startedAt: string | null;
+};
+
 type GithubBackupRun = {
   id: number;
   status: GithubRunStatus;
@@ -16,6 +25,7 @@ type GithubBackupRun = {
   createdAt: string;
   updatedAt: string;
   actor: string | null;
+  progress: GithubBackupProgress | null;
 };
 
 type BackupJob = {
@@ -109,6 +119,16 @@ function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+function formatElapsed(startedAt: string | null, now: number | null): string {
+  if (!startedAt || now === null) return "กำลังคำนวณเวลา";
+  const elapsedSeconds = Math.max(0, Math.floor((now - new Date(startedAt).getTime()) / 1000));
+  const hours = Math.floor(elapsedSeconds / 3600);
+  const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+  if (hours > 0) return `${hours} ชม. ${minutes} นาที`;
+  if (minutes > 0) return `${minutes} นาที`;
+  return `${elapsedSeconds} วินาที`;
+}
+
 function statusClass(status: BackupStatus): string {
   if (status === "SUCCESS") return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-200";
   if (status === "FAILED") return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/30 dark:bg-rose-400/10 dark:text-rose-200";
@@ -116,12 +136,27 @@ function statusClass(status: BackupStatus): string {
   return "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-900 dark:text-slate-300";
 }
 
-function ProgressBar({ value }: { value: number }) {
+function ProgressBar({
+  value,
+  indeterminate = false,
+  label = "ความคืบหน้า",
+}: {
+  value: number;
+  indeterminate?: boolean;
+  label?: string;
+}) {
   const percent = Math.min(100, Math.max(0, value));
   return (
-    <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(percent)}
+      className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800"
+    >
       <div
-        className="h-full rounded-full bg-sky-500 transition-all duration-300 dark:bg-sky-400"
+        className={`h-full rounded-full bg-sky-500 transition-all duration-500 dark:bg-sky-400 ${indeterminate ? "animate-pulse" : ""}`}
         style={{ width: `${percent}%` }}
       />
     </div>
@@ -393,9 +428,30 @@ function AutoBackupPanel({
   onRun: () => void;
   onRefresh: () => void;
 }) {
-  const latest = runs[0] ?? null;
-  const running = latest?.status === "QUEUED" || latest?.status === "RUNNING";
+  const activeRun = runs.find((run) => run.status === "QUEUED" || run.status === "RUNNING") ?? null;
+  const running = activeRun !== null;
   const lastSuccess = runs.find((run) => run.status === "SUCCESS") ?? null;
+  const [now, setNow] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!running) return;
+    const updateClock = () => setNow(Date.now());
+    const initialTimer = window.setTimeout(updateClock, 0);
+    const timer = window.setInterval(updateClock, 1000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [running]);
+
+  const progress = activeRun?.progress ?? (dispatching ? {
+    percent: 2,
+    stage: 0,
+    totalStages: 7,
+    label: "กำลังส่งคำสั่งไป GitHub",
+    isIndeterminate: true,
+    startedAt: null,
+  } satisfies GithubBackupProgress : null);
 
   return (
     <section className="rounded-lg border border-sky-200 bg-sky-50 p-4 dark:border-sky-400/30 dark:bg-sky-400/10">
@@ -413,7 +469,8 @@ function AutoBackupPanel({
               หรือกดปุ่มนี้เพื่อสั่งสำรองทันที งานจะไปทำงานบนเครื่องของ GitHub ไม่ต้องเปิดคอมพิวเตอร์ทิ้งไว้
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              ใช้เวลาประมาณ 5-15 นาที ระบบจะแจ้งผลเข้า Telegram ทั้งกรณีสำเร็จและล้มเหลว ปิดหน้านี้ระหว่างรอได้
+              รอบแรกอาจใช้เวลา 1-3 ชั่วโมง ส่วนรอบถัดไปแบบ incremental มักเร็วกว่า
+              ระบบจะแจ้ง Telegram เมื่อกำหนด Secrets แล้ว และปิดหน้านี้ระหว่างรอได้
             </p>
           </div>
         </div>
@@ -450,6 +507,37 @@ function AutoBackupPanel({
           <p className="rounded-md border border-rose-200 bg-white px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-slate-950 dark:text-rose-200">
             {error}
           </p>
+        ) : null}
+
+        {progress ? (
+          <div
+            aria-live="polite"
+            className="rounded-lg border border-sky-200 bg-white p-3 shadow-sm dark:border-sky-400/20 dark:bg-slate-950"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-medium text-slate-800 dark:text-slate-100">{progress.label}</span>
+              <span className="font-semibold tabular-nums text-sky-700 dark:text-sky-300">
+                ประมาณ {progress.percent}%
+              </span>
+            </div>
+            <div className="mt-2">
+              <ProgressBar
+                value={progress.percent}
+                indeterminate={progress.isIndeterminate}
+                label={`ความคืบหน้า Backup โดยประมาณ ${progress.percent}%`}
+              />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <span>
+                ขั้นตอน {progress.stage}/{progress.totalStages}
+                {activeRun ? ` · ใช้เวลา ${formatElapsed(progress.startedAt ?? activeRun.createdAt, now)}` : ""}
+              </span>
+              <span>อัปเดตอัตโนมัติทุก 10 วินาที</span>
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              เปอร์เซ็นต์คำนวณจากขั้นตอนของ GitHub Actions; ระหว่างอัปโหลดไฟล์จำนวนมากแถบอาจค้างที่ขั้นเดิมจนตรวจปลายทางเสร็จ
+            </p>
+          </div>
         ) : null}
 
         {configured && lastSuccess ? (
