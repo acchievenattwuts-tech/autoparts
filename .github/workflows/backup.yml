@@ -70,27 +70,40 @@ jobs:
         id: meta
         run: echo "date=$(TZ=Asia/Bangkok date +%F)" >> "$GITHUB_OUTPUT"
 
-      # A read-only role does NOT bypass row-level security: if any public table
-      # has RLS on, pg_dump would silently write a dump with missing rows and the
-      # failure would only surface on the day it is restored. Fail loudly instead.
+      # A SELECT-only role does NOT bypass row-level security by default. Allow
+      # RLS-enabled tables only when the connected role explicitly has BYPASSRLS;
+      # otherwise pg_dump could silently contain a filtered subset of production.
       - name: Guard against RLS-filtered dumps
         env:
           PGURL: ${{ secrets.BACKUP_DATABASE_URL }}
         run: |
           set -euo pipefail
+          if [ -z "${PGURL:-}" ]; then
+            echo "::error::BACKUP_DATABASE_URL is not configured."
+            exit 1
+          fi
+          ROLE_BYPASSRLS=$(psql "$PGURL" -At -c "
+            select rolbypassrls
+            from pg_roles
+            where rolname = current_user;
+          ")
           RLS_TABLES=$(psql "$PGURL" -At -c "
             select string_agg(c.relname, ', ' order by c.relname)
             from pg_class c
             join pg_namespace n on n.oid = c.relnamespace
             where n.nspname = 'public' and c.relkind = 'r' and c.relrowsecurity;
           ")
-          if [ -n "$RLS_TABLES" ]; then
+          if [ -n "$RLS_TABLES" ] && [ "$ROLE_BYPASSRLS" != "t" ]; then
             echo "::error::Row-level security is enabled on: $RLS_TABLES"
             echo "::error::The backup role would dump a filtered subset of these tables."
             echo "::error::Grant BYPASSRLS to the backup role, or disable RLS. See docs/backup-automation-runbook.md."
             exit 1
           fi
-          echo "No RLS-enabled tables in public — dump will be complete."
+          if [ -n "$RLS_TABLES" ]; then
+            echo "RLS is enabled in public and current_user has BYPASSRLS — dump will be complete."
+          else
+            echo "No RLS-enabled tables in public — dump will be complete."
+          fi
 
       - name: Dump PostgreSQL
         env:

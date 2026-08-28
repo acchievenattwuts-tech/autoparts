@@ -44,7 +44,7 @@ autoparts-backup/
 เปิด `Supabase Dashboard > SQL Editor` แล้วรัน (เปลี่ยนรหัสผ่านเป็นของจริงที่สุ่มขึ้นมาเอง):
 
 ```sql
-create role backup_reader with login password 'ใส่รหัสผ่านสุ่มยาว ๆ ตรงนี้';
+create role backup_reader with login bypassrls password 'ใส่รหัสผ่านสุ่มยาว ๆ ตรงนี้';
 
 grant connect on database postgres to backup_reader;
 grant usage on schema public to backup_reader;
@@ -56,15 +56,34 @@ alter default privileges in schema public grant select on tables to backup_reade
 alter default privileges in schema public grant select on sequences to backup_reader;
 ```
 
+ถ้า role มีอยู่แล้ว ให้เปิด `BYPASSRLS` แยกต่างหาก:
+
+```sql
+alter role backup_reader bypassrls;
+```
+
 ทำไมถึงคุ้มที่จะทำ: credential ตัวนี้จะไปอยู่ใน GitHub Secrets ถ้าหลุด คนที่ได้ไปก็ทำได้แค่อ่าน — เขียน แก้ หรือลบข้อมูลไม่ได้
 
-จากนั้นประกอบ connection string โดยใช้ **direct connection** (พอร์ต 5432) ไม่ใช่ pooler เพราะ pooler ตัดงานที่รันนาน:
+จากนั้นประกอบ connection string โดยใช้ **direct connection** หรือ **session pooler**
+(พอร์ต 5432) ห้ามใช้ transaction pooler พอร์ต 6543 เพราะไม่เหมาะกับ `pg_dump` ที่รันนาน
+
+ตัวอย่าง direct connection:
 
 ```text
 postgresql://backup_reader:<PASSWORD>@db.<PROJECT-REF>.supabase.co:5432/postgres
 ```
 
-> **หมายเหตุเรื่อง RLS** — workflow มีขั้นตอนตรวจว่าตารางใน `public` เปิด row-level security อยู่หรือไม่ ถ้าเปิดอยู่ role อ่านอย่างเดียวจะ dump ได้ข้อมูลไม่ครบโดยไม่มีใครรู้ตัว workflow จึงหยุดทันทีพร้อมบอกชื่อตาราง ตอนนี้ตารางทั้งหมดสร้างผ่าน Prisma ซึ่งไม่เปิด RLS จึงผ่านปกติ ถ้าวันหนึ่งมีการเปิด RLS ต้อง `alter role backup_reader bypassrls;` หรือเปลี่ยนไปใช้ credential ของ owner
+ถ้าเครื่อง runner ต่อ direct host ไม่ได้ ให้ใช้ session pooler และใส่ project ref ต่อท้ายชื่อ role:
+
+```text
+postgresql://backup_reader.<PROJECT-REF>:<PASSWORD>@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
+```
+
+> **หมายเหตุเรื่อง RLS** — Production เปิด row-level security บนตาราง `public` ดังนั้น
+> `backup_reader` ต้องมี `BYPASSRLS` เพื่อให้ dump ครบทุกแถว แต่ยังคงให้เฉพาะ `CONNECT`,
+> `USAGE`, และ `SELECT`; ห้ามให้ `SUPERUSER`, `CREATEDB`, `CREATEROLE`, หรือสิทธิ์เขียน
+> workflow ตรวจทั้งรายชื่อตาราง RLS และ flag ของ role หากพบ RLS โดยไม่มี `BYPASSRLS`
+> จะหยุดก่อนสร้าง dump
 
 ### 2. ตั้งค่า rclone ให้ต่อ Google Drive
 
