@@ -219,7 +219,12 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
-        customers={customers.map((c) => ({ ...c, priceTier: c.customerType?.priceTier ?? "RETAIL" }))}
+        customers={customers.map((c) => ({
+          ...c,
+          priceTier: c.customerType?.priceTier ?? "RETAIL",
+          priceListId: c.customerType?.priceListId ?? null,
+          priceList: c.customerType?.priceList?.isActive ? c.customerType.priceList : null,
+        }))}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
         initialData={initialData}

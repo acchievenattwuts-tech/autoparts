@@ -10,6 +10,7 @@ import {
   Prisma,
   SaleChannel,
   SalePaymentType,
+  SalePriceSource,
   ShopeeOrderImportStatus,
   VatType,
 } from "@/lib/generated/prisma";
@@ -415,6 +416,7 @@ export async function createSaleFromShopeeOrder(params: {
             salePrice: new Prisma.Decimal(line.unitPrice),
             // Marketplace lines carry no separate list price; net = list, no discount.
             unitListPrice: new Prisma.Decimal(line.unitPrice),
+            priceSource: SalePriceSource.ORDER_SNAPSHOT,
             lineDiscount: new Prisma.Decimal(0),
             costPrice: costPerBase,
             totalAmount: new Prisma.Decimal(itemTotal),

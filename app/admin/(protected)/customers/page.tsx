@@ -13,13 +13,15 @@ import ToggleCustomerButton from "./DeleteCustomerButton";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
-import type { Prisma, PriceTier } from "@/lib/generated/prisma";
+import type { Prisma } from "@/lib/generated/prisma";
 
-/** สีป้ายประเภทลูกค้าตามระดับราคาที่กลุ่มนั้นเห็นในแชท (ขายส่งถูกสุด → เขียว) */
-const CUSTOMER_TYPE_BADGE_CLASS: Record<PriceTier, string> = {
-  WHOLESALE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300",
-  MEMBER: "bg-sky-100 text-sky-700 dark:bg-sky-400/20 dark:text-sky-300",
-  RETAIL: "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300",
+const priceListBadgeClass = (code: string) => {
+  if (code === "WHOLESALE") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-300";
+  if (code === "MEMBER") return "bg-sky-100 text-sky-700 dark:bg-sky-400/20 dark:text-sky-300";
+  if (code === "SHOPEE") return "bg-orange-100 text-orange-700 dark:bg-orange-400/20 dark:text-orange-300";
+  if (code === "LAZADA") return "bg-blue-100 text-blue-700 dark:bg-blue-400/20 dark:text-blue-300";
+  if (code === "RETAIL") return "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-slate-300";
+  return "bg-violet-100 text-violet-700 dark:bg-violet-400/20 dark:text-violet-300";
 };
 import { normalizeCustomerPhone } from "@/lib/customer-phone";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
@@ -79,7 +81,13 @@ const CustomersPage = async ({
       where: whereClause,
       include: {
         _count: { select: { sales: true } },
-        customerType: { select: { name: true, priceTier: true } },
+        customerType: {
+          select: {
+            name: true,
+            priceTier: true,
+            priceList: { select: { code: true, name: true } },
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,
@@ -155,7 +163,7 @@ const CustomersPage = async ({
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รหัส</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ชื่อลูกค้า</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เบอร์โทร</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ประเภท</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ประเภท / Price List</th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ที่อยู่</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ยอดซื้อ</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">สถานะ</th>
@@ -209,10 +217,13 @@ const CustomersPage = async ({
                       {customer.customerType ? (
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                            CUSTOMER_TYPE_BADGE_CLASS[customer.customerType.priceTier]
+                            priceListBadgeClass(customer.customerType.priceList?.code ?? customer.customerType.priceTier)
                           }`}
                         >
                           {customer.customerType.name}
+                          <span className="font-normal opacity-75">
+                            · {customer.customerType.priceList?.name ?? `Compatibility: ${customer.customerType.priceTier}`}
+                          </span>
                         </span>
                       ) : (
                         <span className="text-[11px] text-gray-400 dark:text-slate-500">ทั่วไป</span>

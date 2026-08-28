@@ -79,6 +79,8 @@
     "backfill:fact-profit": "tsx --env-file=.env prisma/scripts/backfill-fact-profit.ts",
     "backfill:fact-profit-channel": "tsx --env-file=.env prisma/scripts/backfill-fact-profit-channel.ts",
     "backfill:claim-stock": "tsx --env-file=.env prisma/scripts/backfill-claim-stock.ts",
+    "backfill:price-lists": "tsx --env-file=.env.local prisma/scripts/backfill-price-lists.ts",
+    "verify:price-lists": "tsx --env-file=.env.local prisma/scripts/verify-price-lists.ts",
     "backfill:embeddings": "tsx --env-file=.env.local prisma/scripts/backfill-embeddings.ts",
     "backfill:public-images-blob": "tsx --env-file=.env.local prisma/scripts/backfill-public-images-to-blob.ts",
     "backfill:payment-slips-blob": "tsx --env-file=.env.local prisma/scripts/backfill-payment-slips-to-blob.ts",

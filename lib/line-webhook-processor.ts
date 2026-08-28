@@ -115,7 +115,7 @@ import {
   getChatProductSummaries,
   resolveCatalogCodes,
   searchChatProductInquiry,
-  type ChatPriceTier,
+  type ChatPriceSelection,
 } from "@/lib/chat-core/product-search-bridge";
 import { buildProductFlexMessage, resolveFlexPlaceholderImageUrl } from "@/lib/line-flex-product-card";
 import { classifyPurchaseIntent } from "@/lib/line-purchase-intent";
@@ -1007,7 +1007,7 @@ async function respondMultiSubject(
   extras: {
     /** Shared lazy price-tier resolver (one DB round-trip per turn, shared with
      *  the single path when this returns null and the caller falls through). */
-    getPriceTier: () => Promise<ChatPriceTier>;
+    getPriceTier: () => Promise<ChatPriceSelection>;
     /** ข้อความเทิร์นนี้เป็นคำถามราคา/ส่วนลด — นโยบายร้าน: ราคาให้แอดมินแจ้ง/ยืนยันทุกกรณี
      *  (mirror ของ hiddenPriceWithProducts ใน single path: โชว์ของก่อน แล้วต่อ note
      *  ส่งเรื่องราคา + freeze รอแอดมิน) */
@@ -1366,8 +1366,8 @@ export async function processLineAiReply(
     // และแชร์ระหว่างเส้นทาง multi-subject / single (เดิมทั้งสอง path ต่างคน resolve
     // เอง = query ซ้ำ และ non-product turn ก็เสีย query ทิ้งเปล่า). UNKNOWN เมื่อ
     // resolve ไม่สำเร็จ → ซ่อนราคาเป็น "สอบถามราคา" (ปลอดภัยกว่าเดาผิด tier)
-    let priceTierPromise: Promise<ChatPriceTier> | null = null;
-    const getPriceTier = (): Promise<ChatPriceTier> => {
+    let priceTierPromise: Promise<ChatPriceSelection> | null = null;
+    const getPriceTier = (): Promise<ChatPriceSelection> => {
       priceTierPromise ??= (dependencies.resolveLinePriceTier ?? resolveLinePriceTier)(
         input.lineUserId,
       ).catch(() => "UNKNOWN" as const);
@@ -2645,7 +2645,7 @@ export async function processLineAiReply(
     // Price tier is awaited only when there are ids to price — turns with nothing
     // to show never pay (or wait on) the lookup; the tier value is irrelevant for
     // an empty list, so "RETAIL" is a pure placeholder there.
-    const priceTier: ChatPriceTier =
+    const priceTier: ChatPriceSelection =
       productSearch.searched && productSearch.result.ids.length > 0
         ? await getPriceTier()
         : "RETAIL";

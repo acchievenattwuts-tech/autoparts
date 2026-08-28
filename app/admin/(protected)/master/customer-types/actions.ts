@@ -6,7 +6,7 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { AuditAction, PriceTier } from "@/lib/generated/prisma";
 import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
@@ -17,21 +17,20 @@ const ID_PATTERN = /^[a-z0-9]+$/;
 
 const customerTypeSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อประเภทลูกค้า").max(100),
-  priceTier: z.nativeEnum(PriceTier),
+  priceListId: z.string().min(1, "กรุณาเลือกราคา"),
   sortOrder: z.number().int().min(0).max(9999),
 });
 
-/** รับเฉพาะค่าที่อยู่ใน enum จริง — ค่าอื่น/ค่าว่าง ตกไปที่ RETAIL (ระดับราคาที่ปลอดภัยที่สุด) */
-const parsePriceTier = (value: FormDataEntryValue | null): PriceTier => {
-  if (value === "WHOLESALE") return PriceTier.WHOLESALE;
-  if (value === "MEMBER") return PriceTier.MEMBER;
+const compatibilityTierForPriceListCode = (code: string): PriceTier => {
+  if (code === "WHOLESALE") return PriceTier.WHOLESALE;
+  if (code === "MEMBER") return PriceTier.MEMBER;
   return PriceTier.RETAIL;
 };
 
 const parseFormData = (formData: FormData) =>
   customerTypeSchema.safeParse({
     name: (formData.get("name") ?? "").toString().trim(),
-    priceTier: parsePriceTier(formData.get("priceTier")),
+    priceListId: (formData.get("priceListId") ?? "").toString(),
     sortOrder: Number.parseInt((formData.get("sortOrder") ?? "0").toString(), 10) || 0,
   });
 
@@ -42,6 +41,8 @@ async function getCustomerTypeAuditSnapshot(id: string) {
       id: true,
       name: true,
       priceTier: true,
+      priceListId: true,
+      priceList: { select: { code: true, name: true, channel: true } },
       isActive: true,
       sortOrder: true,
       isSystem: true,
@@ -65,12 +66,20 @@ export const createCustomerType = async (formData: FormData): Promise<{ error?: 
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   try {
-    const created = await db.customerType.create({
-      data: {
-        name: parsed.data.name,
-        priceTier: parsed.data.priceTier,
-        sortOrder: parsed.data.sortOrder,
-      },
+    const created = await dbTx(async (tx) => {
+      const priceList = await tx.priceList.findFirst({
+        where: { id: parsed.data.priceListId, isActive: true },
+        select: { id: true, code: true },
+      });
+      if (!priceList) throw new Error("PRICE_LIST_NOT_ACTIVE");
+      return tx.customerType.create({
+        data: {
+          name: parsed.data.name,
+          priceListId: priceList.id,
+          priceTier: compatibilityTierForPriceListCode(priceList.code),
+          sortOrder: parsed.data.sortOrder,
+        },
+      });
     });
     const afterSnapshot = await getCustomerTypeAuditSnapshot(created.id);
     if (afterSnapshot) {
@@ -87,7 +96,10 @@ export const createCustomerType = async (formData: FormData): Promise<{ error?: 
 
     refreshCaches();
     return {};
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") {
+      return { error: "ไม่พบ Price List ที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
+    }
     return { error: "ชื่อประเภทลูกค้านี้มีอยู่แล้ว" };
   }
 };
@@ -117,13 +129,21 @@ export const updateCustomerType = async (
       return { error: "ประเภทลูกค้าระบบไม่สามารถแก้ไขได้" };
     }
 
-    await db.customerType.update({
-      where: { id },
-      data: {
-        name: parsed.data.name,
-        priceTier: parsed.data.priceTier,
-        sortOrder: parsed.data.sortOrder,
-      },
+    await dbTx(async (tx) => {
+      const priceList = await tx.priceList.findFirst({
+        where: { id: parsed.data.priceListId, isActive: true },
+        select: { id: true, code: true },
+      });
+      if (!priceList) throw new Error("PRICE_LIST_NOT_ACTIVE");
+      await tx.customerType.update({
+        where: { id },
+        data: {
+          name: parsed.data.name,
+          priceListId: priceList.id,
+          priceTier: compatibilityTierForPriceListCode(priceList.code),
+          sortOrder: parsed.data.sortOrder,
+        },
+      });
     });
     const afterSnapshot = await getCustomerTypeAuditSnapshot(id);
     if (afterSnapshot) {
@@ -142,7 +162,10 @@ export const updateCustomerType = async (
 
     refreshCaches();
     return {};
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") {
+      return { error: "ไม่พบ Price List ที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
+    }
     return { error: "ไม่สามารถแก้ไขได้ หรือชื่อนี้มีอยู่แล้ว" };
   }
 };

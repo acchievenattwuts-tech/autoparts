@@ -176,6 +176,18 @@ test("applyChatPriceTier falls back to 'สอบถามราคา' when ret
   assert.match(JSON.stringify(msg), /สอบถามราคา/);
 });
 
+test("applyChatPriceTier supports a dynamic marketplace Price List", () => {
+  const baseProduct = product({ salePrice: 1200, retailPrice: 1500, memberPrice: 1400 });
+  const marketplace = applyChatPriceTier(
+    [{ ...baseProduct, priceListPrices: { SHOPEE: 777 } }],
+    { priceListCode: "SHOPEE" },
+  );
+  assert.equal(marketplace[0].salePrice, 777);
+
+  const missing = applyChatPriceTier([baseProduct], { priceListCode: "LAZADA" });
+  assert.equal(missing[0].salePrice, 0);
+});
+
 test("view-all URL carries the LINE search fitment filters (so web count matches)", () => {
   const msg = buildProductFlexMessage({
     products: [product(), product({ id: "p2", name: "สายน้ำยา 2" })],

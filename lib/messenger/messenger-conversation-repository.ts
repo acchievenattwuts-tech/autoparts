@@ -170,26 +170,37 @@ export async function getRecentMessengerMessagesForAi(conversationId: string, ta
 }
 
 /**
- * ระดับราคาของลูกค้า Messenger รายนี้ (mirror ของ resolveLinePriceTier) — resolve ผ่าน
+ * Price List ของลูกค้า Messenger รายนี้ (mirror ของ resolveLinePriceTier) — resolve ผ่าน
  * customerId ที่ผูกกับบทสนทนา (Messenger ไม่มีคอลัมน์ Customer.psid — ผูกโดยแอดมิน)
- * WHOLESALE → ประเภทลูกค้า (active) ระดับขายส่ง / MEMBER → ระดับสมาชิก → memberPrice
- * RETAIL → ประเภทลูกค้า (active) ระดับขายปลีก
+ * Price List เป็นค่าหลัก; legacy tier ใช้เฉพาะกรณีที่ production ยัง backfill ไม่ครบ
  * UNLINKED → ยังไม่ผูก / บัญชีปิด / ไม่ระบุประเภท / ประเภทปิด → retailPrice + แนบข้อความราคาพิเศษ
  */
 export async function resolveMessengerPriceTier(
   conversationId: string,
-): Promise<"UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE"> {
+): Promise<"UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE" | { priceListCode: string }> {
   const conversation = await db.messengerConversation.findUnique({
     where: { id: conversationId },
     select: {
       customer: {
-        select: { isActive: true, customerType: { select: { priceTier: true, isActive: true } } },
+        select: {
+          isActive: true,
+          customerType: {
+            select: {
+              priceTier: true,
+              isActive: true,
+              priceList: { select: { code: true, isActive: true } },
+            },
+          },
+        },
       },
     },
   });
   const customer = conversation?.customer;
   if (!customer?.isActive) return "UNLINKED";
   if (!customer.customerType?.isActive) return "UNLINKED";
+  if (customer.customerType.priceList?.isActive) {
+    return { priceListCode: customer.customerType.priceList.code };
+  }
   return customer.customerType.priceTier;
 }
 

@@ -26,6 +26,8 @@ import {
   type SaleDraftPayload,
   type SaleFormLineItem,
 } from "../sale-form-data";
+import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
+import { resolveScheduledPrice } from "@/lib/pricing/price-promotion";
 
 interface ProductOption {
   id: string;
@@ -35,6 +37,14 @@ interface ProductOption {
   salePrice: number;
   retailPrice: number;
   memberPrice: number;
+  priceListPrices: Record<string, number>;
+  pricePromotions: Array<{
+    id: string;
+    priceListCode: string;
+    startDateKey: string;
+    endDateKey: string;
+    promotionPrice: number;
+  }>;
   saleUnitName: string;
   warrantyDays: number;
   categoryName: string;
@@ -77,6 +87,14 @@ interface CustomerOption {
   defaultLongitude: number | null;
   isActive?: boolean;
   priceTier:        SalePriceTier;
+  priceListId:      string | null;
+  priceList: {
+    id: string;
+    code: string;
+    name: string;
+    channel: "STORE" | "SHOPEE" | "LAZADA" | null;
+    isActive: boolean;
+  } | null;
 }
 
 interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
@@ -103,7 +121,7 @@ const withLineDiscount = (item: LineItem): LineItem => ({
   lineDiscount: round2(Math.max(0, item.unitListPrice - item.salePrice) * item.qty),
 });
 
-/** ระดับราคาของลูกค้าบนหน้าขาย (ตรงกับ CustomerType.priceTier) */
+/** Legacy selection retained only until every Customer Type has priceListId. */
 type SalePriceTier = "WHOLESALE" | "MEMBER" | "RETAIL";
 
 const SALE_PRICE_TIER_LABEL: Record<SalePriceTier, string> = {
@@ -113,22 +131,28 @@ const SALE_PRICE_TIER_LABEL: Record<SalePriceTier, string> = {
 };
 
 /**
- * Pick the unit price for a product based on the customer's price tier.
- * WHOLESALE → ราคาขายส่ง (salePrice). RETAIL → ราคาขายปลีก (retailPrice),
- * falling back to salePrice when retailPrice is unset (0) so no product ever
- * defaults to a zero price.
- * MEMBER → ราคาสมาชิก (memberPrice) — ไม่ fallback: สินค้าที่ยังไม่ตั้งราคาสมาชิกจะได้ 0
- * เพื่อให้พนักงานกรอกราคาเอง (แถวจะถูกไฮไลต์ และมีข้อความยืนยันก่อนบันทึก)
+ * Price List is primary. The three legacy codes preserve their exact historical
+ * rules only while production backfill/cutover remains incomplete.
  */
-const priceForTier = (
-  product: Pick<ProductOption, "salePrice" | "retailPrice" | "memberPrice">,
-  tier: SalePriceTier,
+type SalePriceSelection = { key: string; code: string; name: string };
+
+const priceForSelection = (
+  product: ProductOption,
+  selection: SalePriceSelection,
+  saleDateKey: string,
 ): number => {
-  const wholesale = product.salePrice ?? 0;
-  if (tier === "WHOLESALE") return wholesale;
-  if (tier === "MEMBER") return product.memberPrice ?? 0;
-  const retail = product.retailPrice ?? 0;
-  return retail > 0 ? retail : wholesale;
+  const normalPrice = resolveNormalPrice({
+    priceListCode: selection.code,
+    configuredAmount: product.priceListPrices?.[selection.code],
+    legacyPrices: product,
+  });
+  return resolveScheduledPrice({
+    saleDateKey,
+    normalPrice,
+    promotions: (product.pricePromotions ?? [])
+      .filter((promotion) => promotion.priceListCode === selection.code)
+      .map((promotion) => ({ ...promotion, status: "PUBLISHED" as const })),
+  }).amount;
 };
 
 /** Ensure a restored/legacy draft item carries the two new price fields. */
@@ -259,9 +283,19 @@ const SaleForm = ({
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
-  const deriveTier = (customerId: string): SalePriceTier =>
-    customerMap.get(customerId)?.priceTier ?? "RETAIL";
-  const activeTier = deriveTier(selectedCustomerId);
+  const derivePriceSelection = (customerId: string): SalePriceSelection => {
+    const customer = customerMap.get(customerId);
+    if (customer?.priceList) {
+      return {
+        key: customer.priceList.id,
+        code: customer.priceList.code,
+        name: customer.priceList.name,
+      };
+    }
+    const tier = customer?.priceTier ?? "RETAIL";
+    return { key: `legacy:${tier}`, code: tier, name: SALE_PRICE_TIER_LABEL[tier] };
+  };
+  const activePriceSelection = derivePriceSelection(selectedCustomerId);
   const draftKey = `${getSaleDraftKey(
     persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
   )}${isMarketplace && !persistedSaleId ? `:${channel.toLowerCase()}` : ""}`;
@@ -452,8 +486,8 @@ const SaleForm = ({
               ...item,
               productId: product.id,
               unitName: product.saleUnitName ?? "",
-              salePrice: priceForTier(product, activeTier),
-              unitListPrice: priceForTier(product, activeTier),
+              salePrice: priceForSelection(product, activePriceSelection, saleDate),
+              unitListPrice: priceForSelection(product, activePriceSelection, saleDate),
               lineDiscount: 0,
               warrantyDays: product.warrantyDays ?? 0,
               supplierId: product.preferredSupplierId ?? "",
@@ -610,6 +644,15 @@ const SaleForm = ({
 
   const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
   const totalLineDiscount = items.reduce((sum, it) => sum + it.lineDiscount, 0);
+  const hasActivePromotion = items.some((item) =>
+    (productMap.get(item.productId)?.pricePromotions ?? []).some(
+      (promotion) =>
+        promotion.priceListCode === activePriceSelection.code &&
+        promotion.startDateKey <= saleDate &&
+        saleDate <= promotion.endDateKey,
+    ),
+  );
+  const hasPromotionDiscountStacking = hasActivePromotion && (totalLineDiscount > 0 || discount > 0);
   const grossBeforeLineDiscount = items.reduce((sum, it) => sum + it.qty * it.unitListPrice, 0);
   const effectiveShippingFee = fulfillmentType === "DELIVERY" ? shippingFee : 0;
   const discountedTotal = Math.max(0, totalAmount + effectiveShippingFee - discount);
@@ -621,32 +664,45 @@ const SaleForm = ({
   }, [defaultCashBankAccountId, isMarketplace, netAmount]);
 
   /** Re-apply the tier price to every line that already has a product selected. */
-  const repriceItemsToTier = (tier: SalePriceTier) => {
+  const repriceItemsToSelection = (selection: SalePriceSelection, saleDateKey = saleDate) => {
     setItems((prev) =>
       prev.map((item) => {
         if (!item.productId) return item;
         const prod = productMap.get(item.productId);
         if (!prod) return item;
-        const price = priceForTier(prod, tier);
+        const price = priceForSelection(prod, selection, saleDateKey);
         return withLineDiscount({ ...item, salePrice: price, unitListPrice: price });
       }),
     );
   };
 
+  const handleSaleDateChange = (nextSaleDate: string) => {
+    setSaleDate(nextSaleDate);
+    if (
+      nextSaleDate !== saleDate &&
+      items.some((item) => item.productId) &&
+      window.confirm(
+        "วันที่ขายเปลี่ยน อาจทำให้ราคาโปรโมชั่นเปลี่ยน ต้องการปรับราคาสินค้าที่เลือกไว้ตามวันที่ขายใหม่หรือไม่?",
+      )
+    ) {
+      repriceItemsToSelection(activePriceSelection, nextSaleDate);
+    }
+  };
+
   const handleCustomerChange = (customerId: string) => {
-    const prevTier = deriveTier(selectedCustomerId);
-    const nextTier = deriveTier(customerId);
+    const previousSelection = derivePriceSelection(selectedCustomerId);
+    const nextSelection = derivePriceSelection(customerId);
     setSelectedCustomerId(customerId);
     // ราคาผูกกับประเภทลูกค้า — ถ้าระดับราคาเปลี่ยนและมีสินค้าในบิลแล้ว
     // ถามยืนยันก่อนปรับราคาทุกบรรทัดตามประเภทลูกค้าใหม่ (ไม่บังคับทับราคาที่แก้มือ)
     if (
-      nextTier !== prevTier &&
+      nextSelection.key !== previousSelection.key &&
       items.some((item) => item.productId) &&
       window.confirm(
-        `เปลี่ยนประเภทลูกค้าเป็น “${SALE_PRICE_TIER_LABEL[nextTier]}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
+        `เปลี่ยนประเภทลูกค้าเป็น Price List “${nextSelection.name}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
       )
     ) {
-      repriceItemsToTier(nextTier);
+      repriceItemsToSelection(nextSelection);
     }
     if (customerId) {
       const found = customerMap.get(customerId);
@@ -686,6 +742,15 @@ const SaleForm = ({
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) { setError(lotErr); return; }
       }
+    }
+
+    if (
+      hasPromotionDiscountStacking &&
+      !window.confirm(
+        "บิลนี้มีราคาโปรโมชั่นและมีส่วนลดระดับรายการหรือส่วนลดท้ายบิลเพิ่มเติม ส่วนลดทั้งสองจะถูกรวมกัน ต้องการบันทึกต่อหรือไม่?",
+      )
+    ) {
+      return;
     }
 
     const zeroPricedRows = items
@@ -861,7 +926,7 @@ const SaleForm = ({
               name="saleDate"
               required
               value={saleDate}
-              onChange={(e) => setSaleDate(e.target.value)}
+              onChange={(e) => handleSaleDateChange(e.target.value)}
               className={inputCls}
             />
           </div>
@@ -1501,6 +1566,11 @@ const SaleForm = ({
         {/* Totals summary */}
         <div className="mt-4 flex justify-end">
           <div className="w-64 space-y-2 text-sm">
+            {hasPromotionDiscountStacking && (
+              <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/40 dark:bg-amber-500/10 dark:text-amber-200">
+                ราคาโปรโมชั่นกำลังใช้ร่วมกับส่วนลดเพิ่มเติม ระบบจะรวมส่วนลดทั้งสองและถามยืนยันก่อนบันทึก
+              </div>
+            )}
             {totalLineDiscount > 0 && (
               <>
                 <div className="flex justify-between text-gray-500 dark:text-slate-400">

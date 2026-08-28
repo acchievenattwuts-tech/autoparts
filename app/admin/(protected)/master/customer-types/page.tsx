@@ -15,27 +15,36 @@ const CustomerTypesPage = async () => {
   const permissions =
     role === "ADMIN" ? getAllPermissionKeys() : (session?.user?.permissions ?? []);
 
-  const customerTypes = await db.customerType.findMany({
-    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    select: {
-      id: true,
-      name: true,
-      priceTier: true,
-      isActive: true,
-      sortOrder: true,
-      isSystem: true,
-      createdAt: true,
-    },
-  });
+  const [customerTypes, priceLists] = await Promise.all([
+    db.customerType.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        priceListId: true,
+        priceList: { select: { code: true, name: true, channel: true } },
+        isActive: true,
+        sortOrder: true,
+        isSystem: true,
+        createdAt: true,
+      },
+    }),
+    db.priceList.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { id: true, code: true, name: true, channel: true },
+    }),
+  ]);
 
   return (
     <div className="space-y-4">
       <AdminPageHeader
         title="จัดการประเภทลูกค้า"
-        description="กำหนดกลุ่มลูกค้าและระดับราคาที่เห็นบนแชท (ขายปลีก = ลูกค้าทั่วไป / ขายส่ง = เช่น อู่ซ่อมรถ)"
+        description="กำหนดกลุ่มลูกค้าและ Price List ที่ใช้เติมราคาในหน้าขายและช่องทางที่เกี่ยวข้อง"
       />
       <CustomerTypeForm
         customerTypes={customerTypes}
+        priceLists={priceLists}
         canCreate={hasPermissionAccess(role, permissions, "master.create")}
         canUpdate={hasPermissionAccess(role, permissions, "master.update")}
         canCancel={hasPermissionAccess(role, permissions, "master.cancel")}

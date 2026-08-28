@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { Check, Pencil, X } from "lucide-react";
-import type { CustomerType } from "@/lib/generated/prisma";
+import type { CustomerType, SaleChannel } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import { createCustomerType, toggleCustomerType, updateCustomerType } from "./actions";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
@@ -13,11 +13,19 @@ import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-sta
 
 type CustomerTypeRow = Pick<
   CustomerType,
-  "id" | "name" | "priceTier" | "isActive" | "sortOrder" | "isSystem" | "createdAt"
->;
+  "id" | "name" | "isActive" | "sortOrder" | "isSystem" | "createdAt" | "priceListId"
+> & { priceList: { code: string; name: string; channel: SaleChannel | null } | null };
+
+type PriceListOption = {
+  id: string;
+  code: string;
+  name: string;
+  channel: SaleChannel | null;
+};
 
 interface CustomerTypeFormProps {
   customerTypes: CustomerTypeRow[];
+  priceLists: PriceListOption[];
   canCreate: boolean;
   canUpdate: boolean;
   canCancel: boolean;
@@ -26,10 +34,12 @@ interface CustomerTypeFormProps {
 const inputClassName =
   "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100";
 
-const PriceTierBadge = ({ priceTier }: { priceTier: CustomerType["priceTier"] }) => {
-  if (priceTier === "WHOLESALE") return <AdminStatusBadge tone="info">ราคาขายส่ง</AdminStatusBadge>;
-  if (priceTier === "MEMBER") return <AdminStatusBadge tone="success">ราคาสมาชิก</AdminStatusBadge>;
-  return <AdminStatusBadge tone="muted">ราคาขายปลีก</AdminStatusBadge>;
+const PriceListBadge = ({ priceList }: { priceList: CustomerTypeRow["priceList"] }) => {
+  if (!priceList) return <AdminStatusBadge tone="danger">ยังไม่ผูกราคา</AdminStatusBadge>;
+  if (priceList.channel) {
+    return <AdminStatusBadge tone="warning">{priceList.name}</AdminStatusBadge>;
+  }
+  return <AdminStatusBadge tone="info">{priceList.name}</AdminStatusBadge>;
 };
 
 const CustomerTypeRowEditor = ({
@@ -38,12 +48,14 @@ const CustomerTypeRowEditor = ({
   canCancel,
   isBusy,
   onToggle,
+  priceLists,
 }: {
   item: CustomerTypeRow;
   canUpdate: boolean;
   canCancel: boolean;
   isBusy: boolean;
   onToggle: (id: string, currentActive: boolean) => void;
+  priceLists: PriceListOption[];
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string>("");
@@ -89,16 +101,20 @@ const CustomerTypeRowEditor = ({
                 className={inputClassName}
               />
             </div>
-            <div className="sm:w-40">
+            <div className="sm:w-52">
               <select
-                name="priceTier"
-                defaultValue={item.priceTier}
+                name="priceListId"
+                defaultValue={item.priceListId ?? ""}
                 className={inputClassName}
-                aria-label="ระดับราคา"
+                aria-label="Price List"
+                required
               >
-                <option value="RETAIL">ราคาขายปลีก</option>
-                <option value="MEMBER">ราคาสมาชิก</option>
-                <option value="WHOLESALE">ราคาขายส่ง</option>
+                <option value="">เลือก Price List</option>
+                {priceLists.map((priceList) => (
+                  <option key={priceList.id} value={priceList.id}>
+                    {priceList.name}{priceList.channel ? ` — ${priceList.channel}` : ""}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="flex gap-2">
@@ -135,7 +151,7 @@ const CustomerTypeRowEditor = ({
         )}
       </td>
       <td className="px-4 py-3">
-        <PriceTierBadge priceTier={item.priceTier} />
+        <PriceListBadge priceList={item.priceList} />
       </td>
       <td className="px-4 py-3">
         <AdminStatusBadge tone={getAdminActiveBadgeTone(item.isActive)}>
@@ -184,7 +200,7 @@ const CustomerTypeRowEditor = ({
   );
 };
 
-const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: CustomerTypeFormProps) => {
+const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, canCancel }: CustomerTypeFormProps) => {
   const formRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
@@ -233,11 +249,14 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
                   className={inputClassName}
                 />
               </div>
-              <div className="sm:w-40">
-                <select name="priceTier" defaultValue="RETAIL" className={inputClassName} aria-label="ระดับราคา">
-                  <option value="RETAIL">ราคาขายปลีก</option>
-                  <option value="MEMBER">ราคาสมาชิก</option>
-                  <option value="WHOLESALE">ราคาขายส่ง</option>
+              <div className="sm:w-52">
+                <select name="priceListId" defaultValue="" className={inputClassName} aria-label="Price List" required>
+                  <option value="">เลือก Price List</option>
+                  {priceLists.map((priceList) => (
+                    <option key={priceList.id} value={priceList.id}>
+                      {priceList.name}{priceList.channel ? ` — ${priceList.channel}` : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
               <button
@@ -265,7 +284,7 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
                   ชื่อประเภท
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
-                  ระดับราคา
+                  Price List
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
                   สถานะ
@@ -287,6 +306,7 @@ const CustomerTypeForm = ({ customerTypes, canCreate, canUpdate, canCancel }: Cu
                   canCancel={canCancel}
                   isBusy={togglingId === item.id || isPending}
                   onToggle={handleToggle}
+                  priceLists={priceLists}
                 />
               ))}
             </tbody>

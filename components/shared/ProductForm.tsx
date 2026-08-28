@@ -61,6 +61,7 @@ interface CarBrandOption { id: string; name: string; carModels: CarModelOption[]
 interface CategoryOption { id: string; name: string }
 interface PartsBrandOption { id: string; name: string }
 interface SupplierOption { id: string; name: string }
+interface PriceListOption { id: string; code: string; name: string; channel: string | null }
 
 interface UnitRow {
   name: string;
@@ -94,6 +95,7 @@ export interface ProductFormData {
   salePrice:       number;
   retailPrice:     number;
   memberPrice:     number;
+  priceListPrices: Record<string, number>;
   minStock:        number;
   warrantyDays:    number;
   shelfLocation:   string | null;
@@ -121,6 +123,7 @@ interface ProductFormProps {
   carBrands:   CarBrandOption[];
   partsBrands: PartsBrandOption[];
   suppliers:   SupplierOption[];
+  priceLists:  PriceListOption[];
   product?:    ProductFormData;
   returnTo?:    string;
 }
@@ -161,7 +164,7 @@ const checkboxCls =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, returnTo = "/admin/products" }: ProductFormProps) => {
+const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists, product, returnTo = "/admin/products" }: ProductFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -1580,6 +1583,26 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, product, r
               min={0} step={0.01} className={inputCls} />
             <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะแสดง “สอบถามราคา”</p>
           </div>
+          {priceLists
+            .filter((priceList) => !["WHOLESALE", "MEMBER", "RETAIL"].includes(priceList.code))
+            .map((priceList) => (
+              <div key={priceList.id}>
+                <label className={labelCls}>{priceList.name} (บาท)</label>
+                <input
+                  type="number"
+                  name={`priceListPrice:${priceList.id}`}
+                  defaultValue={product?.priceListPrices[priceList.id] ?? 0}
+                  min={0}
+                  step={0.01}
+                  className={inputCls}
+                />
+                <p className={helpCls}>
+                  {priceList.channel
+                    ? `ราคาเติมเริ่มต้นสำหรับ ${priceList.channel}; พนักงานแก้ราคาจริงในบิลได้`
+                    : `ราคาใน Price List รหัส ${priceList.code}`}
+                </p>
+              </div>
+            ))}
           <div>
             <label className={labelCls}>Stock ขั้นต่ำ</label>
             <input type="number" name="minStock"

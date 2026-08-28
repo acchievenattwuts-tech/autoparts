@@ -38,10 +38,21 @@ export default async function MarketplaceSettlementsPage({
     getActiveCashBankAccountOptions(),
     getTransactionCustomers(),
   ]);
+  const setupCustomers = customers
+    .filter(
+      (customer) =>
+        customer.customerType?.priceList?.isActive &&
+        customer.customerType.priceList.channel === channel,
+    )
+    .map((customer) => ({ id: customer.id, label: customer.name }));
+  const activeSetting =
+    setting && setupCustomers.some((customer) => customer.id === setting.defaultCustomerId)
+      ? setting
+      : null;
 
-  const [pending, history, cashHealth] = setting
+  const [pending, history, cashHealth] = activeSetting
     ? await Promise.all([
-        getPendingSettlementDocuments(channel, setting.settlementCashBankAccountId),
+        getPendingSettlementDocuments(channel, activeSetting.settlementCashBankAccountId),
         db.marketplaceSettlement.findMany({
           where: { channel },
           orderBy: [{ settlementDate: "desc" }, { settlementNo: "desc" }],
@@ -59,7 +70,7 @@ export default async function MarketplaceSettlementsPage({
             status: true,
           },
         }),
-        getChannelCashHealth(channel, setting.settlementCashBankAccountId),
+        getChannelCashHealth(channel, activeSetting.settlementCashBankAccountId),
       ])
     : [{ sales: [], creditNotes: [] }, [], null];
 
@@ -67,7 +78,7 @@ export default async function MarketplaceSettlementsPage({
     hasPermissionAccess(role, permissions, "expenses.cancel") &&
     hasPermissionAccess(role, permissions, "cash_bank.transfers.cancel");
   const destinationAccounts = accounts.filter(
-    (account) => account.type === "BANK" && account.id !== setting?.settlementCashBankAccountId,
+    (account) => account.type === "BANK" && account.id !== activeSetting?.settlementCashBankAccountId,
   );
 
   return (
@@ -88,7 +99,7 @@ export default async function MarketplaceSettlementsPage({
             รวมได้หลายออเดอร์ตามรอบโอนเงินจริง หักใบคืนสินค้าและค่าธรรมเนียม แล้วโอนยอดสุทธิเข้าบัญชีธนาคาร
           </p>
         </div>
-        {setting ? (
+        {activeSetting ? (
           <Link
             href={`/admin/sales/${config.slug}/returns/new`}
             className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-rose-300 px-4 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50 dark:border-rose-400/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
@@ -99,7 +110,7 @@ export default async function MarketplaceSettlementsPage({
         ) : null}
       </div>
 
-      {!setting ? (
+      {!activeSetting ? (
         <MarketplaceSetupForm
           channel={channel}
           channelLabel={config.label}
@@ -108,7 +119,8 @@ export default async function MarketplaceSettlementsPage({
             id: account.id,
             label: `${account.code} — ${account.name}`,
           }))}
-          customers={customers.map((customer) => ({ id: customer.id, label: customer.name }))}
+          customers={setupCustomers}
+          initialAccountId={setting?.settlementCashBankAccountId ?? ""}
         />
       ) : (
         <>
@@ -121,7 +133,7 @@ export default async function MarketplaceSettlementsPage({
                 <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-100">
                   ฿{money(cashHealth.holdingBalance)}
                 </p>
-                <p className="mt-1 text-xs text-slate-400">{setting.holdingAccountLabel}</p>
+                <p className="mt-1 text-xs text-slate-400">{activeSetting.holdingAccountLabel}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#101b2e]">
                 <p className="text-sm text-slate-500 dark:text-slate-400">ยอดขายรอรับเงิน</p>

@@ -29,6 +29,20 @@ export default async function MarketplaceSalePage({
     getTransactionSuppliers(),
     getActiveCashBankAccountOptions(),
   ]);
+  const setupCustomers = customers
+    .filter(
+      (customer) =>
+        customer.customerType?.priceList?.isActive &&
+        customer.customerType.priceList.channel === channel,
+    )
+    .map((customer) => ({
+      id: customer.id,
+      label: `${customer.code ? `${customer.code} — ` : ""}${customer.name}`,
+    }));
+  const validSetting =
+    setting && setupCustomers.some((customer) => customer.id === setting.defaultCustomerId)
+      ? setting
+      : null;
 
   return (
     <div className="space-y-6">
@@ -48,7 +62,7 @@ export default async function MarketplaceSalePage({
           รวมค่าจัดส่งที่ลูกค้าจ่าย เพื่อให้ยอดตรงกับรายงานของแพลตฟอร์ม
         </p>
       </div>
-      {!setting ? (
+      {!validSetting ? (
         <MarketplaceSetupForm
           channel={channel}
           channelLabel={config.label}
@@ -57,10 +71,8 @@ export default async function MarketplaceSalePage({
             id: account.id,
             label: `${account.code} — ${account.name}`,
           }))}
-          customers={customers.map((customer) => ({
-            id: customer.id,
-            label: `${customer.code ? `${customer.code} — ` : ""}${customer.name}`,
-          }))}
+          customers={setupCustomers}
+          initialAccountId={setting?.settlementCashBankAccountId ?? ""}
         />
       ) : (
         <SaleForm
@@ -70,14 +82,18 @@ export default async function MarketplaceSalePage({
           customers={customers.map((customer) => ({
             ...customer,
             priceTier: customer.customerType?.priceTier ?? "RETAIL",
+            priceListId: customer.customerType?.priceListId ?? null,
+            priceList: customer.customerType?.priceList?.isActive
+              ? customer.customerType.priceList
+              : null,
           }))}
           defaultVatType={siteConfig.vatType}
           defaultVatRate={siteConfig.vatRate}
           channel={channel}
           channelLabel={config.label}
           orderRefLabel={config.orderRefLabel}
-          defaultCustomerId={setting.defaultCustomerId}
-          defaultCashBankAccountId={setting.settlementCashBankAccountId}
+          defaultCustomerId={validSetting.defaultCustomerId}
+          defaultCashBankAccountId={validSetting.settlementCashBankAccountId}
         />
       )}
     </div>

@@ -35,7 +35,7 @@ export const activeOrReferencedWhere = (
 // (customers, sales inline create/update, delivery geo update).
 export const TRANSACTION_CUSTOMER_OPTIONS_TAG = "admin-transaction:customer-options";
 
-// Float lat/long + Int creditTerm + enum priceTier — all JSON-safe, no Decimal.
+// Customer Price List metadata plus compatibility tier are JSON-safe; no Decimal.
 const CUSTOMER_OPTION_SELECT = {
   id: true,
   name: true,
@@ -46,7 +46,15 @@ const CUSTOMER_OPTION_SELECT = {
   defaultLatitude: true,
   defaultLongitude: true,
   isActive: true,
-  customerType: { select: { priceTier: true } },
+  customerType: {
+    select: {
+      priceTier: true,
+      priceListId: true,
+      priceList: {
+        select: { id: true, code: true, name: true, channel: true, isActive: true },
+      },
+    },
+  },
 } as const;
 
 const loadActiveTransactionCustomers = async () =>
@@ -357,6 +365,8 @@ export const getSaleProductOptionsByIds = async (ids: readonly string[]) =>
   (await getTransactionProductDetailRowsByIds(ids)).map((product) => ({
     id: product.id, code: product.code, name: product.name, description: product.description,
     salePrice: product.salePrice, retailPrice: product.retailPrice, memberPrice: product.memberPrice,
+    priceListPrices: product.priceListPrices,
+    pricePromotions: product.pricePromotions,
     saleUnitName: product.saleUnitName, warrantyDays: product.warrantyDays,
     categoryName: product.categoryName, brandName: product.brandName, units: product.units,
     preferredSupplierId: product.preferredSupplierActive ? product.preferredSupplierId : null,

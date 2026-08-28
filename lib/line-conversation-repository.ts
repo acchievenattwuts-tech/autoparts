@@ -53,26 +53,33 @@ export async function findActiveCustomerIdByLineUserId(lineUserId: string) {
 }
 
 /**
- * ตัดสินว่าลูกค้า LINE รายนี้ใช้ระดับราคาไหนบนแชท/Flex
- * WHOLESALE → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี priceTier=WHOLESALE (เช่น อู่ซ่อมรถ)
- * MEMBER    → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี priceTier=MEMBER (สมาชิก) → ใช้ Product.memberPrice
- * RETAIL    → ผูกบัญชีแล้ว + ประเภทลูกค้า (active) มี priceTier=RETAIL (ลูกค้าทั่วไป)
+ * Resolve the active Price List used by this LINE customer. The legacy tier is
+ * returned only when priceListId has not been backfilled yet.
  * UNLINKED  → ยังไม่ผูกบัญชี / บัญชีถูกปิด / ไม่ระบุประเภท / ประเภทถูกปิดใช้งาน
  *             ใช้ราคาขายปลีกเหมือน RETAIL แต่แยกค่าไว้เพื่อแนบข้อความว่าราคายังไม่ได้ลด
  *             (ยืนยันโดยเจ้าของร้าน 2026-07-19: 3 กรณีหลังนับเป็น "ยังไม่ผูก")
  */
 export async function resolveLinePriceTier(
   lineUserId: string,
-): Promise<"UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE"> {
+): Promise<"UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE" | { priceListCode: string }> {
   const customer = await db.customer.findUnique({
     where: { lineUserId },
     select: {
       isActive: true,
-      customerType: { select: { priceTier: true, isActive: true } },
+      customerType: {
+        select: {
+          priceTier: true,
+          isActive: true,
+          priceList: { select: { code: true, isActive: true } },
+        },
+      },
     },
   });
   if (!customer?.isActive) return "UNLINKED";
   if (!customer.customerType?.isActive) return "UNLINKED";
+  if (customer.customerType.priceList?.isActive) {
+    return { priceListCode: customer.customerType.priceList.code };
+  }
   return customer.customerType.priceTier;
 }
 

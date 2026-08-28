@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import {
   Archive,
   Award,
+  BadgePercent,
   BarChart3,
   BookOpenCheck,
   Boxes,
@@ -177,6 +178,10 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       { label: "ลูกค้า", href: "/admin/customers", icon: Users, permission: "customers.view", keywords: "customers ลูกค้า",
       },
       { label: "ประเภทลูกค้า", href: "/admin/master/customer-types", icon: UserCog, permission: "master.view", keywords: "customer type ประเภทลูกค้า อู่ ทั่วไป แสดงราคา ซ่อนราคา master",
+      },
+      { label: "Price List", href: "/admin/pricing/price-lists", icon: Tags, permission: "price_lists.view", keywords: "price list ราคา shopee lazada marketplace ขายส่ง สมาชิก ขายปลีก",
+      },
+      { label: "โปรโมชั่นราคา", href: "/admin/pricing/promotions", icon: BadgePercent, permission: "price_promotions.view", keywords: "price promotion scheduled override โปรโมชั่น ราคา วันที่ขาย",
       },
       { label: "ซัพพลายเออร์", href: "/admin/master/suppliers", icon: Truck, permission: "master.view", keywords: "suppliers ซัพพลายเออร์ master",
       },

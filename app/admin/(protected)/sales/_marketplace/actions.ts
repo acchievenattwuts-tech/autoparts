@@ -91,7 +91,15 @@ export async function saveMarketplaceChannelSetting(formData: FormData) {
       }),
       db.customer.findFirst({
         where: { id: defaultCustomerId, isActive: true },
-        select: { id: true },
+        select: {
+          id: true,
+          customerType: {
+            select: {
+              isActive: true,
+              priceList: { select: { isActive: true, channel: true, name: true } },
+            },
+          },
+        },
       }),
       db.marketplaceChannelSetting.findFirst({
         where: { settlementCashBankAccountId, channel: { not: channel } },
@@ -100,6 +108,14 @@ export async function saveMarketplaceChannelSetting(formData: FormData) {
     ]);
     if (!account) return { error: "ไม่พบบัญชีพักเงินที่ใช้งานอยู่" };
     if (!customer) return { error: "ไม่พบลูกค้าเริ่มต้นที่ใช้งานอยู่" };
+    if (!customer.customerType?.isActive || !customer.customerType.priceList?.isActive) {
+      return { error: "ลูกค้าเริ่มต้นต้องผูกประเภทลูกค้าและ Price List ที่เปิดใช้งาน" };
+    }
+    if (customer.customerType.priceList.channel !== channel) {
+      return {
+        error: `Price List ของลูกค้าเริ่มต้นต้องเป็นช่องทาง ${getMarketplaceChannelConfig(channel).label}`,
+      };
+    }
     // ถ้าสองช่องทางใช้บัญชีพักเงินใบเดียวกัน ยอดค้างรับจะแยกกันไม่ออก และการกระทบยอด
     // ของช่องทางหนึ่งจะดูดยอดของอีกช่องทางไปด้วย
     if (conflicting) {

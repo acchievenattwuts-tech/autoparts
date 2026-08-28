@@ -12,11 +12,12 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ProductForm from "@/components/shared/ProductForm";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
+import { getActivePriceListOptions } from "@/lib/pricing/price-list-repository";
 
 const NewProductPage = async () => {
   await requirePermission("products.create");
 
-  const [categories, carBrands, partsBrands, suppliers] = await Promise.all([
+  const [categories, carBrands, partsBrands, suppliers, priceLists] = await Promise.all([
     getActiveCategoryOptions(),
     getActiveCarBrandOptionsWithModels(),
     getActivePartsBrandOptions(),
@@ -25,6 +26,7 @@ const NewProductPage = async () => {
       orderBy: { name: "asc" },
       select: { id: true, name: true, phone: true },
     }),
+    getActivePriceListOptions(),
   ]);
 
   return (
@@ -44,7 +46,7 @@ const NewProductPage = async () => {
         description="บันทึกรายละเอียดสินค้า หน่วยนับ สต็อก และการผูกกับรถ"
       />
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} />
     </div>
   );
 };

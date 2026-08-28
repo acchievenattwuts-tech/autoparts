@@ -23,6 +23,7 @@ import {
   PaymentMethod,
   Prisma,
   SalePaymentType,
+  SalePriceSource,
   SaleChannel,
   SaleType,
   ShippingMethod,
@@ -60,6 +61,7 @@ import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
+import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
 import {
   assertLotBalanceAvailable,
   createWarrantySnapshots,
@@ -78,6 +80,8 @@ const serializeSaleProductOption = (product: TransactionProductDetailRow) => ({
   salePrice: product.salePrice,
   retailPrice: product.retailPrice,
   memberPrice: product.memberPrice,
+  priceListPrices: product.priceListPrices,
+  pricePromotions: product.pricePromotions,
   saleUnitName: product.saleUnitName,
   warrantyDays: product.warrantyDays,
   categoryName: product.categoryName,
@@ -453,6 +457,13 @@ export async function createSale(
   let marketplaceSetting: {
     settlementCashBankAccountId: string;
     defaultCustomerId: string;
+    defaultCustomer: {
+      isActive: boolean;
+      customerType: {
+        isActive: boolean;
+        priceList: { isActive: boolean; channel: SaleChannel | null } | null;
+      } | null;
+    };
   } | null = null;
   const isMarketplaceSale = isManualMarketplaceChannel(channel);
   if (isMarketplaceSale) {
@@ -471,13 +482,36 @@ export async function createSale(
     }
     marketplaceSetting = await db.marketplaceChannelSetting.findFirst({
       where: { channel, isActive: true },
-      select: { settlementCashBankAccountId: true, defaultCustomerId: true },
+      select: {
+        settlementCashBankAccountId: true,
+        defaultCustomerId: true,
+        defaultCustomer: {
+          select: {
+            isActive: true,
+            customerType: {
+              select: {
+                isActive: true,
+                priceList: { select: { isActive: true, channel: true } },
+              },
+            },
+          },
+        },
+      },
     });
     if (!marketplaceSetting) {
       return { error: `กรุณาตั้งค่าบัญชีพักเงินและลูกค้าเริ่มต้นของ ${channelConfig.label} ก่อน` };
     }
     if (customerId !== marketplaceSetting.defaultCustomerId) {
       return { error: `ลูกค้าอ้างอิงไม่ตรงกับการตั้งค่า ${channelConfig.label}` };
+    }
+    const configuredPriceList = marketplaceSetting.defaultCustomer.customerType?.priceList;
+    if (
+      !marketplaceSetting.defaultCustomer.isActive ||
+      !marketplaceSetting.defaultCustomer.customerType?.isActive ||
+      !configuredPriceList?.isActive ||
+      configuredPriceList.channel !== channel
+    ) {
+      return { error: `ลูกค้าเริ่มต้นต้องผูก Price List ${channelConfig.label} ที่เปิดใช้งาน` };
     }
   }
 
@@ -540,6 +574,50 @@ export async function createSale(
       );
       const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
       const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
+      const customerPriceList = customerId
+        ? await tx.customer.findUnique({
+            where: { id: customerId },
+            select: {
+              customerType: {
+                select: {
+                  isActive: true,
+                  priceList: { select: { id: true, code: true, isActive: true } },
+                },
+              },
+            },
+          })
+        : null;
+      const activePriceList =
+        customerPriceList?.customerType?.isActive && customerPriceList.customerType.priceList?.isActive
+          ? customerPriceList.customerType.priceList
+          : null;
+      const productIds = [...new Set(validItems.map((item) => item.productId))];
+      const [normalPriceRows, promotionRows] = activePriceList
+        ? await Promise.all([
+            tx.productPrice.findMany({
+              where: { priceListId: activePriceList.id, productId: { in: productIds } },
+              select: { productId: true, amount: true },
+            }),
+            tx.pricePromotionItem.findMany({
+              where: {
+                productId: { in: productIds },
+                promotion: {
+                  priceListId: activePriceList.id,
+                  status: "PUBLISHED",
+                  startDate: { lte: docDate },
+                  endDate: { gte: docDate },
+                },
+              },
+              select: { productId: true, promotionId: true, promotionPrice: true },
+            }),
+          ])
+        : [[], []];
+      const normalPriceByProduct = new Map(normalPriceRows.map((row) => [row.productId, Number(row.amount)]));
+      const promotionByProduct = new Map<string, (typeof promotionRows)[number]>();
+      for (const promotion of promotionRows) {
+        if (promotionByProduct.has(promotion.productId)) throw new Error("OVERLAPPING_PUBLISHED_PRICE_PROMOTIONS");
+        promotionByProduct.set(promotion.productId, promotion);
+      }
       // 1. Create Sale header
       const sale = await tx.sale.create({
         data: {
@@ -595,6 +673,21 @@ export async function createSale(
 
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+        const configuredAmount = normalPriceByProduct.get(item.productId);
+        const resolvedNormalPrice = activePriceList
+          ? resolveNormalPrice({
+              priceListCode: activePriceList.code,
+              configuredAmount,
+              legacyPrices: {
+                salePrice: Number(product.salePrice),
+                retailPrice: Number(product.retailPrice),
+                memberPrice: Number(product.memberPrice),
+              },
+            })
+          : null;
+        const promotion = promotionByProduct.get(item.productId);
+        const matchesPromotion = promotion && Math.abs(item.salePrice - Number(promotion.promotionPrice)) <= 0.005;
+        const matchesNormal = resolvedNormalPrice && Math.abs(item.salePrice - resolvedNormalPrice.amount) <= 0.005;
 
         // Create SaleItem
         const saleItem = await tx.saleItem.create({
@@ -617,6 +710,13 @@ export async function createSale(
             supplierId:    item.supplierId || null,
             supplierName:  item.supplierName || null,
             moreDetail:    item.moreDetail || null,
+            priceListId: activePriceList?.id ?? null,
+            pricePromotionId: matchesPromotion ? promotion.promotionId : null,
+            priceSource: matchesPromotion
+              ? SalePriceSource.PROMOTION
+              : matchesNormal
+                ? SalePriceSource.NORMAL_PRICE
+                : SalePriceSource.MANUAL,
           },
         });
 

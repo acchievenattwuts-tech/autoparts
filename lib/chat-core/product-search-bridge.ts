@@ -4,6 +4,7 @@ import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { repairThaiTyping, needsThaiTypingRepair } from "@/lib/thai-spelling-fold";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import { resolveChatNormalPrice, resolveLegacyChatPrice } from "@/lib/pricing/resolve-price";
 import {
   buildChatProductSpecRequiredTokenGroups,
   COOLING_FAN_BLADE_CATEGORY_HINT,
@@ -189,6 +190,7 @@ export type ChatMatchedProductSummary = {
   retailPrice: number;
   /** ราคาสมาชิก (Product.memberPrice) — ใช้เลือกราคาตามระดับราคาของลูกค้า */
   memberPrice: number;
+  priceListPrices?: Record<string, number>;
   /** Catalog fitment evidence used by the chat compatibility guard. */
   fitments?: Array<{
     carBrandName: string | null;
@@ -222,6 +224,10 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       salePrice: true,
       retailPrice: true,
       memberPrice: true,
+      prices: {
+        where: { priceList: { isActive: true } },
+        select: { amount: true, priceList: { select: { code: true } } },
+      },
       carModels: {
         orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
         select: {
@@ -250,6 +256,9 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
       salePrice: Number(row.salePrice),
       retailPrice: Number(row.retailPrice),
       memberPrice: Number(row.memberPrice),
+      priceListPrices: Object.fromEntries(
+        row.prices.map((price) => [price.priceList.code, Number(price.amount)]),
+      ),
       fitments: row.carModels.map((fitment) => ({
         carBrandName: fitment.carModel.carBrand.name,
         carModelName: fitment.carModel.name,
@@ -260,9 +269,11 @@ export async function getChatProductSummaries(ids: string[]): Promise<ChatMatche
     }));
 }
 
-/** ระดับราคาที่ใช้เลือกราคาแสดงในแชท (ตาม CustomerType.priceTier)
+/** Price selection for chat. String tiers remain as compatibility/unlinked states;
+ * linked customers resolve through `{ priceListCode }` after backfill.
  *  - UNKNOWN = resolve ระดับราคาไม่ได้ (เช่น DB สะดุด) → ซ่อนราคา ปลอดภัยกว่าเดาผิด tier */
 export type ChatPriceTier = "UNLINKED" | "RETAIL" | "MEMBER" | "WHOLESALE" | "UNKNOWN";
+export type ChatPriceSelection = ChatPriceTier | { priceListCode: string };
 
 /**
  * ข้อความต่อท้ายสำหรับลูกค้าที่ยังไม่ผูกบัญชีกับระบบร้าน — ราคาที่เห็นคือราคาขายปลีก
@@ -283,7 +294,7 @@ export const UNLINKED_NO_PRICE_NOTE = "เดี๋ยวแอดมินม�
  * คืน null เมื่อไม่ต้องแนบข้อความ (ผูกบัญชีแล้ว / ไม่มีการ์ดสินค้า / resolve tier ไม่ได้)
  */
 export function buildUnlinkedPriceNote(
-  tier: ChatPriceTier,
+  tier: ChatPriceSelection,
   products: Array<{ salePrice: number }>,
 ): string | null {
   if (tier !== "UNLINKED" || products.length === 0) return null;
@@ -303,14 +314,32 @@ export function buildUnlinkedPriceNote(
  * (สินค้าที่ยังไม่ตั้งราคาสมาชิกจึงแสดง "สอบถามราคา" ให้เอง ไม่ fallback ไป tier อื่น)
  */
 export function applyChatPriceTier<
-  T extends { salePrice: number; retailPrice: number; memberPrice: number },
->(products: T[], tier: ChatPriceTier): T[] {
+  T extends {
+    salePrice: number;
+    retailPrice: number;
+    memberPrice: number;
+    priceListPrices?: Record<string, number>;
+  },
+>(products: T[], tier: ChatPriceSelection): T[] {
+  if (typeof tier === "object") {
+    return products.map((product) => ({
+      ...product,
+      salePrice: resolveChatNormalPrice({
+        priceListCode: tier.priceListCode,
+        configuredAmount: product.priceListPrices?.[tier.priceListCode],
+        legacyPrices: product,
+      }).amount,
+    }));
+  }
   if (tier === "WHOLESALE") return products;
   // Price tier could not be resolved (transient DB failure at the call site): hide
   // every price behind "สอบถามราคา" rather than risk showing a wrong-tier price.
   if (tier === "UNKNOWN") return products.map((product) => ({ ...product, salePrice: 0 }));
-  if (tier === "MEMBER") return products.map((product) => ({ ...product, salePrice: product.memberPrice }));
-  return products.map((product) => ({ ...product, salePrice: product.retailPrice }));
+  const legacyTier = tier === "MEMBER" ? "MEMBER" : "RETAIL";
+  return products.map((product) => ({
+    ...product,
+    salePrice: resolveLegacyChatPrice(product, legacyTier),
+  }));
 }
 
 const MAX_QUERY_LENGTH = 120;

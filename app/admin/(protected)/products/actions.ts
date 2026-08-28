@@ -12,7 +12,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateProductCode } from "@/lib/entity-code";
-import { AliasKind, AuditAction, ProductFitmentType } from "@/lib/generated/prisma";
+import { AliasKind, AuditAction, ProductFitmentType, type Prisma } from "@/lib/generated/prisma";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -173,6 +173,64 @@ const productSchema = z.object({
 type ProductInput = z.infer<typeof productSchema>;
 type ProductImageInput = z.infer<typeof productImageSchema>;
 
+const PRODUCT_PRICE_FIELD_PREFIX = "priceListPrice:";
+
+const parseSubmittedProductPrices = (
+  formData: FormData,
+): { success: true; prices: Map<string, number> } | { success: false; error: string } => {
+  const prices = new Map<string, number>();
+  for (const [key, rawValue] of formData.entries()) {
+    if (!key.startsWith(PRODUCT_PRICE_FIELD_PREFIX)) continue;
+    const priceListId = key.slice(PRODUCT_PRICE_FIELD_PREFIX.length);
+    const amount = Number(rawValue);
+    if (!priceListId || !Number.isFinite(amount) || amount < 0 || amount > 9_999_999) {
+      return { success: false, error: "ราคาใน Price List ไม่ถูกต้อง" };
+    }
+    prices.set(priceListId, amount);
+  }
+  return { success: true, prices };
+};
+
+async function syncProductPrices(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  productData: Pick<ProductInput, "salePrice" | "memberPrice" | "retailPrice">,
+  submittedPrices: ReadonlyMap<string, number>,
+): Promise<void> {
+  const submittedIds = [...submittedPrices.keys()];
+  const priceLists = await tx.priceList.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        { code: { in: ["WHOLESALE", "MEMBER", "RETAIL"] } },
+        ...(submittedIds.length > 0 ? [{ id: { in: submittedIds } }] : []),
+      ],
+    },
+    select: { id: true, code: true },
+  });
+  const validSubmittedIds = new Set(priceLists.map((priceList) => priceList.id));
+  if (submittedIds.some((id) => !validSubmittedIds.has(id))) {
+    throw new Error("PRODUCT_PRICE_LIST_NOT_ACTIVE");
+  }
+
+  for (const priceList of priceLists) {
+    const amount =
+      priceList.code === "WHOLESALE"
+        ? productData.salePrice
+        : priceList.code === "MEMBER"
+          ? productData.memberPrice
+          : priceList.code === "RETAIL"
+            ? productData.retailPrice
+            : submittedPrices.get(priceList.id);
+    if (amount === undefined) continue;
+    await tx.productPrice.upsert({
+      where: { productId_priceListId: { productId, priceListId: priceList.id } },
+      create: { productId, priceListId: priceList.id, amount },
+      update: { amount },
+    });
+  }
+}
+
 const revalidateStorefrontProductCaches = async (productId?: string, canonicalPath?: string) => {
   revalidatePath("/admin/products");
   updateProductSearchCache();
@@ -324,6 +382,10 @@ async function getProductAuditSnapshot(productId: string) {
         },
         orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
       },
+      prices: {
+        select: { priceListId: true, amount: true },
+        orderBy: { priceListId: "asc" },
+      },
     },
   });
 
@@ -358,6 +420,7 @@ async function getProductAuditSnapshot(productId: string) {
     salePrice: product.salePrice,
     retailPrice: product.retailPrice,
     memberPrice: product.memberPrice,
+    priceListPrices: product.prices,
     minStock: product.minStock,
     warrantyDays: product.warrantyDays,
     saleUnitName: product.saleUnitName,
@@ -708,6 +771,8 @@ export const createProduct = async (
 
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
+  const submittedPriceResult = parseSubmittedProductPrices(formData);
+  if (!submittedPriceResult.success) return { error: submittedPriceResult.error };
 
   const { aliases, fitments, compatibleFitments, units, productImages: parsedProductImages, ...productData } =
     result.data;
@@ -764,6 +829,7 @@ export const createProduct = async (
       });
 
       createdProductId = product.id;
+      await syncProductPrices(tx, product.id, productData, submittedPriceResult.prices);
 
       await tx.productUnit.createMany({
         data: units.map((u) => ({
@@ -832,6 +898,9 @@ export const createProduct = async (
     }
     return {};
   } catch (err) {
+    if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
+      return { error: "มี Price List ถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
+    }
     if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };
     }
@@ -856,6 +925,8 @@ export const updateProduct = async (
 
   const result = parseProductFormData(formData);
   if (!result.success) return { error: result.error };
+  const submittedPriceResult = parseSubmittedProductPrices(formData);
+  if (!submittedPriceResult.success) return { error: submittedPriceResult.error };
 
   const { aliases, fitments, compatibleFitments, units, productImages: parsedProductImages, ...productData } =
     result.data;
@@ -966,6 +1037,7 @@ export const updateProduct = async (
           isActive: true,
         },
       });
+      await syncProductPrices(tx, id, productData, submittedPriceResult.prices);
 
       const [existingUnits, existingImages, existingAliases, existingFitments] = await Promise.all([
         tx.productUnit.findMany({
@@ -1133,6 +1205,9 @@ export const updateProduct = async (
     after(() => reembedProductSearchDocument(id));
     return {};
   } catch (err) {
+    if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
+      return { error: "มี Price List ถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
+    }
     if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };
     }

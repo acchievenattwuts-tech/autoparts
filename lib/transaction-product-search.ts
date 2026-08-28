@@ -35,6 +35,14 @@ export type TransactionProductDetailRow = {
   salePrice: number;
   retailPrice: number;
   memberPrice: number;
+  priceListPrices: Record<string, number>;
+  pricePromotions: Array<{
+    id: string;
+    priceListCode: string;
+    startDateKey: string;
+    endDateKey: string;
+    promotionPrice: number;
+  }>;
   costPrice: number;
   avgCost: number;
   saleUnitName: string;
@@ -56,11 +64,19 @@ export type TransactionProductDetailRow = {
 
 type RawDetailRow = Omit<
   TransactionProductDetailRow,
-  "salePrice" | "retailPrice" | "memberPrice" | "costPrice" | "avgCost" | "units"
+  "salePrice" | "retailPrice" | "memberPrice" | "priceListPrices" | "pricePromotions" | "costPrice" | "avgCost" | "units"
 > & {
   salePrice: unknown;
   retailPrice: unknown;
   memberPrice: unknown;
+  priceListPrices: Record<string, unknown> | null;
+  pricePromotions: Array<{
+    id: string;
+    priceListCode: string;
+    startDateKey: string;
+    endDateKey: string;
+    promotionPrice: unknown;
+  }> | null;
   costPrice: unknown;
   avgCost: unknown;
   units: Array<{ name: string; scale: unknown; isBase: boolean }> | null;
@@ -71,6 +87,13 @@ const mapRawDetailRow = (row: RawDetailRow): TransactionProductDetailRow => ({
   salePrice: Number(row.salePrice),
   retailPrice: Number(row.retailPrice),
   memberPrice: Number(row.memberPrice),
+  priceListPrices: Object.fromEntries(
+    Object.entries(row.priceListPrices ?? {}).map(([code, amount]) => [code, Number(amount)]),
+  ),
+  pricePromotions: (row.pricePromotions ?? []).map((promotion) => ({
+    ...promotion,
+    promotionPrice: Number(promotion.promotionPrice),
+  })),
   costPrice: Number(row.costPrice),
   avgCost: Number(row.avgCost),
   units: (row.units ?? []).map((unit) => ({
@@ -91,6 +114,34 @@ const queryDetailRows = async (candidateSql: Prisma.Sql): Promise<TransactionPro
       p."salePrice" AS "salePrice",
       p."retailPrice" AS "retailPrice",
       p."memberPrice" AS "memberPrice",
+      COALESCE(
+        (
+          SELECT jsonb_object_agg(price_list.code, product_price.amount)
+          FROM "ProductPrice" product_price
+          INNER JOIN "PriceList" price_list ON price_list.id = product_price."priceListId"
+          WHERE product_price."productId" = p.id AND price_list."isActive" = true
+        ),
+        '{}'::jsonb
+      ) AS "priceListPrices",
+      COALESCE(
+        (
+          SELECT jsonb_agg(
+            jsonb_build_object(
+              'id', promotion.id,
+              'priceListCode', promotion_list.code,
+              'startDateKey', to_char(promotion."startDate" AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD'),
+              'endDateKey', to_char(promotion."endDate" AT TIME ZONE 'Asia/Bangkok', 'YYYY-MM-DD'),
+              'promotionPrice', promotion_item."promotionPrice"
+            )
+            ORDER BY promotion."startDate", promotion.id
+          )
+          FROM "PricePromotionItem" promotion_item
+          INNER JOIN "PricePromotion" promotion ON promotion.id = promotion_item."promotionId"
+          INNER JOIN "PriceList" promotion_list ON promotion_list.id = promotion."priceListId"
+          WHERE promotion_item."productId" = p.id AND promotion.status = 'PUBLISHED'
+        ),
+        '[]'::jsonb
+      ) AS "pricePromotions",
       p."costPrice" AS "costPrice",
       p."avgCost" AS "avgCost",
       p."saleUnitName" AS "saleUnitName",

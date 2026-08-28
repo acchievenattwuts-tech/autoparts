@@ -44,6 +44,18 @@ test("price product subject helper does not guess from uncertain typo-heavy text
   assert.equal(buildPriceProductSearchIntent(subjects), null);
 });
 
+type RoutingCalls = {
+  searches: Array<{ text?: string | null }>;
+  textReplies: string[];
+  escalations: string[];
+  outboundMessages: string[];
+};
+
+let activeCalls: RoutingCalls;
+let activeUnansweredText = "";
+let inboundSeq = 0;
+let mocksInstalled = false;
+
 async function setupMessengerPriceRoutingTest(unansweredText: string) {
   const calls = {
     searches: [] as Array<{ text?: string | null }>,
@@ -51,15 +63,32 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
     escalations: [] as string[],
     outboundMessages: [] as string[],
   };
-  let inboundSeq = 0;
+  activeCalls = calls;
+  activeUnansweredText = unansweredText;
+  inboundSeq = 0;
   const inboundCreatedAt = new Date();
+
+  if (mocksInstalled) return calls;
+
+  const emptyModel = new Proxy({}, {
+    get: () => async () => [],
+  });
+  const dbStub = new Proxy({}, {
+    get: () => emptyModel,
+  });
+  await mock.module("@/lib/db", {
+    namedExports: {
+      db: dbStub,
+      dbTx: async (callback: (tx: unknown) => unknown) => callback(dbStub),
+    },
+  });
 
   await mock.module("@/lib/messenger/messenger-conversation-repository", {
     namedExports: {
       DuplicateMessengerEventError: class DuplicateMessengerEventError extends Error {},
       acquireMessengerConversationLock: async () => true,
       appendMessengerMessage: async (input: { direction: LineMessageDirection; text?: string | null }) => {
-        if (input.direction === LineMessageDirection.OUTBOUND_AI) calls.outboundMessages.push(input.text ?? "");
+        if (input.direction === LineMessageDirection.OUTBOUND_AI) activeCalls.outboundMessages.push(input.text ?? "");
         return { id: "message-1" };
       },
       bumpMessengerInboundSeq: async () => {
@@ -67,7 +96,7 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
         return inboundSeq;
       },
       escalateMessengerConversationToAdmin: async (conversationId: string) => {
-        calls.escalations.push(conversationId);
+        activeCalls.escalations.push(conversationId);
       },
       findStalledMessengerConversationIds: async () => [],
       getMessengerCoalesceState: async () => ({
@@ -84,7 +113,7 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
       getUnansweredMessengerMessages: async () => [
         {
           id: "inbound-1",
-          text: unansweredText,
+          text: activeUnansweredText,
           messageType: LineMessageType.TEXT,
           imageUrl: null,
           intent: null,
@@ -101,16 +130,19 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
   await mock.module("@/lib/chat-core/product-search-bridge", {
     namedExports: {
       applyChatPriceTier: <T>(products: T[]) => products,
+      buildUnlinkedPriceNote: () => null,
+      CHAT_PRODUCT_DISPLAY_LIMIT: 8,
+      CHAT_PRODUCT_FETCH_LIMIT: 20,
       getChatProductSummaries: async (ids: string[]) =>
         ids.map((id) => ({ id, code: id, name: `product ${id}`, salePrice: 100, imageUrl: null })),
       resolveCatalogCodes: async () => [],
       searchChatProductInquiry: async (input: { text?: string | null }) => {
-        calls.searches.push({ text: input.text });
+        activeCalls.searches.push({ text: input.text });
         return {
           searched: true,
           reason: "SEARCHED_PRODUCT_INQUIRY",
           query: input.text ?? "",
-          result: { ids: [`id-${calls.searches.length}`], total: 1, mode: "v2" },
+          result: { ids: [`id-${activeCalls.searches.length}`], total: 1, mode: "v2" },
           needsMoreInfo: false,
           appliedFilters: {
             categoryName: null,
@@ -142,7 +174,7 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
       sendMessengerGenericTemplate: async () => undefined,
       sendMessengerSenderAction: async () => undefined,
       sendMessengerText: async (input: { text: string }) => {
-        calls.textReplies.push(input.text);
+        activeCalls.textReplies.push(input.text);
       },
     },
   });
@@ -162,10 +194,11 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
     },
   });
 
+  mocksInstalled = true;
   return calls;
 }
 
-test.skip("Messenger price turn with three product subjects searches each subject before admin handoff", async () => {
+test("Messenger price turn with three product subjects searches each subject before admin handoff", async () => {
   const calls = await setupMessengerPriceRoutingTest(
     [
       "ตู้วีโก้คลูเกีรยคับน้ำDENSO250ccราคาคับ",
@@ -197,7 +230,7 @@ test.skip("Messenger price turn with three product subjects searches each subjec
   assert.deepEqual(calls.escalations, ["conversation-1"]);
 });
 
-test.skip("Messenger bare price-only turn does not resurrect old product context into search", async () => {
+test("Messenger bare price-only turn does not resurrect old product context into search", async () => {
   const calls = await setupMessengerPriceRoutingTest("ราคาเท่าไรครับ");
   const { processMessengerBatch } = await import("@/lib/messenger/messenger-webhook-processor");
 

@@ -19,6 +19,9 @@ export type SaleCoreItemInput = { productId: string; unitName: string };
 export type SaleProductSnapshot = {
   avgCost: Prisma.Decimal;
   costPrice: Prisma.Decimal;
+  salePrice: Prisma.Decimal;
+  retailPrice: Prisma.Decimal;
+  memberPrice: Prisma.Decimal;
   inventoryTracking: string;
   isLotControl: boolean;
 };
@@ -58,6 +61,9 @@ export async function preloadSaleDependencies(
             id: true,
             avgCost: true,
             costPrice: true,
+            salePrice: true,
+            retailPrice: true,
+            memberPrice: true,
             inventoryTracking: true,
             isLotControl: true,
           },
@@ -74,6 +80,9 @@ export async function preloadSaleDependencies(
         {
           avgCost: product.avgCost,
           costPrice: product.costPrice,
+          salePrice: product.salePrice,
+          retailPrice: product.retailPrice,
+          memberPrice: product.memberPrice,
           inventoryTracking: product.inventoryTracking,
           isLotControl: isInventoryTracked(product.inventoryTracking) && product.isLotControl,
         },

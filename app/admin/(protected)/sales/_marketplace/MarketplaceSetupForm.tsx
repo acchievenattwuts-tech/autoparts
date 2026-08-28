@@ -49,7 +49,7 @@ export default function MarketplaceSetupForm({
     >
       <div>
         <h2 className="font-kanit text-lg font-semibold text-amber-900 dark:text-amber-100">
-          ตั้งค่า {channelLabel} แบบคีย์เองครั้งแรก
+          ตั้งค่า {channelLabel} แบบคีย์เอง
         </h2>
         <p className="mt-1 text-sm text-amber-800 dark:text-amber-200">
           {holdingAccountLabel} เป็นบัญชีเสมือนที่พักยอดขายไว้จนกว่า {channelLabel} จะโอนเงินจริง

@@ -13,14 +13,9 @@ import { createCustomer, unlinkCustomerLine, updateCustomer } from "./actions";
 interface CustomerTypeOption {
   id: string;
   name: string;
-  priceTier: "RETAIL" | "MEMBER" | "WHOLESALE";
+  priceListId: string | null;
+  priceList: { code: string; name: string; channel: string | null } | null;
 }
-
-const PRICE_TIER_SUBLABEL: Record<CustomerTypeOption["priceTier"], string> = {
-  WHOLESALE: "ราคาขายส่ง (เช่น อู่ซ่อมรถ)",
-  MEMBER: "ราคาสมาชิก",
-  RETAIL: "ราคาขายปลีก (ลูกค้าทั่วไป)",
-};
 
 interface CustomerFormProps {
   customer?: {
@@ -191,7 +186,9 @@ const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: 
                 (t): SelectOption => ({
                   id: t.id,
                   label: t.name,
-                  sublabel: PRICE_TIER_SUBLABEL[t.priceTier],
+                  sublabel: t.priceList
+                    ? `${t.priceList.name}${t.priceList.channel ? ` — ${t.priceList.channel}` : ""}`
+                    : "ยังไม่ผูก Price List",
                 }),
               )}
               value={customerTypeId}
@@ -200,7 +197,7 @@ const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: 
             />
             <input type="hidden" name="customerTypeId" value={customerTypeId} />
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
-              คุมการแสดงราคาบน LINE — ว่างไว้ = ลูกค้าทั่วไป (ซ่อนราคา)
+              ประเภทลูกค้าเป็นตัวกำหนด Price List ที่ใช้เติมราคา — ว่างไว้ = ลูกค้าทั่วไป
             </p>
           </div>
 

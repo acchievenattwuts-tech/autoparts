@@ -57,13 +57,18 @@ export const loadActiveCustomerTypeOptions = async () =>
     db.customerType.findMany({
       where: { isActive: true },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      select: { id: true, name: true, priceTier: true },
+      select: {
+        id: true,
+        name: true,
+        priceListId: true,
+        priceList: { select: { code: true, name: true, channel: true } },
+      },
     }),
   );
 
 export const getActiveCustomerTypeOptions = unstable_cache(
   loadActiveCustomerTypeOptions,
-  ["admin-master-customer-types-v1"],
+  ["admin-master-customer-types-v2"],
   { tags: [ADMIN_MASTER_OPTION_TAGS.customerTypes], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 

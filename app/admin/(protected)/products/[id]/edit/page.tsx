@@ -16,6 +16,7 @@ import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { partitionProductFitments } from "@/lib/product-fitment";
+import { getActivePriceListOptions } from "@/lib/pricing/price-list-repository";
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
@@ -36,7 +37,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
   const { returnTo } = await searchParams;
   const safeReturnTo = getSafeProductReturnTo(returnTo);
 
-  const [product, categories, carBrands, partsBrands, suppliers] = await Promise.all([
+  const [product, categories, carBrands, partsBrands, suppliers, priceLists] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -57,6 +58,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
         },
         units: { orderBy: { isBase: "desc" } },
         images: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
+        prices: { select: { priceListId: true, amount: true } },
       },
     }),
     getActiveCategoryOptions(),
@@ -67,6 +69,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
       orderBy: { name: "asc" },
       select: { id: true, name: true, phone: true },
     }),
+    getActivePriceListOptions(),
   ]);
 
   if (!product) {
@@ -86,6 +89,9 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
     salePrice:        Number(product.salePrice),
     retailPrice:      Number(product.retailPrice),
     memberPrice:      Number(product.memberPrice),
+    priceListPrices: Object.fromEntries(
+      product.prices.map((price) => [price.priceListId, Number(price.amount)]),
+    ),
     minStock:         product.minStock,
     warrantyDays:     product.warrantyDays,
     shelfLocation:    product.shelfLocation,
@@ -157,7 +163,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
         }
       />
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} product={productData} returnTo={safeReturnTo} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} product={productData} returnTo={safeReturnTo} />
     </div>
   );
 };
