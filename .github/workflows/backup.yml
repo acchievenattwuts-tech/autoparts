@@ -29,7 +29,9 @@ env:
 jobs:
   backup:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # The first Blob mirror can take more than two hours with a shared Drive
+    # client. GitHub-hosted jobs allow six hours; incremental runs are shorter.
+    timeout-minutes: 360
 
     steps:
       - uses: actions/checkout@v4
@@ -192,18 +194,18 @@ jobs:
           } > "$REPORT"
           cat "$REPORT"
 
-      # Upload order matters: the state file is the record of "these objects are
-      # safely on Drive". Writing it before the objects land would make the next
-      # run skip files that were never actually uploaded.
+      # Upload order matters. Persist the small database dump and report before
+      # the potentially long first Blob mirror. The state file must remain last:
+      # it records that every indexed Blob object is safely on Drive.
       - name: Upload to Google Drive
         env:
           RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
         run: |
           set -euo pipefail
-          RCLONE_OPTS="--transfers 8 --checkers 16 --retries 3 --stats 30s --stats-one-line"
-          rclone copy "$WORK_DIR/blob-mirror" "$RCLONE_REMOTE/blob-mirror" $RCLONE_OPTS
+          RCLONE_OPTS="--transfers 8 --checkers 16 --retries 3 --stats 30s --stats-one-line --stats-log-level NOTICE"
           rclone copy "$WORK_DIR/db" "$RCLONE_REMOTE/db" $RCLONE_OPTS
           rclone copy "$WORK_DIR/REPORT-${{ steps.meta.outputs.date }}.txt" "$RCLONE_REMOTE/reports" $RCLONE_OPTS
+          rclone copy "$WORK_DIR/blob-mirror" "$RCLONE_REMOTE/blob-mirror" $RCLONE_OPTS
           rclone copy "$WORK_DIR/state/blob-index.json" "$RCLONE_REMOTE/state" $RCLONE_OPTS
 
       # Dumps and reports age out after ~12 weeks. blob-mirror is never pruned:
