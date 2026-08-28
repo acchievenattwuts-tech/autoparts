@@ -13,7 +13,7 @@
 | สั่งเอง | ปุ่ม "สำรองข้อมูลเดี๋ยวนี้" ในหน้า Backup Center หรือปุ่ม Run workflow บน GitHub |
 | ปลายทาง | Google Drive ผ่าน `rclone` |
 | แจ้งเตือน | Telegram ทั้งกรณีสำเร็จและล้มเหลว |
-| เก็บย้อนหลัง | dump + report 90 วัน / ไฟล์รูปเก็บสะสมไม่ลบ |
+| เก็บย้อนหลัง | dump + report 60 วัน / ไฟล์รูปเก็บสะสมไม่ลบ |
 
 **ทำไมต้องรันบน GitHub ไม่ใช่บน Vercel** — Vercel serverless runtime ไม่มีคำสั่ง `pg_dump` และมีลิมิตเวลาทำงาน 300 วินาที ส่วน runner ของ GitHub เป็น Ubuntu เต็มรูปแบบ ติดตั้ง `pg_dump` และ `rclone` ได้ และให้เวลาถึง 6 ชั่วโมง
 

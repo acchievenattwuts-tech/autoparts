@@ -211,15 +211,15 @@ jobs:
           rclone copy "$WORK_DIR/blob-mirror" "$RCLONE_REMOTE/blob-mirror" $RCLONE_OPTS
           rclone copy "$WORK_DIR/state/blob-index.json" "$RCLONE_REMOTE/state" $RCLONE_OPTS
 
-      # Dumps and reports age out after ~12 weeks. blob-mirror is never pruned:
+      # Dumps and reports age out after 60 days. blob-mirror is never pruned:
       # it is the only copy of images deleted from production.
       - name: Apply retention
         env:
           RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
         run: |
           set -euo pipefail
-          rclone delete "$RCLONE_REMOTE/db" --min-age 90d
-          rclone delete "$RCLONE_REMOTE/reports" --min-age 90d
+          rclone delete "$RCLONE_REMOTE/db" --min-age 60d
+          rclone delete "$RCLONE_REMOTE/reports" --min-age 60d
 
       # Runs even when an earlier step failed — a silent backup failure is the
       # failure mode this whole workflow exists to prevent.
