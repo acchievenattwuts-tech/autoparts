@@ -202,7 +202,10 @@ jobs:
           RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
         run: |
           set -euo pipefail
-          RCLONE_OPTS="--transfers 8 --checkers 16 --retries 3 --stats 30s --stats-one-line --stats-log-level NOTICE"
+          # The shared rclone Google OAuth project can return 403 rateLimitExceeded
+          # during a large first mirror. Keep Drive API traffic deliberately low
+          # and allow enough backoff for the per-minute quota window to recover.
+          RCLONE_OPTS="--transfers 2 --checkers 2 --tpslimit 4 --tpslimit-burst 4 --low-level-retries 20 --retries 8 --retries-sleep 30s --stats 30s --stats-one-line --stats-log-level NOTICE"
           rclone copy "$WORK_DIR/db" "$RCLONE_REMOTE/db" $RCLONE_OPTS
           rclone copy "$WORK_DIR/REPORT-${{ steps.meta.outputs.date }}.txt" "$RCLONE_REMOTE/reports" $RCLONE_OPTS
           rclone copy "$WORK_DIR/blob-mirror" "$RCLONE_REMOTE/blob-mirror" $RCLONE_OPTS
