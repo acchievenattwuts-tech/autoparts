@@ -182,9 +182,12 @@ const parseSubmittedProductPrices = (
   for (const [key, rawValue] of formData.entries()) {
     if (!key.startsWith(PRODUCT_PRICE_FIELD_PREFIX)) continue;
     const priceListId = key.slice(PRODUCT_PRICE_FIELD_PREFIX.length);
+    // A blank field means "no price configured" and must not be coerced to 0 —
+    // an explicit 0 is a real amount that the sale form quotes as 0 baht.
+    if (typeof rawValue === "string" && rawValue.trim() === "") continue;
     const amount = Number(rawValue);
     if (!priceListId || !Number.isFinite(amount) || amount < 0 || amount > 9_999_999) {
-      return { success: false, error: "ราคาใน Price List ไม่ถูกต้อง" };
+      return { success: false, error: "ราคาในระดับราคาไม่ถูกต้อง" };
     }
     prices.set(priceListId, amount);
   }
@@ -899,7 +902,7 @@ export const createProduct = async (
     return {};
   } catch (err) {
     if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
-      return { error: "มี Price List ถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
+      return { error: "มีระดับราคาถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
     }
     if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };
@@ -1206,7 +1209,7 @@ export const updateProduct = async (
     return {};
   } catch (err) {
     if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
-      return { error: "มี Price List ถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
+      return { error: "มีระดับราคาถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
     }
     if (err instanceof Error && err.message.includes("Unique constraint")) {
       return { error: "รหัสสินค้านี้มีอยู่แล้ว" };

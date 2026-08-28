@@ -7,6 +7,7 @@ import { db, dbTx } from "@/lib/db";
 import { getAuditActorFromSession, getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
 import { requirePermission } from "@/lib/require-auth";
 import { parsePriceImportCsv } from "@/lib/pricing/price-import";
+import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
 
 const priceListSchema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_]{2,30}$/, "รหัสใช้ A-Z, 0-9 และ _ เท่านั้น"),
@@ -48,29 +49,43 @@ export async function createPriceList(formData: FormData): Promise<{ error?: str
     revalidatePath("/admin/pricing/price-lists");
     return {};
   } catch {
-    return { error: "รหัส ชื่อ หรือช่องทางนี้มี Price List อยู่แล้ว" };
+    return { error: "รหัส ชื่อ หรือช่องทางนี้มีระดับราคาอยู่แล้ว" };
   }
 }
 
 export async function setPriceListActive(id: string, isActive: boolean): Promise<{ error?: string }> {
   const session = await requirePermission(isActive ? "price_lists.update" : "price_lists.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
-  const current = await db.priceList.findUnique({
-    where: { id },
-    select: { id: true, code: true, isSystem: true, isActive: true },
-  });
-  if (!current) return { error: "ไม่พบ Price List" };
-  if (current.isSystem && !isActive) return { error: "Price List ระบบไม่สามารถปิดใช้งานได้" };
-  if (!isActive) {
-    const [customerTypeCount, promotionCount] = await Promise.all([
-      db.customerType.count({ where: { priceListId: id, isActive: true } }),
-      db.pricePromotion.count({ where: { priceListId: id, status: "PUBLISHED" } }),
-    ]);
-    if (customerTypeCount > 0 || promotionCount > 0) {
-      return { error: "ยังมีประเภทลูกค้าหรือโปรโมชั่นที่ใช้งาน Price List นี้" };
+  // Guard and write share one transaction: a Customer Type pointed at a
+  // deactivated Price List silently falls back to the legacy tier at sale time,
+  // so the reference must be gone before the row can be closed. Inactive Customer
+  // Types count too — reopening one would resurrect that dangling reference.
+  const outcome = await dbTx(async (tx) => {
+    const current = await tx.priceList.findUnique({
+      where: { id },
+      select: { id: true, code: true, isSystem: true, isActive: true },
+    });
+    if (!current) return { error: "ไม่พบระดับราคา" as const };
+    if (current.isSystem && !isActive) return { error: "ระดับราคาระบบไม่สามารถปิดใช้งานได้" as const };
+    if (!isActive) {
+      const [customerTypeCount, promotionCount] = await Promise.all([
+        tx.customerType.count({ where: { priceListId: id } }),
+        tx.pricePromotion.count({ where: { priceListId: id, status: { not: "CANCELLED" } } }),
+      ]);
+      if (customerTypeCount > 0 || promotionCount > 0) {
+        return {
+          error:
+            "ยังมีประเภทลูกค้าหรือโปรโมชั่นที่อ้างอิงระดับราคานี้ กรุณาย้ายประเภทลูกค้าไประดับราคาอื่นและยกเลิกโปรโมชั่นก่อน" as const,
+        };
+      }
     }
-  }
-  const updated = await db.priceList.update({ where: { id }, data: { isActive } });
+    return { current, updated: await tx.priceList.update({ where: { id }, data: { isActive } }) };
+  }).catch((error: unknown) => {
+    console.error("setPriceListActive failed", error);
+    return { error: "เปลี่ยนสถานะระดับราคาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" as const };
+  });
+  if ("error" in outcome) return { error: outcome.error };
+  const { current, updated } = outcome;
   await safeWriteAuditLog({
     ...getAuditActorFromSession(session),
     ...(await getRequestContext()),
@@ -95,7 +110,7 @@ export async function updatePriceList(
   const parsed = z.object({ name: z.string().trim().min(1).max(100), sortOrder: z.number().int().min(0).max(9999) }).safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const current = await db.priceList.findUnique({ where: { id } });
-  if (!current) return { error: "ไม่พบ Price List" };
+  if (!current) return { error: "ไม่พบระดับราคา" };
   try {
     const updated = await db.priceList.update({ where: { id }, data: parsed.data });
     await safeWriteAuditLog({
@@ -111,7 +126,7 @@ export async function updatePriceList(
     revalidatePath("/admin/pricing/price-lists");
     return {};
   } catch {
-    return { error: "ชื่อ Price List นี้ถูกใช้แล้ว" };
+    return { error: "ชื่อระดับราคานี้ถูกใช้แล้ว" };
   }
 }
 
@@ -126,11 +141,22 @@ type PriceImportPreview = {
   coveredAfterImport: number;
 };
 
+const emptyPreview = (errors: string[], rowCount = 0): PriceImportPreview => ({
+  rowCount, createCount: 0, updateCount: 0, unchangedCount: 0,
+  missingProductCodes: [], errors, totalActiveProducts: 0, coveredAfterImport: 0,
+});
+
+/** Amounts for these codes are rewritten from the Product columns on every product
+ *  save, so importing into them would be reverted without warning. */
+const LEGACY_IMPORT_BLOCKED_MESSAGE =
+  "ระดับราคาขายส่ง / สมาชิก / ขายปลีก แก้ราคาได้จากหน้าสินค้าเท่านั้น ไม่รองรับการนำเข้า CSV";
+
 async function buildPriceImportPreview(priceListId: string, csv: string): Promise<PriceImportPreview> {
   const parsed = parsePriceImportCsv(csv);
-  const priceList = await db.priceList.findFirst({ where: { id: priceListId, isActive: true }, select: { id: true } });
-  if (!priceList) return { rowCount: 0, createCount: 0, updateCount: 0, unchangedCount: 0, missingProductCodes: [], errors: ["Price List ไม่ได้เปิดใช้งาน"], totalActiveProducts: 0, coveredAfterImport: 0 };
-  if (parsed.errors.length > 0) return { rowCount: parsed.rows.length, createCount: 0, updateCount: 0, unchangedCount: 0, missingProductCodes: [], errors: parsed.errors, totalActiveProducts: 0, coveredAfterImport: 0 };
+  const priceList = await db.priceList.findFirst({ where: { id: priceListId, isActive: true }, select: { id: true, code: true } });
+  if (!priceList) return emptyPreview(["ระดับราคาไม่ได้เปิดใช้งาน"]);
+  if (isLegacyFieldPriceListCode(priceList.code)) return emptyPreview([LEGACY_IMPORT_BLOCKED_MESSAGE]);
+  if (parsed.errors.length > 0) return emptyPreview(parsed.errors, parsed.rows.length);
 
   const normalizedCodes = parsed.rows.map((row) => row.productCode.toLocaleUpperCase("en-US"));
   const [products, currentPrices, totalActiveProducts, currentCoverage] = await Promise.all([
@@ -171,8 +197,8 @@ async function buildPriceImportPreview(priceListId: string, csv: string): Promis
 
 export async function previewPriceImport(priceListId: string, csv: string): Promise<PriceImportPreview> {
   const session = await requirePermission("price_lists.update").catch(() => null);
-  if (!session?.user?.id) return { rowCount: 0, createCount: 0, updateCount: 0, unchangedCount: 0, missingProductCodes: [], errors: ["ไม่มีสิทธิ์เข้าถึง"], totalActiveProducts: 0, coveredAfterImport: 0 };
-  if (csv.length > 2_000_000) return { rowCount: 0, createCount: 0, updateCount: 0, unchangedCount: 0, missingProductCodes: [], errors: ["ไฟล์ใหญ่เกิน 2 MB"], totalActiveProducts: 0, coveredAfterImport: 0 };
+  if (!session?.user?.id) return emptyPreview(["ไม่มีสิทธิ์เข้าถึง"]);
+  if (csv.length > 2_000_000) return emptyPreview(["ไฟล์ใหญ่เกิน 2 MB"]);
   return buildPriceImportPreview(priceListId, csv);
 }
 
@@ -183,27 +209,64 @@ export async function applyPriceImport(priceListId: string, csv: string): Promis
   const preview = await buildPriceImportPreview(priceListId, csv);
   if (preview.errors.length > 0) return { error: preview.errors.join("; ") };
   const parsed = parsePriceImportCsv(csv);
-  const result = await dbTx(async (tx) => {
-    const priceList = await tx.priceList.findFirst({ where: { id: priceListId, isActive: true }, select: { id: true, code: true } });
-    if (!priceList) throw new Error("PRICE_LIST_NOT_ACTIVE");
-    const products = await tx.product.findMany({ where: { code: { in: parsed.rows.map((row) => row.productCode), mode: "insensitive" } }, select: { id: true, code: true } });
-    const productByCode = new Map(products.map((product) => [product.code.toLocaleUpperCase("en-US"), product]));
-    if (products.length !== parsed.rows.length) throw new Error("PRODUCT_SET_CHANGED");
-    for (const row of parsed.rows) {
-      const product = productByCode.get(row.productCode.toLocaleUpperCase("en-US"));
-      if (!product) throw new Error("PRODUCT_SET_CHANGED");
-      await tx.productPrice.upsert({
-        where: { productId_priceListId: { productId: product.id, priceListId } },
-        create: { productId: product.id, priceListId, amount: row.amount },
-        update: { amount: row.amount },
+  let result: { code: string; count: number; created: number; updated: number; unchanged: number } | null = null;
+  try {
+    result = await dbTx(async (tx) => {
+      const priceList = await tx.priceList.findFirst({ where: { id: priceListId, isActive: true }, select: { id: true, code: true } });
+      if (!priceList) throw new Error("PRICE_LIST_NOT_ACTIVE");
+      if (isLegacyFieldPriceListCode(priceList.code)) throw new Error("LEGACY_PRICE_LIST");
+      const products = await tx.product.findMany({ where: { code: { in: parsed.rows.map((row) => row.productCode), mode: "insensitive" } }, select: { id: true, code: true } });
+      const productByCode = new Map(products.map((product) => [product.code.toLocaleUpperCase("en-US"), product]));
+      if (products.length !== parsed.rows.length) throw new Error("PRODUCT_SET_CHANGED");
+
+      // Split the file against the rows that already exist so a full re-import
+      // costs one createMany plus one update per genuinely changed price, instead
+      // of one upsert round trip per line held open inside the transaction.
+      const targets = parsed.rows.map((row) => {
+        const product = productByCode.get(row.productCode.toLocaleUpperCase("en-US"));
+        if (!product) throw new Error("PRODUCT_SET_CHANGED");
+        return { productId: product.id, amount: row.amount };
       });
+      const existing = await tx.productPrice.findMany({
+        where: { priceListId, productId: { in: targets.map((target) => target.productId) } },
+        select: { productId: true, amount: true },
+      });
+      const existingByProduct = new Map(existing.map((row) => [row.productId, Number(row.amount)]));
+
+      const toCreate = targets.filter((target) => !existingByProduct.has(target.productId));
+      const toUpdate = targets.filter((target) => {
+        const current = existingByProduct.get(target.productId);
+        return current !== undefined && current !== target.amount;
+      });
+
+      if (toCreate.length > 0) {
+        await tx.productPrice.createMany({
+          data: toCreate.map((target) => ({ productId: target.productId, priceListId, amount: target.amount })),
+        });
+      }
+      for (const target of toUpdate) {
+        await tx.productPrice.update({
+          where: { productId_priceListId: { productId: target.productId, priceListId } },
+          data: { amount: target.amount },
+        });
+      }
+      return {
+        code: priceList.code,
+        count: parsed.rows.length,
+        created: toCreate.length,
+        updated: toUpdate.length,
+        unchanged: targets.length - toCreate.length - toUpdate.length,
+      };
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message === "LEGACY_PRICE_LIST") return { error: LEGACY_IMPORT_BLOCKED_MESSAGE };
+    if (message === "PRICE_LIST_NOT_ACTIVE" || message === "PRODUCT_SET_CHANGED") {
+      return { error: "ข้อมูลเปลี่ยนหลัง preview กรุณาตรวจไฟล์ใหม่อีกครั้ง" };
     }
-    return { code: priceList.code, count: parsed.rows.length };
-  }).catch((error: unknown) => {
-    if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") return null;
-    if (error instanceof Error && error.message === "PRODUCT_SET_CHANGED") return null;
-    throw error;
-  });
+    console.error("applyPriceImport failed", error);
+    return { error: "นำเข้าราคาไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
+  }
   if (!result) return { error: "ข้อมูลเปลี่ยนหลัง preview กรุณาตรวจไฟล์ใหม่อีกครั้ง" };
   await safeWriteAuditLog({
     ...getAuditActorFromSession(session),
@@ -212,7 +275,13 @@ export async function applyPriceImport(priceListId: string, csv: string): Promis
     entityType: "ProductPrice",
     entityId: priceListId,
     entityRef: result.code,
-    meta: { event: "BULK_IMPORT", rowCount: result.count },
+    meta: {
+      event: "BULK_IMPORT",
+      rowCount: result.count,
+      createdCount: result.created,
+      updatedCount: result.updated,
+      unchangedCount: result.unchanged,
+    },
   });
   revalidatePath("/admin/pricing/price-lists");
   revalidatePath("/admin/products");

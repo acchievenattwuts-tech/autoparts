@@ -98,7 +98,7 @@ export const createCustomerType = async (formData: FormData): Promise<{ error?: 
     return {};
   } catch (error) {
     if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") {
-      return { error: "ไม่พบ Price List ที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
+      return { error: "ไม่พบระดับราคาที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
     }
     return { error: "ชื่อประเภทลูกค้านี้มีอยู่แล้ว" };
   }
@@ -164,7 +164,7 @@ export const updateCustomerType = async (
     return {};
   } catch (error) {
     if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") {
-      return { error: "ไม่พบ Price List ที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
+      return { error: "ไม่พบระดับราคาที่เปิดใช้งาน กรุณาโหลดหน้าใหม่" };
     }
     return { error: "ไม่สามารถแก้ไขได้ หรือชื่อนี้มีอยู่แล้ว" };
   }

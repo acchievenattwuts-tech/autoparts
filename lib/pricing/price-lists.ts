@@ -41,6 +41,18 @@ export const SYSTEM_PRICE_LISTS = [
   },
 ] as const;
 
+/**
+ * Codes whose amounts are owned by the legacy Product columns
+ * (`salePrice` / `memberPrice` / `retailPrice`). `syncProductPrices()` rewrites
+ * their ProductPrice rows from those columns on every product save, so any other
+ * writer (CSV import, ad-hoc edit) would be silently reverted.
+ */
+export const LEGACY_FIELD_PRICE_LIST_CODES = ["WHOLESALE", "MEMBER", "RETAIL"] as const;
+
+export function isLegacyFieldPriceListCode(code: string): boolean {
+  return (LEGACY_FIELD_PRICE_LIST_CODES as readonly string[]).includes(code);
+}
+
 export type SystemPriceList = (typeof SYSTEM_PRICE_LISTS)[number];
 export type SystemPriceListCode = SystemPriceList["code"];
 export type LegacyPriceTier = Exclude<SystemPriceList["legacyTier"], null>;

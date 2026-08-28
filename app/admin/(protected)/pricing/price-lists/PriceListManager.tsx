@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { applyPriceImport, createPriceList, previewPriceImport, setPriceListActive, updatePriceList } from "./actions";
+import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
 
 type Row = {
   id: string;
@@ -34,12 +35,12 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
         className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_2fr_1fr_100px_auto] dark:border-white/10 dark:bg-slate-900/60"
         action={(formData) => startTransition(async () => {
           const result = await createPriceList(formData);
-          setMessage(result.error ?? "เพิ่ม Price List แล้ว");
+          setMessage(result.error ?? "เพิ่มระดับราคาแล้ว");
           if (!result.error) formRef.current?.reset();
         })}
       >
         <input name="code" required placeholder="รหัส เช่น TIKTOK" className={inputClass} />
-        <input name="name" required placeholder="ชื่อ Price List" className={inputClass} />
+        <input name="name" required placeholder="ชื่อระดับราคา" className={inputClass} />
         <select name="channel" defaultValue="" className={inputClass}>
           <option value="">ไม่ผูกช่องทาง</option>
           <option value="SHOPEE">Shopee</option>
@@ -53,17 +54,17 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/60">
         <div>
           <h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">นำเข้าราคา CSV</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">หัวตาราง: <code>productCode,price</code> — ตรวจ preview ก่อนเสมอ และไม่ลบราคาที่ไม่ได้อยู่ในไฟล์</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">หัวตาราง: <code>productCode,price</code> — ตรวจ preview ก่อนเสมอ และไม่ลบราคาที่ไม่ได้อยู่ในไฟล์ · ราคาขายส่ง / สมาชิก / ขายปลีก แก้ได้จากหน้าสินค้าเท่านั้น</p>
         </div>
         <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_minmax(260px,2fr)_auto]">
           <select
             value={importPriceListId}
             onChange={(event) => { setImportPriceListId(event.target.value); setImportPreview(null); }}
             className={inputClass}
-            aria-label="Price List สำหรับนำเข้า"
+            aria-label="ระดับราคาสำหรับนำเข้า"
           >
-            <option value="">เลือก Price List</option>
-            {rows.filter((row) => row.isActive).map((row) => <option key={row.id} value={row.id}>{row.name} — {row.code}</option>)}
+            <option value="">เลือกระดับราคา</option>
+            {rows.filter((row) => row.isActive && !isLegacyFieldPriceListCode(row.code)).map((row) => <option key={row.id} value={row.id}>{row.name} — {row.code}</option>)}
           </select>
           <input
             type="file"
@@ -110,7 +111,7 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-300">
-            <tr><th className="p-3">Price List</th><th className="p-3">ช่องทาง</th><th className="p-3">ครอบคลุมสินค้า</th><th className="p-3">ประเภทลูกค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr>
+            <tr><th className="p-3">ระดับราคา</th><th className="p-3">ช่องทาง</th><th className="p-3">ครอบคลุมสินค้า</th><th className="p-3">ประเภทลูกค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -124,7 +125,7 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
                   <div className="flex justify-end gap-2"><button
                     disabled={pending}
                     onClick={() => {
-                      const name = window.prompt("ชื่อ Price List", row.name)?.trim();
+                      const name = window.prompt("ชื่อระดับราคา", row.name)?.trim();
                       if (!name) return;
                       const orderText = window.prompt("ลำดับ", String(row.sortOrder));
                       if (orderText === null) return;

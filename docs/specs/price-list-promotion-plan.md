@@ -235,3 +235,44 @@ Production read-only preflight refreshed on 2026-08-28 before rollout:
   null provenance, and both PricePromotion and PricePromotionItem remain empty.
 - [ ] Enable the new resolver only after parity passes.
 - [x] Keep legacy Product price columns until a later separately approved cleanup.
+
+## Post-rollout hardening (2026-08-28)
+
+Audit of the shipped feature found and fixed the following. All changes are additive
+guards or naming; no pricing formula, stock, or document logic was touched.
+
+- [x] Rename every user-facing "Price List" string to Thai **"ระดับราคา"** (sidebar, page
+  headers, tables, dropdowns, permission labels, server-action error messages). Internal
+  identifiers, model names, codes, and English code comments are unchanged.
+- [x] Register `/admin/pricing/price-lists` and `/admin/pricing/promotions` in
+  `TabsBar.ROUTE_LABELS`. The map is hardcoded, so an unregistered route opened no tab at
+  all; the same gap was fixed for 7 other menus (customer types, search synonyms, Messenger
+  conversations, AI keys, both advance-refund menus, backup center).
+- [x] Block CSV price import into `WHOLESALE` / `MEMBER` / `RETAIL`. `syncProductPrices()`
+  rewrites those rows from the legacy Product columns on every product save, so an import
+  into them was silently reverted. Guarded in `buildPriceImportPreview()` and again inside
+  the apply transaction, and the codes are filtered out of the import dropdown.
+- [x] Deactivating a Price List now requires that **no** Customer Type references it
+  (previously only active ones were counted) and that no non-cancelled promotion references
+  it. A Customer Type left pointing at a closed list silently falls back to the legacy tier
+  at sale time. The guard and the write now share one transaction.
+- [x] `applyPriceImport()` no longer issues one upsert round trip per CSV line inside the
+  transaction. Rows are diffed against existing prices: one `createMany` for new rows, one
+  update per genuinely changed row, unchanged rows skipped. Added an outer try/catch that
+  returns a generic Thai message, and per-bucket counts in the audit entry.
+- [x] Product form price inputs for non-legacy Price Lists default to blank instead of `0`,
+  and a blank field is skipped instead of coerced to `0`. Saving an unrelated product no
+  longer writes a real 0-baht price into every newly created Price List.
+- [x] Added the missing `loading.tsx` to both `/pricing` route segments and set
+  `maxDuration = 300` on the Price List page so a large import cannot hit the platform
+  default function timeout.
+
+Open follow-ups:
+
+- [ ] `queryDetailRows()` in `lib/transaction-product-search.ts` loads **every** PUBLISHED
+  promotion for each product with no date bound; `resolveScheduledPrice()` filters by date
+  afterwards. Correct today, but the payload grows without a ceiling. Needs an agreed date
+  window before bounding it, because backdated sale documents must still resolve.
+- [ ] `price_lists.*` and `price_promotions.*` are deliberately absent from
+  `STAFF_OPERATIONS_PERMISSIONS` and `STAFF_VIEWER_PERMISSIONS`, so pricing is ADMIN-only.
+  Left unchanged pending an explicit decision.

@@ -62,7 +62,7 @@ export default function PromotionManager({
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <input name="name" required placeholder="ชื่อโปรโมชั่น" className={fieldClass} />
           <select name="priceListId" required defaultValue="" className={fieldClass}>
-            <option value="">เลือก Price List</option>
+            <option value="">เลือกระดับราคา</option>
             {priceLists.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
           </select>
           <input name="startDate" type="date" required defaultValue={today} className={fieldClass} />
@@ -101,7 +101,7 @@ export default function PromotionManager({
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-300"><tr><th className="p-3">โปรโมชั่น</th><th className="p-3">Price List</th><th className="p-3">ช่วงวันที่</th><th className="p-3">สินค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-300"><tr><th className="p-3">โปรโมชั่น</th><th className="p-3">ระดับราคา</th><th className="p-3">ช่วงวันที่</th><th className="p-3">สินค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr></thead>
           <tbody>{promotions.map((promotion) => (
             <Fragment key={promotion.id}>
             <tr className="border-t border-slate-100 dark:border-white/10">

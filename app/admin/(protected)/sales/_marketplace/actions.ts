@@ -109,11 +109,11 @@ export async function saveMarketplaceChannelSetting(formData: FormData) {
     if (!account) return { error: "ไม่พบบัญชีพักเงินที่ใช้งานอยู่" };
     if (!customer) return { error: "ไม่พบลูกค้าเริ่มต้นที่ใช้งานอยู่" };
     if (!customer.customerType?.isActive || !customer.customerType.priceList?.isActive) {
-      return { error: "ลูกค้าเริ่มต้นต้องผูกประเภทลูกค้าและ Price List ที่เปิดใช้งาน" };
+      return { error: "ลูกค้าเริ่มต้นต้องผูกประเภทลูกค้าและระดับราคาที่เปิดใช้งาน" };
     }
     if (customer.customerType.priceList.channel !== channel) {
       return {
-        error: `Price List ของลูกค้าเริ่มต้นต้องเป็นช่องทาง ${getMarketplaceChannelConfig(channel).label}`,
+        error: `ระดับราคาของลูกค้าเริ่มต้นต้องเป็นช่องทาง ${getMarketplaceChannelConfig(channel).label}`,
       };
     }
     // ถ้าสองช่องทางใช้บัญชีพักเงินใบเดียวกัน ยอดค้างรับจะแยกกันไม่ออก และการกระทบยอด

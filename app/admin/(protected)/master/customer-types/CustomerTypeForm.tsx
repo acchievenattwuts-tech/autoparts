@@ -106,10 +106,10 @@ const CustomerTypeRowEditor = ({
                 name="priceListId"
                 defaultValue={item.priceListId ?? ""}
                 className={inputClassName}
-                aria-label="Price List"
+                aria-label="ระดับราคา"
                 required
               >
-                <option value="">เลือก Price List</option>
+                <option value="">เลือกระดับราคา</option>
                 {priceLists.map((priceList) => (
                   <option key={priceList.id} value={priceList.id}>
                     {priceList.name}{priceList.channel ? ` — ${priceList.channel}` : ""}
@@ -250,8 +250,8 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
                 />
               </div>
               <div className="sm:w-52">
-                <select name="priceListId" defaultValue="" className={inputClassName} aria-label="Price List" required>
-                  <option value="">เลือก Price List</option>
+                <select name="priceListId" defaultValue="" className={inputClassName} aria-label="ระดับราคา" required>
+                  <option value="">เลือกระดับราคา</option>
                   {priceLists.map((priceList) => (
                     <option key={priceList.id} value={priceList.id}>
                       {priceList.name}{priceList.channel ? ` — ${priceList.channel}` : ""}
@@ -284,7 +284,7 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
                   ชื่อประเภท
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
-                  Price List
+                  ระดับราคา
                 </th>
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">
                   สถานะ

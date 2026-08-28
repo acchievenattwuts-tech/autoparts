@@ -78,8 +78,8 @@ export async function createPricePromotionDraft(payload: unknown): Promise<{ err
     refresh();
     return {};
   } catch (error) {
-    if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") return { error: "Price List ไม่ได้เปิดใช้งาน" };
-    if (error instanceof Error && error.message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการยังไม่มีราคาปกติใน Price List นี้" };
+    if (error instanceof Error && error.message === "PRICE_LIST_NOT_ACTIVE") return { error: "ระดับราคาไม่ได้เปิดใช้งาน" };
+    if (error instanceof Error && error.message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการยังไม่มีราคาปกติในระดับราคานี้" };
     return { error: "สร้าง draft โปรโมชั่นไม่สำเร็จ" };
   }
 }
@@ -142,8 +142,8 @@ export async function updatePricePromotionDraft(id: string, payload: unknown): P
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (message === "PROMOTION_NOT_DRAFT") return { error: "แก้ไขได้เฉพาะโปรโมชั่นสถานะ Draft" };
-    if (message === "PRICE_LIST_NOT_ACTIVE") return { error: "Price List ไม่ได้เปิดใช้งาน" };
-    if (message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการยังไม่มีราคาปกติใน Price List นี้" };
+    if (message === "PRICE_LIST_NOT_ACTIVE") return { error: "ระดับราคาไม่ได้เปิดใช้งาน" };
+    if (message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการยังไม่มีราคาปกติในระดับราคานี้" };
     return { error: "แก้ไข draft โปรโมชั่นไม่สำเร็จ" };
   }
 }
@@ -225,7 +225,7 @@ export async function publishPricePromotion(
       return { error: "ราคาโปรโมชั่นต่ำกว่าทุน ต้องยืนยันอีกครั้ง", belowCostProducts: message.slice(11).split("|") };
     }
     if (message.startsWith("PROMOTION_OVERLAP:")) return { error: `ช่วงโปรโมชั่นซ้อนกับรายการที่เผยแพร่แล้ว: ${message.slice(18)}` };
-    if (message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการไม่มีราคาปกติใน Price List" };
+    if (message === "NORMAL_PRICE_MISSING") return { error: "สินค้าบางรายการไม่มีราคาปกติในระดับราคา" };
     return { error: "โปรโมชั่นไม่อยู่ในสถานะ draft หรือข้อมูลไม่พร้อมเผยแพร่" };
   }
 }

@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // CSV price import writes up to 10,000 rows in one transaction
 
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { db } from "@/lib/db";
@@ -19,7 +20,7 @@ export default async function PriceListsPage() {
   ]);
   return (
     <div className="space-y-5">
-      <AdminPageHeader title="Price List" description="กำหนดชุดราคาที่ประเภทลูกค้าและช่องทางขายเลือกใช้ ราคาแต่ละสินค้าจัดการจากหน้าสินค้า" />
+      <AdminPageHeader title="ระดับราคา" description="กำหนดชุดราคาที่ประเภทลูกค้าและช่องทางขายเลือกใช้ ราคาแต่ละสินค้าจัดการจากหน้าสินค้า" />
       <PriceListManager
         totalProducts={totalProducts}
         rows={priceLists.map((row) => ({

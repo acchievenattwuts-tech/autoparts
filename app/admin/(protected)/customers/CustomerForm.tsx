@@ -188,7 +188,7 @@ const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: 
                   label: t.name,
                   sublabel: t.priceList
                     ? `${t.priceList.name}${t.priceList.channel ? ` — ${t.priceList.channel}` : ""}`
-                    : "ยังไม่ผูก Price List",
+                    : "ยังไม่ผูกระดับราคา",
                 }),
               )}
               value={customerTypeId}
@@ -197,7 +197,7 @@ const CustomerForm = ({ customer, customerTypeOptions, defaultCustomerTypeId }: 
             />
             <input type="hidden" name="customerTypeId" value={customerTypeId} />
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">
-              ประเภทลูกค้าเป็นตัวกำหนด Price List ที่ใช้เติมราคา — ว่างไว้ = ลูกค้าทั่วไป
+              ประเภทลูกค้าเป็นตัวกำหนดระดับราคาที่ใช้เติมราคา — ว่างไว้ = ลูกค้าทั่วไป
             </p>
           </div>
 

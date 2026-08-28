@@ -699,7 +699,7 @@ const SaleForm = ({
       nextSelection.key !== previousSelection.key &&
       items.some((item) => item.productId) &&
       window.confirm(
-        `เปลี่ยนประเภทลูกค้าเป็น Price List “${nextSelection.name}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
+        `เปลี่ยนประเภทลูกค้าเป็นระดับราคา “${nextSelection.name}” ต้องการปรับราคาสินค้าในบิลตามประเภทลูกค้าใหม่หรือไม่?`,
       )
     ) {
       repriceItemsToSelection(nextSelection);

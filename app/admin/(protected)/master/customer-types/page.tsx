@@ -40,7 +40,7 @@ const CustomerTypesPage = async () => {
     <div className="space-y-4">
       <AdminPageHeader
         title="จัดการประเภทลูกค้า"
-        description="กำหนดกลุ่มลูกค้าและ Price List ที่ใช้เติมราคาในหน้าขายและช่องทางที่เกี่ยวข้อง"
+        description="กำหนดกลุ่มลูกค้าและระดับราคาที่ใช้เติมราคาในหน้าขายและช่องทางที่เกี่ยวข้อง"
       />
       <CustomerTypeForm
         customerTypes={customerTypes}

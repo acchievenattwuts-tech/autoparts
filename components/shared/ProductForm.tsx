@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Plus, X, Upload, Loader2, Trash2, ZoomIn, Sparkles } from "lucide-react";
 import { createProduct, researchProductWithAi, updateProduct, uploadProductImage } from "@/app/admin/(protected)/products/actions";
+import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
@@ -1584,22 +1585,24 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
             <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะแสดง “สอบถามราคา”</p>
           </div>
           {priceLists
-            .filter((priceList) => !["WHOLESALE", "MEMBER", "RETAIL"].includes(priceList.code))
+            .filter((priceList) => !isLegacyFieldPriceListCode(priceList.code))
             .map((priceList) => (
               <div key={priceList.id}>
                 <label className={labelCls}>{priceList.name} (บาท)</label>
                 <input
                   type="number"
                   name={`priceListPrice:${priceList.id}`}
-                  defaultValue={product?.priceListPrices[priceList.id] ?? 0}
+                  defaultValue={product?.priceListPrices[priceList.id] ?? ""}
                   min={0}
                   step={0.01}
+                  placeholder="ยังไม่ตั้งราคา"
                   className={inputCls}
                 />
                 <p className={helpCls}>
                   {priceList.channel
                     ? `ราคาเติมเริ่มต้นสำหรับ ${priceList.channel}; พนักงานแก้ราคาจริงในบิลได้`
-                    : `ราคาใน Price List รหัส ${priceList.code}`}
+                    : `ราคาในระดับราคา ${priceList.code}`}
+                  {" — เว้นว่าง = ไม่ตั้งราคา / ไม่แก้ค่าเดิม (ใส่ 0 = ราคา 0 บาทจริง)"}
                 </p>
               </div>
             ))}

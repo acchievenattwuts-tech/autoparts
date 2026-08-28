@@ -511,7 +511,7 @@ export async function createSale(
       !configuredPriceList?.isActive ||
       configuredPriceList.channel !== channel
     ) {
-      return { error: `ลูกค้าเริ่มต้นต้องผูก Price List ${channelConfig.label} ที่เปิดใช้งาน` };
+      return { error: `ลูกค้าเริ่มต้นต้องผูกระดับราคา ${channelConfig.label} ที่เปิดใช้งาน` };
     }
   }
 
