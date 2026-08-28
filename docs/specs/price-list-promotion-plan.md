@@ -221,9 +221,10 @@ Production read-only preflight refreshed on 2026-08-28 before rollout:
 
 - [x] Review dry-run backfill output: 1,045 products, 3,135 legacy ProductPrice inserts,
   and 3 Customer Type mappings, exactly matching the read-only preflight.
-- [ ] Take a production backup. Explicitly skipped by the owner on 2026-08-28 after both
-  visible GitHub Weekly Backup runs were found to have failed; no fresh rollback dump was
-  claimed or recorded.
+- [x] Take a production backup. The owner initially skipped the pre-migration backup on
+  2026-08-28, so no pre-change rollback point is claimed. Post-rollout GitHub Weekly Backup
+  run #6 later completed successfully: PostgreSQL dump 13,851,138 bytes, Blob mirror
+  3,376 files / 560,844,215 bytes, and `state/blob-index.json` 3,376 entries on Google Drive.
 - [x] Apply the two additive schema migrations in the approved production workflow.
 - [x] Run the idempotent backfill with explicit apply flag. The post-apply dry-run reports
   5/5 system Price Lists present, 0 ProductPrice inserts remaining, and 0 Customer Type

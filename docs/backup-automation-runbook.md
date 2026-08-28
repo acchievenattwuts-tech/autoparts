@@ -12,12 +12,26 @@
 | ตารางเวลา | ทุกวันจันทร์ 02:00 น. เวลาไทย (cron `0 19 * * 0` UTC) |
 | สั่งเอง | ปุ่ม "สำรองข้อมูลเดี๋ยวนี้" ในหน้า Backup Center หรือปุ่ม Run workflow บน GitHub |
 | ปลายทาง | Google Drive ผ่าน `rclone` |
-| แจ้งเตือน | Telegram ทั้งกรณีสำเร็จและล้มเหลว |
+| แจ้งเตือน | รองรับ Telegram ทั้งกรณีสำเร็จและล้มเหลว; ต้องตั้ง GitHub Secrets ก่อน (ยังไม่ได้ตั้ง ณ 2026-08-28) |
 | เก็บย้อนหลัง | dump + report 60 วัน / ไฟล์รูปเก็บสะสมไม่ลบ |
 
 **ทำไมต้องรันบน GitHub ไม่ใช่บน Vercel** — Vercel serverless runtime ไม่มีคำสั่ง `pg_dump` และมีลิมิตเวลาทำงาน 300 วินาที ส่วน runner ของ GitHub เป็น Ubuntu เต็มรูปแบบ ติดตั้ง `pg_dump` และ `rclone` ได้ และให้เวลาถึง 6 ชั่วโมง
 
 **ทำไมต้องเป็น Google Drive** — backup ที่อยู่กับผู้ให้บริการเดียวกับ production ไม่ใช่ backup ข้อมูลจริงอยู่ที่ Supabase + Vercel ส่วนสำเนาอยู่ Google คนละเจ้ากันทั้งหมด
+
+### ผลตรวจ Production ล่าสุด (2026-08-28)
+
+GitHub Actions `Weekly Backup` run #6 สำเร็จครบทุก step หลังจำกัดอัตราเรียก Google
+Drive API และเพิ่ม retry/backoff สำหรับ `rclone` แล้ว ตรวจปลายทางแบบ read-only พบว่า:
+
+- PostgreSQL custom dump `postgres-2026-08-28.dump`: 13,851,138 bytes
+- backup report `REPORT-2026-08-28.txt`: 2,767 bytes
+- Blob mirror: 3,376 files / 560,844,215 bytes ตรงกับ `blob-summary` ใน report
+- `state/blob-index.json`: 673,168 bytes / 3,376 entries
+- retention step สำเร็จ และ workflow จบสถานะ `success`
+
+หลักฐานนี้ยืนยันว่าไฟล์ถูกสร้างและอยู่บน Google Drive ครบ แต่ยังไม่ทดแทนการซ้อม
+`pg_restore` เข้า database แยก ซึ่งต้องทำเป็น restore drill ตามหัวข้อบำรุงรักษาด้านล่าง
 
 ## โครงสร้างไฟล์บน Google Drive
 
