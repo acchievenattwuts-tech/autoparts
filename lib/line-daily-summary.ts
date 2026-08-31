@@ -219,6 +219,32 @@ function formatPercent(value: number) {
   })}%`;
 }
 
+// Net profit is the one figure the card exists to show, so it is emphasised
+// instead of sharing the plain fact-row styling. Tone is decided here and
+// reused by the admin preview (exported) so both surfaces colour it the same.
+// Anything under half a satang counts as zero — a rounded-to-zero month must
+// not read as green "we made money".
+const NET_PROFIT_ZERO_EPSILON = 0.005;
+
+export type NetProfitTone = "positive" | "negative" | "neutral";
+
+const NET_PROFIT_TONE_COLOR: Record<NetProfitTone, string> = {
+  positive: "#15803D",
+  negative: "#B91C1C",
+  neutral: "#0F172A",
+};
+
+export function resolveNetProfitTone(value: number): NetProfitTone {
+  if (Math.abs(value) < NET_PROFIT_ZERO_EPSILON) return "neutral";
+  return value > 0 ? "positive" : "negative";
+}
+
+// Keeps the minus sign in front of the currency symbol — `฿-1,234.50` reads as
+// a typo, `-฿1,234.50` reads as a loss.
+export function formatNetProfitText(value: number): string {
+  return value < 0 ? `-฿${formatMoney(Math.abs(value))}` : `฿${formatMoney(value)}`;
+}
+
 // Severity dots (emoji) render identically on the LINE Flex card and the admin
 // preview, so both surfaces show the exact same radar. 🔴 = urgent cash/stock,
 // 🟠 = watch, ⚪ = routine backlog. Rows are already ordered by urgency here.
@@ -1133,12 +1159,39 @@ function buildMonthlyProfitFlexCard(monthly: MonthlyProfitSection) {
                 },
               ]
             : []),
-          {
-            label: "กำไรสุทธิ",
-            value: `฿${formatMoney(monthly.netProfitAmount)}`,
-            keepWhenZero: true,
-          },
         ]),
+      },
+      {
+        type: "separator",
+        margin: "lg",
+        color: "#CBD5E1",
+      },
+      {
+        type: "box",
+        layout: "baseline",
+        margin: "lg",
+        spacing: "md",
+        contents: [
+          {
+            type: "text",
+            text: "กำไรสุทธิ",
+            size: "md",
+            weight: "bold",
+            color: "#0F172A",
+            flex: 4,
+            wrap: true,
+          },
+          {
+            type: "text",
+            text: formatNetProfitText(monthly.netProfitAmount),
+            size: "xl",
+            weight: "bold",
+            color: NET_PROFIT_TONE_COLOR[resolveNetProfitTone(monthly.netProfitAmount)],
+            flex: 5,
+            align: "end",
+            wrap: true,
+          },
+        ],
       },
     ],
   };

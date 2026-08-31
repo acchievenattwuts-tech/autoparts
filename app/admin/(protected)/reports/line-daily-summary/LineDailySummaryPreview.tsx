@@ -1,4 +1,9 @@
-import { buildRiskRadarItems } from "@/lib/line-daily-summary";
+import {
+  buildRiskRadarItems,
+  formatNetProfitText,
+  resolveNetProfitTone,
+  type NetProfitTone,
+} from "@/lib/line-daily-summary";
 import { formatDateThai, parseDateOnlyToDate } from "@/lib/th-date";
 
 import {
@@ -9,6 +14,16 @@ import {
   keepPreviewItem,
 } from "./summary-presentation";
 import { getLineDailySummaryForDay } from "./summary-loader";
+
+// Arbitrary hex classes on purpose: the admin dark theme remaps named colour
+// utilities (.text-emerald-700 etc.) but leaves arbitrary values alone, so the
+// preview keeps the exact colours LINE renders in both themes. These hex values
+// must stay in sync with NET_PROFIT_TONE_COLOR in lib/line-daily-summary.ts.
+const NET_PROFIT_TONE_CLASS: Record<NetProfitTone, string> = {
+  positive: "text-[#15803D]",
+  negative: "text-[#B91C1C]",
+  neutral: "text-[#0F172A]",
+};
 
 /** Flex-message preview for the LINE daily summary — awaits the summary build. */
 export default async function LineDailySummaryPreview({
@@ -91,7 +106,6 @@ export default async function LineDailySummaryPreview({
         ...(monthly.otherIncomeAmount !== 0
           ? [{ label: "รายรับพิเศษ", value: `฿${fmtMoney(monthly.otherIncomeAmount)}` }]
           : []),
-        { label: "กำไรสุทธิ", value: `฿${fmtMoney(monthly.netProfitAmount)}` },
       ]
     : [];
   const previewRiskItems = buildRiskRadarItems(summary.risks)
@@ -164,6 +178,12 @@ export default async function LineDailySummaryPreview({
                       parseDateOnlyToDate(monthly.monthStartDayKey),
                     )} - ${formatDateThai(parseDateOnlyToDate(monthly.monthEndDayKey))}`}
                     items={previewMonthlyItems}
+                    highlight={{
+                      label: "กำไรสุทธิ",
+                      value: formatNetProfitText(monthly.netProfitAmount),
+                      valueClassName:
+                        NET_PROFIT_TONE_CLASS[resolveNetProfitTone(monthly.netProfitAmount)],
+                    }}
                   />
                 ) : null}
 

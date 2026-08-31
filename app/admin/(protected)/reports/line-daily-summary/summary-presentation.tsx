@@ -61,10 +61,13 @@ export function FlexPreviewSection({
   title,
   subtitle,
   items,
+  highlight,
 }: {
   title: string;
   subtitle?: string;
   items: Array<{ label: string; value: string }>;
+  /** Emphasised closing row, separated from the plain rows by a rule. */
+  highlight?: { label: string; value: string; valueClassName: string };
 }) {
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -81,6 +84,14 @@ export function FlexPreviewSection({
           </div>
         ))}
       </div>
+      {highlight ? (
+        <div className="mt-3 flex items-baseline justify-between gap-4 border-t border-slate-300 pt-3">
+          <span className="text-sm font-semibold text-slate-900">{highlight.label}</span>
+          <span className={`font-kanit text-xl font-bold ${highlight.valueClassName}`}>
+            {highlight.value}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
