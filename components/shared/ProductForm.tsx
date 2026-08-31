@@ -9,7 +9,7 @@ import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
-import { derivePricesFromWholesale } from "@/lib/product-pricing";
+import { derivePricesFromWholesale, deriveMarketplacePricesFromWholesale } from "@/lib/product-pricing";
 import {
   INVENTORY_TRACKING_NON_TRACKED,
   INVENTORY_TRACKING_TRACKED,
@@ -271,11 +271,34 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
   const [retailPriceInput, setRetailPriceInput] = useState(product ? String(Number(product.retailPrice)) : "0");
   const [memberPriceInput, setMemberPriceInput] = useState(product ? String(Number(product.memberPrice)) : "0");
 
+  // ราคาช่องทาง Marketplace (Shopee / Lazada) เติมอัตโนมัติจากราคาขายส่งเช่นกัน
+  // แต่ยังเป็นช่องกรอกที่พิมพ์แก้ทับได้ — ค่าที่บันทึกคือค่าที่อยู่ในช่องจริง
+  const shopeePriceListId = priceLists.find((priceList) => priceList.channel === "SHOPEE")?.id ?? null;
+  const lazadaPriceListId = priceLists.find((priceList) => priceList.channel === "LAZADA")?.id ?? null;
+
+  const [channelPriceInputs, setChannelPriceInputs] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    for (const priceList of priceLists) {
+      if (!priceList.channel) continue;
+      const current = product?.priceListPrices[priceList.id];
+      initial[priceList.id] = current === undefined ? "" : String(current);
+    }
+    return initial;
+  });
+
   const handleSalePriceChange = (value: string) => {
     setSalePriceInput(value);
     const derived = derivePricesFromWholesale(Number(value));
     setRetailPriceInput(String(derived.retailPrice));
     setMemberPriceInput(String(derived.memberPrice));
+
+    const marketplace = deriveMarketplacePricesFromWholesale(Number(value));
+    setChannelPriceInputs((prev) => {
+      const next = { ...prev };
+      if (shopeePriceListId) next[shopeePriceListId] = String(marketplace.shopeePrice);
+      if (lazadaPriceListId) next[lazadaPriceListId] = String(marketplace.lazadaPrice);
+      return next;
+    });
   };
 
   const [saleUnitName, setSaleUnitName]         = useState(product?.saleUnitName ?? baseUnit.name);
@@ -1565,7 +1588,8 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
               min={0} step={0.01} className={inputCls} />
             <p className={helpCls}>
               ราคาสำหรับกลุ่มลูกค้าประเภท “ราคาขายส่ง” เช่น อู่ซ่อมรถ — เมื่อกรอกช่องนี้
-              ระบบจะคำนวณราคาสมาชิก (+40%) และราคาขายปลีก (+70%) ให้อัตโนมัติ ปัดขึ้นลงท้ายด้วย 0 และแก้ไขเองได้
+              ระบบจะคำนวณราคาสมาชิก (+40% ปัดขึ้นลงท้าย 0), ราคาขายปลีก และราคา Shopee / Lazada
+              ให้อัตโนมัติ และแก้ไขเองได้
             </p>
           </div>
           <div>
@@ -1582,26 +1606,48 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
               value={retailPriceInput}
               onChange={(e) => setRetailPriceInput(e.target.value)}
               min={0} step={0.01} className={inputCls} />
-            <p className={helpCls}>ราคาสำหรับลูกค้าทั่วไป — เว้น 0 ระบบจะแสดง “สอบถามราคา”</p>
+            <p className={helpCls}>
+              ราคาสำหรับลูกค้าทั่วไป — คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218
+              ปัดขึ้นลงท้าย 5/0 (สูตรเดียวกับ Lazada) — เว้น 0 ระบบจะแสดง “สอบถามราคา”
+            </p>
           </div>
           {priceLists
             .filter((priceList) => !isLegacyFieldPriceListCode(priceList.code))
             .map((priceList) => (
               <div key={priceList.id}>
                 <label className={labelCls}>{priceList.name} (บาท)</label>
-                <input
-                  type="number"
-                  name={`priceListPrice:${priceList.id}`}
-                  defaultValue={product?.priceListPrices[priceList.id] ?? ""}
-                  min={0}
-                  step={0.01}
-                  placeholder="ยังไม่ตั้งราคา"
-                  className={inputCls}
-                />
+                {priceList.channel ? (
+                  <input
+                    type="number"
+                    name={`priceListPrice:${priceList.id}`}
+                    value={channelPriceInputs[priceList.id] ?? ""}
+                    onChange={(e) =>
+                      setChannelPriceInputs((prev) => ({ ...prev, [priceList.id]: e.target.value }))
+                    }
+                    min={0}
+                    step={0.01}
+                    placeholder="ยังไม่ตั้งราคา"
+                    className={inputCls}
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    name={`priceListPrice:${priceList.id}`}
+                    defaultValue={product?.priceListPrices[priceList.id] ?? ""}
+                    min={0}
+                    step={0.01}
+                    placeholder="ยังไม่ตั้งราคา"
+                    className={inputCls}
+                  />
+                )}
                 <p className={helpCls}>
-                  {priceList.channel
-                    ? `ราคาเติมเริ่มต้นสำหรับ ${priceList.channel}; พนักงานแก้ราคาจริงในบิลได้`
-                    : `ราคาในระดับราคา ${priceList.code}`}
+                  {priceList.channel === "SHOPEE"
+                    ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60 + 1.07) ÷ 0.8288 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
+                    : priceList.channel === "LAZADA"
+                      ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
+                      : priceList.channel
+                        ? `ราคาเติมเริ่มต้นสำหรับ ${priceList.channel}; พนักงานแก้ราคาจริงในบิลได้`
+                        : `ราคาในระดับราคา ${priceList.code}`}
                   {" — เว้นว่าง = ไม่ตั้งราคา / ไม่แก้ค่าเดิม (ใส่ 0 = ราคา 0 บาทจริง)"}
                 </p>
               </div>
