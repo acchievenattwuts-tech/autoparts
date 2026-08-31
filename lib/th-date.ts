@@ -59,6 +59,12 @@ export function getThailandMonthKey(value: Date = new Date()): string {
   return `${year}-${month}`;
 }
 
+/** True when `dayKey` (YYYY-MM-DD, Thailand calendar) is the last day of its month. */
+export function isThailandMonthEndDateKey(dayKey: string): boolean {
+  const date = parseDateOnlyToDate(dayKey);
+  return getThailandMonthKey(addThailandDays(date, 1)) !== getThailandMonthKey(date);
+}
+
 export function getThailandWeekdayIndex(value: DateInput): number {
   const weekday = new Intl.DateTimeFormat("en-US", {
     timeZone: THAILAND_TIME_ZONE,

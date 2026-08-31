@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { ProfitSourceType } from "@/lib/generated/prisma";
 import { getSiteConfig } from "@/lib/site-config";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
 import { aggregateProfitSummary } from "@/lib/profit-dashboard";
@@ -9,9 +10,12 @@ import {
   addThailandDays,
   formatDateThai,
   getThailandDateKey,
+  getThailandMonthStartDateKey,
   isDateOnlyString,
+  isThailandMonthEndDateKey,
   parseDateOnlyToDate,
   parseDateOnlyToEndOfDay,
+  parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 
 type MoneySection = {
@@ -50,6 +54,25 @@ type AccountBalanceItem = {
 type BalanceSection = {
   accounts: AccountBalanceItem[];
   totalBalance: number;
+};
+
+// Month-end only. Three figures aggregated over the whole month, kept as an
+// equation the owner can check by eye: รายได้ − (ต้นทุน + ค่าใช้จ่าย) = กำไรสุทธิ.
+// That is why costAmount is folded into the expense line instead of following
+// the Profit Dashboard's range cards, which omit cost entirely. The one case
+// Marketplace รายรับพิเศษ (ProfitSourceType.OTHER_INCOME) raises netProfitAmount
+// without touching salesAmount by design, so it gets its own line — otherwise
+// the card would read high by that amount. The line is rendered only when the
+// month actually has such income, which is the uncommon case.
+// Stays null on ordinary days and the card is skipped entirely.
+type MonthlyProfitSection = {
+  monthLabel: string;
+  monthStartDayKey: string;
+  monthEndDayKey: string;
+  revenueExVat: number;
+  costAndExpenseAmount: number;
+  otherIncomeAmount: number;
+  netProfitAmount: number;
 };
 
 // Risk radar — money-at-risk and operational backlog surfaced from the same
@@ -119,6 +142,7 @@ export type LineDailySummary = {
   counts: CountSection;
   balances: BalanceSection;
   risks: RiskRadarSection;
+  monthly: MonthlyProfitSection | null;
   message: string;
   messages: LinePushMessage[];
   flexMessage: LineFlexMessage;
@@ -165,6 +189,14 @@ function getBangkokDayRange(dayKey: string) {
 
 function formatThaiDate(dayKey: string) {
   return formatDateThai(parseDateOnlyToDate(dayKey));
+}
+
+function formatThaiMonthLabel(dayKey: string) {
+  return formatDateThai(parseDateOnlyToDate(dayKey), {
+    day: undefined,
+    month: "long",
+    year: "numeric",
+  });
 }
 
 function formatMoney(value: number) {
@@ -1049,15 +1081,79 @@ function buildLineDailySummaryFlexMessageV2(summary: {
   };
 }
 
+// Month-end profit card. Rendered only when `monthly` is present (last day of
+// the month), and never trimmed by compact mode — the three figures are the
+// point of the card, so a zero month must still be visible.
+function buildMonthlyProfitFlexCard(monthly: MonthlyProfitSection) {
+  return {
+    type: "box",
+    layout: "vertical",
+    cornerRadius: "18px",
+    paddingAll: "16px",
+    backgroundColor: "#FFFFFF",
+    contents: [
+      {
+        type: "text",
+        text: `🏁 กำไรสุทธิประจำเดือน ${monthly.monthLabel}`,
+        size: "md",
+        weight: "bold",
+        color: "#0F172A",
+        wrap: true,
+      },
+      {
+        type: "text",
+        text: `สรุปทั้งเดือน ${formatThaiDate(monthly.monthStartDayKey)} - ${formatThaiDate(monthly.monthEndDayKey)}`,
+        size: "xxs",
+        color: "#94A3B8",
+        margin: "sm",
+        wrap: true,
+      },
+      {
+        type: "box",
+        layout: "vertical",
+        margin: "lg",
+        spacing: "md",
+        contents: buildSummaryFactRows([
+          {
+            label: "รายได้รวม (ก่อน VAT)",
+            value: `฿${formatMoney(monthly.revenueExVat)}`,
+            keepWhenZero: true,
+          },
+          {
+            label: "ต้นทุน + ค่าใช้จ่ายรวม",
+            value: `฿${formatMoney(monthly.costAndExpenseAmount)}`,
+            keepWhenZero: true,
+          },
+          ...(monthly.otherIncomeAmount !== 0
+            ? [
+                {
+                  label: "รายรับพิเศษ",
+                  value: `฿${formatMoney(monthly.otherIncomeAmount)}`,
+                  keepWhenZero: true,
+                },
+              ]
+            : []),
+          {
+            label: "กำไรสุทธิ",
+            value: `฿${formatMoney(monthly.netProfitAmount)}`,
+            keepWhenZero: true,
+          },
+        ]),
+      },
+    ],
+  };
+}
+
 function buildLineDailySummaryFlexMessageV3(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
   balances: BalanceSection;
   risks: RiskRadarSection;
+  monthly: MonthlyProfitSection | null;
 }, options: SummaryRenderOptions = {},
 ): LineFlexMessage {
-  const { reportDateLabel, money, balances, risks } = summary;
+  const { reportDateLabel, money, balances, risks, monthly } = summary;
   const compactMode = options.compactMode ?? false;
   const balanceFactItems: SummaryFactItem[] = [
     ...balances.accounts.map((account) => ({
@@ -1322,6 +1418,7 @@ function buildLineDailySummaryFlexMessageV3(summary: {
               },
             ],
           },
+          ...(monthly ? [buildMonthlyProfitFlexCard(monthly)] : []),
           {
             type: "box",
             layout: "vertical",
@@ -1359,6 +1456,10 @@ export async function buildLineDailySummary(
   const reportDayKey = resolveBangkokDayKey(dayKeyInput);
   const { start, end } = getBangkokDayRange(reportDayKey);
   const reportDateLabel = formatThaiDate(reportDayKey);
+  // Month-to-date profit is only needed on the last day of the month, so the
+  // extra aggregate never runs on an ordinary day.
+  const isMonthEndReport = isThailandMonthEndDateKey(reportDayKey);
+  const monthStartDayKey = getThailandMonthStartDateKey(start);
 
   const [
     siteConfig,
@@ -1395,6 +1496,8 @@ export async function buildLineDailySummary(
     lotCounts,
     balanceAccounts,
     workboardData,
+    monthProfit,
+    monthOtherIncome,
   ] = await Promise.all([
     runSummaryStep("siteConfig", () => getSiteConfig()),
     runSummaryStep("money.profitToday", () => aggregateProfitSummary(start, end),
@@ -1708,6 +1811,27 @@ export async function buildLineDailySummary(
     // Workboard never drift. It computes "as of now", matching the existing
     // snapshot behaviour of the other risk counts here.
     runSummaryStep("risks.workboard", () => getWorkboardData()),
+    isMonthEndReport
+      ? runSummaryStep("money.profitMonthToDate", () =>
+          aggregateProfitSummary(parseDateOnlyToStartOfDay(monthStartDayKey), end),
+        )
+      : Promise.resolve(null),
+    // Marketplace subsidy/bonus/compensation. Same query shape the marketplace
+    // report uses (lib/marketplace/queries.ts) so the two never disagree.
+    isMonthEndReport
+      ? runSummaryStep("money.otherIncomeMonthToDate", () => db.factProfit.aggregate({
+          _sum: { netProfitAmount: true },
+          where: {
+            isActive: true,
+            sourceType: ProfitSourceType.OTHER_INCOME,
+            businessDate: {
+              gte: parseDateOnlyToStartOfDay(monthStartDayKey),
+              lte: end,
+            },
+          },
+        }),
+        )
+      : Promise.resolve(null),
   ]);
 
   const money: MoneySection = {
@@ -1794,6 +1918,18 @@ export async function buildLineDailySummary(
       workboardData.pendingDeliveries.count + workboardData.supplierClaims.count,
   };
 
+  const monthly: MonthlyProfitSection | null = monthProfit
+    ? {
+        monthLabel: formatThaiMonthLabel(reportDayKey),
+        monthStartDayKey,
+        monthEndDayKey: reportDayKey,
+        revenueExVat: monthProfit.salesAmountExVat,
+        costAndExpenseAmount: monthProfit.costAmount + monthProfit.expenseAmount,
+        otherIncomeAmount: toNumber(monthOtherIncome?._sum.netProfitAmount),
+        netProfitAmount: monthProfit.netProfitAmount,
+      }
+    : null;
+
   const message = renderEmojiLineDailySummaryMessage({
     reportDateLabel,
     money,
@@ -1808,6 +1944,7 @@ export async function buildLineDailySummary(
       counts,
       balances,
       risks,
+      monthly,
     },
     options,
   );
@@ -1821,6 +1958,7 @@ export async function buildLineDailySummary(
     counts,
     balances,
     risks,
+    monthly,
     message,
     messages: [flexMessage],
     flexMessage,

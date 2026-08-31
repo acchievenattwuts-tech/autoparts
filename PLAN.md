@@ -1118,6 +1118,21 @@
 - [ ] ยังไม่มีสคริปต์ restore ไฟล์รูปกลับเข้า Blob (`backup-blob-restore.ts`) — จงใจ เพราะการอัปโหลดทับ Blob store ต้องคุมมือ จะเขียนตอนที่ต้องใช้จริง
 - [ ] ตั้งรอบซ้อม restore เข้า Supabase project ใหม่ไตรมาสละครั้ง
 
+## LINE สรุปงานประจำวัน: การ์ดกำไรสุทธิประจำเดือน (2026-08-31)
+- ที่มา: เจ้าของขอเพิ่มการ์ด "กำไรสุทธิประจำเดือน {เดือนที่สรุป}" ในสรุปประจำวันของ LINE แสดง รายได้รวม / ค่าใช้จ่าย / กำไรสุทธิ และให้ขึ้นเฉพาะวันสิ้นเดือน วันปกติต้องซ่อน
+- ยืนยันกับเจ้าของแล้ว: ยึด "วันสุดท้ายของเดือน = สรุปเดือนนั้น" · ขึ้นทั้ง Flex ที่ส่งจริงและ preview หน้าแอดมิน
+- รอบแรกใช้ตัวเลขชุดเดียวกับการ์ดช่วงที่เลือกในหน้า Profit Dashboard (`salesAmountExVat` / `expenseAmount` / `netProfitAmount`) แต่สามค่านี้ไม่ลงสมการเพราะ dashboard ไม่ได้โชว์ต้นทุนขาย → เจ้าของเลือกให้ **รวมต้นทุนเข้ากับค่าใช้จ่าย เหลือ 3 บรรทัด**: รายได้ (ก่อน VAT) / ต้นทุน + ค่าใช้จ่ายรวม (`costAmount + expenseAmount`) / กำไรสุทธิ
+- [x] เพิ่มบรรทัด **"รายรับพิเศษ" แบบขึ้นเฉพาะเดือนที่ยอด ≠ 0**: รายรับพิเศษ marketplace (`ProfitSourceType.OTHER_INCOME` — subsidy/ชดเชย/โบนัส จากบรรทัดยอดบวกในรอบรับเงิน) บวก `netProfitAmount` โดยจงใจไม่แตะ `salesAmount` ([schema.prisma:3263](prisma/schema.prisma:3263)) ถ้าไม่แสดงแยกการ์ดจะอ่านแล้วบวกลบไม่ลง → สมการเต็มคือ กำไรสุทธิ = รายได้ − (ต้นทุน + ค่าใช้จ่าย) + รายรับพิเศษ
+- [x] ดึงด้วย `db.factProfit.aggregate` filter `sourceType = OTHER_INCOME` รูปแบบเดียวกับ [lib/marketplace/queries.ts](lib/marketplace/queries.ts) เพื่อให้เลขตรงกับรายงาน Marketplace · ยิงเฉพาะวันสิ้นเดือนเช่นกัน (วันปกติ `Promise.resolve(null)`) · ใช้ index `[businessDate, isActive]` เดิม ไม่ต้องเพิ่ม index
+- [x] [lib/th-date.ts](lib/th-date.ts): เพิ่ม `isThailandMonthEndDateKey()` ตัดสินจาก month key ของวันถัดไปตามปฏิทินไทย (รองรับ ก.พ./ปีอธิกสุรทิน) + เทสต์ใน [th-date.test.ts](lib/__tests__/th-date.test.ts)
+- [x] [lib/line-daily-summary.ts](lib/line-daily-summary.ts): เพิ่ม `MonthlyProfitSection` + field `monthly` ใน `LineDailySummary` · วันสิ้นเดือนเท่านั้นจึงยิง `aggregateProfitSummary(ต้นเดือน, สิ้นวันที่สรุป)` เพิ่ม 1 query ใน `Promise.all` เดิม (วันปกติเป็น `Promise.resolve(null)` ไม่มี query เพิ่ม) · `buildMonthlyProfitFlexCard()` วางต่อจากบล็อก "เรดาร์ความเสี่ยงวันนี้" ก่อนแถบ "ปิดท้ายวันนี้" ใน `buildLineDailySummaryFlexMessageV3` (ตำแหน่งตามที่เจ้าของเลือก)
+- [x] การ์ดนี้ **ไม่ถูก compact mode ตัดแถวค่า 0** เพราะสามตัวเลขคือสาระของการ์ด — เดือนที่กำไรเป็น 0 ก็ยังต้องเห็น
+- [x] [LineDailySummaryPreview.tsx](app/admin/(protected)/reports/line-daily-summary/LineDailySummaryPreview.tsx) แสดงการ์ดเดียวกันเมื่อ `summary.monthly` ไม่ null · [summary-presentation.tsx](app/admin/(protected)/reports/line-daily-summary/summary-presentation.tsx) เพิ่ม prop `subtitle` (optional) ให้ `FlexPreviewSection` ใช้บอกช่วงวันที่ของเดือน
+- ผลข้างเคียงที่ตั้งใจ: บรรทัดในการ์ดไม่ตรงกับหน้า Profit Dashboard แบบบรรทัดต่อบรรทัดอีกต่อไป (dashboard ไม่มีต้นทุนของช่วงที่เลือก) แต่ยอด **กำไรสุทธิ** ยังตรงกันเป๊ะเพราะอ่านจาก `netProfitAmount` ตัวเดียวกัน
+- ไม่แตะข้อความ text (`renderEmojiLineDailySummaryMessage` / `renderFriendlyLineDailySummaryMessage`) ตามที่เจ้าของเลือก เพราะระบบส่งจริงใช้ Flex อย่างเดียว
+- ตรวจแล้ว: `npm run typecheck` ผ่าน · `npm run lint` 0 error · `npm run check:mojibake` ผ่าน · เทสต์ th-date ผ่าน
+- [ ] รอยืนยันของจริง: สรุปวันที่ 31/08/2026 ต้องเห็นการ์ด และวันที่ 01/09/2026 ต้องไม่เห็น
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

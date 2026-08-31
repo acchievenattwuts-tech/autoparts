@@ -59,14 +59,17 @@ export function PreviewMetric({
 
 export function FlexPreviewSection({
   title,
+  subtitle,
   items,
 }: {
   title: string;
+  subtitle?: string;
   items: Array<{ label: string; value: string }>;
 }) {
   return (
     <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
       <p className="text-sm font-semibold text-slate-900">{title}</p>
+      {subtitle ? <p className="mt-1 text-xs text-slate-400">{subtitle}</p> : null}
       <div className="mt-3 space-y-2">
         {items.map((item) => (
           <div

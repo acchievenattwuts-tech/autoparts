@@ -1,4 +1,5 @@
 import { buildRiskRadarItems } from "@/lib/line-daily-summary";
+import { formatDateThai, parseDateOnlyToDate } from "@/lib/th-date";
 
 import {
   FlexPreviewSection,
@@ -80,6 +81,19 @@ export default async function LineDailySummaryPreview({
     { label: "รวมทุกบัญชี", value: `฿${fmtMoney(summary.balances.totalBalance)}`,
     },
   ];
+  // Month-end only — mirrors buildMonthlyProfitFlexCard so preview and the real
+  // Flex card stay identical. Always shows all three rows, even in compact mode.
+  const monthly = summary.monthly;
+  const previewMonthlyItems = monthly
+    ? [
+        { label: "รายได้รวม (ก่อน VAT)", value: `฿${fmtMoney(monthly.revenueExVat)}` },
+        { label: "ต้นทุน + ค่าใช้จ่ายรวม", value: `฿${fmtMoney(monthly.costAndExpenseAmount)}` },
+        ...(monthly.otherIncomeAmount !== 0
+          ? [{ label: "รายรับพิเศษ", value: `฿${fmtMoney(monthly.otherIncomeAmount)}` }]
+          : []),
+        { label: "กำไรสุทธิ", value: `฿${fmtMoney(monthly.netProfitAmount)}` },
+      ]
+    : [];
   const previewRiskItems = buildRiskRadarItems(summary.risks)
     .filter((item) => keepPreviewItem(compactMode, item.count))
     .map((item) => ({ label: item.label, value: item.value }));
@@ -142,6 +156,16 @@ export default async function LineDailySummaryPreview({
                   title="📡 เรดาร์ความเสี่ยงวันนี้"
                   items={previewRiskItems}
                 />
+
+                {monthly ? (
+                  <FlexPreviewSection
+                    title={`🏁 กำไรสุทธิประจำเดือน ${monthly.monthLabel}`}
+                    subtitle={`สรุปทั้งเดือน ${formatDateThai(
+                      parseDateOnlyToDate(monthly.monthStartDayKey),
+                    )} - ${formatDateThai(parseDateOnlyToDate(monthly.monthEndDayKey))}`}
+                    items={previewMonthlyItems}
+                  />
+                ) : null}
 
                 <div className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-sky-900 ring-1 ring-sky-100">
                   <p className="font-semibold">✨ ปิดท้ายวันนี้</p>
