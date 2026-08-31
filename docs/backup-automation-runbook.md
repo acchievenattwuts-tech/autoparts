@@ -35,6 +35,19 @@ Drive API และเพิ่ม retry/backoff สำหรับ `rclone` แ
 
 ## โครงสร้างไฟล์บน Google Drive
 
+### หน้า Backup Center (ปรับปรุง 2026-08-31)
+
+- [x] แสดงเฉพาะ flow Google Drive: สั่ง backup, ตรวจสถานะ, progress และประวัติ GitHub Actions
+- [x] เอา UI ดาวน์โหลด Blob Manifest/Archive, PostgreSQL Download, ตัวตรวจ `pg_dump` และประวัติ BackupJob เดิมออก รวมถึงการเรียก API/polling ของ flow เดิมจากหน้านี้
+- [x] ปรับ loading ทั้ง light/dark mode และคำค้น Quick Search โดยคงเมนู/สิทธิ์ `system.backup` เดิม
+- คง legacy API, ข้อมูล BackupJob และไฟล์ backup เดิมไว้ ไม่ใช่การลบข้อมูลหรือปิด endpoint
+- ไม่เปลี่ยน workflow, ตารางเวลา, retention, สคริปต์ Blob mirror หรือ API สั่งงาน Google Drive
+- [x] Regression: ชุดทดสอบทั้งหมด 914/914 ผ่าน ไม่มี fail/skip; ทดสอบ UI แบบ render ทั้ง configured/unconfigured และตรวจสิทธิ์ Quick Search รวมถึง progress/API เดิม
+- [x] TypeScript, ESLint เฉพาะไฟล์ที่แก้, mojibake และ `git diff --check` ผ่าน; เทียบกับ HEAD ยืนยันว่า Google Drive panel, progress, dispatch/polling และไฟล์ workflow/backend ที่เกี่ยวข้องไม่มีการเปลี่ยนแปลง
+- ยังไม่ได้ทดสอบคลิกผ่าน browser หรือสั่ง backup production ในรอบนี้
+
+### ไฟล์ที่จัดเก็บ
+
 ```text
 autoparts-backup/
   db/
