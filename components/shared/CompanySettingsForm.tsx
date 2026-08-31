@@ -6,6 +6,7 @@ import { Save, CheckCircle, Upload, X } from "lucide-react";
 import { updateCompanySettings, uploadLogoImage } from "@/app/admin/(protected)/settings/company/actions";
 import type { SiteConfig } from "@/lib/site-config";
 import LazadaLogoIcon from "@/components/shared/LazadaLogoIcon";
+import ShopeeLogoIcon from "@/components/shared/ShopeeLogoIcon";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 const inputClass =
@@ -82,11 +83,6 @@ const TiktokIcon = () => (
   </svg>
 );
 
-const ShopeeIcon = () => (
-  <svg viewBox="0 0 24 24" className="h-5 w-5 fill-[#EE4D2D]">
-    <path d="M12 1a5.33 5.33 0 0 0-5.33 5.33H4.5L3 22h18L19.5 6.33h-2.17A5.33 5.33 0 0 0 12 1zm0 1.67a3.67 3.67 0 0 1 3.67 3.66H8.33A3.67 3.67 0 0 1 12 2.67zM9.5 11a1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5A1.5 1.5 0 0 1 8 12.5 1.5 1.5 0 0 1 9.5 11zm5 0a1.5 1.5 0 0 1 1.5 1.5 1.5 1.5 0 0 1-1.5 1.5 1.5 1.5 0 0 1-1.5-1.5A1.5 1.5 0 0 1 14.5 11z" />
-  </svg>
-);
 
 const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canManage: boolean }) => {
   const [isPending, startTransition] = useTransition();
@@ -323,7 +319,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
         <div>
           <SocialRow platform="Facebook" urlName="shop_facebook_url" urlValue={config.shopFacebookUrl} enabledName="shop_facebook_enabled" enabled={facebookEnabled} onToggle={setFacebookEnabled} placeholder="https://facebook.com/yourpage" icon={<FacebookIcon />} />
           <SocialRow platform="TikTok" urlName="shop_tiktok_url" urlValue={config.shopTiktokUrl} enabledName="shop_tiktok_enabled" enabled={tiktokEnabled} onToggle={setTiktokEnabled} placeholder="https://tiktok.com/@yourpage" icon={<TiktokIcon />} />
-          <SocialRow platform="Shopee" urlName="shop_shopee_url" urlValue={config.shopShopeeUrl} enabledName="shop_shopee_enabled" enabled={shopeeEnabled} onToggle={setShopeeEnabled} placeholder="https://shopee.co.th/yourshop" icon={<ShopeeIcon />} />
+          <SocialRow platform="Shopee" urlName="shop_shopee_url" urlValue={config.shopShopeeUrl} enabledName="shop_shopee_enabled" enabled={shopeeEnabled} onToggle={setShopeeEnabled} placeholder="https://shopee.co.th/yourshop" icon={<ShopeeLogoIcon className="h-5 w-5" />} />
           <SocialRow platform="Lazada" urlName="shop_lazada_url" urlValue={config.shopLazadaUrl} enabledName="shop_lazada_enabled" enabled={lazadaEnabled} onToggle={setLazadaEnabled} placeholder="https://www.lazada.co.th/shop/yourshop" icon={<LazadaLogoIcon className="h-5 w-5" />} />
         </div>
       </div>
