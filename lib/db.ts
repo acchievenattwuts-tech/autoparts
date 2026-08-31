@@ -5,28 +5,49 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+// ─── Pool sizing ───────────────────────────────────────────────────────────
+// These defaults MIRROR the values actually set in Vercel Production
+// (DB_POOL_MAX=8, DB_CONNECTION_TIMEOUT_MS=20000). Keep them in sync: when the
+// code default and the deployed env drift apart, every comment reasoning about
+// worst-case timing below becomes wrong, which is exactly how the 29 Aug 2026
+// investigation started (the file claimed a 15s window while production ran 20s).
+//
 // Supabase pooler (Supavisor) caps total client connections at 200. With the
 // transaction pooler (port 6543, pgbouncer) each query checks out a server
 // connection only for its transaction, so a small per-instance pool is enough —
 // 15 let ~13 warm instances exhaust the 200 limit and 500 the whole site under a
 // bot crawl of the /product detail pages (cache misses fan out across instances).
-// 5 raises that ceiling to ~40 instances
-// while still giving each instance headroom for concurrent saves/recalcs (a
-// purchase save/edit holds exactly one connection for its whole transaction).
-const DEFAULT_DB_POOL_MAX = 5;
+// 8 raises that ceiling to ~25 warm instances while still giving each instance
+// headroom for concurrent saves/recalcs (a purchase save/edit holds exactly one
+// connection for its whole transaction).
+const DEFAULT_DB_POOL_MAX = 8;
 const DEFAULT_DB_IDLE_TIMEOUT_MS = 10_000;
-// 15s: long enough to ride out a short Supabase pool burst, short enough that a
-// request fails fast (and degrades to the Prisma fallback) instead of pinning a
-// Vercel function for 45s while the pool is starved. Paired with the per-search
-// statement_timeout (dbSearchRaw) that frees busy connections within 8s so
-// waiters rarely reach this ceiling at all.
-const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 15_000;
+// 20s: long enough to ride out a short Supabase pool burst, and paired with the
+// per-search statement_timeout (dbSearchRaw) that frees busy connections within
+// 8s so waiters rarely reach this ceiling at all.
+//
+// CAVEAT — this value must stay UNDER the route's Vercel function budget, and
+// today it does not on every route. A route that declares no `maxDuration` runs
+// on the Vercel default (15s on Pro), which is SHORTER than one 20s acquire
+// wait: the function is killed mid-wait, so `withDbRetry` never gets to retry
+// and the failure surfaces as a hard error. `app/page.tsx` (the storefront
+// landing page, revalidate=3600) is in exactly that position. Either lower this
+// ceiling or give those routes an explicit `maxDuration` — see the retry-budget
+// note on POOL_ACQUIRE_MAX_RETRIES below.
+const DEFAULT_DB_CONNECTION_TIMEOUT_MS = 20_000;
 
 let hasWarnedAboutSupabaseSessionPooler = false;
 
+// `Number("")` and `Number("   ")` are 0, not NaN — so an env var that exists but
+// is BLANK (easy to do in the Vercel dashboard: set the key, leave the value
+// empty) used to slip past the isFinite check and get clamped to `min`, silently
+// giving DB_POOL_MAX="" a pool of exactly 1 connection instead of the intended
+// default. Anything that is not a positive finite number must fall back, not clamp.
 const getPositiveNumber = (value: string | undefined, fallback: number, min: number): number => {
+  if (value === undefined || value.trim() === "") return fallback;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(min, parsed) : fallback;
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(min, parsed);
 };
 
 const isServerlessRuntime = (): boolean =>
@@ -129,10 +150,16 @@ const TRANSIENT_DB_ERROR_PATTERN =
 // caller waits longer than `connectionTimeoutMillis` for a free pool slot — the
 // pool is saturated (or the pooler refused a new physical connection), the query
 // never reached Postgres, so retrying is safe. It is matched separately from the
-// generic transient pattern because it has already burned a full 15s
-// connection-acquire window: allowing the default 2 retries could pin a Vercel
-// function for ~45s. One retry (worst case ~30s) keeps the request inside the
-// function budget while still riding out a short burst.
+// generic transient pattern because it has already burned a full
+// connection-acquire window (DEFAULT_DB_CONNECTION_TIMEOUT_MS, 20s in
+// production): allowing the default 2 retries could pin a Vercel function for
+// ~60s. One retry caps the worst case at ~40s.
+//
+// NOTE: ~40s only fits routes that declare a long enough `maxDuration`. On a
+// route running the Vercel default budget (15s on Pro) even the FIRST acquire
+// wait outlives the function, so this retry never actually executes there —
+// see the caveat on DEFAULT_DB_CONNECTION_TIMEOUT_MS. Lowering the acquire
+// timeout (env-only) is what makes this retry reachable again on `/`.
 const POOL_ACQUIRE_TIMEOUT_PATTERN = /timeout exceeded when trying to connect/i;
 const POOL_ACQUIRE_MAX_RETRIES = 1;
 
