@@ -229,7 +229,7 @@ const DeliveryPage = async ({
             </colgroup>
             <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
-                <th className="py-3 pl-4 pr-0 text-left">
+                <th className="py-3 pl-4 pr-0 text-center align-middle">
                   <DeliverySelectAllCheckbox />
                 </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
@@ -265,7 +265,9 @@ const DeliveryPage = async ({
 
                       return (
                         <>
-                    <td className="py-3 pl-4 pr-0 align-top">
+                    {/* จัดกึ่งกลางแนวตั้ง — แถวสูงไม่เท่ากันตามความยาวที่อยู่
+                        ถ้าชิดบนจะดูเหมือนช่องติ๊กลอยไม่ตรงกับแถวของตัวเอง */}
+                    <td className="py-3 pl-4 pr-0 text-center align-middle">
                       <DeliveryRowCheckbox id={s.id} saleNo={s.saleNo} />
                     </td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium dark:text-sky-300">{s.saleNo}</td>
