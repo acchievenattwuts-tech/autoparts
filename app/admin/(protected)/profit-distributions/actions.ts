@@ -18,6 +18,7 @@ import {
   CashBankSourceType,
   DocStatus,
   PartnerLedgerType,
+  RetainedProfitMode,
 } from "@/lib/generated/prisma";
 import {
   notifyProfitDistributionCancelled,
@@ -39,6 +40,7 @@ import {
   getPeriodProfitSummary,
   isBeforeStartPeriod,
   isClosedPeriod,
+  listUndeclaredPriorPeriods,
   PROFIT_DISTRIBUTION_START_LABEL,
   roundMoney,
   SHARE_PERCENT_TOLERANCE,
@@ -48,6 +50,8 @@ import { getThailandDateKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 const MAX_DOCNO_RETRIES = 3;
 const MAX_PARTNERS_PER_RUN = 20;
+/** How many downstream document numbers a chain-blocked error message lists. */
+const MAX_CHAIN_DOCS_IN_ERROR = 12;
 
 const itemSchema = z.object({
   partnerProfileId: z.string().min(1),
@@ -60,7 +64,12 @@ const createSchema = z.object({
   periodKey: z.string().regex(/^\d{4}-\d{2}$/, "งวดไม่ถูกต้อง"),
   payDate: z.string().min(1, "กรุณาระบุวันที่โอนเงิน"),
   cashBankAccountId: z.string().min(1, "กรุณาเลือกบัญชีที่จ่ายออก"),
-  distributedAmount: z.number().positive("ยอดที่แบ่งต้องมากกว่า 0"),
+  // 0 is allowed: a month whose profit is kept in the shop in full still needs a
+  // document, otherwise the chain has a gap and no later month may be declared.
+  distributedAmount: z.number().min(0, "ยอดที่แบ่งต้องไม่ติดลบ"),
+  retainedMode: z.enum([RetainedProfitMode.KEEP_IN_SHOP, RetainedProfitMode.CARRY_FORWARD], {
+    message: "กรุณาเลือกปลายทางของยอดที่กันไว้",
+  }),
   note: z.string().max(500).optional(),
   items: z
     .array(itemSchema)
@@ -162,6 +171,7 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
     payDate: formData.get("payDate"),
     cashBankAccountId: formData.get("cashBankAccountId"),
     distributedAmount: parseNumber(formData.get("distributedAmount")),
+    retainedMode: formData.get("retainedMode"),
     note: formData.get("note") || undefined,
     items: parseItems(formData),
   });
@@ -179,6 +189,18 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
   }
   if (!isClosedPeriod(periodYear, periodMonth)) {
     return { error: "ประกาศแบ่งกำไรได้เฉพาะเดือนที่จบไปแล้ว เพราะกำไรของเดือนที่ยังไม่จบยังไม่นิ่ง" };
+  }
+
+  // Declaration must follow the calendar with no gaps — an undeclared month is
+  // re-counted by every later period, so skipping one would deduct the same
+  // balance again and again.
+  const blockingPeriods = await listUndeclaredPriorPeriods(periodYear, periodMonth);
+  if (blockingPeriods.length > 0) {
+    return {
+      error: `ต้องประกาศเดือนก่อนหน้าให้ครบก่อน: ${blockingPeriods
+        .map((period) => period.label)
+        .join(", ")}`,
+    };
   }
 
   const { start: periodStart, end: periodEnd } = getPeriodBounds(periodYear, periodMonth);
@@ -208,17 +230,30 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
   const snapshotNetProfit = roundMoney(summary.netProfitAmount);
   const distributableBase = roundMoney(snapshotNetProfit + carryForward.amount);
 
-  if (distributableBase <= 0) {
-    return {
-      error: `งวด ${periodLabel} ไม่มีกำไรให้แบ่ง (ฐานที่แบ่งได้ ${distributableBase.toLocaleString("th-TH")} บาท) ยอดนี้จะถูกยกไปหักในเดือนถัดไปโดยอัตโนมัติ`,
-    };
+  const distributedAmount = roundMoney(input.distributedAmount);
+
+  // A month with nothing to share is still declared — as a zero document whose
+  // whole (possibly negative) base rolls into the next month. Writing a loss off
+  // instead would silently forgive it, so that combination is refused outright.
+  const hasDistributableProfit = distributableBase > 0;
+  if (!hasDistributableProfit) {
+    if (distributedAmount > 0) {
+      return {
+        error: `งวด ${periodLabel} ไม่มีกำไรให้แบ่ง (ฐานที่แบ่งได้ ${distributableBase.toLocaleString("th-TH")} บาท) ต้องบันทึกยอดที่แบ่งเป็น 0`,
+      };
+    }
+    if (input.retainedMode !== RetainedProfitMode.CARRY_FORWARD) {
+      return { error: "งวดที่ไม่มีกำไรต้องยกยอดไปเดือนถัดไปเท่านั้น" };
+    }
   }
 
-  const distributedAmount = roundMoney(input.distributedAmount);
   if (distributedAmount > distributableBase + AMOUNT_TOLERANCE) {
     return { error: "ยอดที่แบ่งต้องไม่เกินฐานที่แบ่งได้" };
   }
   const retainedAmount = roundMoney(distributableBase - distributedAmount);
+  const retainedMode = hasDistributableProfit
+    ? input.retainedMode
+    : RetainedProfitMode.CARRY_FORWARD;
 
   const percentTotal = roundMoney(input.items.reduce((sum, item) => sum + item.sharePercent, 0));
   if (Math.abs(percentTotal - 100) > SHARE_PERCENT_TOLERANCE) {
@@ -280,6 +315,7 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
               distributableBase,
               distributedAmount,
               retainedAmount,
+              retainedMode,
               note: input.note ?? null,
               status: DocStatus.ACTIVE,
             },
@@ -427,6 +463,32 @@ export async function cancelProfitDistribution(formData: FormData): Promise<Acti
   if (beforeSnapshot.status === DocStatus.CANCELLED) return { error: "เอกสารถูกยกเลิกแล้ว" };
 
   const periodLabel = formatPeriodLabel(beforeSnapshot.periodYear, beforeSnapshot.periodMonth);
+
+  // Reference chain: later months were declared on top of this one's carried
+  // balance, so they have to come off first — newest month backwards.
+  const laterActive = await db.profitDistribution.findMany({
+    where: {
+      status: DocStatus.ACTIVE,
+      OR: [
+        { periodYear: { gt: beforeSnapshot.periodYear } },
+        {
+          periodYear: beforeSnapshot.periodYear,
+          periodMonth: { gt: beforeSnapshot.periodMonth },
+        },
+      ],
+    },
+    orderBy: [{ periodYear: "desc" }, { periodMonth: "desc" }],
+    select: { distributionNo: true, periodYear: true, periodMonth: true },
+    take: MAX_CHAIN_DOCS_IN_ERROR,
+  });
+  if (laterActive.length > 0) {
+    const list = laterActive
+      .map((row) => `${row.distributionNo} (${formatPeriodLabel(row.periodYear, row.periodMonth)})`)
+      .join(", ");
+    return {
+      error: `ต้องยกเลิกเอกสารของเดือนถัดไปก่อน เรียงจากเดือนใหม่สุดลงมา: ${list}`,
+    };
+  }
 
   try {
     await dbTx(async (tx) => {

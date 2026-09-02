@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import NavLink from "@/components/shared/NavLink";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { DocStatus } from "@/lib/generated/prisma";
+import { DocStatus, RetainedProfitMode } from "@/lib/generated/prisma";
 import { formatPeriodLabel } from "@/lib/profit-distribution";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
@@ -218,7 +218,20 @@ export default async function ProfitDistributionDetailPage({ params, searchParam
                 ฿{money(Number(distribution.retainedAmount))}
               </dd>
             </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-gray-500 dark:text-slate-400">ปลายทางของยอดที่กันไว้</dt>
+              <dd className="text-right text-gray-800 dark:text-slate-200">
+                {distribution.retainedMode === RetainedProfitMode.CARRY_FORWARD
+                  ? "ยกไปแบ่งเดือนหน้า"
+                  : "กันเข้าร้านถาวร"}
+              </dd>
+            </div>
           </dl>
+          <p className="mt-3 rounded-lg bg-gray-50 p-2.5 text-[11px] leading-relaxed text-gray-500 dark:bg-white/5 dark:text-slate-400">
+            {distribution.retainedMode === RetainedProfitMode.CARRY_FORWARD
+              ? "ยอดที่กันไว้ถูกยกไปสมทบฐานที่แบ่งได้ของงวดถัดไป จึงยังเป็นเงินที่รอแบ่งอยู่"
+              : "ยอดที่กันไว้ถูกเก็บเป็นทุนหมุนเวียนของร้านถาวร จะไม่กลับมาเป็นยอดที่แบ่งได้อีก"}
+          </p>
         </section>
       </div>
 

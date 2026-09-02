@@ -2369,6 +2369,9 @@ model ProfitDistribution {
   distributableBase     Decimal                  @default(0) @db.Decimal(10, 2)
   distributedAmount     Decimal                  @default(0) @db.Decimal(10, 2)
   retainedAmount        Decimal                  @default(0) @db.Decimal(10, 2)
+  /// ปลายทางของ retainedAmount — KEEP_IN_SHOP กันเข้าร้านถาวร / CARRY_FORWARD ยกไปเดือนถัดไป
+  /// default เป็น KEEP_IN_SHOP เพื่อรักษาความหมายของเอกสารที่ออกก่อนมีฟีเจอร์นี้
+  retainedMode          RetainedProfitMode       @default(KEEP_IN_SHOP)
   note                  String?
   status                DocStatus                @default(ACTIVE)
   cancelNote            String?
@@ -2785,6 +2788,14 @@ enum PartnerLedgerType {
   PROFIT_SHARE
   PAYOUT
   ADJUSTMENT
+}
+
+/// ปลายทางของ "ยอดที่กันไว้ในร้าน" ในเอกสารแบ่งกำไร
+/// KEEP_IN_SHOP = กันเข้าร้านถาวร ไม่กลับมาเป็นฐานที่แบ่งได้อีก
+/// CARRY_FORWARD = ยกไปสมทบฐานที่แบ่งได้ของเดือนถัดไป (เดือนขาดทุนบังคับใช้ค่านี้)
+enum RetainedProfitMode {
+  KEEP_IN_SHOP
+  CARRY_FORWARD
 }
 
 enum KnowledgeSourceType {

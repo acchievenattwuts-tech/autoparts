@@ -17,12 +17,42 @@ type PartnerRow = {
 
 type CarryForwardRow = {
   label: string;
-  kind: "UNDECLARED" | "RESTATED";
+  kind: "UNDECLARED" | "RESTATED" | "RETAINED";
   amount: number;
 };
 
+type RetainedMode = "KEEP_IN_SHOP" | "CARRY_FORWARD";
+
+const CARRY_FORWARD_KIND_LABEL: Record<CarryForwardRow["kind"], string> = {
+  UNDECLARED: "ยังไม่ได้ประกาศ",
+  RESTATED: "กำไรถูกคำนวณใหม่ย้อนหลัง",
+  RETAINED: "ยอดที่ยังไม่ถูกแบ่ง",
+};
+
+const RETAINED_MODE_OPTIONS: Array<{
+  value: RetainedMode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "CARRY_FORWARD",
+    label: "ยกไปแบ่งเดือนหน้า",
+    hint: "ยอดที่กันไว้จะไปสมทบฐานที่แบ่งได้ของงวดถัดไป ยังเป็นเงินที่รอแบ่งอยู่",
+  },
+  {
+    value: "KEEP_IN_SHOP",
+    label: "กันเข้าร้านถาวร",
+    hint: "เก็บเป็นทุนหมุนเวียนของร้าน จะไม่กลับมาเป็นยอดที่แบ่งได้อีก",
+  },
+];
+
 type Props = {
-  periodOptions: Array<{ periodKey: string; label: string; hasActiveDistribution: boolean }>;
+  periodOptions: Array<{
+    periodKey: string;
+    label: string;
+    hasActiveDistribution: boolean;
+    isBlockedByEarlierPeriod: boolean;
+  }>;
   periodKey: string;
   periodLabel: string;
   accountOptions: SelectOption[];
@@ -40,6 +70,7 @@ type Props = {
   arOutstanding: number;
   stockValue: number;
   hasActiveDistribution: boolean;
+  blockingPeriods: Array<{ periodKey: string; label: string }>;
 };
 
 const PERCENT_TOLERANCE = 0.01;
@@ -77,6 +108,7 @@ const DeclareForm = ({
   arOutstanding,
   stockValue,
   hasActiveDistribution,
+  blockingPeriods,
 }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -89,6 +121,9 @@ const DeclareForm = ({
   const [distributedText, setDistributedText] = useState(
     distributableBase > 0 ? String(roundMoney(distributableBase)) : "0",
   );
+  // A month with nothing to share must roll its balance on — a loss may never be
+  // written off by accident, so the choice is locked for those periods.
+  const [retainedMode, setRetainedMode] = useState<RetainedMode>("CARRY_FORWARD");
   const [percents, setPercents] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       partners.map((partner) => [partner.partnerProfileId, String(partner.defaultSharePercent)]),
@@ -145,11 +180,16 @@ const DeclareForm = ({
 
   const cashAfter = roundMoney(cashBankBalance - distributedAmount);
 
+  const hasDistributableProfit = distributableBase > 0;
+  const effectiveMode: RetainedMode = hasDistributableProfit ? retainedMode : "CARRY_FORWARD";
+
   const percentValid = Math.abs(percentTotal - 100) <= PERCENT_TOLERANCE;
-  const amountValid = distributedAmount > 0 && distributedAmount <= distributableBase + 0.05;
+  const amountValid = hasDistributableProfit
+    ? distributedAmount >= 0 && distributedAmount <= distributableBase + 0.05
+    : distributedAmount === 0;
   const canSubmit =
     !hasActiveDistribution &&
-    distributableBase > 0 &&
+    blockingPeriods.length === 0 &&
     partners.length > 0 &&
     percentValid &&
     amountValid &&
@@ -165,6 +205,7 @@ const DeclareForm = ({
       formData.set("payDate", payDate);
       formData.set("cashBankAccountId", accountId);
       formData.set("distributedAmount", String(distributedAmount));
+      formData.set("retainedMode", effectiveMode);
       formData.set("note", note);
       formData.set("items", JSON.stringify(allocations));
 
@@ -182,19 +223,58 @@ const DeclareForm = ({
 
   return (
     <div className="space-y-4">
+      {blockingPeriods.length > 0 ? (
+        <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 dark:border-rose-400/20 dark:bg-rose-500/10">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-rose-600 dark:text-rose-300" />
+            <div className="space-y-2 text-sm">
+              <p className="font-medium text-rose-800 dark:text-rose-100">
+                ต้องประกาศเดือนก่อนหน้าให้ครบก่อน จึงจะประกาศงวด {periodLabel} ได้
+              </p>
+              <p className="text-rose-700/90 dark:text-rose-200/90">
+                ยอดของเดือนที่ยังไม่ประกาศจะถูกยกมาหักซ้ำทุกงวด
+                ระบบจึงบังคับให้ประกาศเรียงตามปฏิทินโดยไม่ข้ามเดือน
+                (เดือนที่ขาดทุนก็ประกาศได้ ยอดที่แบ่งเป็น 0 แล้วยกไปหักเดือนถัดไป)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {blockingPeriods.map((period) => (
+                  <button
+                    key={period.periodKey}
+                    type="button"
+                    onClick={() => {
+                      startTransition(() => {
+                        router.push(`/admin/profit-distributions/new?period=${period.periodKey}`);
+                      });
+                    }}
+                    className="inline-flex items-center rounded-full bg-rose-600 px-3 py-1 text-xs font-medium text-white hover:bg-rose-700 dark:bg-rose-400 dark:text-slate-950 dark:hover:bg-rose-300"
+                  >
+                    ประกาศ {period.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className={CARD_CLASS}>
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <span className={LABEL_CLASS}>งวดที่แบ่ง</span>
             <SearchableSelect
-              options={periodOptions.map(
-                (option): SelectOption => ({
+              options={periodOptions.map((option): SelectOption => {
+                const blockedLabel = option.hasActiveDistribution
+                  ? "ประกาศไปแล้ว"
+                  : option.isBlockedByEarlierPeriod
+                    ? "รอเดือนก่อนหน้าประกาศก่อน"
+                    : undefined;
+                return {
                   id: option.periodKey,
                   label: option.label,
-                  sublabel: option.hasActiveDistribution ? "ประกาศไปแล้ว" : undefined,
+                  sublabel: blockedLabel,
                   disabled: option.hasActiveDistribution,
-                }),
-              )}
+                };
+              })}
               value={periodKey}
               onChange={(nextPeriod) => {
                 startTransition(() => {
@@ -204,7 +284,7 @@ const DeclareForm = ({
               placeholder="เลือกงวด"
             />
             <p className="mt-1 text-[11px] text-gray-400 dark:text-slate-500">
-              เลือกได้เฉพาะเดือนที่จบไปแล้ว
+              เลือกได้เฉพาะเดือนที่จบไปแล้ว และต้องประกาศเรียงตามลำดับปฏิทิน
             </p>
           </div>
           <div>
@@ -265,12 +345,15 @@ const DeclareForm = ({
                   {money(carryForwardAmount)}
                 </dd>
               </div>
+              <p className="mt-2 text-[10px] text-gray-400 dark:text-slate-500">
+                ยอดคงค้างของแต่ละเดือน (กำไรที่ทำได้ − ที่แบ่งไปแล้ว − ที่กันเข้าร้านถาวร)
+                บางเดือนอาจหักลบกันเองจนรวมเป็นยอดสุทธิด้านบน
+              </p>
               <ul className="mt-2 space-y-1 text-[11px] text-gray-500 dark:text-slate-400">
                 {carryForwardRows.map((row) => (
                   <li key={`${row.kind}-${row.label}`} className="flex justify-between gap-2">
                     <span>
-                      {row.label}
-                      {row.kind === "RESTATED" ? " (กำไรถูกคำนวณใหม่ย้อนหลัง)" : " (ยังไม่ได้แบ่ง)"}
+                      {row.label} ({CARRY_FORWARD_KIND_LABEL[row.kind]})
                     </span>
                     <span>
                       {row.amount > 0 ? "+" : ""}
@@ -290,18 +373,20 @@ const DeclareForm = ({
           </div>
         </dl>
 
-        {distributableBase <= 0 ? (
+        {!hasDistributableProfit ? (
           <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-200">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" />
             <span>
-              งวดนี้ไม่มีกำไรให้แบ่ง ยอดติดลบจะถูกยกไปหักในเดือนถัดไปโดยอัตโนมัติ ไม่ต้องทำเอกสาร
+              งวดนี้ไม่มีกำไรให้แบ่ง — ยอดที่แบ่งถูกล็อกไว้ที่ ฿0.00 และยอด{" "}
+              {money(distributableBase)} จะถูกยกไปหักในงวดถัดไป
+              ยังต้องบันทึกเอกสารเพื่อไม่ให้ลำดับเดือนขาดช่วง
             </span>
           </div>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div>
               <label className={LABEL_CLASS} htmlFor="distributedAmount">
-                ยอดที่จะแบ่ง (แก้ไขได้)
+                ยอดที่จะแบ่ง (แก้ไขได้ · ใส่ 0 ได้ถ้าเดือนนี้ไม่แบ่ง)
               </label>
               <input
                 id="distributedAmount"
@@ -323,13 +408,64 @@ const DeclareForm = ({
             </div>
           </div>
         )}
+
+        <div className="mt-4 border-t border-gray-100 pt-4 dark:border-white/10">
+          <span className={LABEL_CLASS}>
+            ยอดที่กันไว้ ฿{money(hasDistributableProfit ? Math.max(retainedAmount, 0) : distributableBase)}{" "}
+            จะเอาไปทำอะไร
+          </span>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {RETAINED_MODE_OPTIONS.map((option) => {
+              const isSelected = effectiveMode === option.value;
+              const isLocked = !hasDistributableProfit && option.value === "KEEP_IN_SHOP";
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={isLocked}
+                  aria-pressed={isSelected}
+                  onClick={() => setRetainedMode(option.value)}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    isSelected
+                      ? "border-sky-400 bg-sky-50 dark:border-sky-400/60 dark:bg-sky-500/10"
+                      : "border-gray-200 bg-white hover:border-gray-300 dark:border-white/10 dark:bg-slate-900 dark:hover:border-white/20"
+                  } ${isLocked ? "cursor-not-allowed opacity-40" : ""}`}
+                >
+                  <span
+                    className={`block text-sm font-medium ${
+                      isSelected
+                        ? "text-sky-700 dark:text-sky-200"
+                        : "text-gray-800 dark:text-slate-100"
+                    }`}
+                  >
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block text-[11px] leading-relaxed text-gray-500 dark:text-slate-400">
+                    {option.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {!hasDistributableProfit ? (
+            <p className="mt-2 text-[11px] text-gray-400 dark:text-slate-500">
+              งวดที่ไม่มีกำไรต้องยกยอดไปเดือนถัดไปเสมอ — เลือกกันเข้าร้านถาวรไม่ได้
+              เพราะเท่ากับตัดขาดทุนทิ้ง
+            </p>
+          ) : null}
+        </div>
       </section>
 
-      {distributableBase > 0 && partners.length > 0 ? (
+      {partners.length > 0 ? (
         <section className={CARD_CLASS}>
           <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">
             แบ่งให้ผู้ร่วมทุน
           </h2>
+          {!hasDistributableProfit ? (
+            <p className="mt-1 text-[11px] text-gray-400 dark:text-slate-500">
+              งวดนี้ทุกคนได้ ฿0.00 — สัดส่วนยังต้องรวม 100% เพื่อบันทึกไว้เป็นหลักฐานของงวด
+            </p>
+          ) : null}
           <div className="mt-3 overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead className="text-left text-xs font-semibold uppercase text-gray-500 dark:text-slate-400">
@@ -412,9 +548,13 @@ const DeclareForm = ({
             />
           </div>
         </section>
-      ) : null}
+      ) : (
+        <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-400/10 dark:text-amber-100">
+          ยังไม่มีผู้ร่วมทุนที่ใช้งานอยู่ — ตั้งค่าผู้ร่วมทุนก่อนจึงจะประกาศแบ่งกำไรได้
+        </p>
+      )}
 
-      {distributableBase > 0 ? (
+      {distributedAmount > 0 ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-400/20 dark:bg-amber-400/10">
           <div className="flex items-start gap-2">
             <Info size={18} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-300" />
@@ -476,7 +616,11 @@ const DeclareForm = ({
           disabled={!canSubmit}
           className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1e3a5f] px-6 text-sm font-semibold text-white hover:bg-[#274b78] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
         >
-          {isPending ? "กำลังบันทึก..." : "ยืนยันและโอนเงิน"}
+          {isPending
+            ? "กำลังบันทึก..."
+            : distributedAmount > 0
+              ? "ยืนยันและโอนเงิน"
+              : "ยืนยันบันทึกงวด (ไม่แบ่ง)"}
         </button>
       </div>
     </div>

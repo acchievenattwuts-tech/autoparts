@@ -15,12 +15,16 @@ const moduleMocksUnavailable =
  * Regression coverage for `computeCarryForward()` — the rule that decides how
  * much of an earlier month rolls into the month being declared.
  *
- * Two disjoint sources must be combined, and never double-counted:
- *   UNDECLARED — a closed month with no ACTIVE distribution (loss month, or one
- *                that was skipped or cancelled): its whole net profit rolls on.
- *   RESTATED   — a month that WAS distributed but whose FactProfit total has
- *                since been rebuilt: only the delta against the stored snapshot
- *                rolls on, so closed documents are never rewritten.
+ * The rule is cumulative: each earlier month contributes what it EARNED (read
+ * live, so restatements are picked up on their own) minus what it SETTLED —
+ * paid out, plus anything kept in the shop for good. The balance left over is
+ * what rolls on, and the month that absorbs it reports it as settled, so it can
+ * never be charged twice. The rows are labelled by cause: UNDECLARED (no
+ * document), RESTATED (FactProfit rebuilt after the fact) and RETAINED (part of
+ * the base deliberately kept back to roll forward).
+ *
+ * `listUndeclaredPriorPeriods()` backs the rule that a month may only be
+ * declared once every earlier closed month already carries a document.
  *
  * Two hard floors apply: nothing rolls forward from before the very first
  * distribution (the shop starts with no opening balances), and nothing ever
@@ -31,21 +35,44 @@ const moduleMocksUnavailable =
  * run) and read from mutable state so each test can vary the fixtures.
  */
 
+type RetainedMode = "KEEP_IN_SHOP" | "CARRY_FORWARD";
+
 type ActiveDistributionRow = {
   periodYear: number;
   periodMonth: number;
   snapshotNetProfit: number;
+  /** Defaults to the whole snapshot — a month that shared out everything it earned. */
+  distributedAmount?: number;
+  /** Defaults to 0 / KEEP_IN_SHOP — i.e. a month that rolls nothing forward. */
+  retainedAmount?: number;
+  retainedMode?: RetainedMode;
 };
 
 type PeriodRef = { periodYear: number; periodMonth: number };
 
 type FindManyArgs = { where?: { OR?: PeriodRef[] } };
 
+function toActiveRow(row: ActiveDistributionRow) {
+  return {
+    periodYear: row.periodYear,
+    periodMonth: row.periodMonth,
+    activePeriodKey: periodKeyOf(row.periodYear, row.periodMonth),
+    snapshotNetProfit: row.snapshotNetProfit,
+    distributedAmount: row.distributedAmount ?? row.snapshotNetProfit,
+    retainedAmount: row.retainedAmount ?? 0,
+    retainedMode: row.retainedMode ?? "KEEP_IN_SHOP",
+  };
+}
+
 let earliestActive: PeriodRef | null = null;
 let activeRows: ActiveDistributionRow[] = [];
 /** Net profit per "YYYY-MM" as FactProfit would report it *today*. */
 let netProfitByMonth: Record<string, number> = {};
 let aggregateCalls: string[] = [];
+
+function roundTo2(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
 
 function periodKeyOf(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
@@ -56,6 +83,9 @@ type ProfitDistributionModule = typeof import("@/lib/profit-distribution");
 let computeCarryForward: ProfitDistributionModule["computeCarryForward"];
 let getPeriodBounds: ProfitDistributionModule["getPeriodBounds"];
 let isBeforeStartPeriod: ProfitDistributionModule["isBeforeStartPeriod"];
+let isClosedPeriod: ProfitDistributionModule["isClosedPeriod"];
+let getCurrentPeriod: ProfitDistributionModule["getCurrentPeriod"];
+let listUndeclaredPriorPeriods: ProfitDistributionModule["listUndeclaredPriorPeriods"];
 let startPeriod: ProfitDistributionModule["PROFIT_DISTRIBUTION_START_PERIOD"];
 
 before(async () => {
@@ -68,16 +98,16 @@ before(async () => {
       db: {
         profitDistribution: {
           findFirst: async () => earliestActive,
-          // Faithful to the real query: only periods listed in `where.OR` come back.
+          // Faithful to the real queries: `computeCarryForward()` narrows by
+          // `where.OR`, while `listActivePeriodKeys()` asks for every ACTIVE row.
           findMany: async (args: FindManyArgs) => {
+            const rows = activeRows.map(toActiveRow);
+            const periodFilter = args.where?.OR;
+            if (!periodFilter) return rows;
             const wanted = new Set(
-              (args.where?.OR ?? []).map((item) =>
-                periodKeyOf(item.periodYear, item.periodMonth),
-              ),
+              periodFilter.map((item) => periodKeyOf(item.periodYear, item.periodMonth)),
             );
-            return activeRows.filter((row) =>
-              wanted.has(periodKeyOf(row.periodYear, row.periodMonth)),
-            );
+            return rows.filter((row) => wanted.has(row.activePeriodKey));
           },
         },
       },
@@ -107,6 +137,9 @@ before(async () => {
   computeCarryForward = profitDistribution.computeCarryForward;
   getPeriodBounds = profitDistribution.getPeriodBounds;
   isBeforeStartPeriod = profitDistribution.isBeforeStartPeriod;
+  isClosedPeriod = profitDistribution.isClosedPeriod;
+  getCurrentPeriod = profitDistribution.getCurrentPeriod;
+  listUndeclaredPriorPeriods = profitDistribution.listUndeclaredPriorPeriods;
   startPeriod = profitDistribution.PROFIT_DISTRIBUTION_START_PERIOD;
 });
 
@@ -368,5 +401,198 @@ test(
     // December must not roll the year over.
     const december = getPeriodBounds(2026, 12);
     assert.equal(december.end.toISOString(), "2026-12-31T16:59:59.999Z");
+  },
+);
+
+test(
+  "rolls a retained balance forward when the month chose CARRY_FORWARD",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    earliestActive = { periodYear: 2026, periodMonth: 7 };
+    // Base 10,000, only 6,000 shared out, the rest deliberately kept for next month.
+    activeRows = [
+      {
+        periodYear: 2026,
+        periodMonth: 7,
+        snapshotNetProfit: 10_000,
+        distributedAmount: 6_000,
+        retainedAmount: 4_000,
+        retainedMode: "CARRY_FORWARD",
+      },
+    ];
+    netProfitByMonth = { "2026-07": 10_000 };
+
+    const result = await computeCarryForward(2026, 8);
+
+    assert.equal(result.amount, 4_000);
+    assert.deepEqual(
+      result.rows.map((row) => [row.month, row.kind, row.amount]),
+      [[7, "RETAINED", 4_000]],
+    );
+  },
+);
+
+test(
+  "keeps a retained balance out of the next month when it chose KEEP_IN_SHOP",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    earliestActive = { periodYear: 2026, periodMonth: 7 };
+    activeRows = [
+      {
+        periodYear: 2026,
+        periodMonth: 7,
+        snapshotNetProfit: 10_000,
+        distributedAmount: 6_000,
+        retainedAmount: 4_000,
+        retainedMode: "KEEP_IN_SHOP",
+      },
+    ];
+    netProfitByMonth = { "2026-07": 10_000 };
+
+    const result = await computeCarryForward(2026, 8);
+
+    assert.equal(result.amount, 0, "money kept in the shop never returns to the pool");
+    assert.deepEqual(result.rows, []);
+  },
+);
+
+test(
+  "adds a restated delta on top of a carried retained balance",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    earliestActive = { periodYear: 2026, periodMonth: 7 };
+    activeRows = [
+      {
+        periodYear: 2026,
+        periodMonth: 7,
+        snapshotNetProfit: 10_000,
+        distributedAmount: 6_000,
+        retainedAmount: 4_000,
+        retainedMode: "CARRY_FORWARD",
+      },
+    ];
+    // A credit note rebuilt July after the fact: 10,000 -> 8,500.
+    netProfitByMonth = { "2026-07": 8_500 };
+
+    const result = await computeCarryForward(2026, 8);
+
+    assert.equal(result.amount, 2_500, "8,500 earned minus the 6,000 actually paid out");
+    assert.deepEqual(
+      result.rows.map((row) => [row.month, row.kind, row.amount]),
+      [[7, "RESTATED", 2_500]],
+      "the restatement is what makes this month notable, but the amount is the whole balance",
+    );
+  },
+);
+
+test(
+  "an unbroken chain deducts a loss month exactly once",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    earliestActive = { periodYear: 2026, periodMonth: 7 };
+    // The regression this whole rule exists for: August lost 20,000 and was
+    // declared as a zero document that carried its loss on. September absorbed
+    // it. October must start clean instead of being charged the same 20,000.
+    activeRows = [
+      { periodYear: 2026, periodMonth: 7, snapshotNetProfit: 100_000 },
+      {
+        periodYear: 2026,
+        periodMonth: 8,
+        snapshotNetProfit: -20_000,
+        distributedAmount: 0,
+        retainedAmount: -20_000,
+        retainedMode: "CARRY_FORWARD",
+      },
+      // Base 30,000 (50,000 earned less August's 20,000 loss), all of it shared.
+      { periodYear: 2026, periodMonth: 9, snapshotNetProfit: 50_000, distributedAmount: 30_000 },
+    ];
+    netProfitByMonth = { "2026-07": 100_000, "2026-08": -20_000, "2026-09": 50_000 };
+
+    const september = await computeCarryForward(2026, 9);
+    assert.equal(september.amount, -20_000, "September carries the loss once");
+
+    const october = await computeCarryForward(2026, 10);
+    assert.equal(october.amount, 0, "October must not be charged the same loss again");
+    // The breakdown is a decomposition of that zero, not a list of open items:
+    // August is still short 20,000 and September earned 20,000 more than it
+    // shared out precisely because it covered August. They cancel.
+    assert.deepEqual(
+      october.rows.map((row) => [row.month, row.amount]),
+      [
+        [8, -20_000],
+        [9, 20_000],
+      ],
+    );
+    assert.equal(
+      roundTo2(october.rows.reduce((sum, row) => sum + row.amount, 0)),
+      0,
+      "the rows must always add up to the carried amount",
+    );
+  },
+);
+
+test(
+  "listUndeclaredPriorPeriods returns every closed in-scope gap, oldest first",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    const current = getCurrentPeriod();
+
+    const result = await listUndeclaredPriorPeriods(current.year, current.month);
+
+    assert.ok(result.length > 0, "nothing has been declared, so every closed month is a gap");
+    assert.deepEqual(
+      [result[0].year, result[0].month],
+      [startPeriod.year, startPeriod.month],
+      "the list starts at the month the arrangement began",
+    );
+    const last = result[result.length - 1];
+    assert.equal(isClosedPeriod(last.year, last.month), true, "open months are never listed");
+
+    // Strictly ascending and contiguous — the UI declares them in this order.
+    for (let index = 1; index < result.length; index += 1) {
+      const previous = result[index - 1];
+      const expected =
+        previous.month === 12
+          ? { year: previous.year + 1, month: 1 }
+          : { year: previous.year, month: previous.month + 1 };
+      assert.deepEqual([result[index].year, result[index].month], [expected.year, expected.month]);
+    }
+  },
+);
+
+test(
+  "listUndeclaredPriorPeriods returns nothing once the chain is complete",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+    const current = getCurrentPeriod();
+    const gaps = await listUndeclaredPriorPeriods(current.year, current.month);
+    // Declare every one of them, then ask again.
+    activeRows = gaps.map((gap) => ({
+      periodYear: gap.year,
+      periodMonth: gap.month,
+      snapshotNetProfit: 0,
+    }));
+
+    const result = await listUndeclaredPriorPeriods(current.year, current.month);
+
+    assert.deepEqual(result, []);
+  },
+);
+
+test(
+  "listUndeclaredPriorPeriods ignores months before the arrangement started",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    resetFixtures();
+
+    const result = await listUndeclaredPriorPeriods(startPeriod.year, startPeriod.month);
+
+    assert.deepEqual(result, [], "the very first period has nothing before it in scope");
   },
 );

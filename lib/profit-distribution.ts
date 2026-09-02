@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { DocStatus } from "@/lib/generated/prisma";
+import { DocStatus, RetainedProfitMode } from "@/lib/generated/prisma";
 import { aggregateProfitSummary, type ProfitSummary } from "@/lib/profit-dashboard";
 import {
   estimatePendingChannelFees,
@@ -139,12 +139,15 @@ export type PeriodOption = {
   periodKey: string;
   label: string;
   hasActiveDistribution: boolean;
+  /** An earlier closed month is still undeclared, so this one is not next in line. */
+  isBlockedByEarlierPeriod: boolean;
 };
 
 /**
  * Closed months available for declaration, newest first. A month that already
- * carries an ACTIVE distribution is still listed but flagged, so the UI can
- * explain why it cannot be picked instead of silently hiding it.
+ * carries an ACTIVE distribution — or that an earlier undeclared month is still
+ * holding up — is listed but flagged, so the UI can explain why it cannot be
+ * picked instead of silently hiding it.
  */
 export async function listSelectablePeriods(): Promise<PeriodOption[]> {
   const current = getCurrentPeriod();
@@ -155,16 +158,16 @@ export async function listSelectablePeriods(): Promise<PeriodOption[]> {
     periods.push(period);
   }
 
-  const activeKeys = new Set(
-    (
-      await db.profitDistribution.findMany({
-        where: { status: DocStatus.ACTIVE },
-        select: { activePeriodKey: true },
-      })
-    )
-      .map((row) => row.activePeriodKey)
-      .filter((key): key is string => typeof key === "string"),
-  );
+  const activeKeys = await listActivePeriodKeys();
+
+  // Walked oldest-first: everything after the first undeclared month is blocked.
+  const blockedKeys = new Set<string>();
+  let seenUndeclared = false;
+  for (let index = periods.length - 1; index >= 0; index -= 1) {
+    const periodKey = getPeriodKey(periods[index].year, periods[index].month);
+    if (seenUndeclared) blockedKeys.add(periodKey);
+    if (!activeKeys.has(periodKey)) seenUndeclared = true;
+  }
 
   return periods.map((period) => {
     const periodKey = getPeriodKey(period.year, period.month);
@@ -174,8 +177,69 @@ export async function listSelectablePeriods(): Promise<PeriodOption[]> {
       periodKey,
       label: formatPeriodLabel(period.year, period.month),
       hasActiveDistribution: activeKeys.has(periodKey),
+      isBlockedByEarlierPeriod: blockedKeys.has(periodKey),
     };
   });
+}
+
+async function listActivePeriodKeys(): Promise<Set<string>> {
+  const rows = await db.profitDistribution.findMany({
+    where: { status: DocStatus.ACTIVE },
+    select: { activePeriodKey: true },
+  });
+  return new Set(
+    rows
+      .map((row) => row.activePeriodKey)
+      .filter((key): key is string => typeof key === "string"),
+  );
+}
+
+export type UndeclaredPeriod = {
+  year: number;
+  month: number;
+  periodKey: string;
+  label: string;
+};
+
+/**
+ * Closed in-scope months before the target that still have no ACTIVE document,
+ * oldest first. Declaring out of order is rejected while this is non-empty.
+ *
+ * `computeCarryForward()` is cumulative and stays correct even across a gap, so
+ * this is not what keeps the arithmetic honest. What it protects is the record:
+ * every closed month ends up with a document stating what it earned and what
+ * was done with it, declared while the figures are still fresh. A month that is
+ * skipped and only noticed a year later would otherwise surface as one lump in
+ * some unrelated period, with nobody able to say which month it came from.
+ */
+export async function listUndeclaredPriorPeriods(
+  year: number,
+  month: number,
+): Promise<UndeclaredPeriod[]> {
+  const target = { year, month };
+  if (isBeforeStartPeriod(target.year, target.month)) return [];
+
+  const periods: Array<{ year: number; month: number }> = [];
+  let cursor: { year: number; month: number } = {
+    year: PROFIT_DISTRIBUTION_START_PERIOD.year,
+    month: PROFIT_DISTRIBUTION_START_PERIOD.month,
+  };
+  while (comparePeriods(cursor, target) < 0) {
+    if (isClosedPeriod(cursor.year, cursor.month)) periods.push(cursor);
+    cursor = shiftPeriod(cursor.year, cursor.month, 1);
+  }
+  if (periods.length === 0) return [];
+
+  const activeKeys = await listActivePeriodKeys();
+
+  return periods
+    .filter((period) => !activeKeys.has(getPeriodKey(period.year, period.month)))
+    .map((period) => ({
+      year: period.year,
+      month: period.month,
+      periodKey: getPeriodKey(period.year, period.month),
+      label: formatPeriodLabel(period.year, period.month),
+    }));
 }
 
 /** Net profit figures for one calendar month, straight from FactProfit. */
@@ -191,8 +255,11 @@ export type CarryForwardBreakdownRow = {
   year: number;
   month: number;
   label: string;
-  /** "UNDECLARED" — never distributed; "RESTATED" — distributed then recomputed. */
-  kind: "UNDECLARED" | "RESTATED";
+  /**
+   * "UNDECLARED" — never distributed; "RESTATED" — distributed then recomputed;
+   * "RETAINED" — declared, but the part kept back was marked to roll forward.
+   */
+  kind: "UNDECLARED" | "RESTATED" | "RETAINED";
   amount: number;
 };
 
@@ -202,15 +269,24 @@ export type CarryForwardResult = {
 };
 
 /**
- * Amount carried into a period from earlier months. Two disjoint sources:
+ * Amount carried into a period from earlier months.
  *
- *  1. UNDECLARED — a closed month with no ACTIVE distribution (a loss month, or
- *     one that was skipped or cancelled). Its whole net profit rolls forward,
- *     so a loss reduces what the next month may distribute.
- *  2. RESTATED — a month that WAS distributed but whose net profit has since
- *     changed, because FactProfit is rebuilt when a source document is edited
- *     or cancelled. The difference against the stored snapshot rolls forward
- *     instead of rewriting the closed document.
+ * The rule is cumulative, not additive: for every earlier in-scope month it
+ * compares what that month EARNED (read live from FactProfit, so a restatement
+ * is picked up automatically) against what it SETTLED — paid out to the
+ * partners, plus anything it chose to keep in the shop for good. The difference
+ * is still owed to the pool and rolls forward.
+ *
+ * Stating it that way is what makes double counting impossible. An older model
+ * that added up "loss months" and "restated deltas" charged the same balance to
+ * every later declaration: a loss absorbed in September was deducted again in
+ * October, November and so on. Here the month that absorbs a balance reports it
+ * as settled, so it disappears from the sum at once.
+ *
+ * The breakdown rows label WHY a month still has something outstanding:
+ *   UNDECLARED — no document at all (skipped, or the document was cancelled)
+ *   RESTATED   — FactProfit was rebuilt after the document was written
+ *   RETAINED   — declared, but part of the base was kept back to roll forward
  *
  * Nothing is carried until the very first distribution exists — the shop starts
  * with no opening balances, so earlier history is deliberately ignored.
@@ -261,12 +337,24 @@ export async function computeCarryForward(
         periodMonth: period.month,
       })),
     },
-    select: { periodYear: true, periodMonth: true, snapshotNetProfit: true },
+    select: {
+      periodYear: true,
+      periodMonth: true,
+      snapshotNetProfit: true,
+      distributedAmount: true,
+      retainedAmount: true,
+      retainedMode: true,
+    },
   });
-  const snapshotByPeriod = new Map(
+  const declaredByPeriod = new Map(
     activeDistributions.map((row) => [
       getPeriodKey(row.periodYear, row.periodMonth),
-      Number(row.snapshotNetProfit),
+      {
+        snapshotNetProfit: Number(row.snapshotNetProfit),
+        distributedAmount: Number(row.distributedAmount),
+        retainedAmount: Number(row.retainedAmount),
+        retainedMode: row.retainedMode,
+      },
     ]),
   );
 
@@ -278,29 +366,29 @@ export async function computeCarryForward(
   periods.forEach((period, index) => {
     const currentNetProfit = roundMoney(summaries[index].netProfitAmount);
     const periodKey = getPeriodKey(period.year, period.month);
-    const snapshot = snapshotByPeriod.get(periodKey);
+    const label = formatPeriodLabel(period.year, period.month);
+    const declared = declaredByPeriod.get(periodKey);
 
-    if (snapshot === undefined) {
-      if (Math.abs(currentNetProfit) < 0.005) return;
-      rows.push({
-        year: period.year,
-        month: period.month,
-        label: formatPeriodLabel(period.year, period.month),
-        kind: "UNDECLARED",
-        amount: currentNetProfit,
-      });
-      return;
-    }
+    // What that month finally disposed of: paid out to the partners, plus
+    // anything it chose to keep in the shop for good. Everything else is still
+    // owed to the pool and rolls on — exactly once, because the *next* month's
+    // own settled figure absorbs it in turn. That is what makes this cumulative
+    // rather than additive: a balance can never be charged twice, whether it
+    // came from a loss, a restatement, or a deliberate hold-back.
+    const settled = declared
+      ? declared.distributedAmount +
+        (declared.retainedMode === RetainedProfitMode.KEEP_IN_SHOP ? declared.retainedAmount : 0)
+      : 0;
+    const outstanding = roundMoney(currentNetProfit - settled);
+    if (Math.abs(outstanding) < 0.005) return;
 
-    const difference = roundMoney(currentNetProfit - snapshot);
-    if (Math.abs(difference) < 0.005) return;
-    rows.push({
-      year: period.year,
-      month: period.month,
-      label: formatPeriodLabel(period.year, period.month),
-      kind: "RESTATED",
-      amount: difference,
-    });
+    const kind: CarryForwardBreakdownRow["kind"] = !declared
+      ? "UNDECLARED"
+      : Math.abs(currentNetProfit - declared.snapshotNetProfit) >= 0.005
+        ? "RESTATED"
+        : "RETAINED";
+
+    rows.push({ year: period.year, month: period.month, label, kind, amount: outstanding });
   });
 
   const amount = roundMoney(rows.reduce((sum, row) => sum + row.amount, 0));
@@ -415,6 +503,8 @@ export type DistributionPreview = {
   partners: PartnerOption[];
   cashHealth: CashHealth;
   hasActiveDistribution: boolean;
+  /** Earlier closed months that must be declared first — empty means good to go. */
+  blockingPeriods: UndeclaredPeriod[];
   /**
    * ค่าธรรมเนียมช่องทางขายที่ยังไม่รับรู้ในงวดนี้
    *
@@ -432,18 +522,26 @@ export async function buildDistributionPreview(
   const { start, end } = getPeriodBounds(year, month);
   const periodKey = getPeriodKey(year, month);
 
-  const [summary, carryForward, partners, cashHealth, existing, pendingChannelFees] =
-    await Promise.all([
-      getPeriodProfitSummary(year, month),
-      computeCarryForward(year, month),
-      listActivePartners(),
-      getCashHealth(),
-      db.profitDistribution.findUnique({
-        where: { activePeriodKey: periodKey },
-        select: { id: true },
-      }),
-      estimatePendingChannelFees(start, end),
-    ]);
+  const [
+    summary,
+    carryForward,
+    partners,
+    cashHealth,
+    existing,
+    pendingChannelFees,
+    blockingPeriods,
+  ] = await Promise.all([
+    getPeriodProfitSummary(year, month),
+    computeCarryForward(year, month),
+    listActivePartners(),
+    getCashHealth(),
+    db.profitDistribution.findUnique({
+      where: { activePeriodKey: periodKey },
+      select: { id: true },
+    }),
+    estimatePendingChannelFees(start, end),
+    listUndeclaredPriorPeriods(year, month),
+  ]);
 
   return {
     year,
@@ -458,6 +556,7 @@ export async function buildDistributionPreview(
     partners,
     cashHealth,
     hasActiveDistribution: Boolean(existing),
+    blockingPeriods,
     pendingChannelFees,
   };
 }
@@ -488,6 +587,7 @@ export type YearOverviewMonth = {
     carryForwardAmount: number;
     distributedAmount: number;
     retainedAmount: number;
+    retainedMode: RetainedProfitMode;
     shares: YearOverviewPartnerShare[];
   } | null;
 };
@@ -524,6 +624,7 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
         carryForwardAmount: true,
         distributedAmount: true,
         retainedAmount: true,
+        retainedMode: true,
         items: {
           orderBy: { lineNo: "asc" },
           select: {
@@ -561,6 +662,7 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
             carryForwardAmount: Number(distribution.carryForwardAmount),
             distributedAmount: Number(distribution.distributedAmount),
             retainedAmount: Number(distribution.retainedAmount),
+            retainedMode: distribution.retainedMode,
             shares: distribution.items.map((item) => ({
               partnerProfileId: item.partnerProfileId,
               partnerUserId: item.partnerUserId,
@@ -591,10 +693,10 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
         rows.reduce((sum, row) => sum + (row.distribution?.retainedAmount ?? 0), 0),
       ),
     },
-    // Only a closed, in-scope month that actually made a profit needs declaring.
+    // Every closed, in-scope month needs a document — a loss month included,
+    // because the chain must have no gaps before the next month may be declared.
     pendingClosedMonths: rows.filter(
-      (row) =>
-        row.isClosed && !row.isBeforeStart && !row.distribution && row.currentNetProfit > 0,
+      (row) => row.isClosed && !row.isBeforeStart && !row.distribution,
     ).length,
   };
 }

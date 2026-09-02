@@ -20,9 +20,11 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
 
   const [params, periodOptions] = await Promise.all([searchParams, listSelectablePeriods()]);
 
-  // Default to the newest closed month that has not been declared yet.
+  // Default to the OLDEST closed month that has not been declared yet — that is
+  // the only one the sequential rule actually lets through.
   const requested = periodOptions.find((option) => option.periodKey === params.period);
-  const fallback = periodOptions.find((option) => !option.hasActiveDistribution);
+  const undeclared = periodOptions.filter((option) => !option.hasActiveDistribution);
+  const fallback = undeclared[undeclared.length - 1];
   const selected = requested ?? fallback ?? periodOptions[0] ?? null;
 
   if (!selected) {
@@ -97,6 +99,7 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
           periodKey: option.periodKey,
           label: option.label,
           hasActiveDistribution: option.hasActiveDistribution,
+          isBlockedByEarlierPeriod: option.isBlockedByEarlierPeriod,
         }))}
         periodKey={selected.periodKey}
         periodLabel={preview.periodLabel}
@@ -124,6 +127,10 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
         arOutstanding={preview.cashHealth.arOutstanding}
         stockValue={preview.cashHealth.stockValue}
         hasActiveDistribution={preview.hasActiveDistribution}
+        blockingPeriods={preview.blockingPeriods.map((period) => ({
+          periodKey: period.periodKey,
+          label: period.label,
+        }))}
       />
     </div>
   );

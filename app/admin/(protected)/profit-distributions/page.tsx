@@ -35,6 +35,15 @@ type MonthStatus = "BEFORE_START" | "OPEN" | "DECLARED" | "PENDING" | "NO_PROFIT
 /** Below this, a net profit is treated as exactly zero rather than a loss. */
 const ZERO_PROFIT_EPSILON = 0.005;
 
+/**
+ * Every closed, in-scope month must end up with a document — a loss month too,
+ * because the declaration chain may not have gaps (an undeclared month would be
+ * carried forward again by every later period).
+ */
+function needsDeclaration(status: MonthStatus): boolean {
+  return status === "PENDING" || status === "LOSS" || status === "NO_PROFIT";
+}
+
 function getMonthStatus(row: YearOverviewMonth): MonthStatus {
   if (row.isBeforeStart) return "BEFORE_START";
   if (!row.isClosed) return "OPEN";
@@ -88,7 +97,7 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
       ),
   );
 
-  const pendingMonths = overview.months.filter((row) => getMonthStatus(row) === "PENDING");
+  const pendingMonths = overview.months.filter((row) => needsDeclaration(getMonthStatus(row)));
 
   return (
     <div className="space-y-6">
@@ -139,6 +148,10 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
             <div className="space-y-2">
               <p className="text-sm font-medium text-amber-800 dark:text-amber-100">
                 มี {pendingMonths.length} เดือนที่จบแล้วแต่ยังไม่ได้ประกาศแบ่งกำไร
+              </p>
+              <p className="text-xs text-amber-700/90 dark:text-amber-200/90">
+                ต้องประกาศเรียงตามลำดับ เริ่มจากเดือนแรกสุด — เดือนที่ขาดทุนก็ต้องประกาศ
+                (ยอดที่แบ่งเป็น 0 แล้วยกไปหักเดือนถัดไป)
               </p>
               <div className="flex flex-wrap gap-2">
                 {pendingMonths.map((row) => (
@@ -356,11 +369,11 @@ const STATUS_BADGE: Record<MonthStatus, { label: string; className: string }> = 
     className: "bg-amber-100 text-amber-800 dark:bg-amber-400/10 dark:text-amber-200",
   },
   NO_PROFIT: {
-    label: "ไม่มีกำไร · ไม่แบ่ง",
+    label: "ไม่มีกำไร · รอประกาศ",
     className: "bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-slate-400",
   },
   LOSS: {
-    label: "ขาดทุน · ไม่แบ่ง",
+    label: "ขาดทุน · รอประกาศ",
     className: "bg-rose-100 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200",
   },
 };
@@ -406,7 +419,7 @@ const MonthlyTable = ({
             <tbody className="divide-y divide-gray-100 dark:divide-white/10">
               {overview.map((row) => {
                 const status = getMonthStatus(row);
-                const isPending = status === "PENDING";
+                const isPending = needsDeclaration(status);
                 const rowClass = isPending
                   ? "bg-amber-50/70 dark:bg-amber-400/5"
                   : row.isBeforeStart
@@ -444,6 +457,15 @@ const MonthlyTable = ({
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-right text-sky-600 dark:text-sky-300">
                       {row.distribution ? `฿${money(row.distribution.retainedAmount)}` : "-"}
+                      {row.distribution?.retainedMode === "CARRY_FORWARD" &&
+                      row.distribution.retainedAmount !== 0 ? (
+                        <span
+                          className="ml-1 text-[10px] text-gray-400 dark:text-slate-500"
+                          title="ยอดที่กันไว้ถูกยกไปสมทบฐานที่แบ่งได้ของเดือนถัดไป"
+                        >
+                          ยกไป
+                        </span>
+                      ) : null}
                     </td>
                     {partners.map((partner) => {
                       const amount = shareOf(row, partner.partnerProfileId);
@@ -497,7 +519,7 @@ const MonthlyTable = ({
             <div
               key={row.month}
               className={`rounded-2xl border p-4 shadow-sm ${
-                status === "PENDING"
+                needsDeclaration(status)
                   ? "border-amber-200 bg-amber-50 dark:border-amber-400/20 dark:bg-amber-400/5"
                   : row.isBeforeStart
                     ? "border-gray-100 bg-white opacity-60 dark:border-white/10 dark:bg-slate-900"
@@ -568,7 +590,7 @@ const MonthlyTable = ({
                     {formatDateThai(row.distribution.payDate)}
                   </NavLink>
                 ) : null}
-                {status === "PENDING" && canCreate ? (
+                {needsDeclaration(status) && canCreate ? (
                   <NavLink
                     href={`/admin/profit-distributions/new?period=${row.year}-${String(row.month).padStart(2, "0")}`}
                     className="rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white dark:bg-amber-400 dark:text-slate-950"
