@@ -738,6 +738,8 @@ export type PartnerYearSummary = {
   defaultSharePercent: number;
   /** Received in the most recent declared month of this year. */
   latestAmount: number;
+  /** Which month that was — a zero here means "that month shared nothing out". */
+  latestPeriodShortLabel: string | null;
   yearTotal: number;
   /** Share of the year's distributed total actually received. */
   actualSharePercent: number;
@@ -819,6 +821,9 @@ export async function getPartnerYearSummaries(year: number): Promise<PartnerYear
       name: partner.name,
       defaultSharePercent: partner.defaultSharePercent,
       latestAmount: roundMoney(latestByPartner.get(partner.partnerProfileId) ?? 0),
+      latestPeriodShortLabel: latestDistribution
+        ? formatPeriodShortLabel(latestDistribution.periodMonth)
+        : null,
       yearTotal,
       actualSharePercent,
       fairnessDeltaPercent:

@@ -230,7 +230,10 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
                 </p>
                 <dl className="mt-3 space-y-2 text-sm">
                   <div className="flex items-baseline justify-between gap-2">
-                    <dt className="text-xs text-gray-500 dark:text-slate-400">ได้ล่าสุด</dt>
+                    <dt className="text-xs text-gray-500 dark:text-slate-400">
+                      ได้ล่าสุด
+                      {partner.latestPeriodShortLabel ? ` (${partner.latestPeriodShortLabel})` : ""}
+                    </dt>
                     <dd className="font-semibold text-gray-900 dark:text-slate-100">
                       ฿{money(partner.latestAmount)}
                     </dd>
