@@ -6,8 +6,15 @@ import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_METHOD_LABEL, ge
 import NavLink from "@/components/shared/NavLink";
 import { ExternalLink, Eye, Smartphone } from "lucide-react";
 import DeliveryUpdateButton from "./DeliveryUpdateButton";
-import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
+import {
+  DeliveryPrintActions,
+  DeliveryRowCheckbox,
+  DeliverySelectAllCheckbox,
+  DeliverySelectionProvider,
+  type DeliveryRow,
+} from "./DeliverySelection";
 import PrintFromListButton from "@/components/shared/PrintFromListButton";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import type { SelectOption } from "@/components/shared/SearchableSelect";
@@ -77,6 +84,7 @@ const DeliveryPage = async ({
         id: true,
         saleNo: true,
         saleDate: true,
+        channel: true,
         customerName: true,
         shippingAddress: true,
         shippingStatus: true,
@@ -128,12 +136,15 @@ const DeliveryPage = async ({
     { label: "ส่งแล้ว",              value: "DELIVERED" },
   ];
 
-  const printAllUrl =
-    sales.length > 0
-      ? `/admin/delivery/print?ids=${sales.map((s) => s.id).join(",")}&print=1`
-      : null;
+  // ใบขาย Shopee / Lazada ติ๊กพิมพ์ใบส่งของได้ตามปกติ แต่ไม่นับเป็นใบปะหน้ากล่อง
+  // เพราะแพลตฟอร์มออกใบให้เอง และที่อยู่บนบิลมักยังเป็นข้อความตั้งต้นของช่องทาง
+  const selectionRows: DeliveryRow[] = sales.map((s) => ({
+    id: s.id,
+    canPrintLabel: !isManualMarketplaceChannel(s.channel),
+  }));
 
   return (
+    <DeliverySelectionProvider rows={selectionRows}>
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">คิวจัดส่ง</h1>
@@ -145,14 +156,7 @@ const DeliveryPage = async ({
           >
             <Smartphone size={14} /> มุมมองมือถือ
           </NavLink>
-          {printAllUrl && (
-            <PrintCopyModeLink
-              href={printAllUrl}
-              label={`พิมพ์ทั้งหมด (${sales.length})`}
-              iconSize={14}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-[#1e3a5f] text-white rounded-lg hover:bg-[#162d4a] dark:bg-sky-700 dark:hover:bg-sky-600 transition-colors"
-            />
-          )}
+          <DeliveryPrintActions />
         </div>
       </div>
 
@@ -209,8 +213,9 @@ const DeliveryPage = async ({
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden dark:border-white/10 dark:bg-[#101b2e]">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1760px] table-fixed text-sm">
+          <table className="w-full min-w-[1808px] table-fixed text-sm">
             <colgroup>
+              <col className="w-[48px]" />
               <col className="w-[150px]" />
               <col className="w-[120px]" />
               <col className="w-[260px]" />
@@ -224,6 +229,9 @@ const DeliveryPage = async ({
             </colgroup>
             <thead className="bg-gray-50 dark:bg-white/5">
               <tr>
+                <th className="py-3 pl-4 pr-0 text-left">
+                  <DeliverySelectAllCheckbox />
+                </th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">เลขที่ใบขาย</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">วันที่</th>
                 <th className="text-left py-3 px-4 font-medium text-gray-600 dark:text-slate-300">ลูกค้า</th>
@@ -239,7 +247,7 @@ const DeliveryPage = async ({
             <tbody>
               {sales.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-400 dark:text-slate-500">
+                  <td colSpan={11} className="text-center py-12 text-gray-400 dark:text-slate-500">
                     ไม่มีรายการจัดส่ง
                   </td>
                 </tr>
@@ -257,6 +265,9 @@ const DeliveryPage = async ({
 
                       return (
                         <>
+                    <td className="py-3 pl-4 pr-0 align-top">
+                      <DeliveryRowCheckbox id={s.id} saleNo={s.saleNo} />
+                    </td>
                     <td className="py-3 px-4 font-mono text-[#1e3a5f] font-medium dark:text-sky-300">{s.saleNo}</td>
                     <td className="py-3 px-4 text-gray-600 whitespace-nowrap dark:text-slate-300">
                       {formatDateThai(s.saleDate)}
@@ -365,6 +376,7 @@ const DeliveryPage = async ({
         </div>
       </div>
     </div>
+    </DeliverySelectionProvider>
   );
 };
 

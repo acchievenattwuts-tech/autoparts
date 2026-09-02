@@ -13,7 +13,9 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
+import ParcelLabelPrintLink from "@/app/admin/_components/print/ParcelLabelPrintLink";
 import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import {
   PRINT_COPY_LABEL_DUPLICATE,
   PRINT_COPY_LABEL_ORIGINAL,
@@ -295,6 +297,11 @@ ${PRINT_COPY_VISIBILITY_CSS}
               ) : null}
               <PrintCopyModeToggle />
               <PrintButton label={sale.paymentType === "CREDIT_SALE" ? "พิมพ์ใบแจ้งหนี้" : "พิมพ์ใบเสร็จ"} />
+              {sale.status === "ACTIVE" &&
+              sale.fulfillmentType === "DELIVERY" &&
+              !isManualMarketplaceChannel(sale.channel) ? (
+                <ParcelLabelPrintLink ids={[id]} label="พิมพ์ใบปะหน้ากล่อง" />
+              ) : null}
             </div>
           </div>
 
