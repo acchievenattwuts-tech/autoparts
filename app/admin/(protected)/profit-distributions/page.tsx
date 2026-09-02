@@ -189,6 +189,10 @@ export default async function ProfitDistributionsPage({ searchParams }: PageProp
           <p className="mt-1 text-2xl font-semibold text-sky-600 dark:text-sky-300">
             ฿{money(overview.totals.retainedAmount)}
           </p>
+          <p className="mt-0.5 text-[10px] text-gray-400 dark:text-slate-500">
+            = กำไรสุทธิสะสม − แบ่งไปแล้ว (ไม่ใช่ผลรวมคอลัมน์ &quot;กันไว้&quot; รายเดือน
+            เพราะยอดที่ยกไปจะซ้ำกัน)
+          </p>
         </div>
         <div className={CARD_CLASS}>
           <p className="text-xs text-gray-500 dark:text-slate-400">เดือนที่ยังไม่ประกาศ</p>

@@ -598,10 +598,31 @@ export type YearOverview = {
   totals: {
     currentNetProfit: number;
     distributedAmount: number;
+    /** Profit still sitting in the shop — see `computeRetainedInShop`. */
     retainedAmount: number;
   };
   pendingClosedMonths: number;
 };
+
+/**
+ * Profit still sitting in the shop over a span of months.
+ *
+ * NOT a sum of each document's `retainedAmount`. That field is a BALANCE at the
+ * end of its month, not the amount set aside during it: a month that carries
+ * its remainder forward hands the balance to the next document, which reports
+ * the same money again inside its own `retainedAmount`. Adding those up counts
+ * the carried part once per month it survives.
+ *
+ * What is left in the shop is simply everything earned that was not paid out,
+ * plus whatever balance was already there when the span opened.
+ */
+export function computeRetainedInShop(input: {
+  openingCarryForward: number;
+  netProfit: number;
+  distributed: number;
+}): number {
+  return roundMoney(input.openingCarryForward + input.netProfit - input.distributed);
+}
 
 /**
  * One row per month of the selected year: what the shop earned, what was
@@ -675,23 +696,32 @@ export async function getYearOverview(year: number): Promise<YearOverview> {
     };
   });
 
+  // Months before the arrangement started never enter any total.
+  const yearNetProfit = roundMoney(
+    rows.reduce(
+      (sum, row) => sum + (row.isClosed && !row.isBeforeStart ? row.currentNetProfit : 0),
+      0,
+    ),
+  );
+  const yearDistributed = roundMoney(
+    rows.reduce((sum, row) => sum + (row.distribution?.distributedAmount ?? 0), 0),
+  );
+  // Balance flowing in from before this year. The declaration chain has no
+  // gaps, so the first document of the year carries exactly that opening
+  // balance; in the very first year there is none and this is 0.
+  const openingCarryForward = Number(distributions[0]?.carryForwardAmount ?? 0);
+
   return {
     year,
     months: rows,
     totals: {
-      // Months before the arrangement started never enter any total.
-      currentNetProfit: roundMoney(
-        rows.reduce(
-          (sum, row) => sum + (row.isClosed && !row.isBeforeStart ? row.currentNetProfit : 0),
-          0,
-        ),
-      ),
-      distributedAmount: roundMoney(
-        rows.reduce((sum, row) => sum + (row.distribution?.distributedAmount ?? 0), 0),
-      ),
-      retainedAmount: roundMoney(
-        rows.reduce((sum, row) => sum + (row.distribution?.retainedAmount ?? 0), 0),
-      ),
+      currentNetProfit: yearNetProfit,
+      distributedAmount: yearDistributed,
+      retainedAmount: computeRetainedInShop({
+        openingCarryForward,
+        netProfit: yearNetProfit,
+        distributed: yearDistributed,
+      }),
     },
     // Every closed, in-scope month needs a document — a loss month included,
     // because the chain must have no gaps before the next month may be declared.

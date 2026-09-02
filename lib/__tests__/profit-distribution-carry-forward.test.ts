@@ -86,6 +86,7 @@ let isBeforeStartPeriod: ProfitDistributionModule["isBeforeStartPeriod"];
 let isClosedPeriod: ProfitDistributionModule["isClosedPeriod"];
 let getCurrentPeriod: ProfitDistributionModule["getCurrentPeriod"];
 let listUndeclaredPriorPeriods: ProfitDistributionModule["listUndeclaredPriorPeriods"];
+let computeRetainedInShop: ProfitDistributionModule["computeRetainedInShop"];
 let startPeriod: ProfitDistributionModule["PROFIT_DISTRIBUTION_START_PERIOD"];
 
 before(async () => {
@@ -140,6 +141,7 @@ before(async () => {
   isClosedPeriod = profitDistribution.isClosedPeriod;
   getCurrentPeriod = profitDistribution.getCurrentPeriod;
   listUndeclaredPriorPeriods = profitDistribution.listUndeclaredPriorPeriods;
+  computeRetainedInShop = profitDistribution.computeRetainedInShop;
   startPeriod = profitDistribution.PROFIT_DISTRIBUTION_START_PERIOD;
 });
 
@@ -594,5 +596,44 @@ test(
     const result = await listUndeclaredPriorPeriods(startPeriod.year, startPeriod.month);
 
     assert.deepEqual(result, [], "the very first period has nothing before it in scope");
+  },
+);
+
+test(
+  "computeRetainedInShop does not re-count a balance that was carried forward",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    // The real numbers that exposed this: July earned 4,447.69 and shared out
+    // 4,000, carrying 447.69. August earned 212.89, so its base was 660.58 and
+    // it shared out nothing — its own retainedAmount of 660.58 already CONTAINS
+    // July's 447.69. Adding the two documents' retained amounts would report
+    // 1,108.27 for money that is really 660.58.
+    assert.equal(
+      computeRetainedInShop({
+        openingCarryForward: 0,
+        netProfit: 4_660.58,
+        distributed: 4_000,
+      }),
+      660.58,
+    );
+
+    // Money kept for good is a flow, not a balance, so it simply accumulates.
+    assert.equal(
+      computeRetainedInShop({ openingCarryForward: 0, netProfit: 10_000, distributed: 6_000 }),
+      4_000,
+    );
+
+    // A year that opens holding a balance from the previous one counts it too.
+    assert.equal(
+      computeRetainedInShop({ openingCarryForward: 660.58, netProfit: 5_000, distributed: 5_500 }),
+      160.58,
+    );
+
+    // Distributing more than the year earned draws the balance down below zero
+    // only when the opening balance cannot cover it.
+    assert.equal(
+      computeRetainedInShop({ openingCarryForward: 100, netProfit: 1_000, distributed: 1_500 }),
+      -400,
+    );
   },
 );
