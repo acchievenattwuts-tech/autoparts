@@ -53,6 +53,27 @@ export interface PurchaseOcrRun {
 }
 
 /**
+ * Payload summary for the OCR logs. A client-side abort surfaces as
+ * "ALL_GEMINI_KEYS_FAILED:This operation was aborted", which says the call ran
+ * past OCR_CALL_TIMEOUT_MS but nothing about WHY it was slow. Recording what we
+ * actually sent — file count, decoded bytes, and the mime mix (a PDF passes
+ * through at full size; images are downscaled first) — separates "the document
+ * was too heavy" from "the key was slow" without another incident.
+ */
+function describeOcrPayload(images: PurchaseOcrImageInput[]) {
+  // base64 → bytes, close enough for a log line (ignores the ≤2 padding chars).
+  const bytes = images.reduce(
+    (sum, image) => sum + Math.floor((image.dataBase64.length * 3) / 4),
+    0,
+  );
+  return {
+    files: images.length,
+    bytes,
+    mimeTypes: Array.from(new Set(images.map((image) => image.mimeType))).join(","),
+  };
+}
+
+/**
  * Runs OCR on one or more already-decoded invoice files. Never throws — returns a
  * status so the caller can distinguish "AI unavailable / errored" from "read fine
  * but found no line items". The underlying Gemini error (e.g. HTTP 4xx body) is
@@ -64,6 +85,9 @@ export async function runPurchaseInvoiceOcr(
   if (images.length === 0 || !hasGeminiKeysConfigured()) {
     return { result: EMPTY_PURCHASE_OCR_RESULT, status: "no_keys", rawText: "" };
   }
+
+  const payload = describeOcrPayload(images);
+  const startedAt = Date.now();
 
   try {
     const { text } = await generateGeminiContent({
@@ -85,7 +109,8 @@ export async function runPurchaseInvoiceOcr(
     });
     const result = parsePurchaseInvoiceOcr(text);
     console.info("[purchase-ocr] gemini ok", {
-      files: images.length,
+      ...payload,
+      elapsedMs: Date.now() - startedAt,
       rawLength: text.length,
       lines: result.lines.length,
     });
@@ -93,7 +118,10 @@ export async function runPurchaseInvoiceOcr(
   } catch (error) {
     // error.message carries the real cause, e.g. ALL_GEMINI_KEYS_FAILED:GEMINI_HTTP_400:...
     const message = error instanceof Error ? error.message : String(error);
-    console.error("[purchase-ocr] gemini failed", message);
+    console.error("[purchase-ocr] gemini failed", message, {
+      ...payload,
+      elapsedMs: Date.now() - startedAt,
+    });
     return {
       result: EMPTY_PURCHASE_OCR_RESULT,
       status: "ai_error",

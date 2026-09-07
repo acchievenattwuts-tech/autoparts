@@ -681,6 +681,29 @@ function handoffAckForIntent(intent: LineIntent): string {
   }
 }
 
+/** Formats an error for a log line, unwrapping the `cause` chain (and any
+ *  `code`) rather than keeping only `.message`.
+ *
+ *  Node's fetch collapses every network-level failure into the same opaque
+ *  `TypeError: fetch failed`; the real reason (ECONNRESET, connect timeout,
+ *  DNS) lives only on `error.cause`. A 2026-09-05 owner-loop failure logged
+ *  exactly `fetch failed` and left no way to tell which upstream call broke,
+ *  so the chain is now part of the log line. */
+function describeError(error: unknown): string {
+  const parts: string[] = [];
+  let current: unknown = error;
+  for (let depth = 0; depth < 3 && current !== null && current !== undefined; depth += 1) {
+    if (!(current instanceof Error)) {
+      parts.push(String(current));
+      break;
+    }
+    const code = (current as { code?: unknown }).code;
+    parts.push(typeof code === "string" ? `${current.message} (${code})` : current.message);
+    current = current.cause;
+  }
+  return parts.join(" <- ") || "unknown";
+}
+
 /** Fires a LineAiAuditLog write without awaiting its DB round-trip — the
  *  audit row carries debug/metric data, not state-machine truth, so the
  *  webhook pipeline shouldn't pay its latency cost. Failures degrade to a
@@ -3877,7 +3900,7 @@ export async function processLineAiReply(
       } catch (sendError) {
         console.warn(
           "[line-webhook-processor] fallback send failed:",
-          sendError instanceof Error ? sendError.message : "unknown",
+          describeError(sendError),
         );
       }
     }
@@ -3894,7 +3917,7 @@ export async function processLineAiReply(
     }).catch((notifyError) => {
       console.warn(
         "[line-webhook-processor] fallback admin notify failed:",
-        notifyError instanceof Error ? notifyError.message : "unknown",
+        describeError(notifyError),
       );
     });
 
@@ -4350,7 +4373,7 @@ async function processCoalescedEvents(
     } catch (error) {
       console.error(
         "[line-webhook-processor] owner loop failed",
-        { conversationId, error: error instanceof Error ? error.message : String(error) },
+        { conversationId, error: describeError(error) },
       );
     } finally {
       await release({ conversationId, owner }).catch(() => undefined);
@@ -4406,7 +4429,7 @@ export async function recoverStalledCoalescedConversations(
     } catch (error) {
       console.error("[line-webhook-processor] coalesce recovery failed", {
         conversationId,
-        error: error instanceof Error ? error.message : String(error),
+        error: describeError(error),
       });
     } finally {
       await release({ conversationId, owner }).catch(() => undefined);
