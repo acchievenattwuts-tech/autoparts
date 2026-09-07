@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
 import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getWhtReceivedIncomeTypeOptions } from "@/lib/wht-income-types";
 
 const NewSalePage = async ({ searchParams }: { searchParams: Promise<{ quotationId?: string }> }) => {
   const { quotationId } = await searchParams;
@@ -16,11 +17,12 @@ const NewSalePage = async ({ searchParams }: { searchParams: Promise<{ quotation
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "sales.view");
 
-  const [customers, config, suppliers, cashBankAccounts] = await Promise.all([
+  const [customers, config, suppliers, cashBankAccounts, whtIncomeTypes] = await Promise.all([
     getTransactionCustomers(),
     getSiteConfig(),
     getTransactionSuppliers(),
     getActiveCashBankAccountOptions(),
+    getWhtReceivedIncomeTypeOptions(),
   ]);
 
   return (
@@ -50,6 +52,7 @@ const NewSalePage = async ({ searchParams }: { searchParams: Promise<{ quotation
         }))}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        whtIncomeTypes={whtIncomeTypes}
         canPrint={canPrint}
       />
     </div>

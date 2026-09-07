@@ -9,6 +9,7 @@ import { getOutstandingSupplierDocuments } from "../../actions";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import SupplierPaymentForm from "../../SupplierPaymentForm";
 import { getSupplierPaymentSupplierOptions } from "../../supplier-options";
+import { getWhtIssuedIncomeTypeOptions } from "@/lib/wht-income-types";
 
 const EditSupplierPaymentPage = async ({
   params,
@@ -47,6 +48,27 @@ const EditSupplierPaymentPage = async ({
     }),
   ]);
 
+  const [whtIncomeTypes, paymentCertificate] = await Promise.all([
+    getWhtIssuedIncomeTypeOptions(),
+    db.whtCertificate.findFirst({
+      where: { activeSupplierPaymentId: payment.id, status: "ACTIVE" },
+      select: {
+        lines: {
+          orderBy: { lineNo: "asc" },
+          take: 1,
+          select: {
+            incomeTypeId: true,
+            baseAmount: true,
+            rate: true,
+            taxAmount: true,
+            payCondition: true,
+          },
+        },
+      },
+    }),
+  ]);
+  const certificateLine = paymentCertificate?.lines[0] ?? null;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2">
@@ -68,10 +90,20 @@ const EditSupplierPaymentPage = async ({
       <SupplierPaymentForm
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
+        whtIncomeTypes={whtIncomeTypes}
         initialDocuments={initialDocuments}
         initialData={{
           id: payment.id,
           supplierId: payment.supplierId,
+          wht: certificateLine
+            ? {
+                incomeTypeId: certificateLine.incomeTypeId,
+                baseAmount: Number(certificateLine.baseAmount),
+                rate: Number(certificateLine.rate),
+                taxAmount: Number(certificateLine.taxAmount),
+                payCondition: certificateLine.payCondition,
+              }
+            : null,
       paymentDate: formatDateOnlyForInput(payment.paymentDate),
           cashBankAccountId: payment.cashBankAccountId ?? "",
           payments: paymentPayments.map((row) => ({

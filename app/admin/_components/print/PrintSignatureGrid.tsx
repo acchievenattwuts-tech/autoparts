@@ -21,6 +21,8 @@ const PrintSignatureGrid = ({
   reserveVerifySpace?: boolean;
 }) => (
   <div
+    data-print-signatures
+    data-print-verify-space={reserveVerifySpace ? "true" : undefined}
     className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${reserveVerifySpace ? "print:mr-36" : ""} ${className}`}
     style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
   >

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
+import { getWhtReceivedIncomeTypeOptions } from "@/lib/wht-income-types";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import ReceiptForm from "./ReceiptForm";
@@ -13,9 +14,10 @@ const NewReceiptPage = async () => {
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "receipts.view");
 
-  const [customers, cashBankAccounts] = await Promise.all([
+  const [customers, cashBankAccounts, whtIncomeTypes] = await Promise.all([
     getReceiptCustomerOptions(),
     getActiveCashBankAccountOptions(),
+    getWhtReceivedIncomeTypeOptions(),
   ]);
 
   return (
@@ -34,7 +36,12 @@ const NewReceiptPage = async () => {
 
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบเสร็จรับเงิน</h1>
 
-      <ReceiptForm customers={customers} cashBankAccounts={cashBankAccounts} canPrint={canPrint} />
+      <ReceiptForm
+        customers={customers}
+        cashBankAccounts={cashBankAccounts}
+        whtIncomeTypes={whtIncomeTypes}
+        canPrint={canPrint}
+      />
     </div>
   );
 };

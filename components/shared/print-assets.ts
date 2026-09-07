@@ -53,6 +53,18 @@ export const waitForPrintAssets = async ({
 };
 
 export const printWhenReady = async (options?: PrintReadyOptions) => {
+  const target = options?.root ?? document;
+  const roots = Array.from(target.querySelectorAll<HTMLElement>(".print-document-root[data-print-paginated]"));
+  if (target instanceof HTMLElement && target.matches(".print-document-root[data-print-paginated]")) roots.push(target);
+  const started = Date.now();
+  while (roots.some((root) => root.dataset.printReady !== "true")) {
+    const failed = roots.find((root) => root.dataset.printError);
+    if (failed || Date.now() - started > 60000) {
+      window.alert(failed?.dataset.printError ?? "จัดหน้าเอกสารไม่สำเร็จ กรุณารอให้โหลดครบแล้วลองใหม่");
+      return;
+    }
+    await wait(100);
+  }
   await waitForPrintAssets(options);
   window.print();
 };
@@ -68,6 +80,8 @@ export const waitForPrintDocument = async (frame: HTMLIFrameElement, expectedUrl
         throw new Error("ไม่สามารถเปิดเอกสารได้ กรุณาตรวจสอบการเข้าสู่ระบบและสิทธิ์");
       }
       const roots = Array.from(doc.querySelectorAll(".print-document-root"));
+      const failed = roots.find((root) => root.hasAttribute("data-print-error"));
+      if (failed) throw new Error(failed.getAttribute("data-print-error") ?? "จัดหน้าเอกสารไม่สำเร็จ");
       if (roots.length && roots.every((root) => root.getAttribute("data-print-ready") === "true")) {
         await waitForPrintAssets({ root: doc });
         return;

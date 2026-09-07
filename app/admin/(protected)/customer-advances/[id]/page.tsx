@@ -102,7 +102,7 @@ export default async function CustomerAdvanceDetailPage({ params,
   return (
     <>
       <style>{`
-        @page { margin: 0; }
+        @page { size: A4; margin: 0; }
         @media print {
           body * { visibility: hidden; }
           #customer-advance-print, #customer-advance-print * { visibility: visible; }
@@ -116,11 +116,7 @@ export default async function CustomerAdvanceDetailPage({ params,
             top: 0;
             width: 100%;
           }
-          .print-slip {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-          }
+          .print-slip { display: block; }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }

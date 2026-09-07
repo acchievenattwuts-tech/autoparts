@@ -64,6 +64,7 @@
     "db:push:accept-data-loss": "prisma db push --accept-data-loss && tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts && tsx --env-file=.env.local prisma/scripts/setup-knowledge-rag.ts",
     "db:setup-search-v2": "tsx --env-file=.env.local prisma/scripts/setup-search-v2.ts",
     "db:setup-knowledge-rag": "tsx --env-file=.env.local prisma/scripts/setup-knowledge-rag.ts",
+    "db:setup-wht": "prisma db execute --file prisma/scripts/wht-schema.sql && prisma db execute --file prisma/scripts/wht-payer-schema.sql && tsx --env-file=.env.local prisma/scripts/setup-wht.ts",
     "backfill:knowledge-rag": "tsx --env-file=.env.local prisma/scripts/backfill-knowledge-rag.ts",
     "migrate:knowledge-cms": "tsx --env-file=.env.local prisma/scripts/migrate-knowledge-cms.ts",
     "backfill:knowledge-quality": "tsx --env-file=.env.local prisma/scripts/backfill-knowledge-quality.ts",

@@ -1,0 +1,58 @@
+/* A single physical layout is measured and used in preview, PDF and printing. */
+.print-document-root[data-print-paginated] {
+  display: block;
+  width: 210mm !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 0 !important;
+  overflow: visible !important;
+  font-size: 13px;
+  line-height: 1.375;
+}
+.print-pagination-source { width: 194mm; margin: 8mm; }
+.print-document-root[data-print-ready] > .print-pagination-source { display: none !important; }
+.print-pagination-measure { position: fixed !important; left: -20000px !important; top: 0; width: 210mm; visibility: hidden !important; pointer-events: none; }
+.print-pagination-reference { width: 194mm; }
+.print-paper {
+  page: transaction-document;
+  position: relative;
+  box-sizing: border-box;
+  width: 210mm;
+  /* A4 is 297mm, and the sheet is deliberately 1mm shorter. 297mm is 1122.52px at
+     96dpi, so a full-height box rounds up and spills a hairline onto a second
+     physical sheet on some printers. The 1mm absorbs that rounding; it is not a
+     guess — scripts/test-print-pagination.cjs asserts the PDF page count equals
+     the number of sheets the paginator produced. */
+  height: 296mm;
+  padding: 8mm;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.375;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.print-paper-header, .print-paper-body, .print-paper-footer { flex: 0 0 auto; display: flow-root; }
+.print-paper-footer { margin-top: auto; padding-top: 3mm; }
+.print-paper [data-print-role="footer"], .print-paper .receipt-footer { margin-top: 0 !important; }
+.print-paper tr { break-inside: avoid; page-break-inside: avoid; }
+.print-paper thead { display: table-header-group; }
+.print-paper td, .print-paper th { overflow-wrap: anywhere; }
+.print-summary-placeholder, .print-summary-placeholder * { visibility: hidden !important; }
+.print-paper .print-document-verify-badge { bottom: 8mm !important; right: 8mm !important; }
+.print-paper [data-print-signatures][data-print-verify-space] { margin-right: 9rem; min-height: 156px; }
+.print-paper + .print-paper { break-before: page; page-break-before: always; }
+@media screen {
+  .print-document-root[data-print-paginated] { max-width: 100% !important; overflow-x: auto !important; }
+  .print-paper { box-shadow: 0 1px 6px #0002; margin-bottom: 16px; }
+}
+@media print {
+  @page transaction-document { size: A4; margin: 0; }
+  .print-pagination-source { display: none !important; }
+  .print-paper { margin: 0 !important; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .print-document-root[data-print-paginated] { break-inside: auto !important; page-break-inside: auto !important; }
+}

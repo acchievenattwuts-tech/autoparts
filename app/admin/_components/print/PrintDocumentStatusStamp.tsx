@@ -14,6 +14,7 @@ export default function PrintDocumentStatusStamp({
 }) {
   return (
     <div
+      data-print-role="overlay"
       aria-label={label}
       className={`pointer-events-none absolute right-8 top-24 z-10 rotate-[-12deg] rounded-md border-4 bg-white/70 px-5 py-2 font-kanit text-2xl font-black tracking-wider opacity-90 ${STAMP_TONE_CLASS[tone]}`}
     >

@@ -236,6 +236,77 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
       </div>
 
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-1 font-kanit font-semibold text-gray-800 dark:text-slate-100">ข้อมูลภาษี (สำหรับเอกสารหัก ณ ที่จ่าย)</h2>
+        <p className="mb-4 text-xs text-gray-400 dark:text-slate-500">
+          ใช้พิมพ์หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) แบบ ภ.ง.ด. และไฟล์นำส่งกรมสรรพากร — ที่อยู่ต้องแยกช่องตามรูปแบบที่กรมสรรพากรกำหนด
+        </p>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <label className={labelClass}>เลขประจำตัวผู้เสียภาษี (13 หลัก)</label>
+            <input
+              name="tax_payer_id"
+              defaultValue={config.taxPayerId}
+              inputMode="numeric"
+              maxLength={13}
+              className={inputClass}
+              placeholder="กิจการที่ไม่จด VAT ให้ใช้เลขประจำตัวประชาชน"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>ลำดับที่สาขา</label>
+            <input
+              name="tax_branch_no"
+              defaultValue={config.taxBranchNo}
+              inputMode="numeric"
+              maxLength={6}
+              className={inputClass}
+              placeholder="สำนักงานใหญ่ = 000000"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>บ้านเลขที่ / อาคาร</label>
+            <input name="tax_addr_no" defaultValue={config.taxAddrNo} maxLength={100} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>ถนน</label>
+            <input name="tax_addr_road" defaultValue={config.taxAddrRoad} maxLength={100} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>ตำบล / แขวง</label>
+            <input name="tax_addr_subdistrict" defaultValue={config.taxAddrSubdistrict} maxLength={100} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>อำเภอ / เขต</label>
+            <input name="tax_addr_district" defaultValue={config.taxAddrDistrict} maxLength={100} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>จังหวัด</label>
+            <input name="tax_addr_province" defaultValue={config.taxAddrProvince} maxLength={100} className={inputClass} />
+          </div>
+          <div>
+            <label className={labelClass}>รหัสเข้าระบบ e-Filing</label>
+            <input
+              name="tax_efiling_user_id"
+              defaultValue={config.taxEfilingUserId}
+              maxLength={20}
+              className={inputClass}
+              placeholder="ใช้ในไฟล์นำส่งกรมสรรพากร (ไม่บังคับ)"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>รหัสไปรษณีย์</label>
+            <input
+              name="tax_addr_postcode"
+              defaultValue={config.taxAddrPostcode}
+              inputMode="numeric"
+              maxLength={5}
+              className={inputClass}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
         <h2 className="mb-1 font-kanit font-semibold text-gray-800 dark:text-slate-100">ข้อมูลหน้าเพจและการติดต่อ</h2>
         <p className="mb-4 text-xs text-gray-400 dark:text-slate-500">กลุ่มนี้ใช้ควบคุมข้อมูลที่แสดงบนหน้าบ้านและส่วนท้ายเว็บไซต์ทั้งหมด รวมถึงข้อความ Hero</p>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

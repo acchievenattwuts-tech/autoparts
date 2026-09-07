@@ -6,6 +6,7 @@
  */
 const PrintDocumentCopyWatermark = ({ label }: { label: string }) => (
   <div
+    data-print-role="overlay"
     aria-hidden="true"
     className="print-document-copy-watermark pointer-events-none absolute inset-0 z-0 hidden items-center justify-center print:flex"
   >

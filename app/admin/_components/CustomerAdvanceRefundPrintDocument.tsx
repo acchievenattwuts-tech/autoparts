@@ -62,7 +62,7 @@ export default function CustomerAdvanceRefundPrintDocument({
         />
       ) : null}
       <PrintDocumentHeader shopConfig={shopConfig} title="ใบคืนเงินมัดจำ" />
-      <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
+      <div data-print-role="header" className="mb-4 grid grid-cols-2 gap-3 text-xs">
         <div className={`rounded ${PRINT_SECTION_BORDER_CLASS} p-3`}>
           <p className="mb-1 font-semibold">ข้อมูลลูกค้า</p>
           <p>{refund.customerAdvance.customer.name}</p>
@@ -117,13 +117,13 @@ export default function CustomerAdvanceRefundPrintDocument({
           </div>
         ))}
       </div>
-      <div
+      <div data-print-role="summary"
         className={`mb-8 min-h-16 rounded ${PRINT_SECTION_BORDER_CLASS} p-3 text-xs`}
       >
         <p className="font-semibold">หมายเหตุ</p>
         <p>{refund.note ?? "-"}</p>
       </div>
-      <div className="mt-auto">
+      <div data-print-role="footer" className="mt-auto">
         {noticeLines.length ? (
           <div className={`mb-5 ${PRINT_SECTION_BORDER_CLASS} p-3`}>
             <p className="mb-2 text-center text-xs font-semibold text-gray-900">

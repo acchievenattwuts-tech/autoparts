@@ -38,6 +38,13 @@ import {
   type DocumentPaymentRow,
 } from "@/lib/document-payments";
 import { parseDateOnlyToDate } from "@/lib/th-date";
+import {
+  parseWhtIssuedField,
+  resolveCashAmount,
+  validateWhtIssuedAgainstTotal,
+  type WhtIssuedInput,
+} from "@/lib/wht";
+import { cancelWhtCertificateForSource, persistWhtCertificate } from "@/lib/wht-certificate";
 
 type TxClient = Prisma.TransactionClient;
 type SupplierDocumentClient = Pick<
@@ -103,7 +110,9 @@ const supplierPaymentSchema = z.object({
   items: z.array(supplierPaymentItemSchema).min(1, "กรุณาเลือกรายการที่ต้องการชำระอย่างน้อย 1 รายการ"),
 });
 
-type ParsedSupplierPayment = z.infer<typeof supplierPaymentSchema>;
+type ParsedSupplierPayment = z.infer<typeof supplierPaymentSchema> & {
+  wht: WhtIssuedInput | null;
+};
 
 function sumPaidAmount(items: Array<{ paidAmount: Prisma.Decimal | number }>,
 ): number {
@@ -273,7 +282,9 @@ function parseSupplierPaymentForm(
       note: formData.get("note") || undefined,
       items: JSON.parse((formData.get("items") as string) ?? "[]"),
     });
-    return { success: true, data: parsed };
+    const wht = parseWhtIssuedField(formData.get("wht"));
+    if (!wht.success) return { success: false, error: wht.error };
+    return { success: true, data: { ...parsed, wht: wht.data } };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง",
@@ -505,8 +516,14 @@ export async function createSupplierPayment(
     };
   }
 
+  const whtValidationError = validateWhtIssuedAgainstTotal(parsed.wht, totalCashPaid);
+  if (whtValidationError) return { success: false, error: whtValidationError };
+  const whtAmount = parsed.wht?.taxAmount ?? 0;
+  // หนี้ผู้ขายถูกตัดเต็มจำนวน แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย
+  const cashAfterWht = resolveCashAmount(totalCashPaid, whtAmount);
+
   let payments: DocumentPaymentRow[] = [];
-  if (totalCashPaid > 0) {
+  if (cashAfterWht > 0) {
     try {
       payments = parseDocumentPaymentRows(formData.get("payments"));
     } catch {
@@ -517,7 +534,7 @@ export async function createSupplierPayment(
       };
     }
     try {
-      assertPaymentsMatchTotal(payments, totalCashPaid);
+      assertPaymentsMatchTotal(payments, cashAfterWht);
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง",
       };
@@ -551,6 +568,7 @@ export async function createSupplierPayment(
           supplierId: parsed.supplierId,
           userId: session.user.id,
           totalAmount: totalCashPaid,
+          whtAmount,
           paymentMethod,
           note: parsed.note?.trim() || null,
           cashBankAccountId: primaryAccountId,
@@ -570,6 +588,27 @@ export async function createSupplierPayment(
       });
 
       await recalculateAffectedDocuments(tx, collectAffectedIds(parsed.items));
+
+      await persistWhtCertificate(tx, {
+        sourceType: "SUPPLIER_PAYMENT",
+        sourceId: payment.id,
+        sourceNo: paymentNo,
+        supplierId: parsed.supplierId,
+        payDate: paymentDate,
+        lines: parsed.wht
+          ? [
+              {
+                incomeTypeId: parsed.wht.incomeTypeId,
+                baseAmount: parsed.wht.baseAmount,
+                rate: parsed.wht.rate,
+                taxAmount: parsed.wht.taxAmount,
+                payCondition: parsed.wht.payCondition,
+              },
+            ]
+          : [],
+        note: parsed.note?.trim() || null,
+        userId: session.user.id!,
+      });
       await replaceDocumentPayments(
         tx,
         DocumentPaymentDocType.SUPPLIER_PAYMENT,
@@ -606,6 +645,7 @@ export async function createSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/wht/certificates");
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/purchase-returns");
     revalidatePath("/admin/supplier-advances");
@@ -659,8 +699,14 @@ export async function updateSupplierPayment(
     };
   }
 
+  const whtValidationError = validateWhtIssuedAgainstTotal(parsed.wht, totalCashPaid);
+  if (whtValidationError) return { error: whtValidationError };
+  const whtAmount = parsed.wht?.taxAmount ?? 0;
+  // หนี้ผู้ขายถูกตัดเต็มจำนวน แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย
+  const cashAfterWht = resolveCashAmount(totalCashPaid, whtAmount);
+
   let payments: DocumentPaymentRow[] = [];
-  if (totalCashPaid > 0) {
+  if (cashAfterWht > 0) {
     try {
       payments = parseDocumentPaymentRows(formData.get("payments"));
     } catch {
@@ -670,7 +716,7 @@ export async function updateSupplierPayment(
       return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
-      assertPaymentsMatchTotal(payments, totalCashPaid);
+      assertPaymentsMatchTotal(payments, cashAfterWht);
     } catch (err) {
       return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง",
       };
@@ -713,6 +759,7 @@ export async function updateSupplierPayment(
           paymentDate,
           supplierId: parsed.supplierId,
           totalAmount: totalCashPaid,
+          whtAmount,
           paymentMethod,
           note: parsed.note?.trim() || null,
           cashBankAccountId: primaryAccountId,
@@ -731,6 +778,27 @@ export async function updateSupplierPayment(
       });
 
       await recalculateAffectedDocuments(tx, allAffectedIds);
+
+      await persistWhtCertificate(tx, {
+        sourceType: "SUPPLIER_PAYMENT",
+        sourceId: id,
+        sourceNo: existing.paymentNo,
+        supplierId: parsed.supplierId,
+        payDate: paymentDate,
+        lines: parsed.wht
+          ? [
+              {
+                incomeTypeId: parsed.wht.incomeTypeId,
+                baseAmount: parsed.wht.baseAmount,
+                rate: parsed.wht.rate,
+                taxAmount: parsed.wht.taxAmount,
+                payCondition: parsed.wht.payCondition,
+              },
+            ]
+          : [],
+        note: parsed.note?.trim() || null,
+        userId: session.user.id!,
+      });
       await replaceDocumentPayments(
         tx,
         DocumentPaymentDocType.SUPPLIER_PAYMENT,
@@ -767,6 +835,7 @@ export async function updateSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/supplier-payments/${id}`);
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/purchase-returns");
@@ -839,6 +908,12 @@ export async function cancelSupplierPayment(
           cancelNote: parsed.data.cancelNote?.trim() || null,
         },
       });
+      await cancelWhtCertificateForSource(
+        tx,
+        "SUPPLIER_PAYMENT",
+        payment.id,
+        parsed.data.cancelNote?.trim() || "ยกเลิกใบจ่ายชำระหนี้ต้นทาง",
+      );
       await recalculateAffectedDocuments(tx, collectAffectedIds(payment.items));
     });
 
@@ -859,6 +934,7 @@ export async function cancelSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/supplier-payments/${payment.id}`);
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/purchase-returns");

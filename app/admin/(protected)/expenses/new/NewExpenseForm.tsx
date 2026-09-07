@@ -11,6 +11,8 @@ import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { getThailandDateKey } from "@/lib/th-date";
+import WhtIssuedFields, { type WhtIssuedFormValue } from "@/components/shared/WhtIssuedFields";
+import type { WhtIncomeTypeOption } from "@/components/shared/WhtReceivedFields";
 
 interface ExpenseCodeOption {
   id: string;
@@ -33,9 +35,18 @@ interface CashBankAccountOption {
   accountNo: string | null;
 }
 
+export interface ExpenseSupplierOption {
+  id: string;
+  code: string | null;
+  name: string;
+  hasTaxProfile: boolean;
+}
+
 interface InitialData {
   id: string;
   expenseDate: string;
+  supplierId: string;
+  wht?: WhtIssuedFormValue | null;
   cashBankAccountId: string;
   payments?: PaymentChannelRow[];
   vatType: string;
@@ -49,6 +60,8 @@ interface InitialData {
 interface Props {
   expenseCodes: ExpenseCodeOption[];
   cashBankAccounts: CashBankAccountOption[];
+  suppliers: ExpenseSupplierOption[];
+  whtIncomeTypes: WhtIncomeTypeOption[];
   defaultVatType: string;
   defaultVatRate: number;
   initialData?: InitialData;
@@ -59,7 +72,15 @@ const labelCls = "block text-sm font-medium text-gray-700 mb-1 dark:text-slate-3
 
 const emptyItem = (): LineItem => ({ expenseCodeId: "", description: "", amount: 0 });
 
-const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaultVatRate, initialData }: Props) => {
+const NewExpenseForm = ({
+  expenseCodes,
+  cashBankAccounts,
+  suppliers,
+  whtIncomeTypes,
+  defaultVatType,
+  defaultVatRate,
+  initialData,
+}: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const [isPending, startTransition] = useTransition();
@@ -75,6 +96,8 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
         : [{ cashBankAccountId: "", amount: 0 }],
   );
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [supplierId, setSupplierId] = useState(initialData?.supplierId ?? "");
+  const [wht, setWht] = useState<WhtIssuedFormValue | null>(initialData?.wht ?? null);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
 
@@ -97,6 +120,10 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
 
   const totalAmount = items.reduce((s, it) => s + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType as VatType, vatRate);
+  const selectedSupplier = suppliers.find((supplier) => supplier.id === supplierId) ?? null;
+  /** ยอดค่าใช้จ่ายยังเต็ม แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย */
+  const whtAmount = Math.round((wht?.taxAmount ?? 0) * 100) / 100;
+  const cashTotal = Math.round((netAmount - whtAmount) * 100) / 100;
 
   /** Uploads the picked evidence files once the expense document exists. */
   const uploadPendingAttachments = async (expenseId: string): Promise<string | null> => {
@@ -118,12 +145,23 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
       if (item.amount <= 0)    { setError("จำนวนเงินต้องมากกว่า 0 ทุกรายการ"); return; }
     }
 
+    if (!supplierId) { setError("กรุณาเลือกผู้รับเงิน"); return; }
+    if (wht) {
+      if (!wht.incomeTypeId) { setError("กรุณาเลือกประเภทเงินได้ของภาษีหัก ณ ที่จ่าย"); return; }
+      if (wht.taxAmount <= 0) { setError("ยอดภาษีหัก ณ ที่จ่ายต้องมากกว่า 0"); return; }
+      if (wht.taxAmount > netAmount + 0.005) { setError("ยอดภาษีหัก ณ ที่จ่ายมากกว่ายอดสุทธิของเอกสาร"); return; }
+      if (selectedSupplier && !selectedSupplier.hasTaxProfile) {
+        setError("ผู้รับเงินรายนี้ยังไม่มีข้อมูลภาษี กรุณากรอกที่เมนูข้อมูลภาษีผู้ถูกหักก่อน");
+        return;
+      }
+    }
+
     const activePayments = payments.filter((row) => row.amount > 0);
-    if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+    if (activePayments.length === 0 && cashTotal > 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
     if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
     const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
-    if (Math.abs(paymentsTotal - netAmount) > 0.005) {
-      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+    if (Math.abs(paymentsTotal - cashTotal) > 0.005) {
+      setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดเงินที่จ่ายจริง (${cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
       return;
     }
 
@@ -135,6 +173,19 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
     );
     fd.set("vatType", vatType);
     fd.set("vatRate", String(vatRate));
+    fd.set("supplierId", supplierId);
+    fd.set(
+      "wht",
+      wht
+        ? JSON.stringify({
+            incomeTypeId: wht.incomeTypeId,
+            baseAmount: wht.baseAmount,
+            rate: wht.rate,
+            taxAmount: wht.taxAmount,
+            payCondition: wht.payCondition,
+          })
+        : "",
+    );
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -184,7 +235,25 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
             className={inputCls}
           />
         </div>
-        <div className="md:col-span-2">
+        <div>
+          <label className={labelCls}>ผู้รับเงิน <span className="text-red-500">*</span></label>
+          <SearchableSelect
+            options={suppliers.map((supplier): SelectOption => ({
+              id: supplier.id,
+              label: supplier.name,
+              sublabel: supplier.code
+                ? `${supplier.code}${supplier.hasTaxProfile ? "" : " · ยังไม่มีข้อมูลภาษี"}`
+                : supplier.hasTaxProfile
+                  ? undefined
+                  : "ยังไม่มีข้อมูลภาษี",
+            }))}
+            value={supplierId}
+            onChange={setSupplierId}
+            placeholder="เลือกผู้รับเงิน"
+          />
+          <input type="hidden" name="supplierId" value={supplierId} />
+        </div>
+        <div>
           <label className={labelCls}>หมายเหตุ</label>
           <input type="text" name="note" maxLength={500} defaultValue={initialData?.note ?? ""} placeholder="หมายเหตุเอกสาร (ถ้ามี)" className={inputCls} />
         </div>
@@ -338,11 +407,29 @@ const NewExpenseForm = ({ expenseCodes, cashBankAccounts, defaultVatType, defaul
 
       {/* Payment channels */}
       <div className="border-t border-gray-100 pt-4 dark:border-white/10">
+        <div className="mb-4">
+          <WhtIssuedFields
+            incomeTypes={whtIncomeTypes}
+            value={wht}
+            onChange={setWht}
+            documentTotal={netAmount}
+            payeeMissingTaxProfile={Boolean(selectedSupplier && !selectedSupplier.hasTaxProfile)}
+            disabled={isPending}
+          />
+          {whtAmount > 0 && (
+            <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
+              ยอดค่าใช้จ่าย {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · หักภาษี ณ ที่จ่าย{" "}
+              {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · จ่ายจริง{" "}
+              {cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+            </div>
+          )}
+        </div>
+
         <PaymentChannelsInput
           accounts={cashBankAccounts}
           value={payments}
           onChange={setPayments}
-          targetAmount={netAmount}
+          targetAmount={cashTotal}
           label="ช่องทางจ่ายเงิน"
           placeholder="โปรดระบุบัญชีจ่ายเงิน"
         />

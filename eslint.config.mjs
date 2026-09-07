@@ -20,6 +20,14 @@ const eslintConfig = defineConfig([
     ".tmp/**",
   ]),
   {
+    // Node-run harnesses are CommonJS on purpose: they boot a real Chromium over
+    // CDP before Next's bundler exists, so they cannot use ESM import syntax.
+    files: ["**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     // Thailand date policy (.rules §8), enforced instead of remembered.
     // Both of these have shipped as real bugs before and are invisible in
     // review: a B.E. year reads as a plausible date, and a UTC day boundary is

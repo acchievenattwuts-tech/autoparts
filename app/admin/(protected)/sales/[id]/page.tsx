@@ -4,7 +4,7 @@ export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MA
 import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
 import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import { db } from "@/lib/db";
-import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { defaultSiteConfig, mapTaxSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
@@ -39,6 +39,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
 
   return {
+    ...mapTaxSiteConfig(map),
     shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
     shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
     shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
@@ -241,7 +242,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   return (
     <>
       <style>{`
-        @page { margin: 0; }
+        @page { size: A4; margin: 0; }
         @media print {
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
@@ -255,11 +256,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             top: 0;
             width: 100%;
           }
-          .print-slip {
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-          }
+          .print-slip { display: block; }
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }

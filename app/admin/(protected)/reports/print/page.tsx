@@ -5,6 +5,7 @@ import { getReportsData, parseReportFilters } from "@/lib/reports";
 import { requirePermission } from "@/lib/require-auth";
 import CashBankSnapshot from "../CashBankSnapshot";
 import ReportsContent from "../ReportsContent";
+import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 
 interface ReportsPrintPageProps {
   searchParams: Promise<{
@@ -39,16 +40,19 @@ const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
         <BrowserPrintButton />
       </div>
 
-      <div className="hidden print:block">
+      <PrintDocumentRoot rootId="report-print">
+      <div data-print-role="header" className="mb-4">
         <h1 className="font-kanit text-2xl font-bold text-gray-900">รายงานสรุปกิจการ</h1>
         <p className="text-sm text-gray-600">
           ช่วงวันที่ {filters.fromInput} ถึง {filters.toInput}
         </p>
+        <p data-print-page-label className="text-right text-xs">หน้า 1/1</p>
       </div>
 
       <CashBankSnapshot compact />
 
       <ReportsContent data={data} compact />
+      </PrintDocumentRoot>
     </div>
   );
 };

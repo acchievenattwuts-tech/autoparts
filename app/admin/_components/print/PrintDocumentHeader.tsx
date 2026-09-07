@@ -19,7 +19,7 @@ const PrintDocumentHeader = ({
   const shopLogoSrc = toPublicStorageCdnPath(shopConfig.shopLogoUrl) ?? shopConfig.shopLogoUrl ?? "";
 
   return (
-  <div className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
+  <div data-print-role="header" className={`mb-4 flex items-start justify-between ${PRINT_SECTION_BOTTOM_BORDER_CLASS} pb-3`}>
     <div className="flex items-start gap-3">
       {shopConfig.shopLogoUrl ? (
         <div className="relative h-14 w-14 shrink-0 overflow-hidden">
@@ -49,7 +49,7 @@ const PrintDocumentHeader = ({
     </div>
     <div className="text-right">
       <p className={`inline-block ${PRINT_SECTION_BORDER_CLASS} px-6 py-1.5 text-base font-bold`}>{title}</p>
-      <p className="mt-1 text-xs text-gray-600">{pageLabel}</p>
+      <p data-print-page-label className="mt-1 text-xs text-gray-600">{pageLabel}</p>
     </div>
   </div>
   );

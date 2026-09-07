@@ -16,7 +16,7 @@ import PrintButton from "./PrintButton";
 import { db } from "@/lib/db";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { requirePermission } from "@/lib/require-auth";
-import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
+import { defaultSiteConfig, mapTaxSiteConfig, type SiteConfig } from "@/lib/site-config";
 import { addThailandDays } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 
@@ -26,6 +26,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
 
   return {
+    ...mapTaxSiteConfig(map),
     shopName: map["shop_name"] ?? defaultSiteConfig.shopName,
     shopSlogan: map["shop_slogan"] ?? defaultSiteConfig.shopSlogan,
     shopAddress: map["shop_address"] ?? defaultSiteConfig.shopAddress,
@@ -175,7 +176,7 @@ const DeliveryPrintPage = async ({
   return (
     <>
       <style>{`
-        @page { margin: 0; }
+        @page { size: A4; margin: 0; }
         @media print {
           body {
             background: #ffffff !important;
@@ -186,12 +187,7 @@ const DeliveryPrintPage = async ({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          .slip {
-            width: 100%;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-          }
+          .slip { display: block; }
           /* ขึ้นหน้าใหม่ "ก่อน" ทุกใบยกเว้นใบแรก — ใช้แทน page-break-after + :last-child
              เพราะใบสำเนาที่ถูกซ่อนยังนับเป็น :last-child อยู่ ทำให้เกิดหน้าว่างท้ายเอกสาร */
           .slip:not(.print-slip-lead) { page-break-before: always; break-before: page; }

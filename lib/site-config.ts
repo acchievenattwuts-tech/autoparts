@@ -48,6 +48,18 @@ export interface SiteConfig {
   lineAiAutoReplyEnabled: boolean;
   lineAiDryRun: boolean;
   lineAiImageSearchEnabled: boolean;
+  /// เลขประจำตัวผู้เสียภาษี 13 หลัก — บุคคลธรรมดาที่ไม่เสีย VAT ใช้เลขประจำตัวประชาชนแทน
+  taxPayerId: string;
+  /// ลำดับที่สาขา 6 หลัก (สำนักงานใหญ่ = 000000)
+  taxBranchNo: string;
+  taxAddrNo: string;
+  taxAddrRoad: string;
+  taxAddrSubdistrict: string;
+  taxAddrDistrict: string;
+  taxAddrProvince: string;
+  taxAddrPostcode: string;
+  /// รหัสเข้าระบบ e-Filing หรือเลขอ้างอิงการลงทะเบียน — ใช้ในไฟล์นำส่ง Format กลาง 2.0
+  taxEfilingUserId: string;
 }
 
 export const defaultSiteConfig: SiteConfig = {
@@ -85,7 +97,42 @@ export const defaultSiteConfig: SiteConfig = {
   lineAiAutoReplyEnabled: LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled,
   lineAiDryRun: LINE_AI_SETTINGS_DEFAULTS.dryRun,
   lineAiImageSearchEnabled: LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
+  taxPayerId: "",
+  taxBranchNo: "000000",
+  taxAddrNo: "",
+  taxAddrRoad: "",
+  taxAddrSubdistrict: "",
+  taxAddrDistrict: "",
+  taxAddrProvince: "",
+  taxAddrPostcode: "",
+  taxEfilingUserId: "",
 };
+
+/** ข้อมูลภาษีของกิจการ ใช้ร่วมกันระหว่าง getSiteConfig และหน้าพิมพ์ที่ map SiteContent เอง */
+export const mapTaxSiteConfig = (
+  map: Record<string, string>,
+): Pick<
+  SiteConfig,
+  | "taxPayerId"
+  | "taxBranchNo"
+  | "taxAddrNo"
+  | "taxAddrRoad"
+  | "taxAddrSubdistrict"
+  | "taxAddrDistrict"
+  | "taxAddrProvince"
+  | "taxAddrPostcode"
+  | "taxEfilingUserId"
+> => ({
+  taxPayerId: map["tax_payer_id"] ?? defaultSiteConfig.taxPayerId,
+  taxBranchNo: map["tax_branch_no"] ?? defaultSiteConfig.taxBranchNo,
+  taxAddrNo: map["tax_addr_no"] ?? defaultSiteConfig.taxAddrNo,
+  taxAddrRoad: map["tax_addr_road"] ?? defaultSiteConfig.taxAddrRoad,
+  taxAddrSubdistrict: map["tax_addr_subdistrict"] ?? defaultSiteConfig.taxAddrSubdistrict,
+  taxAddrDistrict: map["tax_addr_district"] ?? defaultSiteConfig.taxAddrDistrict,
+  taxAddrProvince: map["tax_addr_province"] ?? defaultSiteConfig.taxAddrProvince,
+  taxAddrPostcode: map["tax_addr_postcode"] ?? defaultSiteConfig.taxAddrPostcode,
+  taxEfilingUserId: map["tax_efiling_user_id"] ?? defaultSiteConfig.taxEfilingUserId,
+});
 
 export const getSiteConfig = unstable_cache(
   async (): Promise<SiteConfig> => {
@@ -137,6 +184,7 @@ export const getSiteConfig = unstable_cache(
         map[LINE_AI_IMAGE_SEARCH_KEY],
         LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
       ),
+      ...mapTaxSiteConfig(map),
     };
   },
   ["site-config"],

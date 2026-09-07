@@ -27,6 +27,17 @@ import {
 } from "@/lib/document-payments";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 import {
+  parseWhtReceivedField,
+  resolveCashAmount,
+  validateWhtAgainstTotal,
+  type WhtReceivedInput,
+} from "@/lib/wht";
+import {
+  cancelWhtReceivedForDocument,
+  persistWhtReceived,
+  whtReceivedSnapshotSelect,
+} from "@/lib/wht-received";
+import {
   getAvailableReceiptDocuments as getAvailableReceiptDocumentsForAR,
   validateReceiptItemsAgainstAvailable as validateReceiptItemsAgainstAvailableForAR,
 } from "@/lib/ar-settlement";
@@ -158,7 +169,10 @@ const receiptSchema = z.object({
   items:         z.array(receiptItemSchema).min(1, "ต้องมีรายการชำระอย่างน้อย 1 รายการ"),
 });
 
-type ParsedReceipt = z.infer<typeof receiptSchema> & { payments: DocumentPaymentRow[] };
+type ParsedReceipt = z.infer<typeof receiptSchema> & {
+  payments: DocumentPaymentRow[];
+  wht: WhtReceivedInput | null;
+};
 
 function parseReceiptForm(
   formData: FormData,
@@ -173,7 +187,9 @@ function parseReceiptForm(
       items: JSON.parse((formData.get("items") as string) ?? "[]"),
     });
     const payments = parseDocumentPaymentRows(formData.get("payments"));
-    return { success: true, data: { ...parsed, payments } };
+    const wht = parseWhtReceivedField(formData.get("wht"));
+    if (!wht.success) return { success: false, error: wht.error };
+    return { success: true, data: { ...parsed, payments, wht: wht.data } };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { success: false, error: error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -278,6 +294,7 @@ async function getReceiptAuditSnapshot(receiptId: string) {
     db.receipt.findUnique({
     where: { id: receiptId },
     include: {
+      whtReceived: { select: whtReceivedSnapshotSelect },
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
@@ -317,6 +334,8 @@ async function getReceiptAuditSnapshot(receiptId: string) {
     customerId: receipt.customerId,
     customerName: receipt.customerName,
     totalAmount: receipt.totalAmount,
+    whtAmount: receipt.whtAmount,
+    whtReceived: receipt.whtReceived,
     paymentMethod: receipt.paymentMethod,
     cashBankAccountId: receipt.cashBankAccountId,
     note: receipt.note,
@@ -362,14 +381,21 @@ export async function createReceipt(
     if (totalAmount < 0) {
       return { success: false, error: "ยอดเครดิต CN และเงินมัดจำที่เลือกมากกว่ายอดใบขายเชื่อ" };
     }
-    // Only positive net totals move real cash and require payment channels.
-    const payments = totalAmount > 0 ? parsed.payments : [];
-    if (totalAmount > 0) {
+    const whtError = validateWhtAgainstTotal(parsed.wht, totalAmount, {
+      hasCustomer: Boolean(parsed.customerId),
+    });
+    if (whtError) return { success: false, error: whtError };
+    // ยอดหนี้ปิดเต็มจำนวน แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย
+    const whtAmount = parsed.wht?.taxAmount ?? 0;
+    const cashAmount = resolveCashAmount(totalAmount, whtAmount);
+    // Only positive net cash moves real money and requires payment channels.
+    const payments = cashAmount > 0 ? parsed.payments : [];
+    if (cashAmount > 0) {
       if (payments.length === 0) {
         return { success: false, error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
       }
       try {
-        assertPaymentsMatchTotal(payments, totalAmount);
+        assertPaymentsMatchTotal(payments, cashAmount);
       } catch (err) {
         return { success: false, error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
       }
@@ -386,7 +412,7 @@ export async function createReceipt(
       if (validationError) throw new Error(validationError);
 
       const signerSnapshot = await getReceiptSignerSnapshot(tx, session.user!.id, docDate);
-      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, totalAmount);
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, cashAmount);
 
       const receipt = await tx.receipt.create({
         data: {
@@ -399,6 +425,7 @@ export async function createReceipt(
           signerSignatureUrl: signerSnapshot.signerSignatureUrl,
           signedAt: signerSnapshot.signedAt,
           totalAmount,
+          whtAmount,
           paymentMethod: resolvedPaymentMethod,
           cashBankAccountId: primaryAccountId,
           note:          parsed.note || null,
@@ -418,6 +445,16 @@ export async function createReceipt(
       });
 
       await recalculateAffectedReceiptDocuments(tx, affectedIds);
+
+      await persistWhtReceived(tx, {
+        docType: "RECEIPT",
+        docId: receipt.id,
+        wht: parsed.wht,
+        customerId: parsed.customerId || null,
+        customerNameFallback: parsed.customerName || null,
+        payDate: docDate,
+        userId: session.user!.id,
+      });
 
       await replaceDocumentPayments(
         tx,
@@ -456,6 +493,7 @@ export async function createReceipt(
     }
 
     revalidatePath("/admin/receipts");
+    revalidatePath("/admin/wht");
     revalidatePath("/admin/customers");
     revalidatePath("/admin/customer-advances");
     revalidatePath("/admin/cash-bank");
@@ -512,6 +550,7 @@ export async function cancelReceipt(
         where: { id: receiptId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
+      await cancelWhtReceivedForDocument(tx, "RECEIPT", receiptId);
       for (const saleId of affectedSaleIds) {
         await recalculateSaleAmountRemain(tx, saleId);
       }
@@ -540,6 +579,7 @@ export async function cancelReceipt(
     }
 
     revalidatePath("/admin/receipts");
+    revalidatePath("/admin/wht");
     revalidatePath("/admin/customer-advances");
     revalidatePath("/admin/cash-bank");
     revalidatePath("/admin/reports");
@@ -582,13 +622,19 @@ export async function updateReceipt(
   const docDate     = parseDateOnlyToDate(parsed.receiptDate);
   const totalAmount = calculateReceiptTotalAmount(parsed.items);
   if (totalAmount < 0) return { error: "ยอดเครดิต CN และเงินมัดจำที่เลือกมากกว่ายอดใบขายเชื่อ" };
-  const payments = totalAmount > 0 ? parsed.payments : [];
-  if (totalAmount > 0) {
+  const whtError = validateWhtAgainstTotal(parsed.wht, totalAmount, {
+    hasCustomer: Boolean(parsed.customerId),
+  });
+  if (whtError) return { error: whtError };
+  const whtAmount = parsed.wht?.taxAmount ?? 0;
+  const cashAmount = resolveCashAmount(totalAmount, whtAmount);
+  const payments = cashAmount > 0 ? parsed.payments : [];
+  if (cashAmount > 0) {
     if (payments.length === 0) {
       return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
-      assertPaymentsMatchTotal(payments, totalAmount);
+      assertPaymentsMatchTotal(payments, cashAmount);
     } catch (err) {
       return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
     }
@@ -617,7 +663,7 @@ export async function updateReceipt(
         existing.signerSignatureUrl ?? existing.user?.signatureUrl ?? null;
       const fallbackSignedAt = existing.signedAt ?? (fallbackSignerName ? docDate : null);
 
-      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, totalAmount);
+      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, cashAmount);
 
       // 1. Delete old receipt items
       await tx.receiptItem.deleteMany({ where: { receiptId: id } });
@@ -633,6 +679,7 @@ export async function updateReceipt(
           signerSignatureUrl: fallbackSignerSignatureUrl,
           signedAt: fallbackSignedAt,
           totalAmount,
+          whtAmount,
           paymentMethod: resolvedPaymentMethod,
           cashBankAccountId: primaryAccountId,
           note:          parsed.note || null,
@@ -653,6 +700,17 @@ export async function updateReceipt(
 
       // 4. Recalculate amountRemain for all affected sales and CNs
       await recalculateAffectedReceiptDocuments(tx, allAffectedIds);
+
+      // 5. Sync the withholding-tax record attached to this receipt
+      await persistWhtReceived(tx, {
+        docType: "RECEIPT",
+        docId: id,
+        wht: parsed.wht,
+        customerId: parsed.customerId || null,
+        customerNameFallback: parsed.customerName || null,
+        payDate: docDate,
+        userId: session.user!.id,
+      });
 
       await replaceDocumentPayments(
         tx,
@@ -691,6 +749,7 @@ export async function updateReceipt(
     }
 
     revalidatePath("/admin/receipts");
+    revalidatePath("/admin/wht");
     revalidatePath(`/admin/receipts/${id}`);
     revalidatePath("/admin/customers");
     revalidatePath("/admin/customer-advances");

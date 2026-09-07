@@ -26,6 +26,13 @@ import {
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import { parseDateOnlyToDate } from "@/lib/th-date";
+import {
+  parseWhtIssuedField,
+  resolveCashAmount,
+  validateWhtIssuedAgainstTotal,
+  type WhtIssuedInput,
+} from "@/lib/wht";
+import { cancelWhtCertificateForSource, persistWhtCertificate } from "@/lib/wht-certificate";
 
 const expenseItemSchema = z.object({
   expenseCodeId: z.string().min(1, "กรุณาเลือกรหัสค่าใช้จ่าย"),
@@ -35,6 +42,7 @@ const expenseItemSchema = z.object({
 
 const expenseSchema = z.object({
   expenseDate: z.string().min(1, "กรุณาระบุวันที่"),
+  supplierId:  z.string().min(1, "กรุณาเลือกผู้รับเงิน"),
   vatType:     z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:     z.coerce.number().min(0).max(100).default(0),
   note:        z.string().max(500).optional(),
@@ -46,6 +54,7 @@ async function getExpenseAuditSnapshot(expenseId: string) {
     db.expense.findUnique({
     where: { id: expenseId },
     include: {
+      supplier: { select: { code: true, name: true } },
       cashBankAccount: {
         select: {
           code: true,
@@ -92,6 +101,8 @@ async function getExpenseAuditSnapshot(expenseId: string) {
     vatType: expense.vatType,
     totalAmount: expense.totalAmount,
     netAmount: expense.netAmount,
+    whtAmount: expense.whtAmount,
+    supplier: expense.supplier ? { code: expense.supplier.code, name: expense.supplier.name } : null,
     cancelNote: expense.cancelNote,
     cancelledAt: expense.cancelledAt,
     cashBankAccount: expense.cashBankAccount
@@ -133,6 +144,7 @@ export async function createExpense(
 
   const parsed = expenseSchema.safeParse({
     expenseDate: formData.get("expenseDate"),
+    supplierId:  formData.get("supplierId"),
     vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:     formData.get("vatRate") || 0,
     note:        formData.get("note") || undefined,
@@ -151,9 +163,19 @@ export async function createExpense(
   } catch {
     return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
-  if (payments.length === 0) return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  const parsedWht = parseWhtIssuedField(formData.get("wht"));
+  if (!parsedWht.success) return { error: parsedWht.error };
+  const wht: WhtIssuedInput | null = parsedWht.data;
+  const whtValidationError = validateWhtIssuedAgainstTotal(wht, netAmount);
+  if (whtValidationError) return { error: whtValidationError };
+  const whtAmount = wht?.taxAmount ?? 0;
+  // ยอดค่าใช้จ่ายยังเต็มจำนวน แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย
+  const cashAmount = resolveCashAmount(netAmount, whtAmount);
+  if (payments.length === 0 && cashAmount > 0) {
+    return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  }
   try {
-    assertPaymentsMatchTotal(payments, netAmount);
+    assertPaymentsMatchTotal(payments, cashAmount);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
@@ -167,8 +189,10 @@ export async function createExpense(
           expenseNo,
           expenseDate:    docDate,
           userId:         session.user.id!,
+          supplierId:     d.supplierId,
           cashBankAccountId: primaryAccountId,
           totalAmount,
+          whtAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
           subtotalAmount,
@@ -208,6 +232,27 @@ export async function createExpense(
       );
 
       await rebuildExpenseProfitFacts(tx, expense.id);
+
+      await persistWhtCertificate(tx, {
+        sourceType: "EXPENSE",
+        sourceId: expense.id,
+        sourceNo: expenseNo,
+        supplierId: d.supplierId,
+        payDate: docDate,
+        lines: wht
+          ? [
+              {
+                incomeTypeId: wht.incomeTypeId,
+                baseAmount: wht.baseAmount,
+                rate: wht.rate,
+                taxAmount: wht.taxAmount,
+                payCondition: wht.payCondition,
+              },
+            ]
+          : [],
+        note: d.note ?? null,
+        userId: session.user.id!,
+      });
     });
 
     const afterSnapshot = createdExpenseId
@@ -228,6 +273,7 @@ export async function createExpense(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
+    revalidatePath("/admin/wht/certificates");
     return { success: true, expenseNo, expenseId: createdExpenseId };
   } catch (err) {
     console.error("[createExpense]", err);
@@ -275,6 +321,7 @@ export async function cancelExpense(
         where: { id: expenseId },
         data:  { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
+      await cancelWhtCertificateForSource(tx, "EXPENSE", expenseId, cancelNote ?? "ยกเลิกใบค่าใช้จ่ายต้นทาง");
       await rebuildExpenseProfitFacts(tx, expenseId);
     });
     const afterSnapshot = await getExpenseAuditSnapshot(expenseId);
@@ -295,6 +342,7 @@ export async function cancelExpense(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
+    revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/expenses/${expenseId}`);
     return { success: true };
   } catch (err) {
@@ -338,6 +386,7 @@ export async function updateExpense(
 
   const parsed = expenseSchema.safeParse({
     expenseDate:       formData.get("expenseDate"),
+    supplierId:        formData.get("supplierId"),
     vatType:           (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:           formData.get("vatRate") || 0,
     note:              formData.get("note") || undefined,
@@ -356,9 +405,19 @@ export async function updateExpense(
   } catch {
     return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
-  if (payments.length === 0) return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  const parsedWht = parseWhtIssuedField(formData.get("wht"));
+  if (!parsedWht.success) return { error: parsedWht.error };
+  const wht: WhtIssuedInput | null = parsedWht.data;
+  const whtValidationError = validateWhtIssuedAgainstTotal(wht, netAmount);
+  if (whtValidationError) return { error: whtValidationError };
+  const whtAmount = wht?.taxAmount ?? 0;
+  // ยอดค่าใช้จ่ายยังเต็มจำนวน แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย
+  const cashAmount = resolveCashAmount(netAmount, whtAmount);
+  if (payments.length === 0 && cashAmount > 0) {
+    return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
+  }
   try {
-    assertPaymentsMatchTotal(payments, netAmount);
+    assertPaymentsMatchTotal(payments, cashAmount);
   } catch (err) {
     return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
@@ -372,8 +431,10 @@ export async function updateExpense(
         where: { id },
         data: {
           expenseDate:    docDate,
+          supplierId:     d.supplierId,
           cashBankAccountId: primaryAccountId,
           totalAmount,
+          whtAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
           subtotalAmount,
@@ -413,6 +474,27 @@ export async function updateExpense(
       );
 
       await rebuildExpenseProfitFacts(tx, id);
+
+      await persistWhtCertificate(tx, {
+        sourceType: "EXPENSE",
+        sourceId: id,
+        sourceNo: existing.expenseNo,
+        supplierId: d.supplierId,
+        payDate: docDate,
+        lines: wht
+          ? [
+              {
+                incomeTypeId: wht.incomeTypeId,
+                baseAmount: wht.baseAmount,
+                rate: wht.rate,
+                taxAmount: wht.taxAmount,
+                payCondition: wht.payCondition,
+              },
+            ]
+          : [],
+        note: d.note ?? null,
+        userId: session.user.id!,
+      });
     });
 
     const afterSnapshot = await getExpenseAuditSnapshot(id);
@@ -433,6 +515,7 @@ export async function updateExpense(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
+    revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/expenses/${id}`);
     return { success: true };
   } catch (err) {

@@ -10,6 +10,7 @@ import { notFound, redirect } from "next/navigation";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import { getWhtReceivedIncomeTypeOptions } from "@/lib/wht-income-types";
 import {
   buildMutationBlockMessage,
   buildMutationBlockReferenceLinks,
@@ -52,11 +53,25 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   if (!sale) notFound();
   if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
 
-  const salePayments = await db.documentPayment.findMany({
-    where: { docType: "SALE", docId: id },
-    orderBy: [{ lineNo: "asc" }, { id: "asc" }],
-    select: { cashBankAccountId: true, amount: true },
-  });
+  const [salePayments, saleWht, whtIncomeTypes] = await Promise.all([
+    db.documentPayment.findMany({
+      where: { docType: "SALE", docId: id },
+      orderBy: [{ lineNo: "asc" }, { id: "asc" }],
+      select: { cashBankAccountId: true, amount: true },
+    }),
+    db.whtReceived.findFirst({
+      where: { saleId: id, status: "ACTIVE" },
+      select: {
+        incomeTypeId: true,
+        baseAmount: true,
+        rate: true,
+        taxAmount: true,
+        certNo: true,
+        certDate: true,
+      },
+    }),
+    getWhtReceivedIncomeTypeOptions(),
+  ]);
 
   const mutationBlock = await checkDocumentMutation("Sale", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
@@ -186,6 +201,16 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       cashBankAccountId: payment.cashBankAccountId,
       amount: Number(payment.amount),
     })),
+    wht: saleWht
+      ? {
+          incomeTypeId: saleWht.incomeTypeId,
+          baseAmount: Number(saleWht.baseAmount),
+          rate: Number(saleWht.rate),
+          taxAmount: Number(saleWht.taxAmount),
+          certNo: saleWht.certNo ?? "",
+          certDate: saleWht.certDate ? formatDateOnlyForInput(saleWht.certDate) : "",
+        }
+      : null,
     fulfillmentType: sale.fulfillmentType as "PICKUP" | "DELIVERY",
     shippingAddress: sale.shippingAddress ?? "",
     shippingFee:     Number(sale.shippingFee ?? 0),
@@ -232,6 +257,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         }))}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        whtIncomeTypes={whtIncomeTypes}
         initialData={initialData}
         editableLotOnEdit
         initialAvailableLots={initialAvailableLots}

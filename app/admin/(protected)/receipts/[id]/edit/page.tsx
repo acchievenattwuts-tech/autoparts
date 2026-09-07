@@ -11,6 +11,7 @@ import ReceiptForm from "../../new/ReceiptForm";
 import type { CreditSaleItem } from "../../actions";
 import { getReceiptCustomerOptions } from "../../customer-options";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import { getWhtReceivedIncomeTypeOptions } from "@/lib/wht-income-types";
 
 const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("receipts.update");
@@ -19,10 +20,21 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   const { id } = await params;
 
-  const [receipt, cashBankAccounts, receiptPayments] = await Promise.all([
+  const [receipt, cashBankAccounts, receiptPayments, whtIncomeTypes] = await Promise.all([
     db.receipt.findUnique({
       where: { id },
       include: {
+        whtReceived: {
+          select: {
+            incomeTypeId: true,
+            baseAmount: true,
+            rate: true,
+            taxAmount: true,
+            certNo: true,
+            certDate: true,
+            status: true,
+          },
+        },
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           select: {
@@ -59,6 +71,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       select: { cashBankAccountId: true, amount: true },
     }),
+    getWhtReceivedIncomeTypeOptions(),
   ]);
 
   if (!receipt) notFound();
@@ -209,6 +222,19 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       amount: Number(payment.amount),
     })),
     note:          receipt.note ?? "",
+    wht:
+      receipt.whtReceived && receipt.whtReceived.status === "ACTIVE"
+        ? {
+            incomeTypeId: receipt.whtReceived.incomeTypeId,
+            baseAmount: Number(receipt.whtReceived.baseAmount),
+            rate: Number(receipt.whtReceived.rate),
+            taxAmount: Number(receipt.whtReceived.taxAmount),
+            certNo: receipt.whtReceived.certNo ?? "",
+            certDate: receipt.whtReceived.certDate
+              ? formatDateOnlyForInput(receipt.whtReceived.certDate)
+              : "",
+          }
+        : null,
     items: [
       // Sale items
       ...receipt.items
@@ -264,6 +290,7 @@ const EditReceiptPage = async ({ params }: { params: Promise<{ id: string }> }) 
       <ReceiptForm
         customers={customerOptions}
         cashBankAccounts={cashBankAccounts}
+        whtIncomeTypes={whtIncomeTypes}
         initialData={initialData}
         initialCreditSales={initialCreditSales}
         canPrint={canPrint}

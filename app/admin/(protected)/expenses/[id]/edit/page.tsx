@@ -10,6 +10,8 @@ import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getActiveExpenseCodeOptions } from "@/lib/admin-master-options";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import NewExpenseForm from "../../new/NewExpenseForm";
+import { getWhtIssuedIncomeTypeOptions } from "@/lib/wht-income-types";
+import { getExpensePayeeOptions } from "@/lib/wht-payees";
 
 const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("expenses.update");
@@ -37,12 +39,45 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     }),
   ]);
 
+  const [suppliers, whtIncomeTypes, expenseCertificate] = await Promise.all([
+    getExpensePayeeOptions(expense?.supplierId ?? undefined),
+    getWhtIssuedIncomeTypeOptions(),
+    db.whtCertificate.findFirst({
+      where: { activeExpenseId: id, status: "ACTIVE" },
+      select: {
+        lines: {
+          orderBy: { lineNo: "asc" },
+          take: 1,
+          select: {
+            incomeTypeId: true,
+            baseAmount: true,
+            rate: true,
+            taxAmount: true,
+            payCondition: true,
+          },
+        },
+      },
+    }),
+  ]);
+
   if (!expense) notFound();
   if (expense.status === "CANCELLED") redirect(`/admin/expenses/${id}`);
+
+  const certificateLine = expenseCertificate?.lines[0] ?? null;
 
   const initialData = {
     id,
       expenseDate: formatDateOnlyForInput(expense.expenseDate),
+    supplierId: expense.supplierId ?? "",
+    wht: certificateLine
+      ? {
+          incomeTypeId: certificateLine.incomeTypeId,
+          baseAmount: Number(certificateLine.baseAmount),
+          rate: Number(certificateLine.rate),
+          taxAmount: Number(certificateLine.taxAmount),
+          payCondition: certificateLine.payCondition,
+        }
+      : null,
     cashBankAccountId: expense.cashBankAccountId ?? "",
     payments: expensePayments.map((payment) => ({
       cashBankAccountId: payment.cashBankAccountId,
@@ -74,6 +109,8 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
         <NewExpenseForm
           expenseCodes={expenseCodes}
           cashBankAccounts={cashBankAccounts}
+          suppliers={suppliers}
+          whtIncomeTypes={whtIncomeTypes}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
           initialData={initialData}

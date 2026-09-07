@@ -76,7 +76,7 @@ const PrintClaimPage = async ({ params, searchParams }: Props) => {
   return (
     <>
       <style>{`
-        @page { margin: 0; }
+        @page { size: A4; margin: 0; }
         @media print {
           body {
             background: #ffffff !important;

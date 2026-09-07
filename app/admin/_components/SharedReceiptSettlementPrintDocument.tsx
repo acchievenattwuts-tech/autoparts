@@ -47,6 +47,8 @@ type ReceiptSettlementPrintReceipt = {
   receiptDate: Date | string;
   customerName?: string | null;
   totalAmount: NumericLike;
+  /** ภาษีหัก ณ ที่จ่ายที่ลูกค้าหักไว้ — บรรทัดนี้ถูกซ่อนทั้งหมดเมื่อไม่มียอด */
+  whtAmount?: NumericLike | null;
   paymentMethod: "CASH" | "TRANSFER" | "CREDIT";
   status?: string | null;
   note?: string | null;
@@ -109,6 +111,9 @@ const SharedReceiptSettlementPrintDocument = ({
   const customerPhone = receipt.customer?.phone ?? null;
   const receiptDateText = formatPrintDate(receipt.receiptDate);
   const totalAmountInWords = formatThaiBahtText(Number(receipt.totalAmount));
+  const whtAmount = Number(receipt.whtAmount ?? 0);
+  const hasWht = whtAmount > 0;
+  const netReceivedAmount = Number(receipt.totalAmount) - whtAmount;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const hasPrintNotice = printNoticeLines.length > 0;
   const hasPaymentBreakdown = Boolean(payments && payments.length > 0);
@@ -135,7 +140,7 @@ const SharedReceiptSettlementPrintDocument = ({
 
       <PrintDocumentHeader shopConfig={shopConfig} title="ใบเสร็จรับเงิน" />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
+      <div data-print-role="header" className="mb-4 grid grid-cols-2 gap-3 text-xs">
         <div className={`space-y-0.5 rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลลูกค้า</p>
           <p>
@@ -215,7 +220,7 @@ const SharedReceiptSettlementPrintDocument = ({
         </tbody>
       </table>
 
-      <div className="mb-4 grid text-xs" style={RECEIPT_SUMMARY_GRID_STYLE}>
+      <div data-print-role="summary" className={`mb-4 grid text-xs ${PRINT_SECTION_TOP_BORDER_CLASS}`} style={RECEIPT_SUMMARY_GRID_STYLE}>
         <div className={`col-span-2 border-b border-l ${PRINT_BODY_BORDER_CLASS} p-2`}>
           <p className="mb-1 text-gray-700">หมายเหตุ:</p>
           <p className="min-h-[2rem] text-gray-700">{receipt.note ?? ""}</p>
@@ -224,15 +229,29 @@ const SharedReceiptSettlementPrintDocument = ({
           <div className={`pointer-events-none absolute inset-y-0 left-1/2 border-r ${PRINT_BODY_BORDER_CLASS}`} />
           <div className="flex h-full flex-col justify-end gap-1 pl-[calc(50%+0.5rem)] text-xs">
             <div className="flex items-end justify-between gap-3">
-              <div className="font-bold text-gray-900">ยอดรับชำระรวม</div>
-              <div className="text-right font-bold text-[#1e3a5f]">{formatPrintNumber(Number(receipt.totalAmount))}</div>
+              <div className={hasWht ? "text-gray-700" : "font-bold text-gray-900"}>ยอดรับชำระรวม</div>
+              <div className={hasWht ? "text-right text-gray-900" : "text-right font-bold text-[#1e3a5f]"}>
+                {formatPrintNumber(Number(receipt.totalAmount))}
+              </div>
             </div>
+            {hasWht ? (
+              <>
+                <div className="flex items-end justify-between gap-3">
+                  <div className="text-gray-700">หัก ณ ที่จ่าย</div>
+                  <div className="text-right text-gray-900">{formatPrintNumber(whtAmount)}</div>
+                </div>
+                <div className="flex items-end justify-between gap-3">
+                  <div className="font-bold text-gray-900">ยอดเงินรับสุทธิ</div>
+                  <div className="text-right font-bold text-[#1e3a5f]">{formatPrintNumber(netReceivedAmount)}</div>
+                </div>
+              </>
+            ) : null}
             <div className="text-right text-[11px] text-gray-700">({totalAmountInWords})</div>
           </div>
         </div>
       </div>
 
-      <div className="mt-auto">
+      <div data-print-role="footer" className="mt-auto">
         {hasSupportBlock || hasPrintNotice ? (
           <div
             className={`mb-5 grid gap-4 ${hasSupportBlock && hasPrintNotice ? "grid-cols-[minmax(0,6fr)_minmax(0,4fr)]" : "grid-cols-1"}`}

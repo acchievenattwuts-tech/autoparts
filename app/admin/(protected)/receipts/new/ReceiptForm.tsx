@@ -7,6 +7,10 @@ import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import { getCreditSalesForCustomer, createReceipt, updateReceipt, CreditSaleItem } from "../actions";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import WhtReceivedFields, {
+  type WhtIncomeTypeOption,
+  type WhtReceivedFormValue,
+} from "@/components/shared/WhtReceivedFields";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 interface PaymentRow {
@@ -49,6 +53,7 @@ interface InitialData {
   paymentMethod: "CASH" | "TRANSFER";
   cashBankAccountId: string;
   payments?: PaymentRow[];
+  wht?: WhtReceivedFormValue | null;
   note: string;
   items: SelectedItem[];
 }
@@ -56,12 +61,20 @@ interface InitialData {
 interface Props {
   customers: CustomerOption[];
   cashBankAccounts: CashBankAccountOption[];
+  whtIncomeTypes: WhtIncomeTypeOption[];
   initialData?: InitialData;
   initialCreditSales?: CreditSaleItem[];
   canPrint?: boolean;
 }
 
-const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSales, canPrint = false }: Props) => {
+const ReceiptForm = ({
+  customers,
+  cashBankAccounts,
+  whtIncomeTypes,
+  initialData,
+  initialCreditSales,
+  canPrint = false,
+}: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
   const today = getThailandDateKey();
@@ -80,6 +93,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
         : [{ cashBankAccountId: "", amount: 0 }],
   );
   const [note, setNote] = useState(initialData?.note ?? "");
+  const [wht, setWht] = useState<WhtReceivedFormValue | null>(initialData?.wht ?? null);
   const [isLoadingSales, setIsLoadingSales] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -159,8 +173,11 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
   const netTotal = saleTotal - cnTotal - advanceTotal;
 
   const round2 = (value: number) => Math.round(value * 100) / 100;
+  const whtAmount = round2(wht?.taxAmount ?? 0);
+  /** ยอดหนี้ปิดเต็ม netTotal แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย */
+  const cashTotal = round2(netTotal - whtAmount);
   const paymentsTotal = round2(payments.reduce((sum, row) => sum + (row.amount || 0), 0));
-  const remainingToAllocate = round2(netTotal - paymentsTotal);
+  const remainingToAllocate = round2(cashTotal - paymentsTotal);
 
   const updatePaymentAccount = (index: number, accountId: string) => {
     setPayments((prev) => prev.map((row, i) => (i === index ? { ...row, cashBankAccountId: accountId } : row)));
@@ -211,8 +228,23 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       setError("ยอดของแต่ละรายการต้องมากกว่า 0");
       return;
     }
-    const activePayments = netTotal > 0 ? payments.filter((row) => row.amount > 0) : [];
-    if (netTotal > 0) {
+    if (wht) {
+      if (!wht.incomeTypeId) {
+        setError("กรุณาเลือกประเภทเงินได้ของภาษีหัก ณ ที่จ่าย");
+        return;
+      }
+      if (wht.taxAmount <= 0) {
+        setError("ยอดภาษีหัก ณ ที่จ่ายต้องมากกว่า 0");
+        return;
+      }
+      if (wht.taxAmount > netTotal + 0.005) {
+        setError("ยอดภาษีหัก ณ ที่จ่ายมากกว่ายอดสุทธิของใบเสร็จ");
+        return;
+      }
+    }
+
+    const activePayments = cashTotal > 0 ? payments.filter((row) => row.amount > 0) : [];
+    if (cashTotal > 0) {
       if (activePayments.length === 0) {
         setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง");
         return;
@@ -223,7 +255,7 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       }
       if (Math.abs(remainingToAllocate) > 0.005) {
         setError(
-          `ยอดรวมช่องทางรับเงินต้องเท่ากับยอดสุทธิ (คงเหลือที่ต้องระบุ ${remainingToAllocate.toLocaleString(
+          `ยอดรวมช่องทางรับเงินต้องเท่ากับยอดเงินที่รับจริง (คงเหลือที่ต้องระบุ ${remainingToAllocate.toLocaleString(
             "th-TH",
             { minimumFractionDigits: 2 },
           )} บาท)`,
@@ -243,6 +275,19 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
       ),
     );
     formData.set("note", note);
+    formData.set(
+      "wht",
+      wht
+        ? JSON.stringify({
+            incomeTypeId: wht.incomeTypeId,
+            baseAmount: wht.baseAmount,
+            rate: wht.rate,
+            taxAmount: wht.taxAmount,
+            certNo: wht.certNo || null,
+            certDate: wht.certDate || null,
+          })
+        : "",
+    );
     formData.set(
       "items",
       JSON.stringify(
@@ -418,7 +463,25 @@ const ReceiptForm = ({ customers, cashBankAccounts, initialData, initialCreditSa
             ระบบจะระบุช่องทางรับเงินจากประเภทบัญชีให้อัตโนมัติ และถ้ายอดสุทธิไม่เกิน 0 จะถือว่าเป็นการตัดเครดิตโดยไม่มีการรับเงินจริง
           </div>
 
-          {netTotal > 0 && (
+          <div className="md:col-span-2">
+            <WhtReceivedFields
+              incomeTypes={whtIncomeTypes}
+              value={wht}
+              onChange={setWht}
+              documentTotal={netTotal}
+              disabled={isPending}
+            />
+          </div>
+
+          {whtAmount > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 md:col-span-2 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
+              ตัดหนี้ {netTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · ถูกหักภาษี ณ ที่จ่าย{" "}
+              {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · รับเงินจริง{" "}
+              {cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+            </div>
+          )}
+
+          {cashTotal > 0 && (
             <div className="md:col-span-2">
               <div className="mb-2 flex items-center justify-between">
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">

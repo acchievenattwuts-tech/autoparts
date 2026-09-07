@@ -10,6 +10,10 @@ import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import WhtReceivedFields, {
+  type WhtIncomeTypeOption,
+  type WhtReceivedFormValue,
+} from "@/components/shared/WhtReceivedFields";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
@@ -176,6 +180,7 @@ interface InitialData {
   paymentMethod:   string;
   cashBankAccountId: string;
   payments?:       PaymentChannelRow[];
+  wht?:            WhtReceivedFormValue | null;
   fulfillmentType:  "PICKUP" | "DELIVERY";
   shippingAddress:  string;
   shippingFee:      number;
@@ -209,6 +214,7 @@ const SaleForm = ({
   orderRefLabel = "",
   defaultCustomerId = "",
   defaultCashBankAccountId = "",
+  whtIncomeTypes = [],
 }: {
   initialQuotationId?: string;
   canReferenceQuotation?: boolean;
@@ -230,6 +236,7 @@ const SaleForm = ({
   orderRefLabel?: string;
   defaultCustomerId?: string;
   defaultCashBankAccountId?: string;
+  whtIncomeTypes?: WhtIncomeTypeOption[];
 }) => {
   const isMarketplace = channel !== "STORE";
   const marketplaceLabel = channelLabel || channel;
@@ -265,6 +272,7 @@ const SaleForm = ({
         : [{ cashBankAccountId: defaultCashBankAccountId, amount: 0 }],
   );
   const primaryAccountId = payments[0]?.cashBankAccountId ?? "";
+  const [wht, setWht] = useState<WhtReceivedFormValue | null>(initialData?.wht ?? null);
   const [fulfillmentType, setFulfillmentType] = useState<"PICKUP" | "DELIVERY">(initialData?.fulfillmentType ?? (isMarketplace ? "DELIVERY" : "PICKUP"));
   // ช่องทาง marketplace เติมข้อความตั้งต้นตามช่องทางให้ก่อน (ที่อยู่จริงอยู่ในคำสั่งซื้อ
   // ของแพลตฟอร์ม) แอดมินพิมพ์ทับด้วยที่อยู่ผู้ซื้อจริงได้ และค่าที่อยู่ในช่องนี้จะถูก
@@ -671,10 +679,18 @@ const SaleForm = ({
   const discountedTotal = Math.max(0, totalAmount + effectiveShippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
 
+  /** ยอดขายยังเป็น netAmount เต็ม แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย */
+  const whtAmount = paymentType === "CASH_SALE" ? Math.round((wht?.taxAmount ?? 0) * 100) / 100 : 0;
+  const cashTotal = Math.round((netAmount - whtAmount) * 100) / 100;
+
   useEffect(() => {
     if (!isMarketplace || !defaultCashBankAccountId) return;
     setPayments([{ cashBankAccountId: defaultCashBankAccountId, amount: netAmount }]);
   }, [defaultCashBankAccountId, isMarketplace, netAmount]);
+
+  useEffect(() => {
+    if (paymentType !== "CASH_SALE" || isMarketplace) setWht(null);
+  }, [paymentType, isMarketplace]);
 
   /** Re-apply the tier price to every line that already has a product selected. */
   const repriceItemsToSelection = (selection: SalePriceSelection, saleDateKey = saleDate) => {
@@ -793,12 +809,18 @@ const SaleForm = ({
     }
     let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
     if (paymentType === "CASH_SALE") {
+      if (wht) {
+        if (!wht.incomeTypeId) { setError("กรุณาเลือกประเภทเงินได้ของภาษีหัก ณ ที่จ่าย"); return; }
+        if (wht.taxAmount <= 0) { setError("ยอดภาษีหัก ณ ที่จ่ายต้องมากกว่า 0"); return; }
+        if (wht.taxAmount > netAmount + 0.005) { setError("ยอดภาษีหัก ณ ที่จ่ายมากกว่ายอดสุทธิของใบขาย"); return; }
+        if (!selectedCustomerId) { setError("ใบที่มีภาษีหัก ณ ที่จ่ายต้องระบุลูกค้า"); return; }
+      }
       const activePayments = payments.filter((row) => row.amount > 0);
-      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง"); return; }
+      if (activePayments.length === 0 && cashTotal > 0) { setError("กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง"); return; }
       if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
       const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
-      if (Math.abs(paymentsTotal - netAmount) > 0.005) {
-        setError(`ยอดรวมช่องทางรับเงินต้องเท่ากับยอดสุทธิ (${netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+      if (Math.abs(paymentsTotal - cashTotal) > 0.005) {
+        setError(`ยอดรวมช่องทางรับเงินต้องเท่ากับยอดเงินที่รับจริง (${cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
         return;
       }
       submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
@@ -816,6 +838,19 @@ const SaleForm = ({
     formData.set("customerPhone", customerPhoneOverride);
     formData.set("items", JSON.stringify(items));
     formData.set("paymentType", paymentType);
+    formData.set(
+      "wht",
+      wht
+        ? JSON.stringify({
+            incomeTypeId: wht.incomeTypeId,
+            baseAmount: wht.baseAmount,
+            rate: wht.rate,
+            taxAmount: wht.taxAmount,
+            certNo: wht.certNo || null,
+            certDate: wht.certDate || null,
+          })
+        : "",
+    );
     formData.set("fulfillmentType", fulfillmentType);
     formData.set("shippingAddress", fulfillmentType === "DELIVERY" ? shippingAddress : "");
     formData.set("shippingFee", String(effectiveShippingFee));
@@ -1079,11 +1114,26 @@ const SaleForm = ({
               accounts={cashBankAccounts}
               value={payments}
               onChange={setPayments}
-              targetAmount={netAmount}
+              targetAmount={cashTotal}
               label="ช่องทางรับเงิน"
               placeholder="โปรดระบุบัญชีรับเงิน"
             />
-            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">รองรับรับเงินหลายช่องทาง — ยอดรวมต้องเท่ากับยอดสุทธิ</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">รองรับรับเงินหลายช่องทาง — ยอดรวมต้องเท่ากับยอดเงินที่รับจริง</p>
+            <div className="mt-3">
+              <WhtReceivedFields
+                incomeTypes={whtIncomeTypes}
+                value={wht}
+                onChange={setWht}
+                documentTotal={netAmount}
+              />
+            </div>
+            {whtAmount > 0 && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
+                ยอดขาย {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · ถูกหักภาษี ณ ที่จ่าย{" "}
+                {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · รับเงินจริง{" "}
+                {cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+              </div>
+            )}
           </div>
           ) : (
           <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">

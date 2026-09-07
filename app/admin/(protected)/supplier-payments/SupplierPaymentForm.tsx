@@ -14,6 +14,8 @@ import {
   type SupplierSettlementDocumentBundle,
 } from "./actions";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import WhtIssuedFields, { type WhtIssuedFormValue } from "@/components/shared/WhtIssuedFields";
+import type { WhtIncomeTypeOption } from "@/components/shared/WhtReceivedFields";
 
 type SupplierOption = {
   id: string;
@@ -48,6 +50,7 @@ type InitialData = {
   payments?: PaymentChannelRow[];
   note: string;
   items: SelectedItem[];
+  wht?: WhtIssuedFormValue | null;
 };
 
 const inputCls =
@@ -58,11 +61,13 @@ const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate
 const SupplierPaymentForm = ({
   suppliers,
   cashBankAccounts,
+  whtIncomeTypes = [],
   initialData,
   initialDocuments,
 }: {
   suppliers: SupplierOption[];
   cashBankAccounts: CashBankAccountOption[];
+  whtIncomeTypes?: WhtIncomeTypeOption[];
   initialData?: InitialData;
   initialDocuments?: SupplierSettlementDocumentBundle;
 }) => {
@@ -84,6 +89,7 @@ const SupplierPaymentForm = ({
         : [{ cashBankAccountId: "", amount: 0 }],
   );
   const [note, setNote] = useState(initialData?.note ?? "");
+  const [wht, setWht] = useState<WhtIssuedFormValue | null>(initialData?.wht ?? null);
   const [documents, setDocuments] = useState<SupplierSettlementDocumentBundle>(
     initialDocuments ?? { purchases: [], credits: [], advances: [] },
   );
@@ -175,6 +181,9 @@ const SupplierPaymentForm = ({
     .filter((item) => item.kind === "ADVANCE")
     .reduce((sum, item) => sum + item.paidAmount, 0);
   const netCashPaid = purchaseTotal - creditTotal - advanceTotal;
+  /** หนี้ถูกตัดเต็ม netCashPaid แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย */
+  const whtAmount = Math.round((wht?.taxAmount ?? 0) * 100) / 100;
+  const cashAfterWht = Math.round((netCashPaid - whtAmount) * 100) / 100;
 
   const handleSubmit = () => {
     setError("");
@@ -204,14 +213,20 @@ const SupplierPaymentForm = ({
       setError("ยอดเครดิตและเงินมัดจำที่เลือกมากกว่ายอดซื้อเชื่อที่ต้องการชำระ");
       return;
     }
+    if (wht) {
+      if (!wht.incomeTypeId) { setError("กรุณาเลือกประเภทเงินได้ของภาษีหัก ณ ที่จ่าย"); return; }
+      if (wht.taxAmount <= 0) { setError("ยอดภาษีหัก ณ ที่จ่ายต้องมากกว่า 0"); return; }
+      if (wht.taxAmount > netCashPaid + 0.005) { setError("ยอดภาษีหัก ณ ที่จ่ายมากกว่ายอดที่ต้องจ่าย"); return; }
+    }
+
     let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
-    if (netCashPaid > 0) {
+    if (cashAfterWht > 0) {
       const activePayments = payments.filter((row) => row.amount > 0);
       if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
       if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
       const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
-      if (Math.abs(paymentsTotal - netCashPaid) > 0.005) {
-        setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดที่ต้องจ่าย (${netCashPaid.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
+      if (Math.abs(paymentsTotal - cashAfterWht) > 0.005) {
+        setError(`ยอดรวมช่องทางจ่ายเงินต้องเท่ากับยอดเงินที่จ่ายจริง (${cashAfterWht.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท)`);
         return;
       }
       submitPayments = activePayments.map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }));
@@ -222,6 +237,18 @@ const SupplierPaymentForm = ({
     formData.set("paymentDate", paymentDate);
     formData.set("payments", JSON.stringify(submitPayments));
     formData.set("note", note);
+    formData.set(
+      "wht",
+      wht
+        ? JSON.stringify({
+            incomeTypeId: wht.incomeTypeId,
+            baseAmount: wht.baseAmount,
+            rate: wht.rate,
+            taxAmount: wht.taxAmount,
+            payCondition: wht.payCondition,
+          })
+        : "",
+    );
     formData.set(
       "items",
       JSON.stringify(
@@ -388,11 +415,30 @@ const SupplierPaymentForm = ({
           </div>
 
           {netCashPaid > 0 ? (
+            <div className="md:col-span-2">
+              <WhtIssuedFields
+                incomeTypes={whtIncomeTypes}
+                value={wht}
+                onChange={setWht}
+                documentTotal={netCashPaid}
+                disabled={isPending}
+              />
+              {whtAmount > 0 && (
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
+                  ตัดหนี้ {netCashPaid.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · หักภาษี ณ ที่จ่าย{" "}
+                  {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · จ่ายจริง{" "}
+                  {cashAfterWht.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          {cashAfterWht > 0 ? (
             <PaymentChannelsInput
               accounts={cashBankAccounts}
               value={payments}
               onChange={setPayments}
-              targetAmount={netCashPaid}
+              targetAmount={cashAfterWht}
               label="ช่องทางจ่ายเงิน"
               placeholder="โปรดระบุบัญชีจ่ายเงิน"
             />

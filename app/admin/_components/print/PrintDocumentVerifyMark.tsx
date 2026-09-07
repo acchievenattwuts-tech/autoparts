@@ -17,7 +17,7 @@ export default function PrintDocumentVerifyMark({
   const displayUrl = getVerifyDisplayUrl(verify.verifyUrl);
 
   return (
-    <div className="print-document-verify-mark pointer-events-none hidden print:block">
+    <div data-print-role="overlay" className="print-document-verify-mark pointer-events-none hidden print:block">
       <div className="print-document-verify-badge absolute bottom-8 right-8 z-10 w-28 rounded-md border border-gray-500 bg-white/90 p-2 text-center text-[9px] leading-tight text-gray-900">
         <div
           className="print-document-verify-qr mx-auto mb-1 h-[84px] w-[84px]"

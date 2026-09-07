@@ -4,7 +4,7 @@ import PrintToPdfButton from "@/components/liff/PrintToPdfButton";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 export const EXTERNAL_A4_PRINT_ROOT_CLASS =
-  "mx-auto flex h-[285mm] w-[198mm] max-w-none flex-col overflow-hidden bg-white p-[6mm] text-[10px] leading-tight text-gray-900";
+  "mx-auto bg-white text-[13px] leading-snug text-gray-900";
 
 export default function ExternalPrintShell({
   buttonLabel,
@@ -24,7 +24,7 @@ export default function ExternalPrintShell({
         <link key={url} rel="preload" as="image" href={url} fetchPriority="high" />
       ))}
       <style>{`
-        @page { size: A4; margin: 6mm; }
+        @page { size: A4; margin: 0; }
         :root,
         html,
         body {
@@ -41,9 +41,9 @@ export default function ExternalPrintShell({
         }
         @media print {
           html, body {
-            height: 285mm !important;
-            max-height: 285mm !important;
-            overflow: hidden !important;
+            height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
           body * { visibility: hidden; }
           #receipt, #receipt * { visibility: visible; }
@@ -57,20 +57,20 @@ export default function ExternalPrintShell({
             position: absolute;
             left: 0;
             top: 0;
-            width: 198mm !important;
-            height: 285mm !important;
-            min-height: 285mm !important;
-            max-height: 285mm !important;
-            overflow: hidden !important;
+            width: 210mm !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
             display: flex;
             flex-direction: column;
             background: #ffffff !important;
             color: #111827 !important;
             box-sizing: border-box;
             page-break-after: avoid !important;
-            page-break-inside: avoid !important;
+            page-break-inside: auto !important;
             break-after: avoid !important;
-            break-inside: avoid !important;
+            break-inside: auto !important;
           }
           #receipt :is(.bg-white, .bg-white\\/95, .bg-white\\/90, .bg-white\\/80) { background-color: #ffffff !important; }
           #receipt :is(.bg-gray-50, .hover\\:bg-gray-50:hover) { background-color: #f9fafb !important; }
@@ -81,69 +81,12 @@ export default function ExternalPrintShell({
           .no-print { display: none !important; }
           .receipt-footer { margin-top: auto; }
         }
-        /* iOS Safari only: content renders ~1-2mm taller than Android/desktop,
-           so the mt-auto stretched footer overflows onto a blank page 2.
-           @supports (-webkit-touch-callout: none) is true only on iOS WebKit. */
-        @supports (-webkit-touch-callout: none) {
-          @page { size: A4; margin: 0; }
-          @media print {
-            html, body {
-              width: 210mm !important;
-              height: 297mm !important;
-              max-height: 297mm !important;
-              overflow: hidden !important;
-            }
-            [data-liff-print="true"],
-            .liff-external-print-shell,
-            .liff-external-print-stage {
-              height: 0 !important;
-              min-height: 0 !important;
-              max-height: 0 !important;
-              overflow: visible !important;
-              padding: 0 !important;
-              margin: 0 !important;
-            }
-            #receipt {
-              left: 0 !important;
-              top: 0 !important;
-              width: 210mm !important;
-              height: 297mm !important;
-              min-height: 297mm !important;
-              max-height: 297mm !important;
-              padding: 12mm !important;
-            }
-            #receipt .mt-auto {
-              margin-top: auto !important;
-            }
-            #receipt .receipt-footer {
-              margin-top: 0 !important;
-            }
-            #receipt .print-document-verify-badge {
-              position: absolute !important;
-              right: 12mm !important;
-              bottom: 12mm !important;
-              z-index: 20 !important;
-              width: 28mm !important;
-              break-inside: avoid !important;
-              page-break-inside: avoid !important;
-              -webkit-column-break-inside: avoid !important;
-              contain: layout paint !important;
-              transform: translateZ(0);
-            }
-            #receipt .print-document-verify-qr,
-            #receipt .print-document-verify-badge svg,
-            #receipt .print-document-verify-badge p {
-              break-inside: avoid !important;
-              page-break-inside: avoid !important;
-            }
-          }
-        }
         @media screen {
           #receipt {
-            width: 198mm;
-            min-width: 198mm;
+            width: 210mm;
+            min-width: 210mm;
             min-height: 285mm;
-            max-height: 285mm;
+            max-height: none;
             background: #ffffff !important;
             color: #111827 !important;
           }

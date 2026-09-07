@@ -6,13 +6,15 @@ import { requirePermission } from "@/lib/require-auth";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import SupplierPaymentForm from "../SupplierPaymentForm";
 import { getSupplierPaymentSupplierOptions } from "../supplier-options";
+import { getWhtIssuedIncomeTypeOptions } from "@/lib/wht-income-types";
 
 const NewSupplierPaymentPage = async () => {
   await requirePermission("supplier_payments.create");
 
-  const [suppliers, cashBankAccounts] = await Promise.all([
+  const [suppliers, cashBankAccounts, whtIncomeTypes] = await Promise.all([
     getSupplierPaymentSupplierOptions(),
     getActiveCashBankAccountOptions(),
+    getWhtIssuedIncomeTypeOptions(),
   ]);
 
   return (
@@ -33,7 +35,11 @@ const NewSupplierPaymentPage = async () => {
         </p>
       </div>
 
-      <SupplierPaymentForm suppliers={suppliers} cashBankAccounts={cashBankAccounts} />
+      <SupplierPaymentForm
+        suppliers={suppliers}
+        cashBankAccounts={cashBankAccounts}
+        whtIncomeTypes={whtIncomeTypes}
+      />
     </div>
   );
 };

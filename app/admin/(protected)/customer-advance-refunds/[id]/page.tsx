@@ -93,7 +93,7 @@ export default async function CustomerAdvanceRefundDetailPage({
   };
   return (
     <>
-      <style>{`@page{margin:0}@media print{body *{visibility:hidden}#customer-advance-refund-print,#customer-advance-refund-print *{visibility:visible;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}#customer-advance-refund-print{position:absolute;left:0;top:0;width:100%}.print-slip{display:flex;flex-direction:column;min-height:100vh}.no-print{display:none!important}.receipt-footer{margin-top:auto}}${PRINT_COPY_VISIBILITY_CSS}`}</style>
+      <style>{`@page{size:A4;margin:0}@media print{body *{visibility:hidden}#customer-advance-refund-print,#customer-advance-refund-print *{visibility:visible;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}#customer-advance-refund-print{position:absolute;left:0;top:0;width:100%}.print-slip{ display: block; }.no-print{display:none!important}.receipt-footer{margin-top:auto}}${PRINT_COPY_VISIBILITY_CSS}`}</style>
       <div className="no-print space-y-6">
         <div className="flex items-center justify-between gap-3">
           <Link

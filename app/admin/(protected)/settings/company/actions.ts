@@ -81,6 +81,28 @@ const printNoticeTextSchema = z
     { message: "รายละเอียดโปรดทราบต้องไม่เกิน 5 บรรทัด" }
   );
 
+const taxPayerIdSchema = z
+  .string()
+  .max(13)
+  .refine((value) => value === "" || /^\d{13}$/.test(value), {
+    message: "เลขประจำตัวผู้เสียภาษี/เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก",
+  });
+
+const taxBranchNoSchema = z
+  .string()
+  .max(6)
+  .refine((value) => value === "" || /^\d{1,6}$/.test(value), {
+    message: "ลำดับที่สาขาต้องเป็นตัวเลขไม่เกิน 6 หลัก",
+  })
+  .transform((value) => (value === "" ? "" : value.padStart(6, "0")));
+
+const taxPostcodeSchema = z
+  .string()
+  .max(5)
+  .refine((value) => value === "" || /^\d{5}$/.test(value), {
+    message: "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก",
+  });
+
 const companySchema = z.object({
   shop_name: z.string().min(1, "กรุณาใส่ชื่อร้าน").max(100),
   shop_slogan: z.string().max(200),
@@ -116,6 +138,15 @@ const companySchema = z.object({
   line_ai_auto_reply_enabled: z.enum(["true", "false"]),
   line_ai_dry_run: z.enum(["true", "false"]),
   line_ai_image_search_enabled: z.enum(["true", "false"]),
+  tax_payer_id: taxPayerIdSchema,
+  tax_branch_no: taxBranchNoSchema,
+  tax_addr_no: z.string().max(100),
+  tax_addr_road: z.string().max(100),
+  tax_addr_subdistrict: z.string().max(100),
+  tax_addr_district: z.string().max(100),
+  tax_addr_province: z.string().max(100),
+  tax_addr_postcode: taxPostcodeSchema,
+  tax_efiling_user_id: z.string().max(20),
 });
 
 export async function updateCompanySettings(formData: FormData) {

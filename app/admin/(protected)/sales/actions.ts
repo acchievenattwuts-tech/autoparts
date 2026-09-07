@@ -62,6 +62,13 @@ import {
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
+import {
+  parseWhtReceivedField,
+  resolveCashAmount,
+  validateWhtAgainstTotal,
+  type WhtReceivedInput,
+} from "@/lib/wht";
+import { cancelWhtReceivedForDocument, persistWhtReceived } from "@/lib/wht-received";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
 import {
@@ -531,18 +538,36 @@ export async function createSale(
   if (deliveryValidationError) {
     return { error: deliveryValidationError };
   }
+  const parsedWht = parseWhtReceivedField(formData.get("wht"));
+  if (!parsedWht.success) return { error: parsedWht.error };
+  let wht: WhtReceivedInput | null = parsedWht.data;
+  if (wht && paymentType !== SalePaymentType.CASH_SALE) {
+    return { error: "ใบขายเชื่อให้บันทึกภาษีหัก ณ ที่จ่ายตอนออกใบเสร็จรับเงินแทน" };
+  }
+  if (wht && isMarketplaceSale) {
+    return { error: "รายการจากมาร์เก็ตเพลสไม่รองรับภาษีหัก ณ ที่จ่าย" };
+  }
+  const whtValidationError = validateWhtAgainstTotal(wht, netAmount, {
+    hasCustomer: Boolean(customerId),
+  });
+  if (whtValidationError) return { error: whtValidationError };
+  if (paymentType !== SalePaymentType.CASH_SALE) wht = null;
+  const whtAmount = wht?.taxAmount ?? 0;
+
   let payments: DocumentPaymentRow[] = [];
   if (paymentType === SalePaymentType.CASH_SALE) {
+    // ยอดขายยังเป็น netAmount เต็มจำนวน แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย
+    const cashAmount = resolveCashAmount(netAmount, whtAmount);
     try {
       payments = parseDocumentPaymentRows(formData.get("payments"));
     } catch {
       return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
     }
-    if (payments.length === 0) {
+    if (payments.length === 0 && cashAmount > 0) {
       return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
-      assertPaymentsMatchTotal(payments, netAmount);
+      assertPaymentsMatchTotal(payments, cashAmount);
     } catch (err) {
       return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
     }
@@ -652,6 +677,7 @@ export async function createSale(
           totalAmount,
           discount,
           netAmount,
+          whtAmount,
           vatType,
           vatRate,
           subtotalAmount,
@@ -797,6 +823,16 @@ export async function createSale(
       );
 
       await rebuildSaleProfitFacts(tx, sale.id);
+
+      await persistWhtReceived(tx, {
+        docType: "SALE",
+        docId: sale.id,
+        wht,
+        customerId: customerId ?? null,
+        customerNameFallback: customerName ?? null,
+        payDate: docDate,
+        userId: session.user!.id!,
+      });
 
       if (
         saveAsCustomerDefault === "1" &&
@@ -971,6 +1007,7 @@ export async function cancelSale(
       await auditSaleQuotationReference(tx, getAuditActorFromSession(session), saleId, sale.saleNo, previousQuotationId, null, true);
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.SALE, saleId);
+      await cancelWhtReceivedForDocument(tx, "SALE", saleId);
       // Reverse Lot balances before deleting StockCard rows
       for (const item of sale.items) {
         await reverseSaleLotBalance(tx, item.id, item.productId);
@@ -1141,18 +1178,33 @@ export async function updateSale(
     return { error: deliveryValidationError };
   }
 
+  const parsedWht = parseWhtReceivedField(formData.get("wht"));
+  if (!parsedWht.success) return { error: parsedWht.error };
+  let wht: WhtReceivedInput | null = parsedWht.data;
+  if (wht && paymentType !== SalePaymentType.CASH_SALE) {
+    return { error: "ใบขายเชื่อให้บันทึกภาษีหัก ณ ที่จ่ายตอนออกใบเสร็จรับเงินแทน" };
+  }
+  const whtValidationError = validateWhtAgainstTotal(wht, netAmount, {
+    hasCustomer: Boolean(customerId),
+  });
+  if (whtValidationError) return { error: whtValidationError };
+  if (paymentType !== SalePaymentType.CASH_SALE) wht = null;
+  const whtAmount = wht?.taxAmount ?? 0;
+
   let payments: DocumentPaymentRow[] = [];
   if (paymentType === SalePaymentType.CASH_SALE) {
+    // ยอดขายยังเป็น netAmount เต็มจำนวน แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย
+    const cashAmount = resolveCashAmount(netAmount, whtAmount);
     try {
       payments = parseDocumentPaymentRows(formData.get("payments"));
     } catch {
       return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
     }
-    if (payments.length === 0) {
+    if (payments.length === 0 && cashAmount > 0) {
       return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
-      assertPaymentsMatchTotal(payments, netAmount);
+      assertPaymentsMatchTotal(payments, cashAmount);
     } catch (err) {
       return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
     }
@@ -1359,6 +1411,7 @@ export async function updateSale(
           subtotalAmount,
           vatAmount,
           netAmount,
+          whtAmount,
           amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
           shippingMethod,
           creditTerm:      creditTerm      ?? null,
@@ -1507,6 +1560,16 @@ export async function updateSale(
       );
 
       await rebuildSaleProfitFacts(tx, id);
+
+      await persistWhtReceived(tx, {
+        docType: "SALE",
+        docId: id,
+        wht,
+        customerId: customerId ?? null,
+        customerNameFallback: customerName ?? null,
+        payDate: docDate,
+        userId: session.user!.id!,
+      });
 
       if (
         saveAsCustomerDefault === "1" &&

@@ -84,7 +84,7 @@ const WarrantyClaimPrintDocument = ({
 
       <PrintDocumentHeader shopConfig={shopConfig} title="ใบเคลมสินค้า" />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 text-xs">
+      <div data-print-role="header" className="mb-4 grid grid-cols-2 gap-3 text-xs">
         <div className={`space-y-0.5 rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-700">ข้อมูลลูกค้า</p>
           <p>
@@ -212,7 +212,7 @@ const WarrantyClaimPrintDocument = ({
         </div>
       </div>
 
-      <div className="claim-footer mt-auto">
+      <div data-print-role="footer" className="claim-footer mt-auto">
         <PrintSignatureGrid
           columns={[
             {

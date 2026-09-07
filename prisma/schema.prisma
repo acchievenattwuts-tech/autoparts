@@ -81,6 +81,10 @@ model User {
   pricePromotionsCreated         PricePromotion[]           @relation("PricePromotionCreatedBy")
   pricePromotionsPublished       PricePromotion[]           @relation("PricePromotionPublishedBy")
   pricePromotionsCancelled       PricePromotion[]           @relation("PricePromotionCancelledBy")
+  whtReceived                    WhtReceived[]
+  whtCertificates                WhtCertificate[]
+  whtFilings                     WhtFiling[]
+  whtReceivedAttachments         WhtReceivedAttachment[]
 
   @@index([username])
   @@index([appRoleId])
@@ -1036,6 +1040,9 @@ model Supplier {
   supplierAdvances  SupplierAdvance[]
   supplierPayments  SupplierPayment[]
   warrantyClaims    WarrantyClaim[]
+  expenses          Expense[]
+  whtPayeeProfile   WhtPayeeProfile?
+  whtCertificates   WhtCertificate[]
 }
 
 model PartsBrand {
@@ -1453,6 +1460,7 @@ model Customer {
   sales                  Sale[]
   warranties             Warranty[]
   marketplaceChannels    MarketplaceChannelSetting[]
+  whtReceived            WhtReceived[]
 
   @@index([name])
   @@index([lineLinkedAt])
@@ -1635,6 +1643,7 @@ model Sale {
   discount                   Decimal                     @default(0) @db.Decimal(10, 2)
   netAmount                  Decimal                     @db.Decimal(10, 2)
   paymentMethod              PaymentMethod?              @default(CASH)
+  whtAmount                  Decimal                     @default(0) @db.Decimal(10, 2)
   note                       String?
   saleDate                   DateTime                    @default(now()) @db.Timestamptz(3)
   createdAt                  DateTime                    @default(now()) @db.Timestamptz(3)
@@ -1683,6 +1692,7 @@ model Sale {
   paymentSlips               PaymentSlip[]
   shopeeOrderImport          ShopeeOrderImport?
   marketplaceSettlementLines MarketplaceSettlementLine[]
+  whtReceived                WhtReceived?
 
   @@unique([channel, channelRefNo])
   @@index([quotationId])
@@ -1910,6 +1920,10 @@ model ExpenseCode {
 model Expense {
   id                    String                 @id @default(cuid())
   userId                String
+  /// ผู้รับเงิน (ผู้ถูกหักภาษี ณ ที่จ่าย) — ข้อมูลเดิมถูก backfill เป็นซัพพลายเออร์ S0018 "No Supplier"
+  supplierId            String?
+  /// ภาษีหัก ณ ที่จ่ายที่เราหักไว้จากผู้รับเงิน — เงินที่จ่ายจริง = netAmount - whtAmount
+  whtAmount             Decimal                @default(0) @db.Decimal(10, 2)
   expenseDate           DateTime               @db.Timestamptz(3)
   note                  String?
   createdAt             DateTime               @default(now()) @db.Timestamptz(3)
@@ -1928,13 +1942,17 @@ model Expense {
   channel               SaleChannel?
   deliveryCommissionRun DeliveryCommissionRun?
   cashBankAccount       CashBankAccount?       @relation(fields: [cashBankAccountId], references: [id])
+  supplier              Supplier?              @relation(fields: [supplierId], references: [id])
   shopeeEscrowOrder     ShopeeOrderImport?     @relation("ShopeeEscrowExpense")
   marketplaceSettlement MarketplaceSettlement?
   user                  User                   @relation(fields: [userId], references: [id])
   items                 ExpenseItem[]
   attachments           ExpenseAttachment[]
+  whtCertificates       WhtCertificate[]       @relation("WhtCertificateExpense")
+  whtCertificateActive  WhtCertificate?        @relation("WhtCertificateActiveExpense")
 
   @@index([cashBankAccountId])
+  @@index([supplierId, expenseDate(sort: Desc)])
   @@index([expenseDate(sort: Desc), status])
   @@index([cashBankAccountId, expenseDate(sort: Desc), status])
   @@index([channel, expenseDate(sort: Desc), status])
@@ -2252,6 +2270,7 @@ model Receipt {
   userId             String
   totalAmount        Decimal          @db.Decimal(10, 2)
   paymentMethod      PaymentMethod
+  whtAmount          Decimal          @default(0) @db.Decimal(10, 2)
   note               String?
   createdAt          DateTime         @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
@@ -2266,6 +2285,7 @@ model Receipt {
   customer           Customer?        @relation(fields: [customerId], references: [id])
   user               User             @relation(fields: [userId], references: [id])
   items              ReceiptItem[]
+  whtReceived        WhtReceived?
 
   @@index([cashBankAccountId])
   @@index([receiptDate(sort: Desc), status])
@@ -2649,24 +2669,28 @@ model SupplierAdvanceRefund {
 }
 
 model SupplierPayment {
-  id                String                @id @default(cuid())
-  paymentNo         String                @unique
-  paymentDate       DateTime              @default(now()) @db.Timestamptz(3)
-  supplierId        String
-  userId            String
-  totalAmount       Decimal               @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod         @default(CREDIT)
-  note              String?
-  createdAt         DateTime              @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime              @updatedAt @db.Timestamptz(3)
-  cancelNote        String?
-  cancelledAt       DateTime?             @db.Timestamptz(3)
-  status            DocStatus             @default(ACTIVE)
-  cashBankAccountId String?
-  cashBankAccount   CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
-  supplier          Supplier              @relation(fields: [supplierId], references: [id])
-  user              User                  @relation(fields: [userId], references: [id])
-  items             SupplierPaymentItem[]
+  id                   String                @id @default(cuid())
+  paymentNo            String                @unique
+  paymentDate          DateTime              @default(now()) @db.Timestamptz(3)
+  supplierId           String
+  userId               String
+  totalAmount          Decimal               @db.Decimal(10, 2)
+  /// ภาษีหัก ณ ที่จ่ายที่เราหักไว้ — เงินที่จ่ายจริง = totalAmount - whtAmount
+  whtAmount            Decimal               @default(0) @db.Decimal(10, 2)
+  paymentMethod        PaymentMethod         @default(CREDIT)
+  note                 String?
+  createdAt            DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime              @updatedAt @db.Timestamptz(3)
+  cancelNote           String?
+  cancelledAt          DateTime?             @db.Timestamptz(3)
+  status               DocStatus             @default(ACTIVE)
+  cashBankAccountId    String?
+  cashBankAccount      CashBankAccount?      @relation(fields: [cashBankAccountId], references: [id])
+  supplier             Supplier              @relation(fields: [supplierId], references: [id])
+  user                 User                  @relation(fields: [userId], references: [id])
+  items                SupplierPaymentItem[]
+  whtCertificates      WhtCertificate[]      @relation("WhtCertificateSupplierPayment")
+  whtCertificateActive WhtCertificate?       @relation("WhtCertificateActiveSupplierPayment")
 
   @@index([paymentDate])
   @@index([paymentDate(sort: Desc), status])
@@ -3691,4 +3715,276 @@ enum ProductStorefrontSyncStatus {
   RETRYING
   VERIFIED
   FAILED
+}
+
+// ─────────────────────────────────────────────────────────────
+// ภาษีเงินได้หัก ณ ที่จ่าย (Withholding Tax)
+// ฝั่งรับ = เราถูกลูกค้าหัก (เครดิตใน ภ.ง.ด.94/90)
+// ฝั่งจ่าย = เราหักคนอื่นแล้วออกหนังสือรับรอง 50 ทวิ + ยื่น ภ.ง.ด.3/53
+// ─────────────────────────────────────────────────────────────
+
+enum WhtFormType {
+  PND1
+  PND1A
+  PND2
+  PND3
+  PND3A
+  PND53
+  PND54
+}
+
+enum WhtPayeeType {
+  INDIVIDUAL
+  JURISTIC
+}
+
+/// เงื่อนไขการหักภาษีตามแบบ (1=หัก ณ ที่จ่าย, 2=ออกให้ตลอดไป, 3=ออกให้ครั้งเดียว)
+enum WhtPayCondition {
+  WITHHELD
+  PAID_ALWAYS
+  PAID_ONCE
+}
+
+enum WhtFilingSubmissionType {
+  NORMAL
+  ADDITIONAL
+}
+
+enum WhtFilingStatus {
+  DRAFT
+  FILED
+  CANCELLED
+}
+
+enum WhtFilingChannel {
+  PAPER
+  RD_PREP
+  SWC
+  EFILING
+}
+
+/// แบบที่นำภาษีถูกหักไปใช้เครดิต — บุคคลธรรมดาใช้ ภ.ง.ด.94 (ครึ่งปี) และ ภ.ง.ด.90 (ทั้งปี)
+enum WhtCreditForm {
+  PND94
+  PND90
+}
+
+/// ประเภทเงินได้ (master) — label คือข้อความที่พิมพ์ลงแบบและไฟล์นำส่ง
+/// จำกัด 100 ตัวอักษรตามรูปแบบข้อมูล Format กลาง 2.0 ของกรมสรรพากร
+model WhtIncomeType {
+  id                String               @id @default(cuid())
+  code              String               @unique
+  label             String
+  formTypes         WhtFormType[]
+  defaultRate       Decimal              @default(0) @db.Decimal(5, 2)
+  legalRef          String?
+  usableForReceived Boolean              @default(false)
+  usableForIssued   Boolean              @default(false)
+  sortOrder         Int                  @default(0)
+  isActive          Boolean              @default(true)
+  createdAt         DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @db.Timestamptz(3)
+  whtReceived       WhtReceived[]
+  certificateLines  WhtCertificateLine[]
+
+  @@index([isActive, sortOrder])
+}
+
+/// ภาษีที่ "เราถูกหัก" ตอนรับเงิน — 1 ใบเสร็จ / 1 ใบขายสด ต่อ 1 รายการ
+model WhtReceived {
+  id                    String                  @id @default(cuid())
+  receiptId             String?                 @unique
+  saleId                String?                 @unique
+  customerId            String?
+  customerNameSnapshot  String
+  customerTaxIdSnapshot String?
+  incomeTypeId          String
+  incomeLabelSnapshot   String
+  baseAmount            Decimal                 @db.Decimal(10, 2)
+  rate                  Decimal                 @db.Decimal(5, 2)
+  taxAmount             Decimal                 @db.Decimal(10, 2)
+  payDate               DateTime                @db.Timestamptz(3)
+  /// ปีภาษี พ.ศ. 4 หลัก ตามที่ใช้ยื่นแบบ
+  taxYear               Int
+  /// ครึ่งปีภาษี 1 = ม.ค.-มิ.ย. (ใช้กับ ภ.ง.ด.94), 2 = ก.ค.-ธ.ค.
+  taxHalf               Int
+  certNo                String?
+  certDate              DateTime?               @db.Timestamptz(3)
+  /// null = ยังไม่ได้รับหนังสือรับรอง 50 ทวิ จากลูกค้า
+  certReceivedAt        DateTime?               @db.Timestamptz(3)
+  creditedFormType      WhtCreditForm?
+  creditedAt            DateTime?               @db.Timestamptz(3)
+  status                DocStatus               @default(ACTIVE)
+  note                  String?
+  userId                String
+  createdAt             DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                @updatedAt @db.Timestamptz(3)
+  receipt               Receipt?                @relation(fields: [receiptId], references: [id])
+  sale                  Sale?                   @relation(fields: [saleId], references: [id])
+  customer              Customer?               @relation(fields: [customerId], references: [id])
+  incomeType            WhtIncomeType           @relation(fields: [incomeTypeId], references: [id])
+  user                  User                    @relation(fields: [userId], references: [id])
+  attachments           WhtReceivedAttachment[]
+
+  @@index([taxYear, taxHalf, status])
+  @@index([customerId, taxYear, status])
+  @@index([payDate(sort: Desc), status])
+  @@index([status, certReceivedAt])
+  @@index([incomeTypeId])
+  @@index([userId])
+}
+
+/// ไฟล์แนบหนังสือรับรอง 50 ทวิ ที่ลูกค้าออกให้เรา
+model WhtReceivedAttachment {
+  id            String      @id @default(cuid())
+  whtReceivedId String
+  url           String
+  fileName      String
+  contentType   String
+  fileSize      Int
+  uploadedById  String
+  createdAt     DateTime    @default(now()) @db.Timestamptz(3)
+  whtReceived   WhtReceived @relation(fields: [whtReceivedId], references: [id], onDelete: Cascade)
+  uploadedBy    User        @relation(fields: [uploadedById], references: [id])
+
+  @@index([whtReceivedId, createdAt])
+  @@index([uploadedById])
+}
+
+/// ข้อมูลภาษีของผู้ถูกหักภาษี ผูก 1:1 กับ Supplier โดยไม่แก้ตาราง Supplier เดิม
+/// ชื่อและที่อยู่ต้องแยกช่องเพราะแบบ ภ.ง.ด. และไฟล์นำส่งกรมสรรพากรบังคับรูปแบบนี้
+model WhtPayeeProfile {
+  id              String       @id @default(cuid())
+  supplierId      String       @unique
+  payeeType       WhtPayeeType @default(JURISTIC)
+  taxId13         String
+  taxId10         String?
+  titleName       String?
+  firstName       String
+  lastName        String?
+  branchNo        String       @default("000000")
+  addrNo          String?
+  addrRoad        String?
+  addrSubdistrict String?
+  addrDistrict    String?
+  addrProvince    String?
+  addrPostcode    String?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @db.Timestamptz(3)
+  supplier        Supplier     @relation(fields: [supplierId], references: [id])
+
+  @@index([payeeType, isActive])
+}
+
+/// หนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ที่เราออกให้ผู้รับเงิน
+/// certNo ใช้เลขที่เอกสารต้นทาง (ใบค่าใช้จ่าย / ใบจ่ายชำระหนี้) เมื่อมี
+/// activeExpenseId / activeSupplierPaymentId เป็น guard ระดับ DB กันออกซ้ำจากเอกสารเดียวกัน
+/// (ตั้งเป็น null ตอนยกเลิก เพื่อให้ออกใบใหม่จากเอกสารเดิมได้)
+model WhtCertificate {
+  id                      String               @id @default(cuid())
+  certNo                  String               @unique
+  certDate                DateTime             @db.Timestamptz(3)
+  payDate                 DateTime             @db.Timestamptz(3)
+  formType                WhtFormType
+  supplierId              String
+  payeeType               WhtPayeeType
+  payeeName               String
+  payeeTaxId13            String
+  payeeTaxId10            String?
+  payeeTitleName          String?
+  payeeFirstName          String
+  payeeLastName           String?
+  payeeBranchNo           String               @default("000000")
+  payeeAddrNo             String?
+  payeeAddrRoad           String?
+  payeeAddrSubdistrict    String?
+  payeeAddrDistrict       String?
+  payeeAddrProvince       String?
+  payeeAddrPostcode       String?
+  expenseId               String?
+  activeExpenseId         String?              @unique
+  supplierPaymentId       String?
+  activeSupplierPaymentId String?              @unique
+  totalBaseAmount         Decimal              @db.Decimal(10, 2)
+  totalTaxAmount          Decimal              @db.Decimal(10, 2)
+  taxMonth                Int
+  taxYear                 Int
+  filingId                String?
+  status                  DocStatus            @default(ACTIVE)
+  cancelNote              String?
+  cancelledAt             DateTime?            @db.Timestamptz(3)
+  note                    String?
+  userId                  String
+  createdAt               DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime             @updatedAt @db.Timestamptz(3)
+  supplier                Supplier             @relation(fields: [supplierId], references: [id])
+  expense                 Expense?             @relation("WhtCertificateExpense", fields: [expenseId], references: [id])
+  activeExpense           Expense?             @relation("WhtCertificateActiveExpense", fields: [activeExpenseId], references: [id])
+  supplierPayment         SupplierPayment?     @relation("WhtCertificateSupplierPayment", fields: [supplierPaymentId], references: [id])
+  activeSupplierPayment   SupplierPayment?     @relation("WhtCertificateActiveSupplierPayment", fields: [activeSupplierPaymentId], references: [id])
+  filing                  WhtFiling?           @relation(fields: [filingId], references: [id])
+  user                    User                 @relation(fields: [userId], references: [id])
+  lines                   WhtCertificateLine[]
+
+  @@index([taxYear, taxMonth, formType, status])
+  @@index([supplierId, status])
+  @@index([certDate(sort: Desc), status])
+  @@index([filingId])
+  @@index([expenseId])
+  @@index([supplierPaymentId])
+  @@index([userId])
+}
+
+/// บรรทัดประเภทเงินได้ของหนังสือรับรอง 1 ฉบับ
+/// Format กลาง 2.0 บรรจุได้ 3 รายการต่อ 1 แถว DETAIL — เกินกว่านั้นชั้น export จะแตกแถวให้เอง
+model WhtCertificateLine {
+  id                  String          @id @default(cuid())
+  certificateId       String
+  lineNo              Int
+  incomeTypeId        String
+  incomeLabelSnapshot String
+  payDate             DateTime        @db.Timestamptz(3)
+  baseAmount          Decimal         @db.Decimal(10, 2)
+  rate                Decimal         @db.Decimal(5, 2)
+  taxAmount           Decimal         @db.Decimal(10, 2)
+  payCondition        WhtPayCondition @default(WITHHELD)
+  createdAt           DateTime        @default(now()) @db.Timestamptz(3)
+  certificate         WhtCertificate  @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+  incomeType          WhtIncomeType   @relation(fields: [incomeTypeId], references: [id])
+
+  @@unique([certificateId, lineNo])
+  @@index([incomeTypeId])
+}
+
+/// รอบยื่นแบบ ภ.ง.ด. — 1 รอบ = 1 แบบ ต่อ 1 เดือนภาษี (ยื่นปกติ หรือยื่นเพิ่มเติมครั้งที่ N)
+model WhtFiling {
+  id               String                  @id @default(cuid())
+  filingNo         String                  @unique
+  formType         WhtFormType
+  taxMonth         Int
+  taxYear          Int
+  submissionType   WhtFilingSubmissionType @default(NORMAL)
+  /// 0 = ยื่นปกติ, 1-99 = ยื่นเพิ่มเติมครั้งที่ N ตามสเปคกรมสรรพากร
+  additionalSeq    Int                     @default(0)
+  totalRecords     Int                     @default(0)
+  totalBaseAmount  Decimal                 @default(0) @db.Decimal(10, 2)
+  totalTaxAmount   Decimal                 @default(0) @db.Decimal(10, 2)
+  surchargeAmount  Decimal                 @default(0) @db.Decimal(10, 2)
+  grandTotalAmount Decimal                 @default(0) @db.Decimal(10, 2)
+  filedAt          DateTime?               @db.Timestamptz(3)
+  filedChannel     WhtFilingChannel?
+  rdRefNo          String?
+  status           WhtFilingStatus         @default(DRAFT)
+  note             String?
+  userId           String
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt        DateTime                @updatedAt @db.Timestamptz(3)
+  user             User                    @relation(fields: [userId], references: [id])
+  certificates     WhtCertificate[]
+
+  @@unique([formType, taxYear, taxMonth, submissionType, additionalSeq])
+  @@index([taxYear, taxMonth, formType])
+  @@index([status, filedAt])
+  @@index([userId])
 }

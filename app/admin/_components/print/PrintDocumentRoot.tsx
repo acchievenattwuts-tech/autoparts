@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
-import PrintReadyMarker from "@/components/shared/PrintReadyMarker";
+import PaginatedPrintPages from "@/components/shared/PaginatedPrintPages";
 
 const DEFAULT_ROOT_STYLE: CSSProperties = { maxWidth: "900px" };
 
@@ -15,6 +15,7 @@ const PrintDocumentRoot = ({
   rootStyle?: CSSProperties;
 }) => (
   <div
+    data-print-paginated="true"
     id={rootId}
     className={
       rootClassName
@@ -23,8 +24,9 @@ const PrintDocumentRoot = ({
     }
     style={rootStyle ?? DEFAULT_ROOT_STYLE}
   >
-    {children}
-    <PrintReadyMarker />
+    <style>{`@page { size: A4; margin: 0; }`}</style>
+    <div className="print-pagination-source">{children}</div>
+    <PaginatedPrintPages />
   </div>
 );
 

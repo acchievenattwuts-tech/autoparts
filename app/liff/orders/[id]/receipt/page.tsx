@@ -365,10 +365,10 @@ function LiffPrintShell({
             left: 0;
             top: 0;
             width: 210mm !important;
-            height: 297mm !important;
-            min-height: 297mm !important;
-            max-height: 297mm !important;
-            overflow: hidden !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
             display: flex;
             flex-direction: column;
             background: #ffffff !important;

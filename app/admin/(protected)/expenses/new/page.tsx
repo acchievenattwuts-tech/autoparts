@@ -7,14 +7,18 @@ import NewExpenseForm from "./NewExpenseForm";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getActiveExpenseCodeOptions } from "@/lib/admin-master-options";
+import { getWhtIssuedIncomeTypeOptions } from "@/lib/wht-income-types";
+import { getExpensePayeeOptions } from "@/lib/wht-payees";
 
 const NewExpensePage = async () => {
   await requirePermission("expenses.create");
 
-  const [expenseCodes, config, cashBankAccounts] = await Promise.all([
+  const [expenseCodes, config, cashBankAccounts, suppliers, whtIncomeTypes] = await Promise.all([
     getActiveExpenseCodeOptions(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
+    getExpensePayeeOptions(),
+    getWhtIssuedIncomeTypeOptions(),
   ]);
 
   return (
@@ -34,6 +38,8 @@ const NewExpensePage = async () => {
         <NewExpenseForm
           expenseCodes={expenseCodes}
           cashBankAccounts={cashBankAccounts}
+          suppliers={suppliers}
+          whtIncomeTypes={whtIncomeTypes}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
         />
