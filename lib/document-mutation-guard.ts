@@ -1,4 +1,5 @@
 export type MutableDocumentEntityType =
+  | "SalesQuotation"
   | "Sale"
   | "Purchase"
   | "Receipt"
@@ -32,7 +33,8 @@ export type MutationBlockResult = {
 type FindManyArgs = Record<string, unknown>;
 type FindManyResult = Promise<Array<Record<string, unknown>>>;
 
-type GuardDb = {
+export type GuardDb = {
+  sale?: { findMany(args: FindManyArgs): FindManyResult };
   creditNote?: { findMany(args: FindManyArgs): FindManyResult };
   receiptItem?: { findMany(args: FindManyArgs): FindManyResult };
   warrantyClaim?: { findMany(args: FindManyArgs): FindManyResult };
@@ -116,6 +118,7 @@ export function buildMutationBlockMessage(result: MutationBlockResult,
 }
 
 const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
+  SalesQuotation: "/admin/sales-quotations",
   Sale: "/admin/sales",
   Purchase: "/admin/purchases",
   Receipt: "/admin/receipts",
@@ -156,6 +159,10 @@ export function createDocumentMutationGuard(database: GuardDb) {
     ): Promise<MutationBlockResult> {
       if (!entityId) return allow();
 
+      if (entityType === "SalesQuotation") {
+        const sales = await database.sale?.findMany({ where: { activeQuotationId: entityId, status: "ACTIVE" }, select: { id: true, saleNo: true } }) ?? [];
+        return block("ถูกนำไปใช้ที่ใบขาย", mapDirectRefs(sales, "Sale", "saleNo"));
+      }
       if (entityType === "Sale") {
         const [creditNotes, receiptItems, claims, settlements] = await Promise.all([
           database.creditNote?.findMany({

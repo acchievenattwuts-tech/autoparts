@@ -1,3 +1,4 @@
+import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocumentCopyWatermark";
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
@@ -29,6 +30,7 @@ type SalePrintCustomer = {
   name?: string | null;
   phone?: string | null;
   address?: string | null;
+  taxId?: string | null;
 };
 
 type SalePrintProduct = {
@@ -61,6 +63,8 @@ type SalePrintItem = {
 
 type SalePrintSale = {
   saleNo: string;
+  quotation?: { quotationNo: string; revision?: number } | null;
+  quotationRevision?: number | null;
   saleDate: Date | string;
   /** ช่องทางขาย — ใบขาย marketplace ซ่อนข้อมูลการชำระเงินของร้าน */
   channel?: string | null;
@@ -69,6 +73,7 @@ type SalePrintSale = {
   customerName?: string | null;
   customerPhone?: string | null;
   shippingAddress?: string | null;
+  fulfillmentType?: string | null;
   totalAmount: NumericLike;
   discount: NumericLike;
   netAmount: NumericLike;
@@ -174,10 +179,10 @@ const SharedSalesDeliveryPrintDocument = ({
   // แนบไปในกล่องต้องเป็นชื่อผู้ซื้อจริงที่แอดมินคีย์ไว้ ไม่ใช่ชื่อลูกค้ากลาง
   const customerName = isMarketplaceSale
     ? sale.customerName?.trim() || sale.customer?.name || "-"
-    : sale.customer?.name ?? sale.customerName ?? "-";
+    : sale.customerName ?? "-";
   const customerPhone = isMarketplaceSale
     ? sale.customerPhone?.trim() || null
-    : sale.customer?.phone ?? sale.customerPhone ?? null;
+    : sale.customerPhone ?? null;
   // ที่อยู่ของลูกค้ากลางไม่ใช่ที่อยู่ผู้ซื้อ ใบ marketplace จึงใช้ที่อยู่ที่คีย์ไว้กับใบขายแทน
   // และถ้ายังเป็นข้อความตั้งต้นของช่องทาง แปลว่าไม่ได้คีย์ที่อยู่จริง — ซ่อนแถวไปเลย
   const marketplaceAddress = isMarketplaceSale ? sale.shippingAddress?.trim() || null : null;
@@ -187,7 +192,7 @@ const SharedSalesDeliveryPrintDocument = ({
         getDefaultMarketplaceShippingAddress(sale.channel as ManualMarketplaceChannel)
       ? marketplaceAddress
       : null
-    : sale.customer?.address ?? null;
+    : sale.fulfillmentType === "DELIVERY" ? sale.shippingAddress : sale.customer?.address ?? null;
   const printNoticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const documentDateText = formatPrintDate(sale.saleDate);
   const netAmountInWords = formatThaiBahtText(Number(sale.netAmount));
@@ -244,12 +249,9 @@ const SharedSalesDeliveryPrintDocument = ({
               {customerPhone}
             </p>
           ) : null}
-          {sale.paymentType === "CREDIT_SALE" && sale.shippingAddress ? (
-            <p>
-              <span className="text-gray-700">ที่อยู่จัดส่ง: </span>
-              {sale.shippingAddress}
-            </p>
-          ) : null}
+          {sale.customer?.taxId?.trim() && (
+            <p><span className="text-gray-700">เลขผู้เสียภาษี: </span>{sale.customer.taxId}</p>
+          )}
         </div>
 
         <div className={`rounded ${PRINT_SECTION_BORDER_CLASS} p-2`}>
@@ -260,6 +262,10 @@ const SharedSalesDeliveryPrintDocument = ({
                 <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เลขที่เอกสาร</td>
                 <td className="font-mono font-semibold">{sale.saleNo}</td>
               </tr>
+              {sale.quotation && <tr>
+                <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">อ้างอิงใบเสนอราคา</td>
+                <td className="font-mono">{formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision)}</td>
+              </tr>}
               {isMarketplaceSale ? (
                 <tr>
                   <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">
@@ -272,7 +278,7 @@ const SharedSalesDeliveryPrintDocument = ({
                 <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">วันที่เอกสาร</td>
                 <td>{formatPrintDate(sale.saleDate)}</td>
               </tr>
-              {isMarketplaceSale ? null : (
+              {isMarketplaceSale || sale.paymentType === "CASH_SALE" ? null : (
                 <>
                   <tr>
                     <td className="whitespace-nowrap py-0.5 pr-2 text-gray-700">เงื่อนไขชำระ</td>

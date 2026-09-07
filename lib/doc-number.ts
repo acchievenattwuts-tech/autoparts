@@ -1,3 +1,4 @@
+import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { getThailandDateKey } from "@/lib/th-date";
 
@@ -385,3 +386,14 @@ export async function generateProfitDistributionNo(date?: Date,
  * WC   — ใบเคลมสินค้า (Warranty Claim)
  * PD   — แบ่งกำไรผู้ร่วมทุน (Profit Distribution)
  */
+
+export async function generateSalesQuotationNo(tx: Prisma.TransactionClient, date: Date) {
+  const [year, month] = getThailandDateKey(date).split("-");
+  const prefix = `SQ${year.slice(-2)}${month}`;
+  // Serialize the monthly sequence even when the month has no documents yet.
+  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${prefix}))`);
+  const rows = await tx.$queryRaw<{ lastNo: number }[]>(Prisma.sql`SELECT COALESCE(MAX(CAST(SUBSTRING("quotationNo" FROM ${prefix.length + 1}) AS INTEGER)), 0) AS "lastNo" FROM "SalesQuotation" WHERE "quotationNo" LIKE ${`${prefix}%`}`);
+  const next = Number(rows[0]?.lastNo ?? 0) + 1;
+  return `${prefix}${String(next).padStart(4, "0")}`;
+}
+

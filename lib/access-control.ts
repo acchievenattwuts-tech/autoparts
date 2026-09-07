@@ -69,6 +69,10 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "purchase_returns.update", group: "ระบบงาน", label: "แก้ไข CN ซื้อ" },
   { key: "purchase_returns.cancel", group: "ระบบงาน", label: "ยกเลิก CN ซื้อ" },
 
+  { key: "sales_quotations.view", group: "ระบบงาน", label: "ดูใบเสนอราคา" },
+  { key: "sales_quotations.create", group: "ระบบงาน", label: "เพิ่มใบเสนอราคา" },
+  { key: "sales_quotations.update", group: "ระบบงาน", label: "แก้ไขใบเสนอราคา" },
+  { key: "sales_quotations.cancel", group: "ระบบงาน", label: "ยกเลิกใบเสนอราคา" },
   { key: "sales.view", group: "ระบบงาน", label: "ดูบันทึกการขาย" },
   { key: "sales.create", group: "ระบบงาน", label: "เพิ่มบันทึกการขาย" },
   { key: "sales.update", group: "ระบบงาน", label: "แก้ไขบันทึกการขาย" },
@@ -372,6 +376,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/line-payment-slips", permission: "line_payment_slips.view" },
   { prefix: "/admin/line-conversations", permission: "line_conversations.view" },
   { prefix: "/admin/messenger-conversations", permission: "messenger_conversations.view" },
+  { prefix: "/admin/sales-quotations", permission: "sales_quotations.view" },
   { prefix: "/admin/sales", permission: "sales.view" },
   { prefix: "/admin/credit-notes", permission: "credit_notes.view" },
   { prefix: "/admin/receipts", permission: "receipts.view" },
@@ -552,6 +557,8 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (/^\/admin\/purchases\/[^/]+\/edit$/.test(pathname)) return "purchases.update";
   if (pathname === "/admin/purchase-returns/new") return "purchase_returns.create";
   if (/^\/admin\/purchase-returns\/[^/]+\/edit$/.test(pathname)) return "purchase_returns.update";
+  if (pathname === "/admin/sales-quotations/new") return "sales_quotations.create";
+  if (/^\/admin\/sales-quotations\/[^/]+\/edit$/.test(pathname)) return "sales_quotations.update";
   if (pathname === "/admin/sales/new") return "sales.create";
   if (/^\/admin\/sales\/[^/]+\/edit$/.test(pathname)) return "sales.update";
   if (pathname === "/admin/credit-notes/new") return "credit_notes.create";

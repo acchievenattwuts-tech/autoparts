@@ -1047,6 +1047,7 @@ model PartsBrand {
 }
 
 model Product {
+  quotationItems      SalesQuotationItem[]
   id                  String                              @id @default(cuid())
   code                String                              @unique
   name                String
@@ -1424,6 +1425,7 @@ model PurchaseItem {
 }
 
 model Customer {
+  quotations             SalesQuotation[]
   id                     String                      @id @default(cuid())
   code                   String?                     @unique
   name                   String
@@ -1558,7 +1560,72 @@ model PricePromotionItem {
   @@index([productId, promotionId])
 }
 
+model SalesQuotation {
+  revision        Int                  @default(0)
+  id              String               @id @default(cuid())
+  quotationNo     String               @unique
+  quotationDate   DateTime             @db.Timestamptz(3)
+  customerId      String
+  customerName    String
+  customerPhone   String?
+  customerAddress String?
+  creditTerm      Int                  @default(0)
+  saleType        SaleType             @default(RETAIL)
+  discount        Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount     Decimal              @db.Decimal(10, 2)
+  subtotalAmount  Decimal              @db.Decimal(10, 2)
+  vatAmount       Decimal              @db.Decimal(10, 2)
+  netAmount       Decimal              @db.Decimal(10, 2)
+  vatType         VatType              @default(NO_VAT)
+  vatRate         Decimal              @db.Decimal(5, 2)
+  note            String?
+  status          DocStatus            @default(ACTIVE)
+  cancelNote      String?
+  cancelledAt     DateTime?            @db.Timestamptz(3)
+  createdById     String
+  updatedById     String
+  updatedByName   String
+  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
+  customer        Customer             @relation(fields: [customerId], references: [id])
+  items           SalesQuotationItem[]
+  sales           Sale[]               @relation("SaleQuotation")
+  activeSale      Sale?                @relation("ActiveSaleQuotation")
+
+  @@index([customerId, status, quotationDate])
+  @@index([quotationDate, status])
+}
+
+model SalesQuotationItem {
+  id               String           @id @default(cuid())
+  quotationId      String
+  lineNo           Int
+  productId        String
+  quantity         Decimal          @db.Decimal(12, 4)
+  showQty          Decimal          @db.Decimal(12, 4)
+  showUnitName     String
+  unitScale        Decimal          @db.Decimal(12, 4)
+  salePrice        Decimal          @db.Decimal(10, 2)
+  unitListPrice    Decimal          @db.Decimal(10, 2)
+  lineDiscount     Decimal          @db.Decimal(10, 2)
+  totalAmount      Decimal          @db.Decimal(10, 2)
+  moreDetail       String?
+  priceListId      String?
+  pricePromotionId String?
+  priceSource      SalePriceSource?
+  quotation        SalesQuotation   @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product          Product          @relation(fields: [productId], references: [id])
+
+  @@index([quotationId, lineNo])
+  @@index([productId])
+}
+
 model Sale {
+  quotationRevision          Int?
+  quotationId                String?
+  activeQuotationId          String?                     @unique
+  quotation                  SalesQuotation?             @relation("SaleQuotation", fields: [quotationId], references: [id])
+  activeQuotation            SalesQuotation?             @relation("ActiveSaleQuotation", fields: [activeQuotationId], references: [id])
   id                         String                      @id @default(cuid())
   saleNo                     String                      @unique
   customerName               String?
@@ -1618,6 +1685,7 @@ model Sale {
   marketplaceSettlementLines MarketplaceSettlementLine[]
 
   @@unique([channel, channelRefNo])
+  @@index([quotationId])
   @@index([cashBankAccountId])
   @@index([trackingToken])
   @@index([trackingExpiry])

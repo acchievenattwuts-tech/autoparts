@@ -72,11 +72,14 @@ export default async function LiffOrderReceiptPage({
     select: {
       id: true,
       saleNo: true,
+      quotation: { select: { quotationNo: true, revision: true } },
+      quotationRevision: true,
       saleDate: true,
       status: true,
       customerName: true,
       customerPhone: true,
       shippingAddress: true,
+      fulfillmentType: true,
       totalAmount: true,
       discount: true,
       netAmount: true,
@@ -90,7 +93,7 @@ export default async function LiffOrderReceiptPage({
       signerSignatureUrl: true,
       cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       user: { select: { name: true, signatureUrl: true } },
-      customer: { select: { name: true, phone: true, address: true } },
+      customer: { select: { name: true, phone: true, address: true, taxId: true } },
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
@@ -298,7 +301,7 @@ export default async function LiffOrderReceiptPage({
       <SharedReceiptSettlementPrintDocument
         receipt={{
           ...receipt,
-          customerName: receipt.customer?.name ?? receipt.customerName,
+          customerName: receipt.customerName ?? receipt.customer?.name,
           signerSignatureUrl: receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null,
         }}
         shopConfig={{

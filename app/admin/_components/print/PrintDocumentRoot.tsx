@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import PrintReadyMarker from "@/components/shared/PrintReadyMarker";
 
 const DEFAULT_ROOT_STYLE: CSSProperties = { maxWidth: "900px" };
 
@@ -23,6 +24,7 @@ const PrintDocumentRoot = ({
     style={rootStyle ?? DEFAULT_ROOT_STYLE}
   >
     {children}
+    <PrintReadyMarker />
   </div>
 );
 

@@ -21,6 +21,8 @@ export type SaleDraftContext =
   | { mode: "edit"; saleId: string };
 
 export interface SaleDraftPayload {
+  quotationId?: string;
+  quotationNo?: string;
   version: 1;
   mode: SaleDraftContext["mode"];
   saleId: string | null;

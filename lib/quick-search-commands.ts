@@ -26,6 +26,7 @@ export const COMMAND_GROUP_LABEL: Record<CommandGroupKey, string> = {
 
 export const QUICK_COMMANDS: readonly QuickCommand[] = [
   // Create
+  { id: "create-sales-quotation", label: "สร้างใบเสนอราคาใหม่", href: "/admin/sales-quotations/new", permission: "sales_quotations.create", group: "create", keywords: "SQ quotation ใบเสนอราคา" },
   { id: "create-sale", label: "สร้างใบขายใหม่", href: "/admin/sales/new", permission: "sales.create", group: "create", keywords: "sale ขาย invoice",
   },
   { id: "create-shopee-sale", label: "บันทึกขาย Shopee", href: "/admin/sales/shopee/new", permission: "marketplace.manage", group: "create", keywords: "shopee marketplace ออเดอร์ พร้อมจัดส่ง" },

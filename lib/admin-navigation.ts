@@ -77,6 +77,9 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
         keywords: "customer advance refund cn deposit คืนเงินมัดจำ ลูกค้า cnsd",
       },
       {
+        label: "ใบเสนอราคา", href: "/admin/sales-quotations", icon: FileCheck, permission: "sales_quotations.view", keywords: "SQ quotation ใบเสนอราคา ฝ่ายขาย",
+      },
+      {
         label: "บันทึกการขาย", href: "/admin/sales", icon: TrendingUp, permission: "sales.view", keywords: "sales ขาย invoice",
       },
       { label: "คิวจัดส่ง", href: "/admin/delivery", icon: MapPin, permission: "delivery.view", keywords: "delivery dispatch shipping",

@@ -23,6 +23,7 @@ export type DocumentActivityEvent = {
 };
 
 export type DocumentActivityEntityType =
+  | "SalesQuotation"
   | "Sale"
   | "Purchase"
   | "Receipt"
@@ -93,6 +94,13 @@ export function buildAuditActivityEvent(row: AuditActivityInput,
     };
   }
 
+  if (row.action === AuditAction.UPDATE && row.entityType === "SalesQuotation" && row.meta && typeof row.meta === "object" && !Array.isArray(row.meta) && typeof row.meta.summary === "string" && typeof row.meta.saleId === "string") {
+    return { id: `audit-${row.id}`, kind: "SYSTEM", occurredAt: row.createdAt, title: row.meta.summary, actorName: row.userName, tone: "system",
+      ...(typeof row.meta.saleId === "string" ? { href: `/admin/sales/${row.meta.saleId}`, hrefLabel: typeof row.meta.saleNo === "string" ? row.meta.saleNo : "ใบขาย" } : {}) };
+  }
+  if (row.action === AuditAction.UPDATE && row.entityType === "SalesQuotation" && row.meta && typeof row.meta === "object" && !Array.isArray(row.meta) && typeof row.meta.revision === "number") {
+    return { id: `audit-${row.id}`, kind: "UPDATE", occurredAt: row.createdAt, title: `แก้ไขใบเสนอราคา Rev.${String(row.meta.revision).padStart(2, "0")}`, actorName: row.userName, tone: "update" };
+  }
   if (row.action === AuditAction.UPDATE) {
     return {
       id: `audit-${row.id}`,
@@ -745,7 +753,18 @@ async function getRelationEvents(
   entityType: DocumentActivityEntityType,
   id: string,
 ): Promise<DocumentActivityEvent[]> {
-  if (entityType === "Sale") return getSaleRelationEvents(id);
+  if (entityType === "SalesQuotation") {
+    const db = await getDb();
+    const sales = await db.sale.findMany({ where: { quotationId: id }, select: { id: true, saleNo: true, createdAt: true, status: true }, take: 100 });
+    return sales.map((sale) => buildRelationActivityEvent({ id: `quotation-${id}-sale-${sale.id}`, kind: "USED_BY", occurredAt: sale.createdAt, title: sale.status === "CANCELLED" ? "เคยอ้างอิงโดยใบขาย (ยกเลิกแล้ว)" : "อ้างอิงโดยใบขาย", href: `/admin/sales/${sale.id}`, hrefLabel: sale.saleNo, tone: "used" }));
+  }
+  if (entityType === "Sale") {
+    const events = await getSaleRelationEvents(id);
+    const db = await getDb();
+    const sale = await db.sale.findUnique({ where: { id }, select: { createdAt: true, quotation: { select: { id: true, quotationNo: true } } } });
+    if (sale?.quotation) events.push(buildRelationActivityEvent({ id: `sale-${id}-quotation`, kind: "USES_SOURCE", occurredAt: sale.createdAt, title: "อ้างอิงใบเสนอราคา", href: `/admin/sales-quotations/${sale.quotation.id}`, hrefLabel: sale.quotation.quotationNo, tone: "used" }));
+    return events;
+  }
   if (entityType === "Purchase") return getPurchaseRelationEvents(id);
   if (entityType === "Receipt") return getReceiptRelationEvents(id);
   if (entityType === "CreditNote") return getCreditNoteRelationEvents(id);

@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 
+import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import { db } from "@/lib/db";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -30,6 +31,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     db.sale.findUnique({
       where: { id },
       include: {
+        quotation: { select: { quotationNo: true, revision: true } },
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
@@ -170,6 +172,8 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const initialData = {
     id,
+    quotationId: sale.quotationId,
+    quotationNo: sale.quotation ? formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision) : null,
       saleDate:        formatDateOnlyForInput(sale.saleDate),
     customerId:      sale.customerId ?? "",
     customerName:    sale.customerName ?? "",
@@ -216,6 +220,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         </div>
       )}
       <SaleForm
+        canReferenceQuotation={hasPermissionAccess(role, permissions, "sales_quotations.view")}
         products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}

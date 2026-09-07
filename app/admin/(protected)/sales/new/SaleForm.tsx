@@ -1,5 +1,6 @@
 "use client";
 
+import SaleQuotationPicker from "./SaleQuotationPicker";
 import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSale, loadSaleProductsByIds, searchSaleProducts, updateSale } from "../actions";
@@ -163,6 +164,8 @@ const normalizeDraftItem = (item: LineItem): LineItem => {
 };
 
 interface InitialData {
+  quotationId?: string | null;
+  quotationNo?: string | null;
   id:              string;
   saleDate:        string;
   customerId:      string;
@@ -188,6 +191,8 @@ interface InitialData {
 }
 
 const SaleForm = ({
+  initialQuotationId,
+  canReferenceQuotation = false,
   products,
   suppliers,
   cashBankAccounts,
@@ -205,6 +210,8 @@ const SaleForm = ({
   defaultCustomerId = "",
   defaultCashBankAccountId = "",
 }: {
+  initialQuotationId?: string;
+  canReferenceQuotation?: boolean;
   products:       ProductOption[];
   suppliers:      SupplierOption[];
   cashBankAccounts: CashBankAccountOption[];
@@ -237,6 +244,8 @@ const SaleForm = ({
   const [availableDraft, setAvailableDraft] = useState<SaleDraftPayload | null>(null);
   const [persistedSaleId, setPersistedSaleId] = useState(initialData?.id ?? "");
   const [saleDate, setSaleDate] = useState(initialData?.saleDate ?? getThailandDateKey());
+  const [quotationId, setQuotationId] = useState(initialData?.quotationId ?? "");
+  const [quotationNo, setQuotationNo] = useState(initialData?.quotationNo ?? "");
   const [saleType, setSaleType] = useState(initialData?.saleType ?? "RETAIL");
   const [note, setNote] = useState(initialData?.note ?? "");
   const [items, setItems]         = useState<LineItem[]>(initialData?.items.map(normalizeDraftItem) ?? [emptyItem()]);
@@ -303,6 +312,7 @@ const SaleForm = ({
 
   const getDraftSnapshot = useCallback(() =>
     JSON.stringify({
+      quotationId, quotationNo,
       saleDate,
       customerId: selectedCustomerId,
       customerName: customerNameOverride,
@@ -322,7 +332,7 @@ const SaleForm = ({
       vatRate,
       creditTerm,
       items,
-    }), [payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
+    }), [quotationId, quotationNo, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const applyDraft = async (draft: SaleDraftPayload) => {
     const missingProductIds = [...new Set(draft.items.map((item) => item.productId).filter(Boolean))]
@@ -341,6 +351,8 @@ const SaleForm = ({
     }
     setSaleDate(draft.saleDate);
     setSelectedCustomerId(draft.customerId);
+    setQuotationId(draft.quotationId ?? initialData?.quotationId ?? "");
+    setQuotationNo(draft.quotationNo ?? initialData?.quotationNo ?? "");
     setCustomerNameOverride(draft.customerName);
     setCustomerPhoneOverride(draft.customerPhone);
     setSaleType(draft.saleType);
@@ -394,6 +406,7 @@ const SaleForm = ({
           saleId: persistedSaleId || null,
           saleDate,
           customerId: selectedCustomerId,
+          quotationId, quotationNo,
           customerName: customerNameOverride,
           customerPhone: customerPhoneOverride,
           saleType,
@@ -422,7 +435,7 @@ const SaleForm = ({
     }, 2000);
 
     return () => window.clearTimeout(timeout);
-  }, [primaryAccountId, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
+  }, [quotationId, quotationNo, primaryAccountId, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
@@ -798,6 +811,7 @@ const SaleForm = ({
     if (isMarketplace) formData.set("channelRefNo", channelRefNo.trim());
     formData.set("saleType", saleType);
     formData.set("customerId", selectedCustomerId);
+    formData.set("quotationId", quotationId);
     formData.set("customerName", customerNameOverride);
     formData.set("customerPhone", customerPhoneOverride);
     formData.set("items", JSON.stringify(items));
@@ -891,6 +905,26 @@ const SaleForm = ({
         </div>
       )}
 
+      {!isMarketplace && canReferenceQuotation && <SaleQuotationPicker value={quotationId} label={quotationNo} saleId={persistedSaleId || undefined} initialLoadId={initialQuotationId}
+        onDetach={() => { setQuotationId(""); setQuotationNo(""); }}
+        onLoad={(id, quote) => {
+          quote.products.forEach(rememberProduct);
+          setQuotationId(id); setQuotationNo(quote.quotationNo);
+          setSelectedCustomerId(quote.data.customerId);
+          setCustomerNameOverride(quote.data.customerName); setCustomerPhoneOverride(quote.data.customerPhone);
+          setShippingAddress(quote.data.shippingAddress); setCreditTerm(quote.data.creditTerm);
+          setDiscount(quote.data.discount); setVatType(quote.data.vatType); setVatRate(quote.data.vatRate);
+          setNote(quote.data.note); setSaleType(quote.data.saleType);
+          setAvailableLots({});
+          setItems(quote.data.items.map((item) => {
+            const product = quote.products.find((p) => p.id === item.productId);
+            return { ...item, lotItems: product?.isLotControl ? [{ lotNo: "", qty: item.qty, unitCost: 0, mfgDate: "", expDate: "" }] : [] };
+          }));
+          quote.data.items.forEach((item, index) => {
+            const product = quote.products.find((p) => p.id === item.productId);
+            if (product?.isLotControl) void loadLots(index, product.id, product.lotIssueMethod);
+          });
+        }} />}
       {/* Header card */}
       {isMarketplace && (
         <div className="rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-400/30 dark:bg-orange-500/10">

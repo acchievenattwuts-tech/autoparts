@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200; // Vercel Pro: heavy transaction (StockCard + MAVG recalc) can reach 180s
 
 import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimeline";
+import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import { db } from "@/lib/db";
 import { defaultSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
@@ -137,6 +138,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     db.sale.findUnique({
       where: { id },
       include: {
+        quotation: { select: { id: true, quotationNo: true, revision: true } },
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
@@ -146,7 +148,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         },
         user: { select: { name: true, signatureUrl: true } },
         deliveryStaff: { select: { name: true, phone: true } },
-        customer: { select: { id: true, name: true, phone: true, address: true } },
+        customer: { select: { id: true, name: true, phone: true, address: true, taxId: true } },
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
         deliveryProofs: {
           orderBy: { capturedAt: "desc" },
@@ -215,7 +217,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     docNo: sale.saleNo,
   });
   const salePrintDocumentProps = {
-    sale: { ...sale, signerSignatureUrl },
+    sale: { ...sale, fulfillmentType: sale.fulfillmentType, signerSignatureUrl },
     shopConfig: cfg,
     dueDate,
     signerDisplayName,
@@ -280,6 +282,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
           <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
             <div className="flex items-center gap-3">
               <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">สรุปข้อมูลใบขาย</h1>
+              {sale.quotation && <NavLink href={`/admin/sales-quotations/${sale.quotation.id}`} className="text-sm text-sky-700 dark:text-sky-300">อ้างอิง {formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision)}</NavLink>}
               {sale.status === "CANCELLED" ? (
                 <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
               ) : (

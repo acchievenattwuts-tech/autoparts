@@ -35,6 +35,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/admin/customer-advances": "รับเงินมัดจำลูกค้า",
   "/admin/customer-advance-refunds": "คืนเงินมัดจำลูกค้า",
   "/admin/supplier-payments": "จ่ายชำระซัพพลายเออร์",
+  "/admin/sales-quotations": "ใบเสนอราคา",
   "/admin/sales": "บันทึกการขาย",
   "/admin/line-conversations": "LINE OA Conversations",
   "/admin/messenger-conversations": "Messenger Conversations",

@@ -1,5 +1,7 @@
 "use server";
 
+import { prepareSaleQuotationReference, auditSaleQuotationReference, QuotationError } from "@/lib/sales-quotation";
+import { createDocumentMutationGuard, buildMutationBlockMessage, type GuardDb } from "@/lib/document-mutation-guard";
 import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -303,6 +305,8 @@ async function getSaleAuditSnapshot(saleId: string) {
     saleNo: sale.saleNo,
     saleDate: sale.saleDate,
     customerId: sale.customerId,
+    quotationId: sale.quotationId,
+    quotationRevision: sale.quotationRevision,
     customerName: sale.customerName,
     customerPhone: sale.customerPhone,
     saleType: sale.saleType,
@@ -562,12 +566,16 @@ export async function createSale(
       ? "SAC"
       : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
+  const quotationId = typeof formData.get("quotationId") === "string" ? String(formData.get("quotationId")).trim() || null : null;
+  if (quotationId && !(await requirePermission("sales_quotations.view").catch(() => null))) return { error: "ไม่มีสิทธิ์อ้างอิงใบเสนอราคา" };
   let createdSaleId = "";
   const stockCrossedToZero: string[] = [];
 
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
+      await prepareSaleQuotationReference(tx, null, quotationId);
+      const quotationRevision = quotationId ? (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
       const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
         payments.map((row) => row.cashBankAccountId),
@@ -622,6 +630,9 @@ export async function createSale(
       const sale = await tx.sale.create({
         data: {
           saleNo,
+          quotationId,
+          quotationRevision,
+          activeQuotationId: quotationId,
           channel,
           channelRefNo: channelRefNo ?? null,
           customerId:       customerId       ?? null,
@@ -656,6 +667,7 @@ export async function createSale(
         },
       });
       createdSaleId = sale.id;
+      await auditSaleQuotationReference(tx, getAuditActorFromSession(session), sale.id, saleNo, null, quotationId);
 
       // 2. Process each line item
       for (const [itemIndex, item] of validItems.entries()) {
@@ -864,10 +876,13 @@ export async function createSale(
       revalidateProfitDashboardCache();
       revalidatePath("/admin");
       revalidatePath("/admin/sales");
+      revalidatePath("/admin/sales-quotations");
+      if (quotationId) revalidatePath(`/admin/sales-quotations/${quotationId}`);
       revalidatePath("/admin/products");
     });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
+    if (err instanceof QuotationError) return { error: err.message };
     await reportCriticalError(err, { scope: "sales.create" });
     if (
       isManualMarketplaceChannel(channel) &&
@@ -950,6 +965,10 @@ export async function cancelSale(
     const beforeSnapshot = await getSaleAuditSnapshot(saleId);
     const cancelledAt = new Date();
     await dbTx(async (tx) => {
+      const previousQuotationId = await prepareSaleQuotationReference(tx, saleId, null, sale.updatedAt);
+      const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", saleId, "cancel");
+      if (guard.blocked) throw new Error(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      await auditSaleQuotationReference(tx, getAuditActorFromSession(session), saleId, sale.saleNo, previousQuotationId, null, true);
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.SALE, saleId);
       // Reverse Lot balances before deleting StockCard rows
@@ -966,6 +985,7 @@ export async function cancelSale(
         where: { id: saleId },
         data: {
           status: "CANCELLED",
+          activeQuotationId: null,
           cancelledAt,
           cancelNote,
           amountRemain: new Prisma.Decimal(0),
@@ -996,8 +1016,11 @@ export async function cancelSale(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/sales");
+    revalidatePath("/admin/sales-quotations");
+    if (sale.quotationId) revalidatePath(`/admin/sales-quotations/${sale.quotationId}`);
     return { success: true };
   } catch (err) {
+    if (err instanceof QuotationError) return { error: err.message };
     await reportCriticalError(err, { scope: "sales.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1248,7 +1271,14 @@ export async function updateSale(
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSaleAuditSnapshot(id);
+    const quotationId = formData.has("quotationId") ? String(formData.get("quotationId") ?? "").trim() || null : existing.quotationId;
+    if (quotationId && quotationId !== existing.quotationId) await requirePermission("sales_quotations.view");
     await dbTx(async (tx) => {
+      const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
+      const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
+      const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", id, "update");
+      if (guard.blocked) throw new Error(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      await auditSaleQuotationReference(tx, getAuditActorFromSession(session), id, existing.saleNo, previousQuotationId, quotationId);
       const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
         payments.map((row) => row.cashBankAccountId),
@@ -1302,6 +1332,9 @@ export async function updateSale(
       await tx.sale.update({
         where: { id },
         data: {
+          quotationId,
+          quotationRevision,
+          activeQuotationId: quotationId,
           saleDate:        docDate,
           customerId:      customerId      ?? null,
           saleType,
@@ -1546,6 +1579,9 @@ export async function updateSale(
       revalidateProfitDashboardCache();
       revalidatePath("/admin");
       revalidatePath("/admin/sales");
+      revalidatePath("/admin/sales-quotations");
+      if (quotationId) revalidatePath(`/admin/sales-quotations/${quotationId}`);
+      if (existing.quotationId) revalidatePath(`/admin/sales-quotations/${existing.quotationId}`);
       revalidatePath(`/admin/sales/${id}`);
       revalidatePath("/admin/products");
     });

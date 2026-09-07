@@ -105,7 +105,7 @@ const SharedReceiptSettlementPrintDocument = ({
   rootId?: string;
   rootClassName?: string;
 }) => {
-  const customerName = receipt.customer?.name ?? receipt.customerName ?? "-";
+  const customerName = receipt.customerName ?? receipt.customer?.name ?? "-";
   const customerPhone = receipt.customer?.phone ?? null;
   const receiptDateText = formatPrintDate(receipt.receiptDate);
   const totalAmountInWords = formatThaiBahtText(Number(receipt.totalAmount));

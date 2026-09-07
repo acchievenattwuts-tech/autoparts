@@ -10,7 +10,8 @@ import { ChevronLeft } from "lucide-react";
 import SaleForm from "./SaleForm";
 import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 
-const NewSalePage = async () => {
+const NewSalePage = async ({ searchParams }: { searchParams: Promise<{ quotationId?: string }> }) => {
+  const { quotationId } = await searchParams;
   await requirePermission("sales.create");
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "sales.view");
@@ -36,6 +37,8 @@ const NewSalePage = async () => {
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">บันทึกการขายสินค้า</h1>
       <SaleForm
+        initialQuotationId={quotationId}
+        canReferenceQuotation={hasPermissionAccess(role, permissions, "sales_quotations.view")}
         products={[]}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}

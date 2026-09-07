@@ -4,6 +4,8 @@ import { getTransactionProductCatalogResponse } from "@/lib/transaction-product-
 import { requireAnyPermission } from "@/lib/require-auth";
 
 const CATALOG_PERMISSIONS = [
+  "sales_quotations.create",
+  "sales_quotations.update",
   "sales.create",
   "sales.update",
   "purchases.create",

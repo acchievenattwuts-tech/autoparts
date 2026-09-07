@@ -49,11 +49,14 @@ export default async function ExternalLiffOrderInvoicePage({
     select: {
       id: true,
       saleNo: true,
+      quotation: { select: { quotationNo: true, revision: true } },
+      quotationRevision: true,
       saleDate: true,
       status: true,
       customerName: true,
       customerPhone: true,
       shippingAddress: true,
+      fulfillmentType: true,
       totalAmount: true,
       discount: true,
       netAmount: true,
@@ -67,7 +70,7 @@ export default async function ExternalLiffOrderInvoicePage({
       signerSignatureUrl: true,
       cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
       user: { select: { name: true, signatureUrl: true } },
-      customer: { select: { name: true, phone: true, address: true } },
+      customer: { select: { name: true, phone: true, address: true, taxId: true } },
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {

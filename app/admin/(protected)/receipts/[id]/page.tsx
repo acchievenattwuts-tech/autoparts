@@ -132,7 +132,7 @@ const ReceiptDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const activityEvents = await getDocumentActivityTimeline("Receipt", receipt.id);
 
   const cfg = mapSiteConfig(contents);
-  const customerDisplay = receipt.customer?.name ?? receipt.customerName ?? "-";
+  const customerDisplay = receipt.customerName ?? receipt.customer?.name ?? "-";
   const signerDisplayName = receipt.signerName ?? receipt.user?.name ?? "-";
   const receiptSignatureUrl = receipt.signerSignatureUrl ?? receipt.user?.signatureUrl ?? null;
   const receivedTransferAccount =

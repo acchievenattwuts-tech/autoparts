@@ -88,6 +88,8 @@ const DeliveryPrintPage = async ({
       select: {
         id: true,
         saleNo: true,
+      quotation: { select: { quotationNo: true, revision: true } },
+      quotationRevision: true,
         saleDate: true,
         status: true,
         channel: true,
@@ -95,6 +97,7 @@ const DeliveryPrintPage = async ({
         customerName: true,
         customerPhone: true,
         shippingAddress: true,
+        fulfillmentType: true,
         totalAmount: true,
         discount: true,
         netAmount: true,
@@ -108,7 +111,7 @@ const DeliveryPrintPage = async ({
         signerSignatureUrl: true,
         cashBankAccount: { select: { name: true, bankName: true, accountNo: true } },
         user: { select: { name: true, signatureUrl: true } },
-        customer: { select: { name: true, phone: true, address: true } },
+        customer: { select: { name: true, phone: true, address: true, taxId: true } },
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           select: {
@@ -247,7 +250,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
             }),
           ]);
           const slipProps = {
-            sale: { ...sale, signerSignatureUrl: sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null },
+            sale: { ...sale, fulfillmentType: sale.fulfillmentType, signerSignatureUrl: sale.signerSignatureUrl ?? sale.user?.signatureUrl ?? null },
             shopConfig,
             dueDate,
             signerDisplayName,
