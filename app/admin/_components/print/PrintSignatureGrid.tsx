@@ -23,7 +23,10 @@ const PrintSignatureGrid = ({
   <div
     data-print-signatures
     data-print-verify-space={reserveVerifySpace ? "true" : undefined}
-    className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${reserveVerifySpace ? "print:mr-36" : ""} ${className}`}
+    /* The gutter and height that pair this block with the verify badge live in
+       print-pagination.css, keyed off data-print-verify-space, so the two frames
+       stay the same size. */
+    className={`grid gap-0 ${PRINT_SECTION_BORDER_CLASS} ${className}`}
     style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
   >
     {columns.map((column, index) => {

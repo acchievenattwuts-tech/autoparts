@@ -35,9 +35,10 @@ interface Props {
   disabled?: boolean;
 }
 
+/** Matches the sales form tokens (SaleForm.tsx) so both hosts render identically. */
 const inputClass =
-  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/10 dark:bg-slate-900 dark:text-slate-100";
-const labelClass = "mb-1 block text-sm font-medium text-gray-700 dark:text-slate-200";
+  "w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const labelClass = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
 
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
@@ -120,9 +121,9 @@ const WhtReceivedFields = ({ incomeTypes, value, onChange, documentTotal, disabl
       </label>
 
       {enabled && value && (
-        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <label className={labelClass}>ประเภทเงินได้ *</label>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          <div>
+            <label className={labelClass}>ประเภทเงินได้ <span className="text-red-500">*</span></label>
             <SearchableSelect
               options={options}
               value={value.incomeTypeId}
@@ -157,7 +158,7 @@ const WhtReceivedFields = ({ incomeTypes, value, onChange, documentTotal, disabl
             />
           </div>
           <div>
-            <label className={labelClass}>ยอดภาษีที่ถูกหัก (บาท) *</label>
+            <label className={labelClass}>ยอดภาษีที่ถูกหัก (บาท) <span className="text-red-500">*</span></label>
             <input
               type="number"
               step="0.01"

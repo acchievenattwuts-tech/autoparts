@@ -135,15 +135,16 @@
   - Sale → cancel CN + receipts referencing it first.
   - Receipt → can be cancelled directly (but must reverse AR).
 
-### Permissions — Every New Menu Must Complete All 5 Steps
+### Permissions — Every New Menu Must Complete All 6 Steps
 
-**Whenever a new admin menu is added, all 5 steps are required:**
+**Whenever a new admin menu is added, all 6 steps are required:**
 
 1. **Add permission key in `lib/access-control.ts`** — add to `PERMISSION_CATALOG` (group + Thai label), include in `STAFF_OPERATIONS_PERMISSIONS` and `STAFF_VIEWER_PERMISSIONS` as appropriate.
 2. **Add route rule** in `ADMIN_ROUTE_RULES` — `{ prefix: "/admin/<route>", permission: "<key>.view" }`.
 3. **Call `requirePermission("<key>.view")`** at the top of the menu's `page.tsx`.
 4. **Call `requirePermission("<key>.<action>")`** in every related Server Action (replacing direct `auth()` calls).
 5. **Update `AdminSidebar.tsx`** — set `permission: "<key>.view"` in navItems to match the registered permission.
+6. **Register every route segment in `TabsBar.ROUTE_LABELS`** (`components/shared/TabsBar.tsx`) — one entry per navigable path, using the same Thai label as the sidebar menu. A path that is missing here opens **no tab at all**, so the menu silently loses the tab bar that every other menu has. Register child routes too (e.g. `/admin/wht`, `/admin/wht/certificates`, `/admin/wht/filings`, `/admin/wht/payees`); `normalizePath()` sorts by length and matches the longest prefix, so detail/new/edit pages fold into their parent tab automatically.
 
 Use the Sales page (view / add / update / cancel) as the reference structure.
 

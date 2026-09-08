@@ -1119,21 +1119,6 @@ const SaleForm = ({
               placeholder="โปรดระบุบัญชีรับเงิน"
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">รองรับรับเงินหลายช่องทาง — ยอดรวมต้องเท่ากับยอดเงินที่รับจริง</p>
-            <div className="mt-3">
-              <WhtReceivedFields
-                incomeTypes={whtIncomeTypes}
-                value={wht}
-                onChange={setWht}
-                documentTotal={netAmount}
-              />
-            </div>
-            {whtAmount > 0 && (
-              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
-                ยอดขาย {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · ถูกหักภาษี ณ ที่จ่าย{" "}
-                {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · รับเงินจริง{" "}
-                {cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
-              </div>
-            )}
           </div>
           ) : (
           <div className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700 dark:border-orange-400/30 dark:bg-orange-500/10 dark:text-orange-300">
@@ -1163,6 +1148,26 @@ const SaleForm = ({
               placeholder="หมายเหตุ"
             />
           </div>
+
+          {/* Withholding tax — full width so its six fields get real room instead of
+              being squeezed into the payment-channel column */}
+          {!isMarketplace && paymentType === "CASH_SALE" && (
+            <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">
+              <WhtReceivedFields
+                incomeTypes={whtIncomeTypes}
+                value={wht}
+                onChange={setWht}
+                documentTotal={netAmount}
+              />
+              {whtAmount > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-300">
+                  ยอดขาย {netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · ถูกหักภาษี ณ ที่จ่าย{" "}
+                  {whtAmount.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท · รับเงินจริง{" "}
+                  {cashTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท
+                </div>
+              )}
+            </div>
+          )}
 
           {/* VAT Settings */}
           <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">

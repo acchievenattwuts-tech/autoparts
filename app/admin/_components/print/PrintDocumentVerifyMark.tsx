@@ -18,9 +18,9 @@ export default function PrintDocumentVerifyMark({
 
   return (
     <div data-print-role="overlay" className="print-document-verify-mark pointer-events-none hidden print:block">
-      <div className="print-document-verify-badge absolute bottom-8 right-8 z-10 w-28 rounded-md border border-gray-500 bg-white/90 p-2 text-center text-[9px] leading-tight text-gray-900">
+      <div className="print-document-verify-badge absolute bottom-8 right-8 z-10 flex w-28 flex-col items-center justify-center rounded-md border border-gray-500 bg-white/90 p-2 text-center text-[9px] leading-tight text-gray-900">
         <div
-          className="print-document-verify-qr mx-auto mb-1 h-[84px] w-[84px]"
+          className="print-document-verify-qr mb-1 h-[84px] w-[84px]"
           aria-hidden="true"
           // Safe: verify.qrSvg มาจาก lib/verify-token ฝั่ง server ที่สร้าง SVG เอง — ไม่ใช่ user input
           dangerouslySetInnerHTML={{ __html: verify.qrSvg }}
