@@ -1,5 +1,6 @@
-import Link from "next/link";
-
+import ProfitSectionPaginationClient, {
+  type ProfitPaginationItem,
+} from "@/app/admin/(protected)/ProfitSectionPaginationClient";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import type { ProfitRevenueBasis } from "@/lib/profit-dashboard";
 
@@ -160,6 +161,11 @@ export function getVisiblePages(currentPage: number, totalPages: number): number
 
   return pages;
 }
+
+/**
+ * ส่วน server ของแถบแบ่งหน้า: คำนวณ href ทุกปุ่มไว้ล่วงหน้าแล้วส่งเป็น array ให้
+ * client component เพราะ buildHref เป็นฟังก์ชัน ส่งข้าม server/client boundary ไม่ได้
+ */
 export function SectionPagination({
   currentPage,
   totalPages,
@@ -174,73 +180,36 @@ export function SectionPagination({
   }
 
   const visiblePages = getVisiblePages(currentPage, totalPages);
+  const firstVisible = visiblePages[0] ?? currentPage;
+  const lastVisible = visiblePages[visiblePages.length - 1] ?? currentPage;
+  const items: ProfitPaginationItem[] = [];
+
+  if (firstVisible > 1) {
+    items.push({ kind: "page", page: 1, href: buildHref(1) });
+    if (firstVisible > 2) {
+      items.push({ kind: "ellipsis" });
+    }
+  }
+
+  for (const page of visiblePages) {
+    items.push({ kind: "page", page, href: buildHref(page) });
+  }
+
+  if (lastVisible < totalPages) {
+    if (lastVisible < totalPages - 1) {
+      items.push({ kind: "ellipsis" });
+    }
+    items.push({ kind: "page", page: totalPages, href: buildHref(totalPages) });
+  }
 
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-white/10">
-      <p className="text-xs text-gray-500">
-        หน้า {currentPage} จาก {totalPages}
-      </p>
-      <div className="flex flex-wrap items-center gap-2">
-        {currentPage > 1 ? (
-          <Link
-            href={buildHref(currentPage - 1)}
-            scroll={false}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            ก่อนหน้า
-          </Link>
-        ) : null}
-        {visiblePages[0] > 1 ? (
-          <>
-            <Link
-              href={buildHref(1)}
-              scroll={false}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-            >
-              1
-            </Link>
-            {visiblePages[0] > 2 ? <span className="px-1 text-xs text-gray-400">...</span> : null}
-          </>
-        ) : null}
-        {visiblePages.map((page) => (
-          <Link
-            key={page}
-            href={buildHref(page)}
-            scroll={false}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-              page === currentPage
-                ? "bg-gray-900 text-white dark:bg-slate-100 dark:text-slate-950"
-                : "border border-gray-200 text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-            }`}
-          >
-            {page}
-          </Link>
-        ))}
-        {visiblePages[visiblePages.length - 1] < totalPages ? (
-          <>
-            {visiblePages[visiblePages.length - 1] < totalPages - 1 ? (
-              <span className="px-1 text-xs text-gray-400">...</span>
-            ) : null}
-            <Link
-              href={buildHref(totalPages)}
-              scroll={false}
-              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-            >
-              {totalPages}
-            </Link>
-          </>
-        ) : null}
-        {currentPage < totalPages ? (
-          <Link
-            href={buildHref(currentPage + 1)}
-            scroll={false}
-            className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            ถัดไป
-          </Link>
-        ) : null}
-      </div>
-    </div>
+    <ProfitSectionPaginationClient
+      currentPage={currentPage}
+      totalPages={totalPages}
+      items={items}
+      prevHref={currentPage > 1 ? buildHref(currentPage - 1) : null}
+      nextHref={currentPage < totalPages ? buildHref(currentPage + 1) : null}
+    />
   );
 }
 
