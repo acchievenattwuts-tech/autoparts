@@ -28,7 +28,7 @@ export default function QuotationPrintDocument({ quote, config, account }: { quo
       <div className={`border-x border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
         <p className="mb-1 text-gray-700">หมายเหตุ:</p>
         <p className="min-h-[2rem] whitespace-pre-line text-gray-700">{quote.note ?? ""}</p>
-        <p className="pt-1 text-gray-700">{VAT_TYPE_LABELS[quote.vatType]}</p>
+        {hasVat ? <p className="pt-1 text-gray-700">{VAT_TYPE_LABELS[quote.vatType]}</p> : null}
       </div>
       <div className={`border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
         <div className="flex justify-between"><span className="text-gray-700">มูลค่ารวม</span><span>{formatPrintNumber(Number(quote.totalAmount))}</span></div>
