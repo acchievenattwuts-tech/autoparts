@@ -27,6 +27,12 @@ interface Props {
    * into the textbox (e.g. storefront finders where a keyboard pop-up is unwanted).
    */
   autoFocusSearch?: boolean;
+  /**
+   * How the empty (no value) trigger is painted. "attention" (default) keeps the
+   * orange "still needs a value" styling used by required fields; "neutral" paints
+   * it like any resting input, for genuinely optional pickers that must not shout.
+   */
+  emptyTone?: "attention" | "neutral";
 }
 
 const MAX_RESULTS = 50;
@@ -43,6 +49,7 @@ const SearchableSelect = ({
   placeholder = "โปรดระบุ",
   disabled = false,
   autoFocusSearch = true,
+  emptyTone = "attention",
 }: Props) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -183,17 +190,20 @@ const SearchableSelect = ({
   const defaultOptionClassName = isDark
     ? "text-slate-200 hover:bg-slate-900"
     : "text-gray-800 hover:bg-blue-50";
-  const triggerClassName = isDark
-    ? open
+  const restingClassName = isDark
+    ? "border-slate-700 bg-slate-950 text-slate-100 hover:border-slate-600"
+    : "border-gray-300 hover:border-gray-400 bg-white";
+  const attentionEmptyClassName = isDark
+    ? "border-orange-500/30 bg-orange-500/10 text-orange-200 hover:border-orange-400/45"
+    : "border-orange-300 hover:border-orange-400 bg-orange-50/30";
+  const emptyTriggerClassName = emptyTone === "neutral" ? restingClassName : attentionEmptyClassName;
+  const triggerClassName = open
+    ? isDark
       ? "border-sky-400/70 bg-slate-950 text-slate-100 ring-2 ring-sky-400/20"
-      : value
-        ? "border-slate-700 bg-slate-950 text-slate-100 hover:border-slate-600"
-        : "border-orange-500/30 bg-orange-500/10 text-orange-200 hover:border-orange-400/45"
-    : open
-      ? "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
-      : value
-        ? "border-gray-300 hover:border-gray-400 bg-white"
-        : "border-orange-300 hover:border-orange-400 bg-orange-50/30";
+      : "border-[#1e3a5f] ring-2 ring-[#1e3a5f]/20 bg-white"
+    : value
+      ? restingClassName
+      : emptyTriggerClassName;
 
   const dropdown = open
     ? createPortal(
@@ -280,7 +290,13 @@ const SearchableSelect = ({
             )}
           </>
         ) : (
-          <span className={`flex-1 font-medium ${isDark ? "text-orange-200" : "text-orange-400"}`}>
+          <span
+            className={
+              emptyTone === "neutral"
+                ? `flex-1 ${isDark ? "text-slate-400" : "text-gray-400"}`
+                : `flex-1 font-medium ${isDark ? "text-orange-200" : "text-orange-400"}`
+            }
+          >
             {placeholder}
           </span>
         )}

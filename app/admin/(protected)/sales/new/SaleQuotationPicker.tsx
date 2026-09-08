@@ -1,15 +1,17 @@
 "use client";
 import { formatQuotationReference } from "@/lib/sales-quotation-form";
-import { useEffect, useRef, useState, useTransition } from "react";
-import SearchableSelect from "@/components/shared/SearchableSelect";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { FileText } from "lucide-react";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { formatDateThai } from "@/lib/th-date";
 import { loadQuotationForSale, searchAvailableQuotations } from "../../sales-quotations/actions";
 export type LoadedQuotation = Extract<Awaited<ReturnType<typeof loadQuotationForSale>>, { data: object }>;
 
 export default function SaleQuotationPicker({ value, label, saleId, initialLoadId, onLoad, onDetach }: {
   value: string; label: string; saleId?: string; initialLoadId?: string; onLoad: (id: string, quote: LoadedQuotation) => void; onDetach: () => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [options, setOptions] = useState<{ id: string; label: string }[]>([]);
+  const [options, setOptions] = useState<SelectOption[]>([]);
+  const [listLoading, setListLoading] = useState(true);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const initialized = useRef(false);
@@ -23,25 +25,54 @@ export default function SaleQuotationPicker({ value, label, saleId, initialLoadI
       } catch { setError("โหลดใบเสนอราคาไม่สำเร็จ กรุณาตรวจสอบสิทธิ์และลองอีกครั้ง"); }
     });
   };
+  /** โหลด SQ ที่ยังใช้งานอยู่และยังไม่ถูกใบขายอื่นอ้างอิง — ค้นหาต่อได้ในช่องค้นหาของ dropdown */
+  const loadOptions = useCallback(async () => {
+    setListLoading(true);
+    try {
+      const rows = await searchAvailableQuotations("", saleId);
+      setOptions(rows.map((row) => ({
+        id: row.id,
+        label: `${formatQuotationReference(row.quotationNo, row.revision)} — ${row.customerName}`,
+        sublabel: `${formatDateThai(row.quotationDate)} · ${row.netAmount.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`,
+      })));
+      setError("");
+    } catch {
+      setError("โหลดรายการใบเสนอราคาไม่สำเร็จ กรุณาลองอีกครั้ง");
+    } finally {
+      setListLoading(false);
+    }
+  }, [saleId]);
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    void loadOptions();
     if (initialLoadId) load(initialLoadId, false);
     // Initial navigation imports exactly once; subsequent imports are explicit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-800 dark:bg-sky-950/40">
-    <p className="mb-2 font-semibold text-sky-900 dark:text-sky-100">อ้างอิงใบเสนอราคา (SQ)</p>
-    <div className="flex flex-wrap items-center gap-3">
-      <input aria-label="ค้นหาใบเสนอราคา" className="rounded border bg-white px-3 py-2 dark:border-white/20 dark:bg-slate-900 dark:text-slate-100" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="เลข SQ / ชื่อลูกค้า" />
-      <button type="button" disabled={pending} onClick={() => startTransition(async () => {
-        try { const rows = await searchAvailableQuotations(query, saleId); setOptions(rows.map((row) => ({ id: row.id, label: `${formatQuotationReference(row.quotationNo, row.revision)} — ${row.customerName}` }))); setError(rows.length ? "" : "ไม่พบใบเสนอราคาที่พร้อมให้อ้างอิง"); }
-        catch { setError("ค้นหาไม่สำเร็จ กรุณาลองอีกครั้ง"); }
-      })}>{pending ? "กำลังโหลด..." : "ค้นหา SQ"}</button>
-      <div className="min-w-64"><SearchableSelect options={value && !options.some((row) => row.id === value) ? [{ id: value, label: label || value }, ...options] : options} value={value} onChange={(id) => { if (id) load(id, true); }} disabled={pending} placeholder="เลือกใบเสนอราคา" /></div>
-      {value && <button type="button" disabled={pending} className="text-red-600 dark:text-red-300" onClick={onDetach}>ถอด SQ ที่อ้างอิง</button>}
+  const selectOptions = value && !options.some((row) => row.id === value)
+    ? [{ id: value, label: label || value }, ...options]
+    : options;
+  return <div className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+      <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-slate-400">
+        <FileText size={15} className="shrink-0" />
+        <span>อ้างอิงใบเสนอราคา (SQ)</span>
+        <span className="text-xs text-gray-400 dark:text-slate-500">ไม่บังคับ</span>
+      </div>
+      <div className="w-full sm:ml-auto sm:w-80">
+        <SearchableSelect
+          options={selectOptions}
+          value={value}
+          onChange={(id) => { if (id) load(id, true); }}
+          disabled={pending || listLoading}
+          emptyTone="neutral"
+          placeholder={listLoading ? "กำลังโหลด..." : options.length ? "เลือกใบเสนอราคา" : "ไม่มีใบเสนอราคาที่พร้อมอ้างอิง"}
+        />
+      </div>
+      {value && <button type="button" disabled={pending} className="self-start text-sm text-gray-500 underline-offset-2 hover:text-red-600 hover:underline disabled:opacity-60 dark:text-slate-400 dark:hover:text-red-300 sm:self-auto" onClick={onDetach}>ถอด SQ</button>}
     </div>
-    {value && <p className="mt-2 text-sm text-sky-800 dark:text-sky-200">{label} — การผูกหรือถอดอ้างอิงมีผลเมื่อบันทึกใบขาย</p>}
-    {error && <p role="alert" className="mt-2 text-red-600 dark:text-red-300">{error}</p>}
+    {value && <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">{label} — การผูกหรือถอดอ้างอิงมีผลเมื่อบันทึกใบขาย</p>}
+    {error && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-300">{error}</p>}
   </div>;
 }

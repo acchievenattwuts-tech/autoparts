@@ -2,13 +2,19 @@ import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import type { Prisma } from "@/lib/generated/prisma";
 import PrintDocumentRoot from "./print/PrintDocumentRoot";
 import PrintDocumentHeader from "./print/PrintDocumentHeader";
-import { PRINT_HEADER_CELL_CLASS, PRINT_TABLE_CELL_CLASS, PRINT_SECTION_BORDER_CLASS, formatPrintDate, formatPrintNumber, formatThaiBahtText, type PrintShopConfig } from "./print/shared";
+import { PRINT_BODY_BORDER_CLASS, PRINT_HEADER_CELL_CLASS, PRINT_TABLE_CELL_CLASS, PRINT_SECTION_BORDER_CLASS, PRINT_SECTION_TOP_BORDER_CLASS, formatPrintDate, formatPrintNumber, formatThaiBahtText, type PrintShopConfig } from "./print/shared";
 import { addThailandDays } from "@/lib/th-date";
 import { VAT_TYPE_LABELS } from "@/lib/vat";
 
+/** คอลัมน์กล่องยอดรวมท้ายเอกสาร — กว้าง 15rem เท่ากับใบขายสินค้า (SharedSalesDeliveryPrintDocument) */
+const PRINT_SUMMARY_GRID_STYLE = { gridTemplateColumns: "minmax(0,1fr) 15rem" } as const;
+
 type Quote = Prisma.SalesQuotationGetPayload<{ include: { items: { include: { product: { select: { code: true; name: true } } } } } }>;
 export default function QuotationPrintDocument({ quote, config, account }: { quote: Quote; config: PrintShopConfig; account: { name: string; bankName: string | null; accountNo: string | null } | null }) {
-  return <PrintDocumentRoot rootId="quotation-print" rootClassName="mx-auto min-h-[1050px] max-w-[900px] bg-white p-8 text-[13px] leading-snug flex flex-col">
+  const netAmountInWords = formatThaiBahtText(Number(quote.netAmount));
+  /** ซ่อนแถวภาษีเมื่อเอกสารไม่คิด VAT — กันแถว 0.00 โผล่เหมือนเดิม */
+  const hasVat = quote.vatType !== "NO_VAT" && Number(quote.vatRate) > 0;
+  return <PrintDocumentRoot rootId="quotation-print" rootClassName="mx-auto flex max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug">
     <PrintDocumentHeader shopConfig={config} title="ใบเสนอราคา" pageLabel="" />
     {quote.status === "CANCELLED" && <p className="mb-3 text-center text-xl font-bold text-red-600">ยกเลิกเอกสาร</p>}
     <div data-print-role="header" className="mb-4 grid grid-cols-2 gap-3 text-xs">
@@ -16,11 +22,29 @@ export default function QuotationPrintDocument({ quote, config, account }: { quo
       <div className={`${PRINT_SECTION_BORDER_CLASS} space-y-1 rounded p-2`}><p>เลขที่เอกสาร: <strong>{formatQuotationReference(quote.quotationNo, quote.revision)}</strong></p><p>วันที่เอกสาร: {formatPrintDate(quote.quotationDate)}</p><p>เครดิต: {quote.creditTerm} วัน</p><p>วันครบกำหนด: {formatPrintDate(addThailandDays(quote.quotationDate, quote.creditTerm))}</p></div>
     </div>
     <table className="w-full border-collapse text-xs"><thead><tr className="bg-gray-100">{["#", "รหัสสินค้า", "รายละเอียด", "จำนวน", "หน่วย", "ราคา/หน่วย", "ส่วนลด/หน่วย", "ยอดรวม"].map((label) => <th className={PRINT_HEADER_CELL_CLASS} key={label}>{label}</th>)}</tr></thead>
-      <tbody>{quote.items.map((row, index) => <tr key={row.id} className="break-inside-avoid"><td className={PRINT_TABLE_CELL_CLASS}>{index + 1}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.product.code}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.product.name}{row.moreDetail && <p className="whitespace-pre-line text-gray-600">{row.moreDetail}</p>}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{Number(row.showQty).toLocaleString("th-TH", { maximumFractionDigits: 4 })}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.showUnitName}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.unitListPrice))}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.unitListPrice) - Number(row.salePrice))}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.totalAmount))}</td></tr>)}</tbody>
+      <tbody>{quote.items.map((row, index) => <tr key={row.id} className="break-inside-avoid"><td className={PRINT_TABLE_CELL_CLASS}>{index + 1}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.product.code}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.product.name}{row.moreDetail ? <span className="font-normal text-gray-700"> {row.moreDetail}</span> : null}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{Number(row.showQty).toLocaleString("th-TH", { maximumFractionDigits: 4 })}</td><td className={PRINT_TABLE_CELL_CLASS}>{row.showUnitName}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.unitListPrice))}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.unitListPrice) - Number(row.salePrice))}</td><td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>{formatPrintNumber(Number(row.totalAmount))}</td></tr>)}</tbody>
     </table>
-    <div data-print-role="summary" className="mt-4 grid grid-cols-2 gap-6 break-inside-avoid">
-      <div>{quote.note && <p className="whitespace-pre-line">หมายเหตุ: {quote.note}</p>}<p className="mt-3">{VAT_TYPE_LABELS[quote.vatType]}</p><p className="mt-3">{formatThaiBahtText(Number(quote.netAmount))}</p></div>
-      <dl className="grid grid-cols-2 gap-2 text-right"><dt>รวมสินค้า</dt><dd>{formatPrintNumber(Number(quote.totalAmount))}</dd><dt>ส่วนลดท้ายบิล</dt><dd>{formatPrintNumber(Number(quote.discount))}</dd><dt>ยอดก่อนภาษี</dt><dd>{formatPrintNumber(Number(quote.subtotalAmount))}</dd><dt>VAT {Number(quote.vatRate)}%</dt><dd>{formatPrintNumber(Number(quote.vatAmount))}</dd><dt className="font-bold">ยอดสุทธิ</dt><dd className="font-bold">{formatPrintNumber(Number(quote.netAmount))}</dd></dl>
+    <div data-print-role="summary" className={`mb-4 grid break-inside-avoid text-xs ${PRINT_SECTION_TOP_BORDER_CLASS}`} style={PRINT_SUMMARY_GRID_STYLE}>
+      <div className={`border-x border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
+        <p className="mb-1 text-gray-700">หมายเหตุ:</p>
+        <p className="min-h-[2rem] whitespace-pre-line text-gray-700">{quote.note ?? ""}</p>
+        <p className="pt-1 text-gray-700">{VAT_TYPE_LABELS[quote.vatType]}</p>
+      </div>
+      <div className={`border-r border-b ${PRINT_BODY_BORDER_CLASS} p-2`}>
+        <div className="flex justify-between"><span className="text-gray-700">มูลค่ารวม</span><span>{formatPrintNumber(Number(quote.totalAmount))}</span></div>
+        <div className="flex justify-between"><span className="text-gray-700">ส่วนลด</span><span>{formatPrintNumber(Number(quote.discount))}</span></div>
+        {hasVat ? (
+          <>
+            <div className="flex justify-between"><span className="text-gray-700">ยอดก่อนภาษี</span><span>{formatPrintNumber(Number(quote.subtotalAmount))}</span></div>
+            <div className="flex justify-between"><span className="text-gray-700">VAT {Number(quote.vatRate)}%</span><span>{formatPrintNumber(Number(quote.vatAmount))}</span></div>
+          </>
+        ) : null}
+        <div className={`flex justify-between ${PRINT_SECTION_TOP_BORDER_CLASS} pt-1 font-bold text-gray-900`}>
+          <span>ยอดสุทธิ</span>
+          <span className="text-[#1e3a5f]">{formatPrintNumber(Number(quote.netAmount))}</span>
+        </div>
+        <div className="pt-1 text-right text-[11px] text-gray-700">({netAmountInWords})</div>
+      </div>
     </div>
     <div data-print-role="footer" className="mt-auto grid grid-cols-2 items-end gap-8 pt-12 break-inside-avoid">
       <div className="space-y-1 text-xs">{account && <><p className="font-semibold">ช่องทางการชำระเงิน</p><p>ชื่อบัญชี: {account.name}</p><p>ธนาคาร: {account.bankName ?? "-"}</p><p>เลขที่บัญชี: {account.accountNo ?? "-"}</p></>}</div>

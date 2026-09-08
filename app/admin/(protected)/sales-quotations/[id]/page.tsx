@@ -132,8 +132,16 @@ export default async function QuotationDetailPage({ params, searchParams }: { pa
       </div>
     </div>
 
-    <QuotationPrintDocument quote={quote} config={config} account={account} />
+    {/* ประวัติเอกสาร (30%) คู่กับ preview ใบพิมพ์ (70%) บนจอกว้าง — เลย์เอาต์เดียวกับหน้าใบขาย
+        ห้ามใส่ `relative` — print stylesheet วาง #quotation-print แบบ absolute */}
+    <div className="mb-6 grid items-start gap-6 xl:grid-cols-[30fr_70fr]">
+      <div className="no-print xl:sticky xl:top-4">
+        <DocumentActivityTimeline events={events} variant="compact" className="mb-0" />
+      </div>
 
-    <div className="no-print mt-5"><DocumentActivityTimeline events={events} /></div>
+      <div className="min-w-0">
+        <QuotationPrintDocument quote={quote} config={config} account={account} />
+      </div>
+    </div>
   </>;
 }

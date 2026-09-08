@@ -92,9 +92,11 @@ export async function cancelQuotation(id: string, note: string) {
 export async function searchAvailableQuotations(query: string, currentSaleId?: string) {
   await requireAnyPermission(["sales.create", "sales.update"]);
   await requirePermission("sales_quotations.view");
-  return db.salesQuotation.findMany({ where: { status: "ACTIVE", OR: [{ activeSale: null }, ...(currentSaleId ? [{ activeSale: { id: currentSaleId } }] : [])],
+  const rows = await db.salesQuotation.findMany({ where: { status: "ACTIVE", OR: [{ activeSale: null }, ...(currentSaleId ? [{ activeSale: { id: currentSaleId } }] : [])],
     AND: [{ OR: [{ quotationNo: { contains: query, mode: "insensitive" } }, { customerName: { contains: query, mode: "insensitive" } }] }] },
-    select: { id: true, quotationNo: true, revision: true, customerName: true }, orderBy: { quotationDate: "desc" }, take: 50 });
+    select: { id: true, quotationNo: true, revision: true, customerName: true, quotationDate: true, netAmount: true }, orderBy: { quotationDate: "desc" }, take: 50 });
+  // Decimal ส่งข้าม client boundary ไม่ได้ — แปลงเป็น number ตั้งแต่ฝั่ง server
+  return rows.map((row) => ({ ...row, netAmount: Number(row.netAmount) }));
 }
 
 export async function loadQuotationForSale(id: string, currentSaleId?: string) {
