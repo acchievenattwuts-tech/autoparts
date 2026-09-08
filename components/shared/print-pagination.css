@@ -43,28 +43,13 @@
 .print-paper thead { display: table-header-group; }
 .print-paper td, .print-paper th { overflow-wrap: anywhere; }
 .print-summary-placeholder, .print-summary-placeholder * { visibility: hidden !important; }
-/* The verify badge and the signature block beside it are one visual pair: same
-   height, one small gutter between them. Both read the same variables so they
-   can never drift apart. */
-:root {
-  --print-verify-badge-width: 7rem;    /* 112px — the w-28 on the badge itself */
-  --print-verify-badge-height: 128px;  /* padding + 84px QR + the two caption lines */
-  --print-verify-badge-gutter: 0.5rem;
-}
-.print-document-verify-badge { min-height: var(--print-verify-badge-height); }
+/* The verify QR is a cell inside the signature grid, not an overlay, so the two
+   frames share a right edge and a height with no compensation needed. Only the
+   cell width is configurable. */
+:root { --print-verify-cell-width: 7.5rem; }
 /* The generated QR SVG carries its own intrinsic width, so it has to be told to
-   fill its box — otherwise it sits off-centre inside the frame. */
+   fill its box — otherwise it sits off-centre inside the cell. */
 .print-document-verify-qr > svg { display: block; width: 100%; height: 100%; }
-[data-print-signatures][data-print-verify-space] { min-height: var(--print-verify-badge-height); }
-@media print {
-  [data-print-signatures][data-print-verify-space] {
-    margin-right: calc(var(--print-verify-badge-width) + var(--print-verify-badge-gutter));
-  }
-}
-.print-paper .print-document-verify-badge { bottom: 8mm !important; right: 8mm !important; }
-.print-paper [data-print-signatures][data-print-verify-space] {
-  margin-right: calc(var(--print-verify-badge-width) + var(--print-verify-badge-gutter));
-}
 .print-paper + .print-paper { break-before: page; page-break-before: always; }
 @media screen {
   .print-document-root[data-print-paginated] { max-width: 100% !important; overflow-x: auto !important; }

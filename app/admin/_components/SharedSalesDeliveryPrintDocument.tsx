@@ -3,7 +3,6 @@ import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocum
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
-import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocumentVerifyMark";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
 import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
@@ -211,7 +210,6 @@ const SharedSalesDeliveryPrintDocument = ({
   return (
     <PrintDocumentRoot rootId={rootId} rootClassName={rootClassName}>
       {copyLabel ? <PrintDocumentCopyWatermark label={copyLabel} /> : null}
-      {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
 
       {isCancelled ? (
         <PrintDocumentStatusStamp label="เอกสารถูกยกเลิกแล้ว" tone="cancelled" />
@@ -553,7 +551,7 @@ const SharedSalesDeliveryPrintDocument = ({
         <div className="receipt-footer">
           {isMarketplaceSale ? null : sale.paymentType === "CREDIT_SALE" ? (
             <PrintSignatureGrid
-              reserveVerifySpace={Boolean(verify)}
+              verify={verify}
               columns={[
                 {
                   label: "ผู้ส่งของ",
@@ -567,7 +565,7 @@ const SharedSalesDeliveryPrintDocument = ({
             />
           ) : (
             <PrintSignatureGrid
-              reserveVerifySpace={Boolean(verify)}
+              verify={verify}
               columns={[
                 {
                   label: "ผู้รับเงิน",

@@ -2,7 +2,6 @@ import PrintDocumentCopyWatermark from "@/app/admin/_components/print/PrintDocum
 import PrintDocumentHeader from "@/app/admin/_components/print/PrintDocumentHeader";
 import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
-import PrintDocumentVerifyMark from "@/app/admin/_components/print/PrintDocumentVerifyMark";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
 import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
 import {
@@ -134,7 +133,6 @@ const SharedReceiptSettlementPrintDocument = ({
       rootStyle={undefined}
     >
       {copyLabel ? <PrintDocumentCopyWatermark label={copyLabel} /> : null}
-      {verify ? <PrintDocumentVerifyMark verify={verify} /> : null}
 
       {isCancelled ? <PrintDocumentStatusStamp label="เอกสารถูกยกเลิกแล้ว" tone="cancelled" /> : null}
 
@@ -327,7 +325,7 @@ const SharedReceiptSettlementPrintDocument = ({
 
         <div className="receipt-footer">
           <PrintSignatureGrid
-            reserveVerifySpace={Boolean(verify)}
+            verify={verify}
             columns={[
               {
                 label: "ผู้รับเงิน",
