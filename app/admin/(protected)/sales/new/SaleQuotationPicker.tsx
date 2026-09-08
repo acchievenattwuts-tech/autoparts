@@ -7,11 +7,14 @@ import { formatDateThai } from "@/lib/th-date";
 import { loadQuotationForSale, searchAvailableQuotations } from "../../sales-quotations/actions";
 export type LoadedQuotation = Extract<Awaited<ReturnType<typeof loadQuotationForSale>>, { data: object }>;
 
-export default function SaleQuotationPicker({ value, label, saleId, initialLoadId, onLoad, onDetach }: {
-  value: string; label: string; saleId?: string; initialLoadId?: string; onLoad: (id: string, quote: LoadedQuotation) => void; onDetach: () => void;
+export default function SaleQuotationPicker({ value, label, saleId, initialLoadId, canSelect = true, onLoad, onDetach }: {
+  value: string; label: string; saleId?: string; initialLoadId?: string;
+  /** สิทธิ์ `sales_quotations.view` — ถ้าไม่มี จะเห็นแค่ SQ ที่อ้างอิงอยู่กับปุ่มถอด เลือกใบใหม่ไม่ได้ */
+  canSelect?: boolean;
+  onLoad: (id: string, quote: LoadedQuotation) => void; onDetach: () => void;
 }) {
   const [options, setOptions] = useState<SelectOption[]>([]);
-  const [listLoading, setListLoading] = useState(true);
+  const [listLoading, setListLoading] = useState(canSelect);
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const initialized = useRef(false);
@@ -45,6 +48,7 @@ export default function SaleQuotationPicker({ value, label, saleId, initialLoadI
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
+    if (!canSelect) return;
     void loadOptions();
     if (initialLoadId) load(initialLoadId, false);
     // Initial navigation imports exactly once; subsequent imports are explicit.
@@ -60,19 +64,23 @@ export default function SaleQuotationPicker({ value, label, saleId, initialLoadI
         <span>อ้างอิงใบเสนอราคา (SQ)</span>
         <span className="text-xs text-gray-400 dark:text-slate-500">ไม่บังคับ</span>
       </div>
-      <div className="w-full sm:ml-auto sm:w-80">
-        <SearchableSelect
-          options={selectOptions}
-          value={value}
-          onChange={(id) => { if (id) load(id, true); }}
-          disabled={pending || listLoading}
-          emptyTone="neutral"
-          placeholder={listLoading ? "กำลังโหลด..." : options.length ? "เลือกใบเสนอราคา" : "ไม่มีใบเสนอราคาที่พร้อมอ้างอิง"}
-        />
-      </div>
+      {canSelect ? (
+        <div className="w-full sm:ml-auto sm:w-80">
+          <SearchableSelect
+            options={selectOptions}
+            value={value}
+            onChange={(id) => { if (id) load(id, true); }}
+            disabled={pending || listLoading}
+            emptyTone="neutral"
+            placeholder={listLoading ? "กำลังโหลด..." : options.length ? "เลือกใบเสนอราคา" : "ไม่มีใบเสนอราคาที่พร้อมอ้างอิง"}
+          />
+        </div>
+      ) : (
+        <p className="font-mono text-sm text-gray-700 sm:ml-auto dark:text-slate-200">{label || value}</p>
+      )}
       {value && <button type="button" disabled={pending} className="self-start text-sm text-gray-500 underline-offset-2 hover:text-red-600 hover:underline disabled:opacity-60 dark:text-slate-400 dark:hover:text-red-300 sm:self-auto" onClick={onDetach}>ถอด SQ</button>}
     </div>
-    {value && <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">{label} — การผูกหรือถอดอ้างอิงมีผลเมื่อบันทึกใบขาย</p>}
+    {value && <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">{canSelect ? `${label} — ` : ""}การผูกหรือถอดอ้างอิงมีผลเมื่อบันทึกใบขาย</p>}
     {error && <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-300">{error}</p>}
   </div>;
 }

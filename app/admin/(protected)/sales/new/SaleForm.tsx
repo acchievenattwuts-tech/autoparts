@@ -943,7 +943,7 @@ const SaleForm = ({
         </div>
       )}
 
-      {!isMarketplace && canReferenceQuotation && <SaleQuotationPicker value={quotationId} label={quotationNo} saleId={persistedSaleId || undefined} initialLoadId={initialQuotationId}
+      {!isMarketplace && (canReferenceQuotation || Boolean(quotationId)) && <SaleQuotationPicker value={quotationId} label={quotationNo} saleId={persistedSaleId || undefined} initialLoadId={initialQuotationId} canSelect={canReferenceQuotation}
         onDetach={() => { setQuotationId(""); setQuotationNo(""); }}
         onLoad={(id, quote) => {
           quote.products.forEach(rememberProduct);
