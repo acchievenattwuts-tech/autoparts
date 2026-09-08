@@ -226,35 +226,40 @@ export default async function SearchCoverageAuditPage({ searchParams }: PageProp
       </div>
 
       <AdminFilterToolbar>
-        <AdminSearchForm method="GET" className="flex flex-wrap items-center gap-3">
-          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
-            <span>กรอง:</span>
-            <select
-              name="filter"
-              defaultValue={filter}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-            >
-              <option value="all">ทั้งหมดที่ขาดข้อมูล</option>
-              <option value="missing_keyword">ขาดคำค้นภาษาไทย</option>
-              <option value="missing_fitment">ขาดความเข้ากันได้กับรถยนต์</option>
-              <option value="missing_image">ขาดรูป</option>
-              <option value="missing_price">ยังไม่ตั้งราคาขาย</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
-            <span>สินค้าที่ยกเลิก:</span>
-            <select
-              name="cancelled"
-              defaultValue={includeCancelled ? "show" : "hide"}
-              className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
-            >
-              <option value="hide">ซ่อนสินค้าที่ยกเลิก</option>
-              <option value="show">แสดงทั้งหมด</option>
-            </select>
-          </label>
-          <AdminSearchSubmitButton className="inline-flex justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]">
-            แสดงรายการ
-          </AdminSearchSubmitButton>
+        {/* The row is an inner div, never the <form>: AdminSearchForm always applies
+            space-y-*, and on a flex row that margin-top knocks every child after the
+            first out of line. */}
+        <AdminSearchForm method="GET" className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
+              <span>กรอง:</span>
+              <select
+                name="filter"
+                defaultValue={filter}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+              >
+                <option value="all">ทั้งหมดที่ขาดข้อมูล</option>
+                <option value="missing_keyword">ขาดคำค้นภาษาไทย</option>
+                <option value="missing_fitment">ขาดความเข้ากันได้กับรถยนต์</option>
+                <option value="missing_image">ขาดรูป</option>
+                <option value="missing_price">ยังไม่ตั้งราคาขาย</option>
+              </select>
+            </label>
+            <label className="flex shrink-0 items-center gap-2 text-sm text-gray-600 dark:text-slate-300">
+              <span>สินค้าที่ยกเลิก:</span>
+              <select
+                name="cancelled"
+                defaultValue={includeCancelled ? "show" : "hide"}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950 dark:text-slate-100"
+              >
+                <option value="hide">ซ่อนสินค้าที่ยกเลิก</option>
+                <option value="show">แสดงทั้งหมด</option>
+              </select>
+            </label>
+            <AdminSearchSubmitButton className="shrink-0 inline-flex justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]">
+              แสดงรายการ
+            </AdminSearchSubmitButton>
+          </div>
         </AdminSearchForm>
       </AdminFilterToolbar>
 

@@ -15,6 +15,11 @@ import { getSessionPermissionContext, requirePermission } from "@/lib/require-au
 import WhtPayeeEditor, { type WhtPayeeProfileValue } from "./WhtPayeeEditor";
 
 const PAGE_SIZE = 30;
+/* Filter row tokens copied from the products filter (ProductFilterForm) — see the
+   note on the row markup below for why the row must be an inner div. */
+const FILTER_CONTROL = "rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
+const FILTER_SUBMIT = "shrink-0 inline-flex justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]";
+const FILTER_CLEAR = "shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15";
 
 interface PageProps {
   searchParams: Promise<{ q?: string; profile?: string; page?: string }>;
@@ -102,32 +107,29 @@ const WhtPayeesPage = async ({ searchParams }: PageProps) => {
           </span>
         }
       >
-        <AdminSearchForm method="GET" className="flex flex-col gap-3 xl:flex-row xl:items-end">
-          <input
-            type="text"
-            name="q"
-            defaultValue={q ?? ""}
-            placeholder="ค้นหาชื่อ, รหัส, เลขผู้เสียภาษี..."
-            className="min-w-48 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-sky-400/20"
-          />
-          <select
-            name="profile"
-            defaultValue={profileFilter}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-sky-400/20"
-          >
-            <option value="">ทั้งหมด</option>
-            <option value="MISSING">ยังไม่มีข้อมูลภาษี</option>
-            <option value="READY">มีข้อมูลภาษีแล้ว</option>
-          </select>
+        {/* The row is an inner div, never the <form>: AdminSearchForm always applies
+            space-y-*, and on a flex row that margin-top knocks every child after the
+            first out of line. A breakpoint here would also strand the button on its
+            own line, because the lg sidebar leaves less content width than xl. */}
+        <AdminSearchForm method="GET" className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <AdminSearchSubmitButton className="rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#163055]">
-              ค้นหา
-            </AdminSearchSubmitButton>
+            <div className="min-w-[200px] flex-1">
+              <input
+                type="text"
+                name="q"
+                defaultValue={q ?? ""}
+                placeholder="ค้นหาชื่อ, รหัส, เลขผู้เสียภาษี..."
+                className={`w-full ${FILTER_CONTROL}`}
+              />
+            </div>
+            <select name="profile" defaultValue={profileFilter} className={`shrink-0 ${FILTER_CONTROL}`}>
+              <option value="">ทั้งหมด</option>
+              <option value="MISSING">ยังไม่มีข้อมูลภาษี</option>
+              <option value="READY">มีข้อมูลภาษีแล้ว</option>
+            </select>
+            <AdminSearchSubmitButton className={FILTER_SUBMIT}>ค้นหา</AdminSearchSubmitButton>
             {(q || profileFilter) && (
-              <Link
-                href="/admin/wht/payees"
-                className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
-              >
+              <Link href="/admin/wht/payees" className={FILTER_CLEAR}>
                 ล้าง
               </Link>
             )}
