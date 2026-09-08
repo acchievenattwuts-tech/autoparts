@@ -60,7 +60,12 @@ const AdminSearchForm = ({
       <form
         {...props}
         onSubmit={handleSubmit}
-        className={cn("space-y-3", className, isPending ? pendingClassName : "")}
+        /* space-y-3 is only a fallback for callers that lay out nothing themselves.
+           Tailwind 4 compiles space-y-* to margin-block-end on every child except
+           the last, so forcing it onto a caller's own flex/grid row gives every
+           control a bottom margin the submit button (always the last child) does
+           not get — which is exactly how the button ends up sitting below the row. */
+        className={cn(className || "space-y-3", isPending ? pendingClassName : "")}
       >
         {children}
       </form>

@@ -321,6 +321,7 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 ## 11. Admin Search / Report Submit Rule
 
 - Whenever adding or changing any admin `ค้นหา`, `แสดงรายงาน`, `แสดงรายการ`, or equivalent GET-filter submit button, use the shared `AdminSearchForm` + `AdminSearchSubmitButton` pattern.
+- **Never rely on `AdminSearchForm` for the row layout itself.** Tailwind 4 compiles `space-y-*` to `margin-block-end` on every child *except the last*, and the submit button is always the last child — so any `space-y-*` on a flex/grid row leaves the button as the only control without a bottom margin and it renders below the row. `AdminSearchForm` now applies its `space-y-3` only when the caller passes no `className`, so pass your own layout class (or put the row in an inner `div`, as `ProductFilterForm` does) and never add `space-y-*` to a row. Do not put a `md:`/`xl:` breakpoint on a filter row either: the sidebar is `w-72` from `lg` up, so a 1600px window leaves about 1264px of content and an `xl:flex-row` row stays stacked. Use `flex flex-wrap items-center gap-2` with no breakpoint.
 - These admin GET-filter/search flows must preserve the existing filter/query logic, navigate client-side, show immediate pending/loading feedback, and must not fall back to a full page refresh.
 
 ### Performance Review Before Committing
