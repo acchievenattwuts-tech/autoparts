@@ -744,7 +744,9 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
 
       return (left.productName ?? "").localeCompare(right.productName ?? "", "th");
     })
-    .slice(0, 12)
+    /* ไม่ตัดจำนวนตรงนี้ — คืนทุกเคสที่พบในช่วงวิเคราะห์ แล้วให้การ์ด Alert แบ่งหน้าเอา
+       ผู้บริโภคที่ต้องการรายการสั้นตัดเองอยู่แล้ว เช่น buildProfitExplanationEvidence
+       ที่ slice ด้วย PROFIT_EXPLANATION_MAX_ITEMS ก่อนส่งเข้า prompt */
     .map(({ score: _score, ...alert }) => alert);
 }
 
