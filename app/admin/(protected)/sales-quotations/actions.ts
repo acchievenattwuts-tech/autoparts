@@ -110,6 +110,8 @@ export async function loadQuotationForSale(id: string, currentSaleId?: string) {
     shippingAddress: quote.customerAddress ?? "", creditTerm: quote.creditTerm, discount: Number(quote.discount),
     vatType: quote.vatType, vatRate: Number(quote.vatRate), note: quote.note ?? "", saleType: quote.saleType,
     quotationDate: formatDateOnlyForInput(quote.quotationDate),
-    items: quote.items.map((item) => ({ productId: item.productId, unitName: item.showUnitName, qty: Number(item.showQty), salePrice: Number(item.salePrice), unitListPrice: Number(item.unitListPrice), lineDiscount: Number(item.lineDiscount), moreDetail: item.moreDetail ?? "", warrantyDays: products.find((p) => p.id === item.productId)?.warrantyDays ?? 0, supplierId: "", supplierName: "", lotItems: [] })),
+    items: quote.items.map((item) => { const product = products.find((row) => row.id === item.productId);
+      // SQ ไม่มีช่องเลือกผู้จำหน่าย — ดึง preferred supplier เหมือนตอนเลือกสินค้าในหน้าขายปกติ
+      return { productId: item.productId, unitName: item.showUnitName, qty: Number(item.showQty), salePrice: Number(item.salePrice), unitListPrice: Number(item.unitListPrice), lineDiscount: Number(item.lineDiscount), moreDetail: item.moreDetail ?? "", warrantyDays: product?.warrantyDays ?? 0, supplierId: product?.preferredSupplierId ?? "", supplierName: product?.preferredSupplierName ?? "", lotItems: [] }; }),
   } };
 }

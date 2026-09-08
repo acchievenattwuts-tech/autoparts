@@ -297,6 +297,9 @@ const SaleForm = ({
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const customerOptions = customers;
   const supplierOptions = suppliers;
+  /** ลูกค้าและภาษีเป็นของ SQ ที่อ้างอิง — แก้ได้ก็ต่อเมื่อถอด SQ ออก (server ทับค่าจาก SQ ซ้ำอีกชั้น) */
+  const quotationLocked = !isMarketplace && Boolean(quotationId);
+  const quotationLockHint = "ล็อกตามใบเสนอราคาที่อ้างอิง — ถอด SQ ก่อนถ้าต้องการแก้";
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
@@ -1025,7 +1028,9 @@ const SaleForm = ({
                   : null
               }
               placeholder="โปรดระบุลูกค้า"
+              disabled={quotationLocked}
             />}
+            {quotationLocked && <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{quotationLockHint}</p>}
             <input type="hidden" name="customerId" value={selectedCustomerId} />
           </div>
           <div>
@@ -1180,12 +1185,13 @@ const SaleForm = ({
                 <button
                   key={t}
                   type="button"
+                  disabled={quotationLocked}
                   onClick={() => setVatType(t)}
                   className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
                     vatType === t
                       ? "bg-[#1e3a5f] text-white border-[#1e3a5f] dark:bg-sky-700 dark:border-sky-700"
                       : "bg-white text-gray-600 border-gray-300 hover:border-gray-400 dark:bg-slate-800 dark:text-slate-300 dark:border-white/20 dark:hover:border-white/40"
-                  }`}
+                  } ${quotationLocked ? "cursor-not-allowed opacity-60 hover:border-gray-300 dark:hover:border-white/20" : ""}`}
                 >
                   {VAT_TYPE_LABELS[t]}
                 </button>
@@ -1196,14 +1202,16 @@ const SaleForm = ({
                   <AdminNumberInput
                     value={vatRate}
                     onValueChange={setVatRate}
+                    disabled={quotationLocked}
                     min={0} max={100} step={0.01}
-                    className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100"
+                    className={`w-20 px-2 py-1.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm text-center dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 ${quotationLocked ? "cursor-not-allowed bg-gray-100 opacity-70 dark:bg-slate-800" : ""}`}
                   />
                   <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
                 </div>
               )}
             </div>
             )}
+            {quotationLocked && <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">{quotationLockHint}</p>}
           </div>
         </div>
       </div>

@@ -443,7 +443,6 @@ export async function createSale(
     channel,
     channelRefNo,
     saleDate,
-    customerId,
     saleType,
     paymentType,
     fulfillmentType,
@@ -456,12 +455,26 @@ export async function createSale(
     saveAsCustomerDefault,
     discount,
     note,
-    vatType,
-    vatRate,
     shippingMethod,
     creditTerm,
     items: validItems,
   } = parsed.data;
+  // สามตัวนี้ถูก SQ ที่อ้างอิงทับค่าด้านล่าง จึงแยกออกมาเป็น let
+  let customerId = parsed.data.customerId;
+  let vatType = parsed.data.vatType;
+  let vatRate = parsed.data.vatRate;
+
+  // SQ เป็นเจ้าของลูกค้าและภาษีของใบขายที่อ้างอิงมัน — ฟอร์มล็อกช่องไว้แล้ว แต่ Server Action ถูกเรียกตรงได้
+  // จึงทับค่าจาก SQ ซ้ำอีกชั้น และต้องทำก่อนคิดยอด เพราะ VAT มีผลกับ netAmount
+  const quotationId = typeof formData.get("quotationId") === "string" ? String(formData.get("quotationId")).trim() || null : null;
+  if (quotationId && !(await requirePermission("sales_quotations.view").catch(() => null))) return { error: "ไม่มีสิทธิ์อ้างอิงใบเสนอราคา" };
+  if (quotationId) {
+    const quotation = await db.salesQuotation.findUnique({ where: { id: quotationId }, select: { customerId: true, vatType: true, vatRate: true } });
+    if (!quotation) return { error: "ไม่พบใบเสนอราคาที่อ้างอิง" };
+    customerId = quotation.customerId;
+    vatType = quotation.vatType;
+    vatRate = Number(quotation.vatRate);
+  }
 
   // ใบขาย marketplace ถูกล็อกรูปแบบไว้ (ขายสด + จัดส่ง + ไม่คิด VAT + รับเข้าบัญชีพักเงิน)
   // เพื่อให้ยอดคงเหลือบัญชีพักเงินเท่ากับเงินที่แพลตฟอร์มยังไม่โอนเสมอ
@@ -591,8 +604,6 @@ export async function createSale(
       ? "SAC"
       : "SA";
   const saleNo  = await generateSaleNo(salePrefix, docDate);
-  const quotationId = typeof formData.get("quotationId") === "string" ? String(formData.get("quotationId")).trim() || null : null;
-  if (quotationId && !(await requirePermission("sales_quotations.view").catch(() => null))) return { error: "ไม่มีสิทธิ์อ้างอิงใบเสนอราคา" };
   let createdSaleId = "";
   const stockCrossedToZero: string[] = [];
 
@@ -1164,7 +1175,23 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, customerId, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, note, vatType, vatRate, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  const { saleDate, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, note, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  // สามตัวนี้ถูก SQ ที่อ้างอิงทับค่าด้านล่าง จึงแยกออกมาเป็น let
+  let customerId = parsed.data.customerId;
+  let vatType = parsed.data.vatType;
+  let vatRate = parsed.data.vatRate;
+
+  // SQ เป็นเจ้าของลูกค้าและภาษีของใบขายที่อ้างอิงมัน — ฟอร์มล็อกช่องไว้แล้ว แต่ Server Action ถูกเรียกตรงได้
+  // จึงทับค่าจาก SQ ซ้ำอีกชั้น และต้องทำก่อนคิดยอด เพราะ VAT มีผลกับ netAmount
+  const quotationId = formData.has("quotationId") ? String(formData.get("quotationId") ?? "").trim() || null : existing.quotationId;
+  if (quotationId && quotationId !== existing.quotationId && !(await requirePermission("sales_quotations.view").catch(() => null))) return { error: "ไม่มีสิทธิ์อ้างอิงใบเสนอราคา" };
+  if (quotationId) {
+    const quotation = await db.salesQuotation.findUnique({ where: { id: quotationId }, select: { customerId: true, vatType: true, vatRate: true } });
+    if (!quotation) return { error: "ไม่พบใบเสนอราคาที่อ้างอิง" };
+    customerId = quotation.customerId;
+    vatType = quotation.vatType;
+    vatRate = Number(quotation.vatRate);
+  }
 
   const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
@@ -1323,8 +1350,6 @@ export async function updateSale(
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSaleAuditSnapshot(id);
-    const quotationId = formData.has("quotationId") ? String(formData.get("quotationId") ?? "").trim() || null : existing.quotationId;
-    if (quotationId && quotationId !== existing.quotationId) await requirePermission("sales_quotations.view");
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
