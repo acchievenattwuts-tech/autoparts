@@ -18,8 +18,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const PAGE_SIZE = 50;
-/** Filter control style shared with the expenses / WHT list toolbars — one row, uniform height. */
-const filterInputCls = "rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f]/20 dark:border-white/10 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:ring-sky-400/20";
+/** Same control style as the products filter row (ProductAutocomplete's input). */
+const filterInputCls = "rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 
 export default async function QuotationsPage({ searchParams }: { searchParams: Promise<{ q?: string; from?: string; to?: string; page?: string }> }) {
   await requirePermission("sales_quotations.view");
@@ -55,28 +55,33 @@ export default async function QuotationsPage({ searchParams }: { searchParams: P
       />
 
       <AdminFilterToolbar className="mb-0">
-        <AdminSearchForm action="/admin/sales-quotations" className="flex flex-col gap-3 xl:flex-row xl:items-center">
-          <div lang="en-GB" className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="whitespace-nowrap text-slate-500 dark:text-slate-400">ช่วงวันที่</span>
-            <input type="date" name="from" defaultValue={from} className={filterInputCls} />
-            <span className="text-slate-400">–</span>
-            <input type="date" name="to" defaultValue={to} className={filterInputCls} />
-          </div>
-          <input
-            type="text"
-            name="q"
-            defaultValue={params.q ?? ""}
-            placeholder="ค้นหาเลข SQ, ชื่อลูกค้า..."
-            className={`min-w-48 flex-1 ${filterInputCls}`}
-          />
+        {/* The row is an inner div, never the <form> itself: AdminSearchForm always
+            adds space-y-*, and on a flex row that margin-top pushes every child
+            after the first out of line. Same structure as the products filter. */}
+        <AdminSearchForm action="/admin/sales-quotations" method="GET" className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <AdminSearchSubmitButton className="rounded-xl bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#163055]">
+            <div className="min-w-[200px] flex-1">
+              <input
+                type="text"
+                name="q"
+                defaultValue={params.q ?? ""}
+                placeholder="ค้นหาเลข SQ หรือชื่อลูกค้า"
+                className={`w-full ${filterInputCls}`}
+              />
+            </div>
+            <div lang="en-GB" className="flex shrink-0 items-center gap-2">
+              <span className="whitespace-nowrap text-sm text-gray-500 dark:text-slate-400">ช่วงวันที่</span>
+              <input type="date" name="from" defaultValue={from} className={`w-[150px] ${filterInputCls}`} />
+              <span className="text-gray-400 dark:text-slate-500">–</span>
+              <input type="date" name="to" defaultValue={to} className={`w-[150px] ${filterInputCls}`} />
+            </div>
+            <AdminSearchSubmitButton className="shrink-0 inline-flex justify-center rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055]">
               ค้นหา
             </AdminSearchSubmitButton>
             {(params.q || from || to) && (
               <Link
                 href="/admin/sales-quotations"
-                className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-200 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10"
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15"
               >
                 ล้าง
               </Link>
