@@ -16,6 +16,7 @@ type AdminDashboardPageProps = {
     profitStockPage?: string;
     profitCustomerPage?: string;
     profitInvoicePage?: string;
+    profitAlertPage?: string;
   }>;
 };
 
@@ -35,13 +36,13 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
       }
       profitContent={
         <ProfitDashboard
+          /* key มีเฉพาะช่วงวิเคราะห์ ไม่รวมเลขหน้าของตาราง เพราะการใส่เลขหน้าไว้ด้วย
+             ทำให้กดเปลี่ยนหน้าตารางเดียวแล้ว React unmount ทั้ง dashboard ทิ้ง กราฟ
+             แนวโน้ม (lazy recharts) กับการ์ด KPI จึงกระพริบใหม่ทุกครั้ง */
           key={[
             resolvedSearchParams?.profitFrom ?? "",
             resolvedSearchParams?.profitTo ?? "",
             resolvedSearchParams?.profitBasis ?? "",
-            resolvedSearchParams?.profitStockPage ?? "",
-            resolvedSearchParams?.profitCustomerPage ?? "",
-            resolvedSearchParams?.profitInvoicePage ?? "",
           ].join("|")}
           profitFrom={resolvedSearchParams?.profitFrom}
           profitTo={resolvedSearchParams?.profitTo}
@@ -49,6 +50,7 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
           profitStockPage={resolvedSearchParams?.profitStockPage}
           profitCustomerPage={resolvedSearchParams?.profitCustomerPage}
           profitInvoicePage={resolvedSearchParams?.profitInvoicePage}
+          profitAlertPage={resolvedSearchParams?.profitAlertPage}
         />
       }
     />

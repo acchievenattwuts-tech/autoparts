@@ -99,7 +99,7 @@ export type ProfitSummary = {
   marginPct: number;
 };
 
-type PaginatedSection<T> = {
+export type PaginatedSection<T> = {
   items: T[];
   pagination: ProfitPagination;
 };
@@ -126,6 +126,7 @@ type ProfitDashboardQueryInput = Partial<ProfitDashboardFilters> & {
 };
 
 const ANALYSIS_PAGE_SIZE = 10;
+const ALERT_PAGE_SIZE = 6;
 export const LOW_MARGIN_THRESHOLD_PCT = 20;
 
 function asNumber(value: unknown): number {
@@ -163,12 +164,16 @@ function parsePage(value?: number): number {
   return Math.floor(value);
 }
 
-function buildPagination(page: number, totalItems: number): ProfitPagination {
-  const totalPages = Math.max(1, Math.ceil(totalItems / ANALYSIS_PAGE_SIZE));
+function buildPagination(
+  page: number,
+  totalItems: number,
+  pageSize: number = ANALYSIS_PAGE_SIZE,
+): ProfitPagination {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
 
   return {
     page: Math.min(page, totalPages),
-    pageSize: ANALYSIS_PAGE_SIZE,
+    pageSize,
     totalItems,
     totalPages,
   };
@@ -743,17 +748,46 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
     .map(({ score: _score, ...alert }) => alert);
 }
 
-async function computeProfitDashboardData(
-  input?: ProfitDashboardQueryInput,
-): Promise<ProfitDashboardData> {
+type ProfitOverviewCore = {
+  today: ProfitSummary;
+  yesterday: ProfitSummary;
+  selectedRange: ProfitSummary;
+  previousRange: ProfitSummary;
+  trend: ProfitTrendPoint[];
+  topProducts: ProfitProductRow[];
+  lowProducts: ProfitProductRow[];
+};
+
+export type ProfitDashboardOverview = ProfitOverviewCore & {
+  filters: ProfitDashboardFilters;
+};
+
+export type ProfitSectionInput = {
+  from: string;
+  to: string;
+  page?: number;
+};
+
+/**
+ * Resolve ช่วงวันที่ให้เป็นค่าจริงก่อนเข้า cache เสมอ เพื่อให้ทุก section ใช้ cache key
+ * ชุดเดียวกัน ถ้าปล่อยให้ default ถูกคำนวณข้างในฟังก์ชันที่ cache ไว้ การเรียกแบบ
+ * ไม่ส่ง from/to กับการเรียกด้วยวันที่เดียวกันจะกลายเป็นคนละ cache entry
+ */
+export function resolveProfitDashboardFilters(
+  input?: Partial<ProfitDashboardFilters>,
+): ProfitDashboardFilters {
   const todayKey = getThailandDateKey();
   const defaultFrom = getThailandMonthStartDateKey();
-  const from = input?.from && input.from.length > 0 ? input.from : defaultFrom;
-  const to = input?.to && input.to.length > 0 ? input.to : todayKey;
-  const basis = input?.basis === "inc_vat" ? "inc_vat" : "ex_vat";
-  const stockPage = parsePage(input?.stockPage);
-  const customerPage = parsePage(input?.customerPage);
-  const invoicePage = parsePage(input?.invoicePage);
+
+  return {
+    from: input?.from && input.from.length > 0 ? input.from : defaultFrom,
+    to: input?.to && input.to.length > 0 ? input.to : todayKey,
+    basis: input?.basis === "inc_vat" ? "inc_vat" : "ex_vat",
+  };
+}
+
+async function computeProfitOverview(from: string, to: string): Promise<ProfitOverviewCore> {
+  const todayKey = getThailandDateKey();
   const fromDate = parseDateOnlyToStartOfDay(from);
   const toDate = parseDateOnlyToEndOfDay(to);
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
@@ -772,32 +806,17 @@ async function computeProfitDashboardData(
   const previousRangeStart = parseDateOnlyToStartOfDay(getThailandDateKey(previousRangeStartDay));
   const previousRangeEnd = parseDateOnlyToEndOfDay(getThailandDateKey(previousRangeEndDay));
 
-  const [
-    today,
-    yesterday,
-    selectedRange,
-    previousRange,
-    trend,
-    productSpotlights,
-    stockProducts,
-    customerAnalysis,
-    invoices,
-    alerts,
-  ] = await Promise.all([
-    aggregateProfitSummary(todayStart, todayEnd),
-    aggregateProfitSummary(yesterdayStart, yesterdayEnd),
-    aggregateProfitSummary(currentRangeStart, currentRangeEnd),
-    aggregateProfitSummary(previousRangeStart, previousRangeEnd),
-    buildTrend(from, to),
-    getProductSpotlights(fromDate, toDate),
-    getProductAnalysis(fromDate, toDate, stockPage),
-    getCustomerAnalysis(fromDate, toDate, customerPage),
-    getInvoiceAnalysis(fromDate, toDate, invoicePage),
-    buildAlerts(fromDate, toDate),
-  ]);
+  const [today, yesterday, selectedRange, previousRange, trend, productSpotlights] =
+    await Promise.all([
+      aggregateProfitSummary(todayStart, todayEnd),
+      aggregateProfitSummary(yesterdayStart, yesterdayEnd),
+      aggregateProfitSummary(currentRangeStart, currentRangeEnd),
+      aggregateProfitSummary(previousRangeStart, previousRangeEnd),
+      buildTrend(from, to),
+      getProductSpotlights(fromDate, toDate),
+    ]);
 
   return {
-    filters: { from, to, basis },
     today,
     yesterday,
     selectedRange,
@@ -805,24 +824,116 @@ async function computeProfitDashboardData(
     trend,
     topProducts: productSpotlights.topProducts,
     lowProducts: productSpotlights.lowProducts,
-    stockProducts,
-    customerAnalysis,
-    invoices,
-    alerts,
   };
 }
 
-const cachedProfitDashboardData = unstable_cache(
-  async (input?: ProfitDashboardQueryInput) => computeProfitDashboardData(input),
-  ["profit-dashboard-data-v2"],
-  {
-    tags: [PROFIT_DASHBOARD_CACHE_TAG],
-    revalidate: PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS,
-  },
+const PROFIT_SECTION_CACHE_OPTIONS = {
+  tags: [PROFIT_DASHBOARD_CACHE_TAG],
+  revalidate: PROFIT_DASHBOARD_CACHE_REVALIDATE_SECONDS,
+};
+
+/**
+ * แต่ละ section แยก cache ของตัวเอง โดย key = ช่วงวันที่ + เลขหน้าของ section นั้น
+ * เท่านั้น การกดเปลี่ยนหน้าของตารางเดียวจึง miss เฉพาะ cache ก้อนนั้น ส่วนที่เหลือ
+ * ยัง hit ของเดิม (เดิมรวมทุก query ไว้ใน cache ก้อนเดียว เปลี่ยนหน้าไหนก็ยิงใหม่หมด)
+ */
+const cachedProfitOverview = unstable_cache(
+  async (from: string, to: string) => computeProfitOverview(from, to),
+  ["profit-dashboard-overview-v1"],
+  PROFIT_SECTION_CACHE_OPTIONS,
 );
+
+const cachedProfitAlerts = unstable_cache(
+  async (from: string, to: string) =>
+    buildAlerts(parseDateOnlyToStartOfDay(from), parseDateOnlyToEndOfDay(to)),
+  ["profit-dashboard-alerts-v1"],
+  PROFIT_SECTION_CACHE_OPTIONS,
+);
+
+const cachedProfitStock = unstable_cache(
+  async (from: string, to: string, page: number) =>
+    getProductAnalysis(parseDateOnlyToStartOfDay(from), parseDateOnlyToEndOfDay(to), page),
+  ["profit-dashboard-stock-v1"],
+  PROFIT_SECTION_CACHE_OPTIONS,
+);
+
+const cachedProfitCustomers = unstable_cache(
+  async (from: string, to: string, page: number) =>
+    getCustomerAnalysis(parseDateOnlyToStartOfDay(from), parseDateOnlyToEndOfDay(to), page),
+  ["profit-dashboard-customer-v1"],
+  PROFIT_SECTION_CACHE_OPTIONS,
+);
+
+const cachedProfitInvoices = unstable_cache(
+  async (from: string, to: string, page: number) =>
+    getInvoiceAnalysis(parseDateOnlyToStartOfDay(from), parseDateOnlyToEndOfDay(to), page),
+  ["profit-dashboard-invoice-v1"],
+  PROFIT_SECTION_CACHE_OPTIONS,
+);
+
+export async function getProfitDashboardOverview(
+  input?: Partial<ProfitDashboardFilters>,
+): Promise<ProfitDashboardOverview> {
+  const filters = resolveProfitDashboardFilters(input);
+  const core = await cachedProfitOverview(filters.from, filters.to);
+
+  return { filters, ...core };
+}
+
+export async function getProfitAlerts(input: { from: string; to: string }): Promise<ProfitAlert[]> {
+  return cachedProfitAlerts(input.from, input.to);
+}
+
+/** Alert แบ่งหน้าจากอาเรย์ที่ cache ไว้แล้ว จึงไม่ยิง query ใหม่ตอนเปลี่ยนหน้า */
+export async function getProfitAlertsSection(
+  input: ProfitSectionInput,
+): Promise<PaginatedSection<ProfitAlert>> {
+  const alerts = await cachedProfitAlerts(input.from, input.to);
+  const pagination = buildPagination(parsePage(input.page), alerts.length, ALERT_PAGE_SIZE);
+  const startIndex = (pagination.page - 1) * pagination.pageSize;
+
+  return {
+    items: alerts.slice(startIndex, startIndex + pagination.pageSize),
+    pagination,
+  };
+}
+
+export async function getProfitStockSection(
+  input: ProfitSectionInput,
+): Promise<PaginatedSection<ProfitProductRow>> {
+  return cachedProfitStock(input.from, input.to, parsePage(input.page));
+}
+
+export async function getProfitCustomerSection(
+  input: ProfitSectionInput,
+): Promise<PaginatedSection<ProfitCustomerRow>> {
+  return cachedProfitCustomers(input.from, input.to, parsePage(input.page));
+}
+
+export async function getProfitInvoiceSection(
+  input: ProfitSectionInput,
+): Promise<PaginatedSection<ProfitInvoiceRow>> {
+  return cachedProfitInvoices(input.from, input.to, parsePage(input.page));
+}
 
 export async function getProfitDashboardData(
   input?: ProfitDashboardQueryInput,
 ): Promise<ProfitDashboardData> {
-  return cachedProfitDashboardData(input);
+  const filters = resolveProfitDashboardFilters(input);
+  const range = { from: filters.from, to: filters.to };
+  const [overview, alerts, stockProducts, customerAnalysis, invoices] = await Promise.all([
+    getProfitDashboardOverview(filters),
+    getProfitAlerts(range),
+    getProfitStockSection({ ...range, page: input?.stockPage }),
+    getProfitCustomerSection({ ...range, page: input?.customerPage }),
+    getProfitInvoiceSection({ ...range, page: input?.invoicePage }),
+  ]);
+
+  return {
+    ...overview,
+    alerts,
+    stockProducts,
+    customerAnalysis,
+    invoices,
+  };
 }
