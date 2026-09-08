@@ -61,6 +61,9 @@ export async function saveQuotation(input: QuotationInput, id?: string, expected
     revalidatePath("/admin/sales");
     return result;
   } catch (error) {
+    // QuotationError is expected control flow (referenced/cancelled documents);
+    // anything else is a real failure the generic Thai message would otherwise hide.
+    if (!(error instanceof QuotationError)) console.error("[saveQuotation]", error);
     return { error: error instanceof QuotationError ? error.message : "บันทึกใบเสนอราคาไม่สำเร็จ กรุณาลองอีกครั้ง", references: error instanceof QuotationError ? error.references : [] };
   }
 }
@@ -80,7 +83,10 @@ export async function cancelQuotation(id: string, note: string) {
     revalidatePath("/admin/sales-quotations");
     revalidatePath(`/admin/sales-quotations/${id}`);
     return { success: true };
-  } catch (error) { return { error: error instanceof QuotationError ? error.message : "ยกเลิกไม่สำเร็จ กรุณาลองอีกครั้ง", references: error instanceof QuotationError ? error.references : [] }; }
+  } catch (error) {
+    if (!(error instanceof QuotationError)) console.error("[cancelQuotation]", error);
+    return { error: error instanceof QuotationError ? error.message : "ยกเลิกไม่สำเร็จ กรุณาลองอีกครั้ง", references: error instanceof QuotationError ? error.references : [] };
+  }
 }
 
 export async function searchAvailableQuotations(query: string, currentSaleId?: string) {

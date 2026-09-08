@@ -391,8 +391,13 @@ export async function generateSalesQuotationNo(tx: Prisma.TransactionClient, dat
   const [year, month] = getThailandDateKey(date).split("-");
   const prefix = `SQ${year.slice(-2)}${month}`;
   // Serialize the monthly sequence even when the month has no documents yet.
-  await tx.$queryRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${prefix}))`);
-  const rows = await tx.$queryRaw<{ lastNo: number }[]>(Prisma.sql`SELECT COALESCE(MAX(CAST(SUBSTRING("quotationNo" FROM ${prefix.length + 1}) AS INTEGER)), 0) AS "lastNo" FROM "SalesQuotation" WHERE "quotationNo" LIKE ${`${prefix}%`}`);
+  // $executeRaw, not $queryRaw: pg_advisory_xact_lock() returns void and the
+  // pg driver adapter cannot deserialize a void column (P2010).
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${prefix}))`);
+  // ::int is required. Prisma binds the offset untyped, and Postgres then resolves
+  // SUBSTRING(text FROM <unknown>) to the POSIX-regex overload rather than the
+  // offset one, so every row yields NULL and the sequence sticks at 0001.
+  const rows = await tx.$queryRaw<{ lastNo: number }[]>(Prisma.sql`SELECT COALESCE(MAX(CAST(SUBSTRING("quotationNo" FROM ${prefix.length + 1}::int) AS INTEGER)), 0) AS "lastNo" FROM "SalesQuotation" WHERE "quotationNo" LIKE ${`${prefix}%`}`);
   const next = Number(rows[0]?.lastNo ?? 0) + 1;
   return `${prefix}${String(next).padStart(4, "0")}`;
 }

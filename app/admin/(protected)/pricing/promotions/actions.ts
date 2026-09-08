@@ -173,7 +173,8 @@ export async function publishPricePromotion(
 
       for (const productId of promotion.items.map((item) => item.productId).sort()) {
         const lockKey = `${promotion.priceListId}:${productId}`;
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
+        // $executeRaw: pg_advisory_xact_lock() returns void, which $queryRaw cannot deserialize.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`;
       }
 
       const productIds = promotion.items.map((item) => item.productId);
