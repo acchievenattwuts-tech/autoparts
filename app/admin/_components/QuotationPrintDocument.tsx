@@ -54,8 +54,11 @@ export default function QuotationPrintDocument({ quote, config, account }: { quo
       <div className="space-y-1 text-xs">{account && <><p className="font-semibold">ช่องทางการชำระเงิน</p><p>ชื่อบัญชี: {account.name}</p><p>ธนาคาร: {account.bankName ?? "-"}</p><p>เลขที่บัญชี: {account.accountNo ?? "-"}</p></>}</div>
       <div className="ml-auto w-60 space-y-2 text-center">
         <p>ขอแสดงความนับถือ</p>
-        {/* ไม่มีลายเซ็น = ไม่แทรกกล่องเลย เส้นกลับไปใช้ pt-7 เดิม ระยะจึงไม่ขยับ */}
-        {signatureSrc ? <div className="flex h-16 items-end justify-center"><Image src={signatureSrc} alt={`ลายเซ็น ${quote.signerName ?? quote.updatedByName}`} width={200} height={64} className="max-h-16 w-auto object-contain" loading="eager" unoptimized /></div> : null}
+        {/* ไม่มีลายเซ็น = ไม่แทรกกล่องเลย เส้นกลับไปใช้ pt-7 เดิม ระยะจึงไม่ขยับ
+            mb-[-32px] ดึงลายเซ็นลงมาชิดเส้น: หักทั้ง space-y-2 (8px), ช่องว่างเหนือ
+            glyph "_" ในกล่องบรรทัด (~17px) และพื้นที่โปร่งใต้ลายเส้นในไฟล์ PNG
+            (~15px จาก 64px) เหลือระยะจริงจากปลายลายเซ็นถึงเส้นราว 9px */}
+        {signatureSrc ? <div className="mb-[-32px] flex h-16 items-end justify-center"><Image src={signatureSrc} alt={`ลายเซ็น ${quote.signerName ?? quote.updatedByName}`} width={200} height={64} className="max-h-16 w-auto object-contain" loading="eager" unoptimized /></div> : null}
         <p className={signatureSrc ? "" : "pt-7"}>____________________________</p>
         <p>{quote.updatedByName}</p>
         <p>{formatPrintDate(quote.quotationDate)}</p>
