@@ -33,6 +33,8 @@ export default function CustomerAdvanceRefundPrintDocument({
         phone?: string | null;
       };
     };
+    signerName?: string | null;
+    signerSignatureUrl?: string | null;
     user?: { name?: string | null; signatureUrl?: string | null } | null;
   };
   shopConfig: PrintShopConfig;
@@ -47,6 +49,9 @@ export default function CustomerAdvanceRefundPrintDocument({
 }) {
   const noticeLines = getPrintNoticeLines(shopConfig.printNoticeText);
   const dateText = formatPrintDate(refund.refundDate);
+  // ลายเซ็นที่ตรึงไว้กับเอกสารมาก่อนเสมอ — fallback ไป User ไว้ให้ใบเก่าที่ยังไม่ถูก backfill
+  const signerName = refund.signerName ?? refund.user?.name ?? "";
+  const signerSignatureUrl = refund.signerSignatureUrl ?? refund.user?.signatureUrl ?? null;
   return (
     <PrintDocumentRoot
       rootClassName={
@@ -142,10 +147,10 @@ export default function CustomerAdvanceRefundPrintDocument({
               {
                 label: "ผู้จ่ายเงิน",
                 dateText: `วันที่ ${dateText}`,
-                nameText: refund.user?.name ?? "",
+                nameText: signerName,
                 showNameLine: true,
-                signatureUrl: refund.user?.signatureUrl,
-                signatureAlt: `ลายเซ็น ${refund.user?.name ?? "ผู้จ่ายเงิน"}`,
+                signatureUrl: signerSignatureUrl,
+                signatureAlt: `ลายเซ็น ${signerName || "ผู้จ่ายเงิน"}`,
               },
               {
                 label: "ผู้รับเงิน",

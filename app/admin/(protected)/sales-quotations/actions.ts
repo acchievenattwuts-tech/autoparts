@@ -7,6 +7,7 @@ import { db, dbTx } from "@/lib/db";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { getAuditActorFromSession, getRequestContext, writeAuditLogTx } from "@/lib/audit-log";
 import { quotationSchema, quotationTotals, generateQuotationNo, assertQuotationAvailable, QuotationError, type QuotationInput } from "@/lib/sales-quotation";
+import { getDocumentSignerSnapshot } from "@/lib/document-signer";
 import { parseDateOnlyToDate, formatDateOnlyForInput } from "@/lib/th-date";
 import { searchTransactionProductDetailRows } from "@/lib/transaction-product-search";
 import { getSaleProductOptionsByIds } from "@/lib/transaction-options";
@@ -48,7 +49,10 @@ export async function saveQuotation(input: QuotationInput, id?: string, expected
       const { items: _items, quotationDate: date, ...header } = data;
       void _items;
       const quotationDate = parseDateOnlyToDate(date);
-      const values = { ...header, quotationDate, ...quotationTotals(data), updatedById: session.user.id, updatedByName: session.user.name ?? "-" };
+      // ลายเซ็นตรึงคู่กับ updatedByName เสมอ — ใบเสนอราคารีเฟรชชื่อผู้แก้ไขทุก revision
+      // ถ้าตรึงลายเซ็นไว้ตั้งแต่ revision แรกจะกลายเป็นชื่อคนหนึ่ง ลายเซ็นอีกคนหนึ่ง
+      const signer = await getDocumentSignerSnapshot(tx, session.user.id, quotationDate);
+      const values = { ...header, quotationDate, ...quotationTotals(data), updatedById: session.user.id, updatedByName: session.user.name ?? "-", ...signer };
       const quote = id
         ? await tx.salesQuotation.update({ where: { id }, data: { ...values, revision: { increment: 1 }, items: { deleteMany: {}, create: items } } })
         : await tx.salesQuotation.create({ data: { ...values, quotationNo: await generateQuotationNo(tx, quotationDate), createdById: session.user.id, items: { create: items } } });
@@ -77,7 +81,8 @@ export async function cancelQuotation(id: string, note: string) {
     await dbTx(async (tx) => {
       await assertQuotationAvailable(tx, id);
       const before = await tx.salesQuotation.findUnique({ where: { id } });
-      const after = await tx.salesQuotation.update({ where: { id }, data: { status: "CANCELLED", cancelNote: note, cancelledAt: new Date(), updatedById: session.user.id, updatedByName: session.user.name ?? "-" } });
+      const cancelSigner = await getDocumentSignerSnapshot(tx, session.user.id, before?.quotationDate ?? new Date());
+      const after = await tx.salesQuotation.update({ where: { id }, data: { status: "CANCELLED", cancelNote: note, cancelledAt: new Date(), updatedById: session.user.id, updatedByName: session.user.name ?? "-", ...cancelSigner } });
       await writeAuditLogTx(tx, { ...getAuditActorFromSession(session), ...context, action: "CANCEL", entityType: "SalesQuotation", entityId: id, entityRef: after.quotationNo, before, after });
     });
     revalidatePath("/admin/sales-quotations");

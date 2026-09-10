@@ -1,3 +1,5 @@
+import Image from "next/image";
+import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import { formatQuotationReference } from "@/lib/sales-quotation-form";
 import type { Prisma } from "@/lib/generated/prisma";
 import PrintDocumentRoot from "./print/PrintDocumentRoot";
@@ -12,6 +14,8 @@ const PRINT_SUMMARY_GRID_STYLE = { gridTemplateColumns: "minmax(0,1fr) 15rem" } 
 type Quote = Prisma.SalesQuotationGetPayload<{ include: { items: { include: { product: { select: { code: true; name: true } } } } } }>;
 export default function QuotationPrintDocument({ quote, config, account }: { quote: Quote; config: PrintShopConfig; account: { name: string; bankName: string | null; accountNo: string | null } | null }) {
   const netAmountInWords = formatThaiBahtText(Number(quote.netAmount));
+  /** ลายเซ็นที่ตรึงไว้กับเอกสาร (signerSignatureUrl) ไม่ใช่ค่าปัจจุบันของ User */
+  const signatureSrc = toPublicStorageCdnPath(quote.signerSignatureUrl) ?? quote.signerSignatureUrl ?? "";
   /** ซ่อนแถวภาษีเมื่อเอกสารไม่คิด VAT — กันแถว 0.00 โผล่เหมือนเดิม */
   const hasVat = quote.vatType !== "NO_VAT" && Number(quote.vatRate) > 0;
   return <PrintDocumentRoot rootId="quotation-print" rootClassName="mx-auto flex max-w-[900px] flex-col bg-white p-8 text-[13px] leading-snug">
@@ -48,7 +52,14 @@ export default function QuotationPrintDocument({ quote, config, account }: { quo
     </div>
     <div data-print-role="footer" className="mt-auto grid grid-cols-2 items-end gap-8 pt-12 break-inside-avoid">
       <div className="space-y-1 text-xs">{account && <><p className="font-semibold">ช่องทางการชำระเงิน</p><p>ชื่อบัญชี: {account.name}</p><p>ธนาคาร: {account.bankName ?? "-"}</p><p>เลขที่บัญชี: {account.accountNo ?? "-"}</p></>}</div>
-      <div className="ml-auto w-60 space-y-2 text-center"><p>ขอแสดงความนับถือ</p><p className="pt-7">____________________________</p><p>{quote.updatedByName}</p><p>{formatPrintDate(quote.quotationDate)}</p></div>
+      <div className="ml-auto w-60 space-y-2 text-center">
+        <p>ขอแสดงความนับถือ</p>
+        {/* ไม่มีลายเซ็น = ไม่แทรกกล่องเลย เส้นกลับไปใช้ pt-7 เดิม ระยะจึงไม่ขยับ */}
+        {signatureSrc ? <div className="flex h-16 items-end justify-center"><Image src={signatureSrc} alt={`ลายเซ็น ${quote.signerName ?? quote.updatedByName}`} width={200} height={64} className="max-h-16 w-auto object-contain" loading="eager" unoptimized /></div> : null}
+        <p className={signatureSrc ? "" : "pt-7"}>____________________________</p>
+        <p>{quote.updatedByName}</p>
+        <p>{formatPrintDate(quote.quotationDate)}</p>
+      </div>
     </div>
   </PrintDocumentRoot>;
 }

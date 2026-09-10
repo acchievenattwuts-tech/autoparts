@@ -15,6 +15,7 @@ test("SQ revisions log complete before/after values, skip no-op saves and reject
   const tx = {
     $queryRaw: async () => [],
     customer: { findUnique: async () => ({ isActive: true }) },
+    user: { findUnique: async () => ({ name: "ผู้ทำเอกสาร", signatureUrl: "products/users/signatures/u1.png" }) },
     product: { findMany: async () => [{ id: "p1", code: "P1", name: "สินค้าทดสอบ", isActive: true, units: [{ name: "ชิ้น", scale: 1 }] }] },
     salesQuotation: {
       findUnique: async () => structuredClone(quote),

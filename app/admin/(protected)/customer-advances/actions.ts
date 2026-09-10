@@ -8,6 +8,7 @@ import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateCustomerAdvanceNo } from "@/lib/doc-number";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { getDocumentSignerSnapshot } from "@/lib/document-signer";
 import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, PaymentMethod, Prisma,
 } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements,
@@ -152,10 +153,14 @@ export async function createCustomerAdvance(formData: FormData): Promise<{ succe
     await dbTx(async (tx) => {
       const paymentMethod = await resolvePaymentMethod(tx, paymentResult.payments,
       );
+      // ตรึงลายเซ็นผู้รับเงินไว้กับเอกสาร — userId ของใบมัดจำไม่เปลี่ยนตอนแก้ไข
+      // จึงตรึงครั้งเดียวตอนสร้าง เหมือน Sale / Receipt
+      const signer = await getDocumentSignerSnapshot(tx, session.user.id, advanceDate);
       const advance = await tx.customerAdvance.create({ data: {
         advanceNo, advanceDate, customerId: parsed.data.customerId, userId: session.user.id,
         totalAmount: parsed.data.totalAmount, amountRemain: parsed.data.totalAmount,
         paymentMethod, cashBankAccountId: derivePrimaryAccountId(paymentResult.payments), note: parsed.data.note?.trim() || null,
+        ...signer,
       },
       });
       advanceId = advance.id;

@@ -1569,36 +1569,39 @@ model PricePromotionItem {
 }
 
 model SalesQuotation {
-  revision        Int                  @default(0)
-  id              String               @id @default(cuid())
-  quotationNo     String               @unique
-  quotationDate   DateTime             @db.Timestamptz(3)
-  customerId      String
-  customerName    String
-  customerPhone   String?
-  customerAddress String?
-  creditTerm      Int                  @default(0)
-  saleType        SaleType             @default(RETAIL)
-  discount        Decimal              @default(0) @db.Decimal(10, 2)
-  totalAmount     Decimal              @db.Decimal(10, 2)
-  subtotalAmount  Decimal              @db.Decimal(10, 2)
-  vatAmount       Decimal              @db.Decimal(10, 2)
-  netAmount       Decimal              @db.Decimal(10, 2)
-  vatType         VatType              @default(NO_VAT)
-  vatRate         Decimal              @db.Decimal(5, 2)
-  note            String?
-  status          DocStatus            @default(ACTIVE)
-  cancelNote      String?
-  cancelledAt     DateTime?            @db.Timestamptz(3)
-  createdById     String
-  updatedById     String
-  updatedByName   String
-  createdAt       DateTime             @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime             @updatedAt @db.Timestamptz(3)
-  customer        Customer             @relation(fields: [customerId], references: [id])
-  items           SalesQuotationItem[]
-  sales           Sale[]               @relation("SaleQuotation")
-  activeSale      Sale?                @relation("ActiveSaleQuotation")
+  revision           Int                  @default(0)
+  id                 String               @id @default(cuid())
+  quotationNo        String               @unique
+  quotationDate      DateTime             @db.Timestamptz(3)
+  customerId         String
+  customerName       String
+  customerPhone      String?
+  customerAddress    String?
+  creditTerm         Int                  @default(0)
+  saleType           SaleType             @default(RETAIL)
+  discount           Decimal              @default(0) @db.Decimal(10, 2)
+  totalAmount        Decimal              @db.Decimal(10, 2)
+  subtotalAmount     Decimal              @db.Decimal(10, 2)
+  vatAmount          Decimal              @db.Decimal(10, 2)
+  netAmount          Decimal              @db.Decimal(10, 2)
+  vatType            VatType              @default(NO_VAT)
+  vatRate            Decimal              @db.Decimal(5, 2)
+  note               String?
+  status             DocStatus            @default(ACTIVE)
+  cancelNote         String?
+  cancelledAt        DateTime?            @db.Timestamptz(3)
+  createdById        String
+  updatedById        String
+  updatedByName      String
+  signedAt           DateTime?            @db.Timestamptz(3)
+  signerName         String?
+  signerSignatureUrl String?
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
+  customer           Customer             @relation(fields: [customerId], references: [id])
+  items              SalesQuotationItem[]
+  sales              Sale[]               @relation("SaleQuotation")
+  activeSale         Sale?                @relation("ActiveSaleQuotation")
 
   @@index([customerId, status, quotationDate])
   @@index([quotationDate, status])
@@ -2558,26 +2561,29 @@ model ReceiptItem {
 }
 
 model CustomerAdvance {
-  id                String                  @id @default(cuid())
-  advanceNo         String                  @unique
-  advanceDate       DateTime                @default(now()) @db.Timestamptz(3)
-  customerId        String
-  userId            String
-  totalAmount       Decimal                 @db.Decimal(10, 2)
-  amountRemain      Decimal                 @default(0) @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod           @default(TRANSFER)
-  note              String?
-  createdAt         DateTime                @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime                @updatedAt @db.Timestamptz(3)
-  cancelNote        String?
-  cancelledAt       DateTime?               @db.Timestamptz(3)
-  status            DocStatus               @default(ACTIVE)
-  cashBankAccountId String?
-  cashBankAccount   CashBankAccount?        @relation(fields: [cashBankAccountId], references: [id])
-  customer          Customer                @relation(fields: [customerId], references: [id])
-  user              User                    @relation(fields: [userId], references: [id])
-  receiptItems      ReceiptItem[]
-  refunds           CustomerAdvanceRefund[]
+  id                 String                  @id @default(cuid())
+  advanceNo          String                  @unique
+  advanceDate        DateTime                @default(now()) @db.Timestamptz(3)
+  customerId         String
+  userId             String
+  totalAmount        Decimal                 @db.Decimal(10, 2)
+  amountRemain       Decimal                 @default(0) @db.Decimal(10, 2)
+  paymentMethod      PaymentMethod           @default(TRANSFER)
+  note               String?
+  createdAt          DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @db.Timestamptz(3)
+  cancelNote         String?
+  cancelledAt        DateTime?               @db.Timestamptz(3)
+  status             DocStatus               @default(ACTIVE)
+  cashBankAccountId  String?
+  signedAt           DateTime?               @db.Timestamptz(3)
+  signerName         String?
+  signerSignatureUrl String?
+  cashBankAccount    CashBankAccount?        @relation(fields: [cashBankAccountId], references: [id])
+  customer           Customer                @relation(fields: [customerId], references: [id])
+  user               User                    @relation(fields: [userId], references: [id])
+  receiptItems       ReceiptItem[]
+  refunds            CustomerAdvanceRefund[]
 
   @@index([advanceDate(sort: Desc), status])
   @@index([cashBankAccountId, advanceDate(sort: Desc), status])
@@ -2587,23 +2593,26 @@ model CustomerAdvance {
 }
 
 model CustomerAdvanceRefund {
-  id                String           @id @default(cuid())
-  refundNo          String           @unique
-  refundDate        DateTime         @default(now()) @db.Timestamptz(3)
-  customerAdvanceId String
-  userId            String
-  refundAmount      Decimal          @db.Decimal(10, 2)
-  paymentMethod     PaymentMethod    @default(TRANSFER)
-  note              String?
-  createdAt         DateTime         @default(now()) @db.Timestamptz(3)
-  updatedAt         DateTime         @updatedAt @db.Timestamptz(3)
-  cancelNote        String?
-  cancelledAt       DateTime?        @db.Timestamptz(3)
-  status            DocStatus        @default(ACTIVE)
-  cashBankAccountId String?
-  cashBankAccount   CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
-  customerAdvance   CustomerAdvance  @relation(fields: [customerAdvanceId], references: [id])
-  user              User             @relation(fields: [userId], references: [id])
+  id                 String           @id @default(cuid())
+  refundNo           String           @unique
+  refundDate         DateTime         @default(now()) @db.Timestamptz(3)
+  customerAdvanceId  String
+  userId             String
+  refundAmount       Decimal          @db.Decimal(10, 2)
+  paymentMethod      PaymentMethod    @default(TRANSFER)
+  note               String?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+  cancelNote         String?
+  cancelledAt        DateTime?        @db.Timestamptz(3)
+  status             DocStatus        @default(ACTIVE)
+  cashBankAccountId  String?
+  signedAt           DateTime?        @db.Timestamptz(3)
+  signerName         String?
+  signerSignatureUrl String?
+  cashBankAccount    CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
+  customerAdvance    CustomerAdvance  @relation(fields: [customerAdvanceId], references: [id])
+  user               User             @relation(fields: [userId], references: [id])
 
   @@index([refundDate(sort: Desc), status])
   @@index([customerAdvanceId, status])

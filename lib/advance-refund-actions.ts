@@ -26,6 +26,7 @@ import {
   toCashBankEntries,
   type DocumentPaymentRow,
 } from "@/lib/document-payments";
+import { getDocumentSignerSnapshot } from "@/lib/document-signer";
 import {
   generateCustomerAdvanceRefundNo,
   generateSupplierAdvanceRefundNo,
@@ -305,11 +306,18 @@ async function createRefund(side: RefundSide, formData: FormData) {
         note: parsed.data.note?.trim() || null,
         cashBankAccountId: derivePrimaryAccountId(payments),
       };
+      // ตรึงลายเซ็นผู้จ่ายเงินเฉพาะฝั่งลูกค้า — ฝั่งผู้จัดจำหน่ายยังไม่มีแบบพิมพ์
+      // จึงยังไม่มีคอลัมน์ signer ใน SupplierAdvanceRefund
+      const customerSigner =
+        side === "CUSTOMER"
+          ? await getDocumentSignerSnapshot(tx, session.user.id, refundDate)
+          : undefined;
       const created =
         side === "CUSTOMER"
           ? await tx.customerAdvanceRefund.create({
               data: {
                 ...common,
+                ...customerSigner,
                 customerAdvanceId: parsed.data.sourceAdvanceId,
               },
             })
