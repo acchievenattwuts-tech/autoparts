@@ -1122,11 +1122,6 @@ export async function updateSale(
   });
   if (!existing)                        return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
-  if (isManualMarketplaceChannel(existing.channel)) {
-    return {
-      error: `ใบขาย ${getMarketplaceChannelConfig(existing.channel).label} ไม่เปิดให้แก้ไข เพื่อรักษายอดตัดสต็อกและยอดกระทบยอด กรุณายกเลิกแล้วบันทึกใหม่`,
-    };
-  }
   const mutationBlockMessage = await getDocumentMutationBlockMessage("Sale", id, "update");
   if (mutationBlockMessage) return { error: mutationBlockMessage };
   if (existing.creditNotes.length > 0) {
@@ -1151,6 +1146,8 @@ export async function updateSale(
   } catch { return { error: "รูปแบบข้อมูลรายการไม่ถูกต้อง" }; }
 
   const parsed = saleSchema.safeParse({
+    channel:         existing.channel,
+    channelRefNo:    formData.get("channelRefNo") || undefined,
     saleDate:        formData.get("saleDate"),
     customerId:      formData.get("customerId")      || undefined,
     saleType:        formData.get("saleType")        || SaleType.RETAIL,
@@ -1175,15 +1172,50 @@ export async function updateSale(
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
-  const { saleDate, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, note, shippingMethod, creditTerm, items: validItems } = parsed.data;
+  const { channelRefNo, saleDate, saleType, paymentType, fulfillmentType, customerName, customerPhone, shippingAddress, shippingFee, destLatitude, destLongitude, saveAsCustomerDefault, discount, note, shippingMethod, creditTerm, items: validItems } = parsed.data;
   // สามตัวนี้ถูก SQ ที่อ้างอิงทับค่าด้านล่าง จึงแยกออกมาเป็น let
   let customerId = parsed.data.customerId;
   let vatType = parsed.data.vatType;
   let vatRate = parsed.data.vatRate;
+  const marketplaceConfig = isManualMarketplaceChannel(existing.channel)
+    ? getMarketplaceChannelConfig(existing.channel)
+    : null;
+  if (marketplaceConfig) {
+    const marketplaceSession = await requirePermission("marketplace.manage").catch(() => null);
+    if (!marketplaceSession?.user?.id) {
+      return { error: `ไม่มีสิทธิ์แก้ไขการขาย ${marketplaceConfig.label}` };
+    }
+    if (!channelRefNo) return { error: `กรุณาระบุ${marketplaceConfig.orderRefLabel}` };
+    if (
+      paymentType !== SalePaymentType.CASH_SALE ||
+      fulfillmentType !== FulfillmentType.DELIVERY ||
+      vatType !== VatType.NO_VAT
+    ) {
+      return { error: `รายการ ${marketplaceConfig.label} ต้องเป็นขายสด จัดส่ง และไม่คิด VAT` };
+    }
+    if (customerId !== existing.customerId) {
+      return { error: `ลูกค้าอ้างอิงของ ${marketplaceConfig.label} ไม่สามารถเปลี่ยนได้` };
+    }
+    const duplicateOrder = await db.sale.findFirst({
+      where: {
+        channel: existing.channel,
+        channelRefNo,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+    if (duplicateOrder) {
+      return { error: `${marketplaceConfig.orderRefLabel}นี้ถูกบันทึกแล้ว` };
+    }
+  }
 
   // SQ เป็นเจ้าของลูกค้าและภาษีของใบขายที่อ้างอิงมัน — ฟอร์มล็อกช่องไว้แล้ว แต่ Server Action ถูกเรียกตรงได้
   // จึงทับค่าจาก SQ ซ้ำอีกชั้น และต้องทำก่อนคิดยอด เพราะ VAT มีผลกับ netAmount
-  const quotationId = formData.has("quotationId") ? String(formData.get("quotationId") ?? "").trim() || null : existing.quotationId;
+  const quotationId = marketplaceConfig
+    ? existing.quotationId
+    : formData.has("quotationId")
+      ? String(formData.get("quotationId") ?? "").trim() || null
+      : existing.quotationId;
   if (quotationId && quotationId !== existing.quotationId && !(await requirePermission("sales_quotations.view").catch(() => null))) return { error: "ไม่มีสิทธิ์อ้างอิงใบเสนอราคา" };
   if (quotationId) {
     const quotation = await db.salesQuotation.findUnique({ where: { id: quotationId }, select: { customerId: true, vatType: true, vatRate: true } });
@@ -1211,6 +1243,9 @@ export async function updateSale(
   if (wht && paymentType !== SalePaymentType.CASH_SALE) {
     return { error: "ใบขายเชื่อให้บันทึกภาษีหัก ณ ที่จ่ายตอนออกใบเสร็จรับเงินแทน" };
   }
+  if (wht && marketplaceConfig) {
+    return { error: "รายการจากมาร์เก็ตเพลสไม่รองรับภาษีหัก ณ ที่จ่าย" };
+  }
   const whtValidationError = validateWhtAgainstTotal(wht, netAmount, {
     hasCustomer: Boolean(customerId),
   });
@@ -1235,6 +1270,15 @@ export async function updateSale(
     } catch (err) {
       return { error: err instanceof Error ? err.message : "ยอดช่องทางรับเงินไม่ถูกต้อง" };
     }
+  }
+  if (
+    marketplaceConfig &&
+    (payments.length !== 1 ||
+      payments[0]?.cashBankAccountId !== existing.cashBankAccountId)
+  ) {
+    return {
+      error: `รายการ ${marketplaceConfig.label} ต้องรับยอดเต็มเข้าบัญชีพักเงินเดิมของเอกสาร`,
+    };
   }
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
   const docDate = parseDateOnlyToDate(saleDate);
@@ -1412,6 +1456,7 @@ export async function updateSale(
           quotationId,
           quotationRevision,
           activeQuotationId: quotationId,
+          channelRefNo:    marketplaceConfig ? channelRefNo : existing.channelRefNo,
           saleDate:        docDate,
           customerId:      customerId      ?? null,
           saleType,
@@ -1676,6 +1721,13 @@ export async function updateSale(
     return { success: true };
   } catch (err) {
     console.error("[updateSale]", err);
+    if (
+      marketplaceConfig &&
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      return { error: `${marketplaceConfig.orderRefLabel}นี้ถูกบันทึกแล้ว` };
+    }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

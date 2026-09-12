@@ -16,6 +16,17 @@ describe("marketplace channel config", () => {
     assert.equal(isManualMarketplaceChannel(""), false);
   });
 
+  it("provides the order labels used consistently across marketplace sale pages", () => {
+    assert.equal(
+      getMarketplaceChannelConfig(SaleChannel.SHOPEE).orderRefLabel,
+      "เลขคำสั่งซื้อ Shopee",
+    );
+    assert.equal(
+      getMarketplaceChannelConfig(SaleChannel.LAZADA).orderRefLabel,
+      "เลขคำสั่งซื้อ Lazada",
+    );
+  });
+
   it("maps url slugs back to their channel", () => {
     assert.equal(resolveChannelFromSlug("lazada"), SaleChannel.LAZADA);
     assert.equal(resolveChannelFromSlug("shopee"), SaleChannel.SHOPEE);

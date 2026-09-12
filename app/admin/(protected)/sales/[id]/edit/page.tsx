@@ -20,11 +20,13 @@ import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationB
 import SaleForm from "../../new/SaleForm";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { getSaleProductOptionsByIds, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
   const { role, permissions } = await getSessionPermissionContext();
   const canPrint = hasPermissionAccess(role, permissions, "sales.view");
+  const canManageMarketplace = hasPermissionAccess(role, permissions, "marketplace.manage");
 
   const { id } = await params;
 
@@ -51,7 +53,13 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   ]);
 
   if (!sale) notFound();
-  if (sale.status === "CANCELLED") redirect(`/admin/sales/${id}`);
+  if (sale.status === "CANCELLED") {
+    redirect(`/admin/sales/${id}`);
+  }
+  const marketplaceConfig = isManualMarketplaceChannel(sale.channel)
+    ? getMarketplaceChannelConfig(sale.channel)
+    : null;
+  if (marketplaceConfig && !canManageMarketplace) redirect(`/admin/sales/${id}`);
 
   const [salePayments, saleWht, whtIncomeTypes] = await Promise.all([
     db.documentPayment.findMany({
@@ -187,6 +195,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
 
   const initialData = {
     id,
+    channelRefNo:    sale.channelRefNo ?? "",
     quotationId: sale.quotationId,
     quotationNo: sale.quotation ? formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision) : null,
       saleDate:        formatDateOnlyForInput(sale.saleDate),
@@ -235,7 +244,9 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         <span className="text-gray-300 dark:text-slate-600">/</span>
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">แก้ไข</span>
       </div>
-      <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">แก้ไขใบขาย</h1>
+      <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">
+        {marketplaceConfig ? `แก้ไขใบขาย ${marketplaceConfig.label}` : "แก้ไขใบขาย"}
+      </h1>
       {mutationBlockMessage && (
         <div className="mb-6">
           <DocumentMutationBlockedNotice
@@ -263,6 +274,11 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         initialAvailableLots={initialAvailableLots}
         submitLocked={!!mutationBlockMessage}
         canPrint={canPrint}
+        channel={sale.channel}
+        channelLabel={marketplaceConfig?.label}
+        orderRefLabel={marketplaceConfig?.orderRefLabel}
+        defaultCustomerId={marketplaceConfig ? sale.customerId ?? "" : undefined}
+        defaultCashBankAccountId={marketplaceConfig ? sale.cashBankAccountId ?? "" : undefined}
       />
     </div>
   );

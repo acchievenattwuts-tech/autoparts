@@ -100,7 +100,7 @@ const SalesPage = async ({
   const canCreate = hasPermissionAccess(role, permissions, "sales.create");
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
   const canCancel = hasPermissionAccess(role, permissions, "sales.cancel");
-  const canManageShopee = hasPermissionAccess(role, permissions, "marketplace.manage");
+  const canManageMarketplace = hasPermissionAccess(role, permissions, "marketplace.manage");
   const canViewReports = hasPermissionAccess(role, permissions, "reports.view");
 
   const params = await searchParams;
@@ -182,6 +182,11 @@ const SalesPage = async ({
       include: {
         _count: { select: { items: true } },
         customer: { select: { name: true } },
+        marketplaceSettlementLines: {
+          where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
+          take: 1,
+          select: { id: true },
+        },
       },
     }),
     db.sale.count({ where: whereClause }),
@@ -223,7 +228,7 @@ const SalesPage = async ({
             : "ค้นหา ดูรายละเอียด และจัดการใบขายหน้าร้าน"
         }
         actions={
-          canCreate && (!marketplaceConfig || canManageShopee) ? (
+          canCreate && (!marketplaceConfig || canManageMarketplace) ? (
             <Link
               href={marketplaceConfig ? `/admin/sales/${marketplaceConfig.slug}/new` : "/admin/sales/new"}
               className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600"
@@ -237,7 +242,7 @@ const SalesPage = async ({
 
       <div className="flex flex-wrap items-end gap-2 border-b border-slate-200 dark:border-white/10">
         <SalesChannelTabs currentChannel={channelFilter} />
-        {marketplaceConfig && canManageShopee ? <div className="ml-auto flex flex-wrap gap-2 pb-2">
+        {marketplaceConfig && canManageMarketplace ? <div className="ml-auto flex flex-wrap gap-2 pb-2">
           <Link href={`/admin/sales/${marketplaceConfig.slug}/settlements`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><WalletCards size={15}/> กระทบยอดรับเงิน</Link>
           <Link href={`/admin/sales/${marketplaceConfig.slug}/returns/new`} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><RotateCcw size={15}/> บันทึกคืนสินค้า</Link>
           {canViewReports ? <Link href="/admin/reports/marketplace" className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/5"><BarChart3 size={15}/> รายงานช่องทางขาย</Link> : null}
@@ -272,7 +277,13 @@ const SalesPage = async ({
             <SalesFilterBar />
             <DateRangeFilter from={from} to={to} />
           </div>
-          <SearchBar placeholder="ค้นหาเลขที่ใบขาย, ชื่อลูกค้า..." />
+          <SearchBar
+            placeholder={
+              marketplaceConfig
+                ? `ค้นหาเลขที่ใบขาย, ${marketplaceConfig.orderRefLabel}, ชื่อผู้ซื้อ...`
+                : "ค้นหาเลขที่ใบขาย, ชื่อลูกค้า..."
+            }
+          />
         </div>
       </AdminFilterToolbar>
 
@@ -284,8 +295,8 @@ const SalesPage = async ({
             <tr>
               <th className="w-10 px-4 py-3 text-center font-medium">#</th>
               <th className="px-4 py-3 text-left font-medium">เลขที่ใบขาย</th>
-              <th className="px-4 py-3 text-left font-medium">วันที่</th>
-              <th className="w-[220px] px-4 py-3 text-left font-medium">ลูกค้า</th>
+              <th className="px-4 py-3 text-left font-medium">{marketplaceConfig ? "วันที่พร้อมจัดส่ง" : "วันที่"}</th>
+              <th className="w-[220px] px-4 py-3 text-left font-medium">{marketplaceConfig ? "ชื่อผู้ซื้อ" : "ลูกค้า"}</th>
               <th className="px-4 py-3 text-left font-medium">ขายสด/เชื่อ</th>
               <th className="px-4 py-3 text-left font-medium">สถานะการชำระ</th>
               <th className="px-4 py-3 text-left font-medium">การจัดส่ง</th>
@@ -316,9 +327,13 @@ const SalesPage = async ({
                     }`}
                   >
                     <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">{channelLabel[s.channel]}: {s.channelRefNo}</span> : null}</td>
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{s.saleNo}{s.channelRefNo ? <span className="mt-0.5 block font-sans text-xs font-normal text-slate-500 dark:text-slate-400">{marketplaceConfig?.orderRefLabel ?? channelLabel[s.channel]}: {s.channelRefNo}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(s.saleDate)}</td>
-                    <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">{s.customer?.name ?? s.customerName ?? "-"}</td>
+                    <td className="w-[220px] px-4 py-3 text-slate-600 dark:text-slate-300">
+                      {marketplaceConfig
+                        ? s.customerName ?? s.customer?.name ?? "-"
+                        : s.customer?.name ?? s.customerName ?? "-"}
+                    </td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentTypeTone[s.paymentType]}>{paymentTypeLabel[s.paymentType]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={paymentStatusTone[paymentStatus]}>{paymentStatusLabel[paymentStatus]}</AdminStatusBadge></td>
                     <td className="px-4 py-3"><AdminStatusBadge tone={fulfillmentTone[s.fulfillmentType]}>{fulfillmentLabel[s.fulfillmentType]}</AdminStatusBadge></td>
@@ -345,7 +360,9 @@ const SalesPage = async ({
                         </Link>
                         {s.status === "ACTIVE" ? (
                           <>
-                            {canUpdate && s.channel !== SaleChannel.SHOPEE ? (
+                            {canUpdate &&
+                            (!isManualMarketplaceChannel(s.channel) ||
+                              (canManageMarketplace && s.marketplaceSettlementLines.length === 0)) ? (
                               <Link href={`/admin/sales/${s.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                                 <Pencil size={14} /> แก้ไข
                               </Link>

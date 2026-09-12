@@ -41,6 +41,19 @@ describe("document mutation guard", () => {
     ]);
   });
 
+  it("allows sale updates before marketplace settlement", async () => {
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlementLine: {
+        findMany: async () => [],
+      },
+    });
+
+    const result = await guard.check("Sale", "sale-1", "update");
+
+    assert.equal(result.blocked, false);
+    assert.deepEqual(result.references, []);
+  });
+
   it("blocks credit note cancellation after it is deducted in an active settlement", async () => {
     const guard = createDocumentMutationGuard({
       marketplaceSettlementLine: {

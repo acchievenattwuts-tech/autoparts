@@ -171,6 +171,7 @@ interface InitialData {
   quotationId?: string | null;
   quotationNo?: string | null;
   id:              string;
+  channelRefNo?:   string;
   saleDate:        string;
   customerId:      string;
   customerName:    string;
@@ -257,7 +258,7 @@ const SaleForm = ({
   const [note, setNote] = useState(initialData?.note ?? "");
   const [items, setItems]         = useState<LineItem[]>(initialData?.items.map(normalizeDraftItem) ?? [emptyItem()]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? defaultCustomerId);
-  const [channelRefNo, setChannelRefNo] = useState("");
+  const [channelRefNo, setChannelRefNo] = useState(initialData?.channelRefNo ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
   const [customerPhoneOverride, setCustomerPhoneOverride] = useState(initialData?.customerPhone ?? "");
   const [creditTerm, setCreditTerm] = useState<number>(initialData?.creditTerm ?? 0);
@@ -979,7 +980,9 @@ const SaleForm = ({
               />
             </div>
             <p className="text-sm text-orange-800 dark:text-orange-200">
-              บันทึกเมื่อคำสั่งซื้อขึ้นสถานะพร้อมจัดส่ง ระบบจะตัดสต็อกและพักยอดขายเต็มจำนวนไว้ในบัญชีพักเงิน {marketplaceLabel} จากนั้นค่อยหักค่าธรรมเนียมในหน้ากระทบยอด
+              {isEdit
+                ? `แก้ไขได้จนกว่าออเดอร์จะถูกนำไปกระทบยอดรับเงิน ระบบจะปรับสต็อกและยอดในบัญชีพักเงิน ${marketplaceLabel} ตามข้อมูลล่าสุด`
+                : `บันทึกเมื่อคำสั่งซื้อขึ้นสถานะพร้อมจัดส่ง ระบบจะตัดสต็อกและพักยอดขายเต็มจำนวนไว้ในบัญชีพักเงิน ${marketplaceLabel} จากนั้นค่อยหักค่าธรรมเนียมในหน้ากระทบยอด`}
             </p>
           </div>
         </div>

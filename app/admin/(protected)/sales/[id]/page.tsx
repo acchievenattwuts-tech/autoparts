@@ -16,7 +16,7 @@ import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import ParcelLabelPrintLink from "@/app/admin/_components/print/ParcelLabelPrintLink";
 import PrintCopyModeToggle from "@/app/admin/_components/print/PrintCopyModeToggle";
-import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
+import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import {
   PRINT_COPY_LABEL_DUPLICATE,
   PRINT_COPY_LABEL_ORIGINAL,
@@ -128,6 +128,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   await requirePermission("sales.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "sales.update");
+  const canManageMarketplace = hasPermissionAccess(role, permissions, "marketplace.manage");
   const { id } = await params;
 
   // Read-only page: issue the three reads on the autocommit client (no interactive
@@ -166,6 +167,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         },
         _count: { select: { deliveryProofs: true } },
         shopeeOrderImport: { select: { id: true, orderSn: true } },
+        marketplaceSettlementLines: {
+          where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
+          take: 1,
+          select: { id: true },
+        },
       },
     }),
     db.siteContent.findMany(),
@@ -194,6 +200,18 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   ]);
 
   if (!sale) notFound();
+  const marketplaceConfig = isManualMarketplaceChannel(sale.channel)
+    ? getMarketplaceChannelConfig(sale.channel)
+    : null;
+  const salesListHref = marketplaceConfig
+    ? `/admin/sales?channel=${marketplaceConfig.channel}`
+    : "/admin/sales";
+  const customerDisplayName = marketplaceConfig
+    ? sale.customerName ?? sale.customer?.name ?? "-"
+    : sale.customer?.name ?? sale.customerName ?? "-";
+  const customerDisplayPhone = marketplaceConfig
+    ? sale.customerPhone ?? sale.customer?.phone ?? "-"
+    : sale.customer?.phone ?? sale.customerPhone ?? "-";
   const activityEvents = await getDocumentActivityTimeline("Sale", sale.id);
   const cfg = mapSiteConfig(siteContents);
 
@@ -266,7 +284,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
       <div className="no-print">
         <div className="mb-6 flex items-center gap-2">
           <NavLink
-            href="/admin/sales"
+            href={salesListHref}
             className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
           >
             <ChevronLeft size={16} /> รายการขาย
@@ -278,7 +296,9 @@ ${PRINT_COPY_VISIBILITY_CSS}
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
           <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
             <div className="flex items-center gap-3">
-              <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">สรุปข้อมูลใบขาย</h1>
+              <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">
+                {marketplaceConfig ? `สรุปข้อมูลใบขาย ${marketplaceConfig.label}` : "สรุปข้อมูลใบขาย"}
+              </h1>
               {sale.quotation && <NavLink href={`/admin/sales-quotations/${sale.quotation.id}`} className="text-sm text-sky-700 dark:text-sky-300">อ้างอิง {formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision)}</NavLink>}
               {sale.status === "CANCELLED" ? (
                 <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
@@ -287,7 +307,10 @@ ${PRINT_COPY_VISIBILITY_CSS}
               )}
             </div>
             <div className="flex items-center gap-2">
-              {sale.status === "ACTIVE" && canUpdate && sale.channel !== "SHOPEE" ? (
+              {sale.status === "ACTIVE" &&
+              canUpdate &&
+              (!marketplaceConfig ||
+                (canManageMarketplace && sale.marketplaceSettlementLines.length === 0)) ? (
                 <NavLink
                   href={`/admin/sales/${id}/edit`}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -314,23 +337,29 @@ ${PRINT_COPY_VISIBILITY_CSS}
               <p className="mb-1 text-gray-500 dark:text-slate-400">เลขที่ใบขาย</p>
               <p className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-300">{sale.saleNo}</p>
             </div>
+            {marketplaceConfig ? (
+              <div>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">{marketplaceConfig.orderRefLabel}</p>
+                <p className="font-mono font-semibold text-gray-900 dark:text-slate-100">{sale.channelRefNo ?? "-"}</p>
+              </div>
+            ) : null}
             <div>
-              <p className="mb-1 text-gray-500 dark:text-slate-400">วันที่</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">{marketplaceConfig ? "วันที่พร้อมจัดส่ง" : "วันที่"}</p>
               <p className="font-medium text-gray-900 dark:text-slate-100">{fmtDate(sale.saleDate)}</p>
             </div>
             <div>
-              <p className="mb-1 text-gray-500 dark:text-slate-400">ลูกค้า</p>
-              {sale.customer ? (
+              <p className="mb-1 text-gray-500 dark:text-slate-400">{marketplaceConfig ? "ชื่อผู้ซื้อ" : "ลูกค้า"}</p>
+              {!marketplaceConfig && sale.customer ? (
                 <NavLink href={`/admin/customers/${sale.customer.id}`} className="font-medium text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200" hideSpinner>
-                  {sale.customer.name}
+                  {customerDisplayName}
                 </NavLink>
               ) : (
-                <p className="font-medium text-gray-900 dark:text-slate-100">{sale.customerName ?? "-"}</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">{customerDisplayName}</p>
               )}
             </div>
             <div>
-              <p className="mb-1 text-gray-500 dark:text-slate-400">เบอร์โทร</p>
-              <p className="font-medium text-gray-900 dark:text-slate-100">{sale.customer?.phone ?? sale.customerPhone ?? "-"}</p>
+              <p className="mb-1 text-gray-500 dark:text-slate-400">{marketplaceConfig ? "เบอร์โทรผู้ซื้อ" : "เบอร์โทร"}</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">{customerDisplayPhone}</p>
             </div>
             <div>
               <p className="mb-1 text-gray-500 dark:text-slate-400">ประเภทการขาย</p>
@@ -458,7 +487,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
             </div>
             {sale.fulfillmentType === "DELIVERY" && sale.shippingAddress ? (
               <div className="col-span-2 md:col-span-3">
-                <p className="mb-1 text-gray-500 dark:text-slate-400">ที่อยู่จัดส่ง</p>
+                <p className="mb-1 text-gray-500 dark:text-slate-400">{marketplaceConfig ? "ที่อยู่ผู้ซื้อ" : "ที่อยู่จัดส่ง"}</p>
                 <p className="font-medium text-gray-900 dark:text-slate-100">{sale.shippingAddress}</p>
               </div>
             ) : null}
