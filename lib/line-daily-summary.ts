@@ -26,6 +26,9 @@ type MoneySection = {
   shopeeSales: number;
   shopeeGrossProfit: number;
   shopeeOrderCount: number;
+  lazadaSales: number;
+  lazadaGrossProfit: number;
+  lazadaOrderCount: number;
   cashSales: number;
   creditSales: number;
   costOfGoodsSoldToday: number;
@@ -300,7 +303,7 @@ function filterSummaryFactItems(items: SummaryFactItem[], compactMode: boolean,
   return items.filter((item) => shouldKeepSummaryFactItem(item, compactMode));
 }
 
-function renderEmojiLineDailySummaryMessage(summary: {
+export function renderEmojiLineDailySummaryMessage(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
@@ -316,6 +319,7 @@ function renderEmojiLineDailySummaryMessage(summary: {
     `- ขายรวม ${formatMoney(money.salesTotal)} บาท`,
     `- หน้าร้าน ${formatMoney(money.storeSales)} บาท (${formatCount(money.storeOrderCount)} ออเดอร์)`,
     `- Shopee ${formatMoney(money.shopeeSales)} บาท (${formatCount(money.shopeeOrderCount)} ออเดอร์)`,
+    `- Lazada ${formatMoney(money.lazadaSales)} บาท (${formatCount(money.lazadaOrderCount)} ออเดอร์)`,
     `- ขายสด ${formatMoney(money.cashSales)} บาท`,
     `- ขายเชื่อ ${formatMoney(money.creditSales)} บาท`,
     `- ต้นทุนขาย ${formatMoney(money.costOfGoodsSoldToday)} บาท`,
@@ -1197,7 +1201,7 @@ function buildMonthlyProfitFlexCard(monthly: MonthlyProfitSection) {
   };
 }
 
-function buildLineDailySummaryFlexMessageV3(summary: {
+export function buildLineDailySummaryFlexMessageV3(summary: {
   reportDateLabel: string;
   money: MoneySection;
   counts: CountSection;
@@ -1356,9 +1360,13 @@ function buildLineDailySummaryFlexMessageV3(summary: {
                       },
                       { label: "Shopee", value: `฿${formatMoney(money.shopeeSales)} / ${formatCount(money.shopeeOrderCount)} ออเดอร์`, compactValue: money.shopeeSales,
                       },
+                      { label: "Lazada", value: `฿${formatMoney(money.lazadaSales)} / ${formatCount(money.lazadaOrderCount)} ออเดอร์`, compactValue: money.lazadaSales,
+                      },
                       { label: "GP หน้าร้าน", value: `฿${formatMoney(money.storeGrossProfit)}`, compactValue: money.storeGrossProfit,
                       },
                       { label: "GP Shopee", value: `฿${formatMoney(money.shopeeGrossProfit)}`, compactValue: money.shopeeGrossProfit,
+                      },
+                      { label: "GP Lazada", value: `฿${formatMoney(money.lazadaGrossProfit)}`, compactValue: money.lazadaGrossProfit,
                       },
                       { label: "ขายสด", value: `฿${formatMoney(money.cashSales)}`, compactValue: money.cashSales,
                       },
@@ -1895,6 +1903,9 @@ export async function buildLineDailySummary(
     shopeeSales: channelSummary.shopee.salesAmount,
     shopeeGrossProfit: channelSummary.shopee.grossProfit,
     shopeeOrderCount: channelSummary.shopee.orderCount,
+    lazadaSales: channelSummary.lazada.salesAmount,
+    lazadaGrossProfit: channelSummary.lazada.grossProfit,
+    lazadaOrderCount: channelSummary.lazada.orderCount,
     cashSales: toNumber(cashSalesAgg._sum.netAmount),
     creditSales: toNumber(creditSalesAgg._sum.netAmount),
     costOfGoodsSoldToday: profitToday.costAmount,

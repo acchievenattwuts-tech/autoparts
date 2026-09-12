@@ -33,6 +33,10 @@ export function fmtMoney(value: number) {
   });
 }
 
+export function fmtCount(value: number) {
+  return value.toLocaleString("th-TH");
+}
+
 export function fmtPercent(value: number) {
   const safeValue = Number.isFinite(value) ? value : 0;
 

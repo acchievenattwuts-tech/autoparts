@@ -19,6 +19,7 @@ export type ShopeeStockRiskMetric = {
 export type ShopeeReportingSummary = {
   store: ShopeeChannelMetric;
   shopee: ShopeeChannelMetric;
+  lazada: ShopeeChannelMetric;
   stockRisk: ShopeeStockRiskMetric;
   failedSyncJobs: number;
   reviewOrders: number;
@@ -86,6 +87,7 @@ export async function getShopeeReportingSummary(input: {
   const metrics = new Map<SaleChannel, ShopeeChannelMetric>([
     [SaleChannel.STORE, emptyMetric(SaleChannel.STORE)],
     [SaleChannel.SHOPEE, emptyMetric(SaleChannel.SHOPEE)],
+    [SaleChannel.LAZADA, emptyMetric(SaleChannel.LAZADA)],
   ]);
 
   for (const row of salesGrouped) {
@@ -126,6 +128,7 @@ export async function getShopeeReportingSummary(input: {
   return {
     store: metrics.get(SaleChannel.STORE) ?? emptyMetric(SaleChannel.STORE),
     shopee: metrics.get(SaleChannel.SHOPEE) ?? emptyMetric(SaleChannel.SHOPEE),
+    lazada: metrics.get(SaleChannel.LAZADA) ?? emptyMetric(SaleChannel.LAZADA),
     stockRisk,
     failedSyncJobs,
     reviewOrders,

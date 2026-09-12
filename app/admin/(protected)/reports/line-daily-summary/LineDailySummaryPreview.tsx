@@ -9,6 +9,7 @@ import { formatDateThai, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   FlexPreviewSection,
   PreviewMetric,
+  fmtCount,
   fmtMoney,
   fmtPercent,
   keepPreviewItem,
@@ -76,6 +77,24 @@ export default async function LineDailySummaryPreview({
   const previewSalesItems = [
     keepPreviewItem(compactMode, summary.money.salesTotal, true)
       ? { label: "ยอดขายรวม", value: `฿${fmtMoney(summary.money.salesTotal)}` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.storeSales)
+      ? { label: "หน้าร้าน", value: `฿${fmtMoney(summary.money.storeSales)} / ${fmtCount(summary.money.storeOrderCount)} ออเดอร์` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.shopeeSales)
+      ? { label: "Shopee", value: `฿${fmtMoney(summary.money.shopeeSales)} / ${fmtCount(summary.money.shopeeOrderCount)} ออเดอร์` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.lazadaSales)
+      ? { label: "Lazada", value: `฿${fmtMoney(summary.money.lazadaSales)} / ${fmtCount(summary.money.lazadaOrderCount)} ออเดอร์` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.storeGrossProfit)
+      ? { label: "GP หน้าร้าน", value: `฿${fmtMoney(summary.money.storeGrossProfit)}` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.shopeeGrossProfit)
+      ? { label: "GP Shopee", value: `฿${fmtMoney(summary.money.shopeeGrossProfit)}` }
+      : null,
+    keepPreviewItem(compactMode, summary.money.lazadaGrossProfit)
+      ? { label: "GP Lazada", value: `฿${fmtMoney(summary.money.lazadaGrossProfit)}` }
       : null,
     keepPreviewItem(compactMode, summary.money.cashSales)
       ? { label: "ขายสด", value: `฿${fmtMoney(summary.money.cashSales)}` }
