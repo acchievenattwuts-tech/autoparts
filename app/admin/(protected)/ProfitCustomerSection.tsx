@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import Link from "next/link";
+import IntentPrefetchLink from "@/components/shared/IntentPrefetchLink";
 
 import {
   buildCreditNoteDrilldownHref,
@@ -61,12 +61,12 @@ const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContex
                 <tr key={`${row.customerId ?? row.customerName}-customer-profit`} className="border-b border-gray-50 dark:border-white/5">
                   <td className="py-3">
                     {customerHref ? (
-                      <Link
+                      <IntentPrefetchLink
                         href={customerHref}
                         className="font-medium text-sky-700 underline-offset-2 hover:underline"
                       >
                         {row.customerName}
-                      </Link>
+                      </IntentPrefetchLink>
                     ) : (
                       <p className="font-medium text-gray-900">{row.customerName}</p>
                     )}
@@ -75,7 +75,7 @@ const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContex
                     </p>
                     {row.customerId ? (
                       <div className="mt-1 flex gap-3 text-xs">
-                        <Link
+                        <IntentPrefetchLink
                           href={buildSalesDrilldownHref({
                             from: context.from,
                             to: context.to,
@@ -84,8 +84,8 @@ const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContex
                           className="text-sky-700 underline-offset-2 hover:underline"
                         >
                           ดูบิลขาย
-                        </Link>
-                        <Link
+                        </IntentPrefetchLink>
+                        <IntentPrefetchLink
                           href={buildCreditNoteDrilldownHref({
                             from: context.from,
                             to: context.to,
@@ -94,7 +94,7 @@ const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContex
                           className="text-sky-700 underline-offset-2 hover:underline"
                         >
                           ดูบิลคืน
-                        </Link>
+                        </IntentPrefetchLink>
                       </div>
                     ) : null}
                   </td>

@@ -1,5 +1,5 @@
 import { TrendingDown } from "lucide-react";
-import Link from "next/link";
+import IntentPrefetchLink from "@/components/shared/IntentPrefetchLink";
 
 import {
   buildCreditNoteDrilldownHref,
@@ -87,15 +87,15 @@ const ProfitAlertsSection = async ({ context }: { context: ProfitSectionContext 
                   </div>
                   <div className="flex flex-wrap gap-3 text-xs">
                     {productHref ? (
-                      <Link
+                      <IntentPrefetchLink
                         href={productHref}
                         className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                       >
                         เปิดสินค้า
-                      </Link>
+                      </IntentPrefetchLink>
                     ) : null}
                     {alert.productId ? (
-                      <Link
+                      <IntentPrefetchLink
                         href={buildSalesDrilldownHref({
                           from: context.from,
                           to: context.to,
@@ -104,10 +104,10 @@ const ProfitAlertsSection = async ({ context }: { context: ProfitSectionContext 
                         className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                       >
                         ดูบิลขายต้นเหตุ
-                      </Link>
+                      </IntentPrefetchLink>
                     ) : null}
                     {alert.productId ? (
-                      <Link
+                      <IntentPrefetchLink
                         href={buildCreditNoteDrilldownHref({
                           from: context.from,
                           to: context.to,
@@ -116,7 +116,7 @@ const ProfitAlertsSection = async ({ context }: { context: ProfitSectionContext 
                         className="text-sky-700 underline-offset-2 hover:underline dark:text-sky-300"
                       >
                         ดูบิลคืนที่เกี่ยวข้อง
-                      </Link>
+                      </IntentPrefetchLink>
                     ) : null}
                   </div>
                 </div>

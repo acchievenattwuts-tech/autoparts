@@ -1,5 +1,5 @@
 import { Package } from "lucide-react";
-import Link from "next/link";
+import IntentPrefetchLink from "@/components/shared/IntentPrefetchLink";
 
 import {
   buildCreditNoteDrilldownHref,
@@ -59,7 +59,7 @@ const ProfitStockSection = async ({ context }: { context: ProfitSectionContext }
                   <p className="font-medium text-gray-900 dark:text-slate-100">{row.productName}</p>
                   <p className="text-xs text-gray-400 dark:text-slate-500">{row.productCode ?? "-"}</p>
                   <div className="mt-1 flex gap-3 text-xs">
-                    <Link
+                    <IntentPrefetchLink
                       href={buildSalesDrilldownHref({
                         from: context.from,
                         to: context.to,
@@ -68,8 +68,8 @@ const ProfitStockSection = async ({ context }: { context: ProfitSectionContext }
                       className="text-sky-700 underline-offset-2 hover:underline"
                     >
                       เปิดหน้าขาย
-                    </Link>
-                    <Link
+                    </IntentPrefetchLink>
+                    <IntentPrefetchLink
                       href={buildCreditNoteDrilldownHref({
                         from: context.from,
                         to: context.to,
@@ -78,7 +78,7 @@ const ProfitStockSection = async ({ context }: { context: ProfitSectionContext }
                       className="text-sky-700 underline-offset-2 hover:underline"
                     >
                       เปิดหน้าคืนสินค้า
-                    </Link>
+                    </IntentPrefetchLink>
                   </div>
                 </td>
                 <td className="py-3 text-right">

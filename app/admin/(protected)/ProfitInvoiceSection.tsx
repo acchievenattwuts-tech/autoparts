@@ -1,5 +1,5 @@
 import { ReceiptText } from "lucide-react";
-import Link from "next/link";
+import IntentPrefetchLink from "@/components/shared/IntentPrefetchLink";
 
 import {
   buildInvoiceHref,
@@ -57,12 +57,12 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
             {section.items.map((row) => (
               <tr key={`${row.sourceType}-${row.sourceId}`} className="border-b border-gray-50 dark:border-white/5">
                 <td className="py-3">
-                  <Link
+                  <IntentPrefetchLink
                     href={buildInvoiceHref(row.sourceType, row.sourceId)}
                     className="font-medium text-sky-700 underline-offset-2 hover:underline"
                   >
                     {row.sourceDocNo}
-                  </Link>
+                  </IntentPrefetchLink>
                   <p className="text-xs text-gray-400">
                     {row.sourceType === ProfitSourceType.SALE ? "Sale" : "Credit Note Return"}
                   </p>

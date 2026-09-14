@@ -818,6 +818,16 @@
 - [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง Vercel log ด้วย `timeout exceeded` ควรไม่เหลือเคสของ `storefront-product-search-page-data`
 - [ ] แยกเรื่อง (ไม่ใช่งานโค้ด): ตั้ง `MESSENGER_APP_SECRET` ใน Vercel env — ตอนนี้ `verifyMessengerSignature()` fail-closed → webhook ตอบ 401 ทุกข้อความ = Messenger ขาเข้าใช้งานไม่ได้เลย (ดู `docs/messenger/META-APP-SETUP.md` ขั้น 4)
 
+## Profit Dashboard pool timeout ตอน prefetch drilldown (2026-09-14)
+- บริบท: Vercel log วันที่ 13 ก.ย. 22:42 GMT+7 แสดง `timeout exceeded when trying to connect` ระหว่าง background revalidate key `profit-dashboard-overview-v1-["2026-09-01","2026-09-13"]` พร้อม `GET /admin/sales?...&productId=...` ที่เป็น RSC prefetch และยังตอบ HTTP 200
+- **สาเหตุ**: Profit overview เดิมเปิด read พร้อมกันสูงสุด 7 query ขณะที่ Prisma pool ต่อ Fluid instance มี 8 slot; sales drilldown ที่มี `productId` เปิดเพิ่ม 3 query จึงแย่ง pool กันได้ และทุก query ใน `lib/profit-dashboard.ts` ข้าม `withDbRetry` ที่รองรับ error นี้อยู่แล้ว
+- [x] **A — retry read-only**: ให้ Prisma read ทุกจุดของ Profit Dashboard ผ่าน `withDbRetry`; ไม่มี write จึงไม่เสี่ยงทำ mutation ซ้ำ และคืนข้อมูลชุดเดิมเมื่อ query สำเร็จ
+- [x] **B — จำกัด peak concurrency**: เพิ่ม semaphore กลาง `runProfitDashboardRead` จำกัด read ของ Profit Dashboard ทั้ง instance ไม่เกิน 4 พร้อมกัน เหลือ pool อีก 4 slot ให้ request อื่น; งานที่รอเริ่มทันทีเมื่อ slot ว่าง จึงไม่บังคับแบ่ง batch และไม่เปลี่ยนลำดับ/ตัวกรอง/การคำนวณ
+- [x] **C — intent prefetch**: ลิงก์ drilldown จาก Alert / Customer / Invoice / Stock ปิด viewport prefetch แล้ว warm เมื่อ `pointerenter` / `pointerdown` / `focus` เท่านั้น ลด server render ที่ผู้ใช้ไม่ได้ตั้งใจเปิด แต่ยัง prefetch ก่อนคลิกบน mouse/keyboard และเริ่มทันทีเมื่อแตะบน touch
+- [x] regression test ครอบ concurrency 7 งานว่าพร้อมกันไม่เกิน 4, ผลลัพธ์และลำดับเดิม, ปล่อย slot หลัง error และยัง delegate retry ตามเดิม
+- [x] ตรวจครบ: `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / typecheck ผ่าน / tests 967 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
+- [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรอง `profit-dashboard-*` + `timeout exceeded when trying to connect`; ตรวจ Supabase Connection Pooling ว่า client count ไม่ชนเพดาน และยืนยัน drilldown navigation ไม่ช้าลงอย่างสังเกตได้
+
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
 - **ข้อสรุปที่เจ้าของยืนยัน** (ตัดขอบเขตงานลงมาก): ตัดแถวช่องล่างสุดทั้งแถว (ในรูปคือช่องรหัสไปรษณีย์ 5 หลัก) · **ไม่มี** เลขที่ใบขาย / วันที่ / ขนส่ง / เลขพัสดุ / ยอด COD (ร้านไม่ได้ส่งแบบ COD) · ไม่ต้องมีช่อง "กล่องที่" · ใบ Shopee / Lazada ไม่ต้องพิมพ์ · ไม่ต้องลง Audit Log (เป็นการอ่านอย่างเดียว เหมือนหน้าพิมพ์เดิมทุกหน้า)
