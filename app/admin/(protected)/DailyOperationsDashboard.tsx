@@ -5,6 +5,7 @@ import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe, SearchX } fr
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
+import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
 import { getSessionPermissionContext } from "@/lib/require-auth";
 import {
   addThailandDays,
@@ -45,33 +46,33 @@ const fetchDashboardAggregates = (params: {
         canViewProductSearchReport,
       } = params;
       return Promise.all([
-        db.sale.aggregate({
+        runAdminDashboardRead(() => db.sale.aggregate({
           _count: { id: true },
           _sum: { netAmount: true },
           where: {
             status: "ACTIVE",
             saleDate: { gte: bangkokStartOfToday, lte: bangkokEndOfToday },
           },
-        }),
-        db.sale.aggregate({
+        })),
+        runAdminDashboardRead(() => db.sale.aggregate({
           _sum: { netAmount: true },
           where: {
             status: "ACTIVE",
             saleDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
           },
-        }),
-        db.purchase.aggregate({
+        })),
+        runAdminDashboardRead(() => db.purchase.aggregate({
           _sum: { netAmount: true },
           where: {
             status: "ACTIVE",
             purchaseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
           },
-        }),
-        db.sale.aggregate({
+        })),
+        runAdminDashboardRead(() => db.sale.aggregate({
           _sum: { amountRemain: true },
           where: { status: "ACTIVE", paymentType: "CREDIT_SALE", fulfillmentType: "PICKUP" },
-        }),
-        db.sale.aggregate({
+        })),
+        runAdminDashboardRead(() => db.sale.aggregate({
           _sum: { amountRemain: true },
           where: {
             status: "ACTIVE",
@@ -79,66 +80,66 @@ const fetchDashboardAggregates = (params: {
             fulfillmentType: "DELIVERY",
             amountRemain: { gt: 0 },
           },
-        }),
-        db.customerAdvance.aggregate({
+        })),
+        runAdminDashboardRead(() => db.customerAdvance.aggregate({
           _sum: { amountRemain: true },
           where: { status: "ACTIVE", amountRemain: { gt: 0 } },
-        }),
-        db.expense.aggregate({
+        })),
+        runAdminDashboardRead(() => db.expense.aggregate({
           _sum: { netAmount: true },
           where: {
             status: "ACTIVE",
             expenseDate: { gte: bangkokStartOfMonth, lte: bangkokEndOfToday },
           },
-        }),
-        db.purchase.aggregate({
+        })),
+        runAdminDashboardRead(() => db.purchase.aggregate({
           _sum: { amountRemain: true },
           where: {
             status: "ACTIVE",
             purchaseType: "CREDIT_PURCHASE",
             amountRemain: { gt: 0 },
           },
-        }),
-        db.supplierAdvance.aggregate({
+        })),
+        runAdminDashboardRead(() => db.supplierAdvance.aggregate({
           _sum: { amountRemain: true },
           where: { status: "ACTIVE", amountRemain: { gt: 0 } },
-        }),
-        db.purchaseReturn.aggregate({
+        })),
+        runAdminDashboardRead(() => db.purchaseReturn.aggregate({
           _sum: { amountRemain: true },
           where: {
             status: "ACTIVE",
             settlementType: "SUPPLIER_CREDIT",
             amountRemain: { gt: 0 },
           },
-        }),
-        db.storefrontVisitDaily.count({
+        })),
+        runAdminDashboardRead(() => db.storefrontVisitDaily.count({
           where: { visitDay: bangkokToday },
-        }),
-        db.storefrontVisitDaily.findMany({
+        })),
+        runAdminDashboardRead(() => db.storefrontVisitDaily.findMany({
           distinct: ["visitorKey"],
           where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
           select: { visitorKey: true },
-        }),
-        db.storefrontVisitDaily.findMany({
+        })),
+        runAdminDashboardRead(() => db.storefrontVisitDaily.findMany({
           distinct: ["visitorKey"],
           select: { visitorKey: true },
-        }),
+        })),
         canViewProductSearchReport
-          ? db.productSearchLog.findMany({
+          ? runAdminDashboardRead(() => db.productSearchLog.findMany({
               where: { resultCount: 0 },
               orderBy: { createdAt: "desc" },
               take: 10,
-            })
+            }))
           : Promise.resolve([]),
-        db.sale.findMany({
+        runAdminDashboardRead(() => db.sale.findMany({
           where: {
             status: "ACTIVE",
             saleDate: { gte: bangkokStartOf30Days, lte: bangkokEndOfToday },
           },
           select: { saleDate: true, netAmount: true },
           orderBy: { saleDate: "asc" },
-        }),
-        db.saleItem.groupBy({
+        })),
+        runAdminDashboardRead(() => db.saleItem.groupBy({
           by: ["productId"],
           where: {
             sale: {
@@ -153,7 +154,7 @@ const fetchDashboardAggregates = (params: {
             { productId: "asc" },
           ],
           take: 10,
-        }),
+        })),
       ]);
     },
     [
@@ -241,10 +242,10 @@ const DailyOperationsDashboard = async () => {
   const storefrontVisitorsTotal = storefrontVisitorsTotalRows.length;
   const productNameMap = new Map(
     (
-      await db.product.findMany({
+      await runAdminDashboardRead(() => db.product.findMany({
         where: { id: { in: topProductGroups.map((item) => item.productId) } },
         select: { id: true, name: true },
-      })
+      }))
     ).map((product) => [product.id, product.name]),
   );
 

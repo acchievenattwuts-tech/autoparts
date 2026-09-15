@@ -828,6 +828,13 @@
 - [x] ตรวจครบ: `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / typecheck ผ่าน / tests 967 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
 - [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรอง `profit-dashboard-*` + `timeout exceeded when trying to connect`; ตรวจ Supabase Connection Pooling ว่า client count ไม่ชนเพดาน และยืนยัน drilldown navigation ไม่ช้าลงอย่างสังเกตได้
 
+### Shared Daily + Profit Dashboard limiter (2026-09-15)
+- บริบท: log รอบใหม่แสดง `profit-dashboard-overview-v1` และ `dashboard-aggregates` ล้มพร้อมกัน; Daily Operations เดิมเปิด 16 read พร้อมกันใน cache refresh และอ่านชื่อสินค้าเพิ่มอีก 1 จุด โดยยังไม่ผ่าน retry/limiter
+- [x] **A — shared limiter**: ให้ DB read ทั้ง 17 จุดของ Daily Operations และทั้ง 14 จุดของ Profit Dashboard ใช้ `runAdminDashboardRead` instance เดียวกัน จำกัดรวมสูงสุด 4 งานต่อ instance และ delegate ไป `withDbRetry`; ไม่เปลี่ยน query, filter, cache key, TTL, การคำนวณ หรือลำดับผลลัพธ์
+- [x] regression test จำลอง workload Daily 16 + Profit 7 งานพร้อมกัน ยืนยัน peak ไม่เกิน 4 และผลลัพธ์/ลำดับเดิม; ตรวจ source coverage ว่า Daily 17 จุดและ Profit 14 จุดผ่าน shared limiter ครบ พร้อมคงเทสปล่อย slot หลัง error และ retry เดิม
+- [x] ตรวจครบ: targeted tests 4/4 ผ่าน · `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / 262 warnings เดิม, typecheck ผ่าน, tests 969 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
+- [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรองทั้ง `dashboard-aggregates` และ `profit-dashboard-*`; เปรียบเทียบ timeout rate และ p95/p99 duration ก่อน-หลัง โดยผลข้อมูลต้องเท่าเดิมและ navigation ต้องไม่ช้าลงอย่างสังเกตได้
+
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
 - **ข้อสรุปที่เจ้าของยืนยัน** (ตัดขอบเขตงานลงมาก): ตัดแถวช่องล่างสุดทั้งแถว (ในรูปคือช่องรหัสไปรษณีย์ 5 หลัก) · **ไม่มี** เลขที่ใบขาย / วันที่ / ขนส่ง / เลขพัสดุ / ยอด COD (ร้านไม่ได้ส่งแบบ COD) · ไม่ต้องมีช่อง "กล่องที่" · ใบ Shopee / Lazada ไม่ต้องพิมพ์ · ไม่ต้องลง Audit Log (เป็นการอ่านอย่างเดียว เหมือนหน้าพิมพ์เดิมทุกหน้า)

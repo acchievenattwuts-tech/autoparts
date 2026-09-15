@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 
-import { createProfitDashboardReadLimiter } from "@/lib/profit-dashboard-read";
+import {
+  createProfitDashboardReadLimiter,
+  runAdminDashboardRead,
+  runProfitDashboardRead,
+} from "@/lib/profit-dashboard-read";
 
-test("profit dashboard read limiter caps concurrency without changing results", async () => {
+test("shared dashboard read limiter caps combined concurrency without changing results", async () => {
   let activeReads = 0;
   let peakReads = 0;
   const releaseReads: Array<() => void> = [];
@@ -13,7 +19,11 @@ test("profit dashboard read limiter caps concurrency without changing results", 
     return operation();
   });
 
-  const reads = Array.from({ length: 7 }, (_, index) =>
+  const labels = [
+    ...Array.from({ length: 16 }, (_, index) => `daily-${index}`),
+    ...Array.from({ length: 7 }, (_, index) => `profit-${index}`),
+  ];
+  const reads = labels.map((label) =>
     limiter(async () => {
       activeReads += 1;
       peakReads = Math.max(peakReads, activeReads);
@@ -21,7 +31,7 @@ test("profit dashboard read limiter caps concurrency without changing results", 
         releaseReads.push(resolve);
       });
       activeReads -= 1;
-      return `result-${index}`;
+      return label;
     }),
   );
 
@@ -34,16 +44,49 @@ test("profit dashboard read limiter caps concurrency without changing results", 
     await new Promise<void>((resolve) => setImmediate(resolve));
   }
 
-  assert.deepEqual(
-    await Promise.all(reads),
-    Array.from({ length: 7 }, (_, index) => `result-${index}`),
-  );
-  assert.equal(retryCalls.length, 7);
+  assert.deepEqual(await Promise.all(reads), labels);
+  assert.equal(retryCalls.length, labels.length);
   assert.equal(peakReads, 4);
 });
 
+test("daily and profit dashboard reads use the same limiter instance", () => {
+  assert.equal(runProfitDashboardRead, runAdminDashboardRead);
+
+  const dailySource = readFileSync(
+    resolve(
+      process.cwd(),
+      "app/admin/(protected)/DailyOperationsDashboard.tsx",
+    ),
+    "utf8",
+  );
+  const profitSource = readFileSync(
+    resolve(process.cwd(), "lib/profit-dashboard.ts"),
+    "utf8",
+  );
+  const dailyDbReads = dailySource.match(
+    /\bdb\.[A-Za-z]+\.(?:aggregate|count|findMany|groupBy)\(/g,
+  );
+  const profitDbReads = profitSource.match(
+    /\bdb\.factProfit\.(?:aggregate|findMany|groupBy)\(/g,
+  );
+
+  assert.equal(dailyDbReads?.length, 17);
+  assert.equal(
+    dailySource.match(/runAdminDashboardRead\(\(\) =>\s*db\./g)?.length,
+    17,
+  );
+  assert.equal(profitDbReads?.length, 14);
+  assert.equal(
+    profitSource.match(/runAdminDashboardRead\(\(\) =>\s*db\.factProfit\./g)
+      ?.length,
+    14,
+  );
+});
+
 test("profit dashboard read limiter releases a slot after a failed read", async () => {
-  const limiter = createProfitDashboardReadLimiter(1, async (operation) => operation());
+  const limiter = createProfitDashboardReadLimiter(1, async (operation) =>
+    operation(),
+  );
   const first = limiter(async () => {
     throw new Error("read failed");
   });

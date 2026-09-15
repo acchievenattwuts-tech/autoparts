@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import { PROFIT_DASHBOARD_CACHE_TAG } from "@/lib/profit-cache";
-import { runProfitDashboardRead } from "@/lib/profit-dashboard-read";
+import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
 import {
   addThailandDays,
   getThailandDateKey,
@@ -181,7 +181,7 @@ function buildPagination(
 }
 
 export async function aggregateProfitSummary(start: Date, end: Date): Promise<ProfitSummary> {
-  const aggregate = await runProfitDashboardRead(() => db.factProfit.aggregate({
+  const aggregate = await runAdminDashboardRead(() => db.factProfit.aggregate({
     _sum: {
       salesAmountExVat: true,
       salesAmountIncVat: true,
@@ -235,7 +235,7 @@ async function buildTrend(from: string, to: string): Promise<ProfitTrendPoint[]>
     });
   }
 
-  const grouped = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["businessDate"],
     _sum: {
       salesAmountExVat: true,
@@ -316,7 +316,7 @@ async function getProductSpotlights(
   };
 
   const [topGrouped, lowGrouped] = await Promise.all([
-    runProfitDashboardRead(() => db.factProfit.groupBy({
+    runAdminDashboardRead(() => db.factProfit.groupBy({
       by: ["productId", "productCode", "productName"],
       _sum: {
         quantity: true,
@@ -329,7 +329,7 @@ async function getProductSpotlights(
       orderBy: [{ _sum: { grossProfit: "desc" } }, { productName: "asc" }],
       take: 5,
     })),
-    runProfitDashboardRead(() => db.factProfit.groupBy({
+    runAdminDashboardRead(() => db.factProfit.groupBy({
       by: ["productId", "productCode", "productName"],
       _sum: {
         quantity: true,
@@ -369,13 +369,13 @@ async function getProductAnalysis(
   };
 
   const totalItems = (
-    await runProfitDashboardRead(() => db.factProfit.groupBy({
+    await runAdminDashboardRead(() => db.factProfit.groupBy({
       by: ["productId", "productCode", "productName"],
       where,
     }))
   ).length;
   const pagination = buildPagination(page, totalItems);
-  const grouped = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["productId", "productCode", "productName"],
     _sum: {
       quantity: true,
@@ -409,7 +409,7 @@ async function getAllProductAnalysis(fromDate: Date, toDate: Date): Promise<Prof
     productName: { not: null as string | null },
   };
 
-  const grouped = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["productId", "productCode", "productName"],
     _sum: {
       quantity: true,
@@ -441,13 +441,13 @@ async function getCustomerAnalysis(
   };
 
   const totalItems = (
-    await runProfitDashboardRead(() => db.factProfit.groupBy({
+    await runAdminDashboardRead(() => db.factProfit.groupBy({
       by: ["customerId", "customerName"],
       where,
     }))
   ).length;
   const pagination = buildPagination(page, totalItems);
-  const grouped = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["customerId", "customerName"],
     _sum: {
       quantity: true,
@@ -466,7 +466,7 @@ async function getCustomerAnalysis(
     take: pagination.pageSize,
   }));
 
-  const invoiceGroupRows = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const invoiceGroupRows = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["customerId", "customerName", "sourceId"],
     where,
   }));
@@ -513,13 +513,13 @@ async function getInvoiceAnalysis(
   };
 
   const totalItems = (
-    await runProfitDashboardRead(() => db.factProfit.groupBy({
+    await runAdminDashboardRead(() => db.factProfit.groupBy({
       by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
       where,
     }))
   ).length;
   const pagination = buildPagination(page, totalItems);
-  const grouped = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
     _sum: {
       salesAmountExVat: true,
@@ -585,7 +585,7 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
   const products = await getAllProductAnalysis(fromDate, toDate);
   const alertCandidates: Array<ProfitAlert & { score: number }> = [];
 
-  const invoiceRows = await runProfitDashboardRead(() => db.factProfit.groupBy({
+  const invoiceRows = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["productId", "sourceId"],
     where: {
       isActive: true,
@@ -652,7 +652,7 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
   const todayStart = parseDateOnlyToStartOfDay(todayKey);
   const recentBoundary = addThailandDays(todayStart, -6);
   const previousBoundary = addThailandDays(recentBoundary, -7);
-  const recentRows = await runProfitDashboardRead(() => db.factProfit.findMany({
+  const recentRows = await runAdminDashboardRead(() => db.factProfit.findMany({
     where: {
       isActive: true,
       sourceType: ProfitSourceType.SALE,

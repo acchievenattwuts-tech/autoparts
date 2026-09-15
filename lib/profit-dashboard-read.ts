@@ -1,11 +1,11 @@
 import { withDbRetry } from "@/lib/db";
 
-const PROFIT_DASHBOARD_MAX_CONCURRENT_READS = 4;
+const ADMIN_DASHBOARD_MAX_CONCURRENT_READS = 4;
 
 type ReadOperation = <T>(operation: () => Promise<T>) => Promise<T>;
 
 /**
- * Keep Profit Dashboard cache refreshes from occupying the whole per-instance
+ * Keep admin dashboard cache refreshes from occupying the whole per-instance
  * Prisma pool. Waiting jobs stay in-process and start as soon as an earlier read
  * finishes, so this limits peak pressure without changing query results.
  */
@@ -37,7 +37,9 @@ export function createProfitDashboardReadLimiter(
   };
 }
 
-export const runProfitDashboardRead = createProfitDashboardReadLimiter(
-  PROFIT_DASHBOARD_MAX_CONCURRENT_READS,
+export const runAdminDashboardRead = createProfitDashboardReadLimiter(
+  ADMIN_DASHBOARD_MAX_CONCURRENT_READS,
   withDbRetry,
 );
+
+export const runProfitDashboardRead = runAdminDashboardRead;
