@@ -1,4 +1,7 @@
+import { unstable_cache } from "next/cache";
+import { db } from "@/lib/db";
 import { knowledgeArticles, type KnowledgeArticle } from "@/lib/knowledge-content";
+import { PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG } from "@/lib/knowledge-cache";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 import {
   getActiveKnowledgeByKey,
@@ -7,6 +10,64 @@ import {
   type ActiveKnowledgeEntry,
 } from "@/lib/knowledge-cms-repository";
 import { getThailandDateKey } from "@/lib/th-date";
+
+export const PRODUCT_SUPPORT_ARTICLE_SLUGS = [
+  "how-to-check-oem-part-number-before-ordering",
+  "can-one-ac-part-fit-multiple-car-models",
+  "how-to-compare-old-part-before-chatting-with-the-shop",
+  "how-to-check-compressor-plug-pulley-and-mounting-points",
+] as const;
+
+export type PublicKnowledgeArticleSummary = Pick<
+  KnowledgeArticle,
+  "slug" | "title" | "description" | "category"
+>;
+
+const fallbackProductSupportArticles = knowledgeArticles.filter((article) =>
+  PRODUCT_SUPPORT_ARTICLE_SLUGS.includes(
+    article.slug as (typeof PRODUCT_SUPPORT_ARTICLE_SLUGS)[number],
+  ),
+);
+
+const getCachedProductSupportArticles = unstable_cache(
+  async (): Promise<PublicKnowledgeArticleSummary[]> => {
+    const sources = await db.knowledgeSource.findMany({
+      where: {
+        type: "ARTICLE",
+        isArchived: false,
+        slug: { in: [...PRODUCT_SUPPORT_ARTICLE_SLUGS] },
+        activeRevisionId: { not: null },
+      },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        slug: true,
+        activeRevision: {
+          select: {
+            title: true,
+            description: true,
+            category: true,
+          },
+        },
+      },
+    });
+
+    return sources.flatMap((source) => {
+      if (!source.slug || !source.activeRevision) return [];
+      const fallback = knowledgeArticles.find((article) => article.slug === source.slug);
+      return [{
+        slug: source.slug,
+        title: source.activeRevision.title,
+        description: source.activeRevision.description ?? fallback?.description ?? "",
+        category: (source.activeRevision.category ?? fallback?.category ?? "การใช้งานเว็บไซต์") as KnowledgeArticle["category"],
+      }];
+    });
+  },
+  ["product-support-article-summaries-v1"],
+  {
+    revalidate: 3_600,
+    tags: [PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG],
+  },
+);
 
 /**
  * Calendar day, in Thailand time, for an article's publish/update stamp.
@@ -45,6 +106,15 @@ export async function getPublicKnowledgeArticles(): Promise<KnowledgeArticle[]> 
     return entries.length > 0 ? entries.map(activeEntryToArticle) : knowledgeArticles;
   } catch {
     return knowledgeArticles;
+  }
+}
+
+export async function getProductSupportArticles(): Promise<PublicKnowledgeArticleSummary[]> {
+  try {
+    const articles = await getCachedProductSupportArticles();
+    return articles.length > 0 ? articles : fallbackProductSupportArticles;
+  } catch {
+    return fallbackProductSupportArticles;
   }
 }
 

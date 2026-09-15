@@ -27,7 +27,7 @@ import { absoluteUrl } from "@/lib/seo";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { getSiteConfig } from "@/lib/site-config";
 import { STOREFRONT_LINE_PRIMARY_BUTTON_CLASS } from "@/lib/storefront-line-theme";
-import { getPublicKnowledgeArticles } from "@/lib/knowledge-public";
+import { getProductSupportArticles } from "@/lib/knowledge-public";
 import {
   extractProductIdFromSlug,
   getCategoryPath,
@@ -254,14 +254,7 @@ const ProductDetailPage = async ({ params }: Props) => {
     return null;
   };
 
-  const prepArticles = (await getPublicKnowledgeArticles()).filter((article) =>
-    [
-      "how-to-check-oem-part-number-before-ordering",
-      "can-one-ac-part-fit-multiple-car-models",
-      "how-to-compare-old-part-before-chatting-with-the-shop",
-      "how-to-check-compressor-plug-pulley-and-mounting-points",
-    ].includes(article.slug),
-  );
+  const prepArticles = await getProductSupportArticles();
   const compatibilitySummary =
     groupedDirectCars.length > 0
       ? groupedDirectCars

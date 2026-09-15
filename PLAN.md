@@ -1063,8 +1063,9 @@
 - [x] metadata: `app/page.tsx` (title / OG / Twitter / description), `app/products/page.tsx` (title / OG / description)
 - [x] คีย์เวิร์ด: `lib/seo.ts` เพิ่ม `ร้านหม้อน้ำรถยนต์`, `ขายหม้อน้ำรถยนต์`, `หม้อน้ำรถยนต์ นครสวรรค์`, `ฝาหม้อน้ำรถยนต์`, `อะไหล่แอร์รถยนต์และหม้อน้ำรถยนต์`
 - [x] AEO: `public/llms.txt` เพิ่มคำตอบสั้นสำหรับ intent "หม้อน้ำรถยนต์"
-- [x] `app/robots.ts` — แยก `AI_ANSWER_BOTS` (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, anthropic-ai, Claude-User, PerplexityBot, Google-Extended) ออกจาก `AGGRESSIVE_BOTS` แล้วเปิดให้เข้าเฉพาะหน้า hub (`/`, `/products`, `/about`, `/faq`, `/knowledge`, `/llms.txt`) · disallow `/product/`, `/products/*/*`, `/products/search`, `/_next/image` ซึ่งเป็นตัวกิน egress หลัก · `crawlDelay: 30`
+- [x] `app/robots.ts` — แยก `AI_ANSWER_BOTS` (GPTBot, ChatGPT-User, OAI-SearchBot, ClaudeBot, Claude-SearchBot, anthropic-ai, Claude-User, PerplexityBot, Google-Extended) ออกจาก `AGGRESSIVE_BOTS` แล้วเปิดให้เข้าเฉพาะหน้า hub (`/`, `/products`, `/about`, `/faq`, `/knowledge`, `/llms.txt`) · disallow `/product/`, `/products/*/*`, `/products/search`, `/_next/image` ซึ่งเป็นตัวกิน egress หลัก · `crawlDelay: 30`
   - เดิมบอทกลุ่มนี้ถูกปิดรวมกับ SEO scraper ตั้งแต่คอมมิต `3d9e9be` (ลด Supabase egress) ทำให้ `llms.txt` ไม่มีใครอ่าน · `CCBot`, `Bytespider`, `Amazonbot`, `Diffbot` และกอง SEO scraper ยังปิดเหมือนเดิม
+  - [x] (2026-09-15 / Egress A+B) เพิ่ม `Claude-SearchBot` ให้ proxy บังคับ policy หน้าสินค้ารายตัว และเปลี่ยนหน้าสินค้าให้โหลดเฉพาะ summary ของบทความช่วยเลือกสินค้า 4 รายการผ่าน cache ที่ล้างเมื่อ publish/archive แทนการอ่านเนื้อหาบทความทั้งหมด
 - [ ] ติดตาม Supabase egress 1-2 สัปดาห์หลัง deploy — เป้า ≤5GB/เดือน ถ้าเกินให้ถอย allow list ของบอท AI ลง
 - ยังไม่แตะ (รอเจ้าของสั่ง): prompt แชท AI/LINE (`lib/chat-core/*`, `lib/content-ai.ts`), บทความ `lib/knowledge-content.ts`, alt text การ์ดสินค้า, title หน้าหมวด (`${category.name} | อะไหล่แอร์รถยนต์ นครสวรรค์` — เติมแล้วยาวเกิน ~60 ตัวอักษรใน SERP)
 - ตรวจแล้ว: `npm run build` ผ่าน (Compiled successfully) ทั้งรอบข้อความและรอบ robots

@@ -1,5 +1,6 @@
 import { Prisma, KnowledgeRevisionStatus, KnowledgeSyncJobStatus } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
+import { revalidatePublicKnowledgeSummaryCache } from "@/lib/knowledge-cache";
 import { parseKnowledgeContent } from "@/lib/knowledge-cms-types";
 import { findKnowledgeRagPolicyViolations } from "@/lib/chat-core/admin-only-knowledge";
 import {
@@ -282,6 +283,7 @@ export async function publishKnowledgeRevision(jobId: string): Promise<void> {
         },
       });
     });
+    revalidatePublicKnowledgeSummaryCache();
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 1_000) : String(error).slice(0, 1_000);
     await db.$transaction([

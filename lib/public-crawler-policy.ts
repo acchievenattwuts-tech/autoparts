@@ -18,6 +18,7 @@ export const AI_ANSWER_BOT_USER_AGENTS = [
   "ChatGPT-User",
   "OAI-SearchBot",
   "ClaudeBot",
+  "Claude-SearchBot",
   "anthropic-ai",
   "Claude-User",
   "PerplexityBot",

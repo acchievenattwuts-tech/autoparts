@@ -10,6 +10,7 @@ import {
 test("recognizes approved answer-engine bots separately from aggressive crawlers", () => {
   assert.equal(isAiAnswerBotUserAgent("Mozilla/5.0 compatible; GPTBot/1.2"), true);
   assert.equal(isAiAnswerBotUserAgent("ClaudeBot/1.0"), true);
+  assert.equal(isAiAnswerBotUserAgent("Claude-SearchBot/1.0"), true);
   assert.equal(isAggressiveBotUserAgent("AhrefsBot/7.0"), true);
   assert.equal(isAggressiveBotUserAgent("Googlebot/2.1"), false);
 });
