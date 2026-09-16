@@ -60,8 +60,11 @@ export default async function MarketplaceReportPage({
     Promise.all(channels.map((channel) => getMarketplaceChannelSetting(channel))),
   ]);
 
+  const feeRates = new Map(
+    pendingFees.byChannel.map((row) => [row.channel, row.averageFeeRate] as const),
+  );
   const [products, channelStats] = await Promise.all([
-    getChannelProductProfit(channels, start, end, pendingFees.averageFeeRate),
+    getChannelProductProfit(channels, start, end, feeRates),
     Promise.all(
       channels.map(async (channel, index) => {
         const setting = settings[index];
@@ -177,7 +180,7 @@ export default async function MarketplaceReportPage({
               มียอดขาย ฿{money(pendingFees.pendingSalesAmount)} ที่แพลตฟอร์มยังไม่โอน
               ค่าธรรมเนียมของก้อนนี้จะถูกบันทึกย้อนกลับมาที่วันขายเมื่อกระทบยอดรอบถัดไป
               {pendingFees.sampleSettlementCount > 0
-                ? ` (ประมาณจากอัตราค่าธรรมเนียมเฉลี่ย ${percent(pendingFees.averageFeeRate * 100)} จาก ${pendingFees.sampleSettlementCount} รอบที่ผ่านมา)`
+                ? ` (คำนวณแยกตามอัตราค่าธรรมเนียมเฉลี่ยของ Shopee และ Lazada จาก ${pendingFees.sampleSettlementCount} รอบที่ผ่านมา)`
                 : " (ยังไม่มีรอบรับเงินให้ใช้ประมาณอัตราค่าธรรมเนียม)"}
             </p>
             <p className="text-amber-800 dark:text-amber-200">

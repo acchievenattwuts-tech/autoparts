@@ -8,6 +8,7 @@ import {
 } from "@/lib/generated/prisma";
 import {
   getMarketplaceChannelConfig,
+  isManualMarketplaceChannel,
   MANUAL_MARKETPLACE_CHANNELS,
   type ManualMarketplaceChannel,
 } from "./config";
@@ -389,6 +390,14 @@ export type ChannelFeeRateEstimate = {
   pendingSalesAmount: number;
   /** ประมาณการค่าธรรมเนียมที่จะย้อนกลับมาลดกำไรของงวดนี้เมื่อแพลตฟอร์มโอนเงิน */
   estimatedPendingFee: number;
+  /** อัตราและยอดค้างแยกช่องทาง เพื่อไม่ใช้ค่าเฉลี่ยรวมข้าม Shopee / Lazada */
+  byChannel: Array<{
+    channel: ManualMarketplaceChannel;
+    averageFeeRate: number;
+    sampleSettlementCount: number;
+    pendingSalesAmount: number;
+    estimatedPendingFee: number;
+  }>;
 };
 
 /**
@@ -402,13 +411,15 @@ export async function estimatePendingChannelFees(
   start: Date,
   end: Date,
 ): Promise<ChannelFeeRateEstimate> {
-  const [settled, pendingSales] = await Promise.all([
-    db.marketplaceSettlement.aggregate({
+  const [settledGroups, pendingSalesGroups] = await Promise.all([
+    db.marketplaceSettlement.groupBy({
+      by: ["channel"],
       where: { status: DocStatus.ACTIVE },
-      _count: true,
+      _count: { _all: true },
       _sum: { salesAmount: true, feeAmount: true },
     }),
-    db.sale.aggregate({
+    db.sale.groupBy({
+      by: ["channel"],
       where: {
         channel: { in: [...MANUAL_MARKETPLACE_CHANNELS] },
         status: DocStatus.ACTIVE,
@@ -419,16 +430,41 @@ export async function estimatePendingChannelFees(
     }),
   ]);
 
-  const settledSales = Number(settled._sum.salesAmount ?? 0);
-  const settledFees = Number(settled._sum.feeAmount ?? 0);
+  const settledByChannel = new Map(settledGroups.map((row) => [row.channel, row]));
+  const pendingByChannel = new Map(pendingSalesGroups.map((row) => [row.channel, row]));
+  const byChannel = MANUAL_MARKETPLACE_CHANNELS.map((channel) => {
+    const settled = settledByChannel.get(channel);
+    const pending = pendingByChannel.get(channel);
+    const settledSales = Number(settled?._sum.salesAmount ?? 0);
+    const settledFees = Number(settled?._sum.feeAmount ?? 0);
+    const averageFeeRate = settledSales > 0 ? settledFees / settledSales : 0;
+    const pendingSalesAmount = Number(pending?._sum.netAmount ?? 0);
+    return {
+      channel,
+      averageFeeRate,
+      sampleSettlementCount: settled?._count._all ?? 0,
+      pendingSalesAmount,
+      estimatedPendingFee: pendingSalesAmount * averageFeeRate,
+    };
+  });
+
+  const settledSales = settledGroups.reduce(
+    (sum, row) => sum + Number(row._sum.salesAmount ?? 0),
+    0,
+  );
+  const settledFees = settledGroups.reduce(
+    (sum, row) => sum + Number(row._sum.feeAmount ?? 0),
+    0,
+  );
   const averageFeeRate = settledSales > 0 ? settledFees / settledSales : 0;
-  const pendingSalesAmount = Number(pendingSales._sum.netAmount ?? 0);
+  const pendingSalesAmount = byChannel.reduce((sum, row) => sum + row.pendingSalesAmount, 0);
 
   return {
     averageFeeRate,
-    sampleSettlementCount: settled._count,
+    sampleSettlementCount: byChannel.reduce((sum, row) => sum + row.sampleSettlementCount, 0),
     pendingSalesAmount,
-    estimatedPendingFee: pendingSalesAmount * averageFeeRate,
+    estimatedPendingFee: byChannel.reduce((sum, row) => sum + row.estimatedPendingFee, 0),
+    byChannel,
   };
 }
 
@@ -456,10 +492,10 @@ export async function getChannelProductProfit(
   channels: ManualMarketplaceChannel[],
   start: Date,
   end: Date,
-  averageFeeRate: number,
+  feeRates: ReadonlyMap<ManualMarketplaceChannel, number>,
 ): Promise<{ best: ChannelProductProfitRow[]; worst: ChannelProductProfitRow[] }> {
   const grouped = await db.factProfit.groupBy({
-    by: ["productId", "productName"],
+    by: ["channel", "productId", "productName"],
     where: {
       isActive: true,
       businessDate: { gte: start, lte: end },
@@ -470,19 +506,33 @@ export async function getChannelProductProfit(
     _sum: { quantity: true, salesAmountExVat: true, grossProfit: true },
   });
 
-  const rows: ChannelProductProfitRow[] = grouped.map((row) => {
+  const productRows = new Map<string, ChannelProductProfitRow>();
+  for (const row of grouped) {
     const salesAmount = Number(row._sum.salesAmountExVat ?? 0);
     const grossProfit = Number(row._sum.grossProfit ?? 0);
-    return {
+    const feeRate =
+      row.channel && isManualMarketplaceChannel(row.channel) ? (feeRates.get(row.channel) ?? 0) : 0;
+    const key = row.productId ?? `${row.channel}:${row.productName ?? ""}`;
+    const current = productRows.get(key) ?? {
       productId: row.productId,
       productName: row.productName ?? "(ไม่ระบุสินค้า)",
-      quantity: Number(row._sum.quantity ?? 0),
-      salesAmount,
-      grossProfit,
-      estimatedProfitAfterFee: grossProfit - salesAmount * averageFeeRate,
-      marginPct: salesAmount > 0 ? (grossProfit / salesAmount) * 100 : 0,
+      quantity: 0,
+      salesAmount: 0,
+      grossProfit: 0,
+      estimatedProfitAfterFee: 0,
+      marginPct: 0,
     };
-  });
+    current.quantity += Number(row._sum.quantity ?? 0);
+    current.salesAmount += salesAmount;
+    current.grossProfit += grossProfit;
+    current.estimatedProfitAfterFee += grossProfit - salesAmount * feeRate;
+    productRows.set(key, current);
+  }
+
+  const rows = [...productRows.values()].map((row) => ({
+    ...row,
+    marginPct: row.salesAmount > 0 ? (row.grossProfit / row.salesAmount) * 100 : 0,
+  }));
 
   const sorted = [...rows].sort(
     (a, b) => b.estimatedProfitAfterFee - a.estimatedProfitAfterFee,
