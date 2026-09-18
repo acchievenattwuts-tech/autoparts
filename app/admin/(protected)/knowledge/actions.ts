@@ -10,7 +10,7 @@ import {
   knowledgeContentSchema,
 } from "@/lib/knowledge-cms-types";
 import { publishKnowledgeRevision } from "@/lib/knowledge-cms-publish";
-import { revalidatePublicKnowledgeSummaryCache } from "@/lib/knowledge-cache";
+import { revalidatePublicKnowledgeCache } from "@/lib/knowledge-cache";
 import { requirePermission } from "@/lib/require-auth";
 import { answerFromKnowledgeRag, retrieveKnowledgeDocuments } from "@/lib/chat-core/knowledge-rag";
 import { knowledgeRagPolicyError } from "@/lib/chat-core/admin-only-knowledge";
@@ -385,7 +385,7 @@ export async function archiveKnowledgeSource(sourceId: string): Promise<Knowledg
     await tx.knowledgeSource.update({ where: { id: sourceId }, data: { isArchived: true, activeRevisionId: null } });
     await tx.knowledgeAuditLog.create({ data: { sourceId, actorUserId: session.user.id, action: "ARCHIVED" } });
   });
-  revalidatePublicKnowledgeSummaryCache();
+  revalidatePublicKnowledgeCache();
   revalidateKnowledge(source.slug);
   return { success: true, id: sourceId };
 }

@@ -50,7 +50,7 @@ test(
       getProductSupportArticles,
       PRODUCT_SUPPORT_ARTICLE_SLUGS,
     } = await import("@/lib/knowledge-public");
-    const { PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG } = await import("@/lib/knowledge-cache");
+    const { PUBLIC_KNOWLEDGE_CACHE_TAG } = await import("@/lib/knowledge-cache");
 
     assert.deepEqual(await getProductSupportArticles(), [{
       slug: rows[0]?.slug,
@@ -79,7 +79,7 @@ test(
     });
     assert.deepEqual(receivedCacheOptions, {
       revalidate: 3_600,
-      tags: [PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG],
+      tags: [PUBLIC_KNOWLEDGE_CACHE_TAG],
     });
   },
 );

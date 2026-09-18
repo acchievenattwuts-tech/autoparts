@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
 import { knowledgeArticles, type KnowledgeArticle } from "@/lib/knowledge-content";
-import { PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG } from "@/lib/knowledge-cache";
+import { PUBLIC_KNOWLEDGE_CACHE_TAG } from "@/lib/knowledge-cache";
 import { storefrontFaqItems } from "@/lib/storefront-content";
 import {
   getActiveKnowledgeByKey,
@@ -22,6 +22,8 @@ export type PublicKnowledgeArticleSummary = Pick<
   KnowledgeArticle,
   "slug" | "title" | "description" | "category"
 >;
+
+const PUBLIC_KNOWLEDGE_REVALIDATE_SECONDS = 3_600;
 
 const fallbackProductSupportArticles = knowledgeArticles.filter((article) =>
   PRODUCT_SUPPORT_ARTICLE_SLUGS.includes(
@@ -64,8 +66,8 @@ const getCachedProductSupportArticles = unstable_cache(
   },
   ["product-support-article-summaries-v1"],
   {
-    revalidate: 3_600,
-    tags: [PUBLIC_KNOWLEDGE_SUMMARY_CACHE_TAG],
+    revalidate: PUBLIC_KNOWLEDGE_REVALIDATE_SECONDS,
+    tags: [PUBLIC_KNOWLEDGE_CACHE_TAG],
   },
 );
 
@@ -100,10 +102,22 @@ export function activeEntryToArticle(entry: ActiveKnowledgeEntry): KnowledgeArti
   };
 }
 
+const getCachedPublicKnowledgeArticles = unstable_cache(
+  async (): Promise<KnowledgeArticle[]> => {
+    const entries = await listActiveKnowledgeEntries("ARTICLE");
+    return entries.map(activeEntryToArticle);
+  },
+  ["public-knowledge-articles-v1"],
+  {
+    revalidate: PUBLIC_KNOWLEDGE_REVALIDATE_SECONDS,
+    tags: [PUBLIC_KNOWLEDGE_CACHE_TAG],
+  },
+);
+
 export async function getPublicKnowledgeArticles(): Promise<KnowledgeArticle[]> {
   try {
-    const entries = await listActiveKnowledgeEntries("ARTICLE");
-    return entries.length > 0 ? entries.map(activeEntryToArticle) : knowledgeArticles;
+    const articles = await getCachedPublicKnowledgeArticles();
+    return articles.length > 0 ? articles : knowledgeArticles;
   } catch {
     return knowledgeArticles;
   }
