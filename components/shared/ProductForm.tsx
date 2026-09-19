@@ -1642,7 +1642,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
                 )}
                 <p className={helpCls}>
                   {priceList.channel === "SHOPEE"
-                    ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60 + 1.07) ÷ 0.8288 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
+                    ? "คำนวณอัตโนมัติจากราคาขายส่ง: ขายส่ง × 1.35 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
                     : priceList.channel === "LAZADA"
                       ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
                       : priceList.channel

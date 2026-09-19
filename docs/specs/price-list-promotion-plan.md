@@ -12,6 +12,8 @@
 
 - [x] A product has one normal price per Price List.
 - [x] Shopee and Lazada prices only prefill manually keyed sales; staff may edit the price.
+- [x] Shopee product-price prefill uses wholesale × 1.35, rounded upward to the next 5/0 ending;
+  Lazada keeps its existing formula.
 - [x] A sale line with `salePrice = 0` is valid and may be saved.
 - [x] A zero price must show a clear warning; it must not block submit.
 - [x] Missing marketplace price does not silently fall back to wholesale/member/retail.

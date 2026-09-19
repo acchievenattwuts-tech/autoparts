@@ -8,7 +8,7 @@ dotenv.config({ path: ".env" });
  * จาก "ราคาขายส่ง" (Product.salePrice)
  *
  * สูตรเดียวกับฟอร์มสินค้า (lib/product-pricing.ts):
- *   Shopee = (salePrice + 60 + 1.07) / 0.8288  ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
+ *   Shopee = salePrice × 1.35                 ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
  *   Lazada = (salePrice + 60)        / 0.7218  ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
  *
  * Scope: สินค้าทุกตัว (active + inactive) ที่มี salePrice > 0 — **เขียนทับราคาเดิมทั้งหมด**
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
   console.log("=".repeat(90));
   console.log(apply ? "APPLY MODE — จะเขียนลง DB จริง" : "DRY RUN — ยังไม่เขียน DB (ใส่ --apply เพื่อรันจริง)");
   console.log("=".repeat(90));
-  console.log("สูตร: Shopee = (ขายส่ง + 60 + 1.07) / 0.8288, Lazada = (ขายส่ง + 60) / 0.7218");
+  console.log("สูตร: Shopee = ขายส่ง x 1.35, Lazada = (ขายส่ง + 60) / 0.7218");
   console.log("ปัดขึ้นให้ลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ) — เขียนทับราคาเดิมทั้งหมด\n");
   console.log(`สินค้าทั้งหมด: ${products.length} รายการ`);
   console.log(`ข้าม (ยังไม่มีราคาขายส่ง): ${skippedNoWholesale} รายการ`);
@@ -149,7 +149,7 @@ async function main(): Promise<void> {
             entityType: "ProductPrice",
             entityRef: "bulk-recalc-marketplace-price",
             meta: {
-              rule: "shopee = (salePrice + 60 + 1.07) / 0.8288, lazada = (salePrice + 60) / 0.7218, round up to next multiple of 5",
+              rule: "shopee = salePrice * 1.35, lazada = (salePrice + 60) / 0.7218, round up to next multiple of 5",
               scope: "สินค้าทุกตัว (active + inactive) ที่ salePrice > 0 — เขียนทับราคาเดิมทั้งหมด",
               scannedCount: products.length,
               skippedNoWholesaleCount: skippedNoWholesale,

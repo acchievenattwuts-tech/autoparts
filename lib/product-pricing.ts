@@ -54,7 +54,7 @@ export function deriveMemberPriceFromRetail(basePrice: number): number {
 /* ────────────────────────────────────────────────────────────────────────────
  * ราคา Marketplace (Shopee / Lazada) คิดจาก "ราคาขายส่ง"
  *
- *   Shopee = (ราคาขายส่ง + 60 + 1.07) ÷ 0.8288
+ *   Shopee = ราคาขายส่ง × 1.35
  *   Lazada = (ราคาขายส่ง + 60)        ÷ 0.7218
  *
  * ทั้งสองช่องปัดขึ้นให้ลงท้ายด้วย 5 หรือ 0 แบบ "เพิ่มขึ้นเสมอ"
@@ -63,10 +63,8 @@ export function deriveMemberPriceFromRetail(basePrice: number): number {
 
 /** ค่าส่งที่บวกเข้าไปในต้นทุนก่อนหักค่าธรรมเนียมแพลตฟอร์ม */
 const MARKETPLACE_SHIPPING_COST = 60;
-/** ค่าธรรมเนียมคงที่เพิ่มเติมของ Shopee (บาท) */
-const SHOPEE_FIXED_FEE = 1.07;
-/** สัดส่วนเงินที่ร้านได้รับจริงหลังหักค่าธรรมเนียม Shopee */
-const SHOPEE_NET_RATIO = 0.8288;
+/** ราคา Shopee = ราคาขายส่ง + 35% */
+const SHOPEE_MARKUP_MULTIPLIER = 1.35;
 /** สัดส่วนเงินที่ร้านได้รับจริงหลังหักค่าธรรมเนียม Lazada */
 const LAZADA_NET_RATIO = 0.7218;
 /** ขั้นการปัดราคา Marketplace */
@@ -81,10 +79,10 @@ export function roundUpToNextFive(value: number): number {
   return Math.floor(value / MARKETPLACE_ROUND_STEP) * MARKETPLACE_ROUND_STEP + MARKETPLACE_ROUND_STEP;
 }
 
-/** ราคา Shopee = (ราคาขายส่ง + 60 + 1.07) ÷ 0.8288 ปัดขึ้นลงท้าย 5/0 */
+/** ราคา Shopee = ราคาขายส่ง × 1.35 ปัดขึ้นลงท้าย 5/0 */
 export function deriveShopeePriceFromWholesale(wholesalePrice: number): number {
   if (!Number.isFinite(wholesalePrice) || wholesalePrice <= 0) return 0;
-  return roundUpToNextFive((wholesalePrice + MARKETPLACE_SHIPPING_COST + SHOPEE_FIXED_FEE) / SHOPEE_NET_RATIO);
+  return roundUpToNextFive(wholesalePrice * SHOPEE_MARKUP_MULTIPLIER);
 }
 
 /** ราคา Lazada = (ราคาขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 */

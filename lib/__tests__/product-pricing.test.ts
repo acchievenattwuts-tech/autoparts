@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  deriveLazadaPriceFromWholesale,
+  deriveMarketplacePricesFromWholesale,
+  deriveShopeePriceFromWholesale,
+} from "../product-pricing";
+
+test("Shopee price adds 35% and rounds up to the next 5/0 ending", () => {
+  assert.equal(deriveShopeePriceFromWholesale(290), 395);
+  assert.equal(deriveShopeePriceFromWholesale(100), 140);
+  assert.equal(deriveShopeePriceFromWholesale(10_500), 14_180);
+});
+
+test("Shopee price preserves the existing always-advance rounding rule", () => {
+  assert.equal(deriveShopeePriceFromWholesale(200), 275);
+});
+
+test("Shopee price returns zero when wholesale cannot produce a price", () => {
+  assert.equal(deriveShopeePriceFromWholesale(0), 0);
+  assert.equal(deriveShopeePriceFromWholesale(-1), 0);
+  assert.equal(deriveShopeePriceFromWholesale(Number.NaN), 0);
+  assert.equal(deriveShopeePriceFromWholesale(Number.POSITIVE_INFINITY), 0);
+});
+
+test("combined marketplace pricing uses the new Shopee formula without changing Lazada", () => {
+  assert.deepEqual(deriveMarketplacePricesFromWholesale(290), {
+    shopeePrice: 395,
+    lazadaPrice: deriveLazadaPriceFromWholesale(290),
+  });
+  assert.equal(deriveLazadaPriceFromWholesale(290), 485);
+});
