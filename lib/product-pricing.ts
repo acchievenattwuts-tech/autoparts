@@ -54,7 +54,7 @@ export function deriveMemberPriceFromRetail(basePrice: number): number {
 /* ────────────────────────────────────────────────────────────────────────────
  * ราคา Marketplace (Shopee / Lazada) คิดจาก "ราคาขายส่ง"
  *
- *   Shopee = ราคาขายส่ง × 1.35
+ *   Shopee = ราคาขายส่ง × 1.40
  *   Lazada = (ราคาขายส่ง + 60)        ÷ 0.7218
  *
  * ทั้งสองช่องปัดขึ้นให้ลงท้ายด้วย 5 หรือ 0 แบบ "เพิ่มขึ้นเสมอ"
@@ -63,8 +63,8 @@ export function deriveMemberPriceFromRetail(basePrice: number): number {
 
 /** ค่าส่งที่บวกเข้าไปในต้นทุนก่อนหักค่าธรรมเนียมแพลตฟอร์ม */
 const MARKETPLACE_SHIPPING_COST = 60;
-/** ราคา Shopee = ราคาขายส่ง + 35% */
-const SHOPEE_MARKUP_MULTIPLIER = 1.35;
+/** ราคา Shopee = ราคาขายส่ง + 40% */
+const SHOPEE_MARKUP_MULTIPLIER = 1.4;
 /** สัดส่วนเงินที่ร้านได้รับจริงหลังหักค่าธรรมเนียม Lazada */
 const LAZADA_NET_RATIO = 0.7218;
 /** ขั้นการปัดราคา Marketplace */
@@ -76,10 +76,15 @@ const MARKETPLACE_ROUND_STEP = 5;
  */
 export function roundUpToNextFive(value: number): number {
   if (!Number.isFinite(value) || value <= 0) return 0;
-  return Math.floor(value / MARKETPLACE_ROUND_STEP) * MARKETPLACE_ROUND_STEP + MARKETPLACE_ROUND_STEP;
+  const stepRatio = value / MARKETPLACE_ROUND_STEP;
+  const nearestStep = Math.round(stepRatio);
+  const boundaryTolerance = Number.EPSILON * Math.max(1, Math.abs(stepRatio)) * 10;
+  const isFloatingPointBoundary = Math.abs(stepRatio - nearestStep) < boundaryTolerance;
+  const currentStep = isFloatingPointBoundary ? nearestStep : Math.floor(stepRatio);
+  return (currentStep + 1) * MARKETPLACE_ROUND_STEP;
 }
 
-/** ราคา Shopee = ราคาขายส่ง × 1.35 ปัดขึ้นลงท้าย 5/0 */
+/** ราคา Shopee = ราคาขายส่ง × 1.40 ปัดขึ้นลงท้าย 5/0 */
 export function deriveShopeePriceFromWholesale(wholesalePrice: number): number {
   if (!Number.isFinite(wholesalePrice) || wholesalePrice <= 0) return 0;
   return roundUpToNextFive(wholesalePrice * SHOPEE_MARKUP_MULTIPLIER);

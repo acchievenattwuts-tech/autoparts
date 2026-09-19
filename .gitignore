@@ -75,3 +75,5 @@ supabase-storage-delete-manifest-*.json
 
 # Generated marketplace upload sheets (Shopee/Lazada exports, run-local only)
 /outputs/
+/output/
+/.codex-spreadsheet/

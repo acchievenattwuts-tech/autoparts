@@ -8,7 +8,7 @@ dotenv.config({ path: ".env" });
  * จาก "ราคาขายส่ง" (Product.salePrice)
  *
  * สูตรเดียวกับฟอร์มสินค้า (lib/product-pricing.ts):
- *   Shopee = salePrice × 1.35 แล้วปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
+ *   Shopee = salePrice × 1.40 แล้วปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
  *
  * Scope: สินค้าทุกตัว (active + inactive) ที่มี salePrice > 0 — เขียนทับราคาเดิมทั้งหมด
  *   - salePrice <= 0 → คำนวณไม่ได้ ข้ามแถว
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   console.log("=".repeat(76));
   console.log(apply ? "APPLY MODE — จะเขียนลง DB จริง" : "DRY RUN — ยังไม่เขียน DB (ใส่ --apply เพื่อรันจริง)");
   console.log("=".repeat(76));
-  console.log("สูตร: ราคา Shopee = ราคาขายส่ง x 1.35 แล้วปัดขึ้นลงท้าย 5 หรือ 0");
+  console.log("สูตร: ราคา Shopee = ราคาขายส่ง x 1.40 แล้วปัดขึ้นลงท้าย 5 หรือ 0");
   console.log(`ระดับราคา: ${shopeeList.name}`);
   console.log(`สินค้าทั้งหมด: ${products.length} รายการ`);
   console.log(`ข้าม (ยังไม่มีราคาขายส่ง): ${skippedNoWholesale} รายการ`);
@@ -125,7 +125,7 @@ async function main(): Promise<void> {
             entityType: "ProductPrice",
             entityRef: "bulk-recalc-shopee-price",
             meta: {
-              rule: "shopee = salePrice * 1.35, round up to next multiple of 5",
+              rule: "shopee = salePrice * 1.40, round up to next multiple of 5",
               scope: "สินค้าทุกตัว (active + inactive) ที่ salePrice > 0 — เขียนทับราคา Shopee เดิมทั้งหมด",
               scannedCount: products.length,
               skippedNoWholesaleCount: skippedNoWholesale,
