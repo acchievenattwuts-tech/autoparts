@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, FileText } from "lucide-react";
+import { FileSpreadsheet, FileText, ReceiptText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
@@ -40,6 +40,14 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
         eyebrow="รายงาน"
         title="Sales Register"
         description="ดูรายการขายแบบรายบรรทัดสินค้า พร้อมประเภทการขาย ช่องทางรับเงิน และบัญชีเงินที่รับจริง"
+        actions={
+          <Link
+            href="/admin/reports/sales-line-profit"
+            className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/5"
+          >
+            <ReceiptText size={16} /> กำไรต่อบิลและสินค้า
+          </Link>
+        }
       />
 
       <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">

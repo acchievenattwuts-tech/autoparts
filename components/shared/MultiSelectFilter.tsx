@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
@@ -41,6 +41,7 @@ const MultiSelectFilter = ({
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
   const adminTheme = useOptionalAdminTheme();
+  const dropdownId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -154,11 +155,12 @@ const MultiSelectFilter = ({
       ? placeholder
       : selectedOptions.length === 1
         ? selectedOptions[0].label
-        : `เลือกแล้ว ${selectedOptions.length} หมวด`;
+        : `เลือกแล้ว ${selectedOptions.length} รายการ`;
 
   const dropdown = open
     ? createPortal(
         <div
+          id={dropdownId}
           ref={dropdownRef}
           style={{ top: coords.top, left: coords.left, width: coords.width }}
           className={dropdownClassName}
@@ -216,6 +218,7 @@ const MultiSelectFilter = ({
     <div ref={containerRef} className="relative">
       <div
         role="combobox"
+        aria-controls={dropdownId}
         aria-expanded={open}
         onClick={handleOpen}
         className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${triggerClassName} ${
@@ -234,7 +237,7 @@ const MultiSelectFilter = ({
                   isDark ? "text-slate-500 hover:text-slate-300" : "text-gray-400 hover:text-gray-600"
                 }`}
                 onClick={handleClear}
-                aria-label="ล้างหมวดหมู่ที่เลือก"
+                aria-label="ล้างรายการที่เลือก"
               />
             )}
           </>

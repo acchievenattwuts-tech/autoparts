@@ -578,6 +578,17 @@
 - [x] Integration test ล็อกการประมาณยอดค้างรับและกำไรรายสินค้าเมื่อ Shopee/Lazada มีอัตราค่าธรรมเนียมต่างกัน
 - [x] ค่าธรรมเนียมแยกประเภท + สุขภาพช่องทาง (ยอดค้างรับ, ออเดอร์เก่าสุดที่ยังไม่ได้เงิน, อัตราคืนสินค้า)
 
+### รายงานกำไรขั้นต้นรายบิล–รายสินค้า (ออกแบบ 2026-09-20)
+- [x] สรุป data model และสูตรปันส่วนลดท้ายบิลจาก `rebuildSaleProfitFacts()`; ยืนยันว่าไม่ต้องแก้ schema
+- [x] ออกแบบ filter วันที่, ลูกค้าหลายราย, ช่องทาง, หมวดสินค้า, รหัส From–To และเลือกสินค้าหลายรายการ
+- [x] กำหนดให้รวมใบลดหนี้เป็นแถวติดลบโดยค่าเริ่มต้น พร้อมตัวเลือกซ่อน และห้ามเดาช่องราคาตั้ง/ส่วนลดที่ไม่มี snapshot
+- [x] กำหนดคอลัมน์ subtotal ต่อบิล, grand total, responsive layout, Excel export และ reconciliation กับ FactProfit
+- [x] สร้างหน้ารายงาน `/admin/reports/sales-line-profit` แยกมิติ “กำไรต่อบิล” (รวมทุกบรรทัดและค่าจัดส่ง) กับ “กำไรต่อสินค้าในบิล” (เฉพาะสินค้าที่ตรง filter แบบ AND) พร้อมสถานะ Active/Cancelled และ responsive light/dark mode
+- [x] เพิ่ม Excel 2 sheet ผ่าน native `AdminExportLink`; export mode ทำ preflight count และหยุดด้วย 422 ก่อนดึงรายละเอียดเมื่อเกิน 10,000 รายการ, ตรวจ scope ด้วย `limit + 1` กันไฟล์ขาดเงียบ, query เฉพาะคอลัมน์ที่ไฟล์ใช้ และข้าม aggregate/KPI/FactProfit breakdown ของหน้าจอทั้งหมดเพื่อลด Supabase Egress
+- [x] เพิ่มเมนูรายงาน/Quick Search จาก source กลาง และเพิ่ม regression test สำหรับ filter/query string
+- [x] ตรวจ Production แบบ read-only ว่าส่วนลดท้ายบิลที่ปันรวมตรงกับส่วนลดเอกสารและกำไรรายการตรงยอดสุทธิหลังปันส่วนลดลบต้นทุน; smoke query กันยายน 2026: Active 108 รายการ/595 ms, Cancelled 2 รายการ/235 ms
+- [x] Implement ตามสเปก [docs/specs/sales-line-gross-profit-report.md](docs/specs/sales-line-gross-profit-report.md) — integration tests ครอบคลุมหลายสินค้า, VAT, ส่วนลดรายการ/ท้ายบิล, filter สองมิติ, ใบคืนสินค้าติดลบ, snapshot Cancelled เวอร์ชันล่าสุด และ export Egress preflight; verify/mojibake/production build ผ่าน
+
 ### เชื่อมกับโมดูลแบ่งกำไรผู้ร่วมทุน
 - [x] `buildDistributionPreview()` เพิ่ม `pendingChannelFees` และหน้า `/admin/profit-distributions/new` ขึ้นแบนเนอร์เตือนก่อนประกาศงวด
 - ถ้าประกาศแบ่งกำไรไปก่อนแล้วค่าธรรมเนียมเพิ่งมาทีหลัง ระบบเดิมรองรับอยู่แล้ว: ส่วนต่างจะไปโผล่เป็นยอดยกมาแบบ `RESTATED` ของงวดถัดไป (`computeCarryForward()`, lookback 36 เดือน)

@@ -48,6 +48,7 @@ export type AdminNavItem = {
   icon: ComponentType<{ size?: number; className?: string }>;
   permission?: PermissionKey;
   keywords?: string;
+  showInSidebar?: boolean;
 };
 
 export type AdminNavSection = {
@@ -173,6 +174,8 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
     items: [
       { label: "รายงาน", href: "/admin/reports", icon: BarChart3, permission: "reports.view", keywords: "reports รายงาน",
       },
+      { label: "กำไรต่อบิลและสินค้า", href: "/admin/reports/sales-line-profit", icon: Receipt, permission: "reports.view", keywords: "sales profit margin กำไรต่อบิล กำไรรายสินค้า ส่วนลดท้ายบิล", showInSidebar: false,
+      },
       { label: "Product Search No Result", href: "/admin/reports/product-search-no-result", icon: SearchX, permission: "product_search_report.view", keywords: "product search no result telemetry คำค้นหา ไม่พบผลลัพธ์",
       },
       { label: "Search Coverage Audit", href: "/admin/reports/search-coverage-audit", icon: ListChecks, permission: "search_coverage.view", keywords: "search coverage audit backfill ขาดข้อมูล oem keyword รูป รุ่นรถ fitment",
@@ -254,7 +257,9 @@ export const filterAdminNavigationByPermission = (
     .map((section) => ({
       ...section,
       items: section.items.filter(
-        (item) => !item.permission || permissions === undefined || permissions.includes(item.permission),
+        (item) =>
+          item.showInSidebar !== false &&
+          (!item.permission || permissions === undefined || permissions.includes(item.permission)),
       ),
     }))
     .filter((section) => section.items.length > 0);
