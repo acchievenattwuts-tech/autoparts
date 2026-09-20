@@ -60,11 +60,8 @@ export default async function MarketplaceReportPage({
     Promise.all(channels.map((channel) => getMarketplaceChannelSetting(channel))),
   ]);
 
-  const feeRates = new Map(
-    pendingFees.byChannel.map((row) => [row.channel, row.averageFeeRate] as const),
-  );
   const [products, channelStats] = await Promise.all([
-    getChannelProductProfit(channels, start, end, feeRates),
+    getChannelProductProfit(channels, start, end),
     Promise.all(
       channels.map(async (channel, index) => {
         const setting = settings[index];
@@ -132,7 +129,7 @@ export default async function MarketplaceReportPage({
 
       <AdminSearchForm
         action="/admin/reports/marketplace"
-        className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#101b2e]"
+        className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-[#101b2e] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
       >
         <label className="text-sm text-slate-600 dark:text-slate-300">
           จาก
@@ -140,7 +137,7 @@ export default async function MarketplaceReportPage({
             type="date"
             name="from"
             defaultValue={from}
-            className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"
+            className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"
           />
         </label>
         <label className="text-sm text-slate-600 dark:text-slate-300">
@@ -149,7 +146,7 @@ export default async function MarketplaceReportPage({
             type="date"
             name="to"
             defaultValue={to}
-            className="mt-1 block rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"
+            className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-white/20 dark:bg-slate-900"
           />
         </label>
         <AdminSearchSubmitButton>แสดงรายงาน</AdminSearchSubmitButton>
@@ -194,7 +191,23 @@ export default async function MarketplaceReportPage({
         <h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">
           เทียบผลประกอบการรายช่องทาง
         </h2>
-        <div className="overflow-x-auto">
+        <div className="grid gap-3 md:hidden">
+          {overview.rows.map((row) => (
+            <div key={row.channel} className="rounded-lg border border-slate-200 p-4 dark:border-white/10">
+              <div className="flex items-center justify-between gap-3">
+                <p className="font-medium text-slate-900 dark:text-slate-100">{row.label}</p>
+                <p className="font-semibold tabular-nums">฿{money(row.contribution)}</p>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <div><dt className="text-slate-500 dark:text-slate-400">ยอดขายสุทธิ</dt><dd className="tabular-nums">{money(row.salesAmount)}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">ต้นทุนขาย</dt><dd className="tabular-nums">{money(row.costAmount)}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">กำไรขั้นต้น</dt><dd className="tabular-nums">{money(row.grossProfit)}</dd></div>
+                <div><dt className="text-slate-500 dark:text-slate-400">ค่าธรรมเนียม</dt><dd className="tabular-nums text-rose-600 dark:text-rose-300">-{money(row.feeAmount)}</dd></div>
+              </dl>
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[880px] text-sm">
             <thead className="border-b border-slate-200 text-slate-500 dark:border-white/10 dark:text-slate-300">
               <tr>
@@ -275,35 +288,68 @@ export default async function MarketplaceReportPage({
         </p>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className={sectionCls}>
-          <h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">
-            สินค้าที่ทำกำไรดีที่สุด
-          </h2>
-          <ProductTable rows={products.best} emptyLabel="ยังไม่มียอดขายออนไลน์ในช่วงนี้" />
-        </div>
-        <div className={sectionCls}>
-          <h2 className="font-kanit text-lg font-semibold text-rose-700 dark:text-rose-300">
-            สินค้าที่ขาดทุนหลังค่าธรรมเนียม
-          </h2>
-          <ProductTable
-            rows={products.worst}
-            emptyLabel="ไม่มีสินค้าที่ขาดทุนหลังค่าธรรมเนียมในช่วงนี้"
-          />
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            ประมาณโดยปันค่าธรรมเนียมด้วยอัตราเฉลี่ยของช่องทาง ใช้เพื่อจัดลำดับความเสี่ยง
-            ไม่ใช่ตัวเลขทางบัญชีรายสินค้า — สินค้าที่ติดลบควรทบทวนราคาขายหรือถอดออกจากแพลตฟอร์ม
-          </p>
-        </div>
-      </div>
+      {products.map((productSection) => {
+        const config = getMarketplaceChannelConfig(productSection.channel);
+        return (
+          <section key={productSection.channel} className={sectionCls}>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-300">
+                {config.label}
+              </p>
+              <h2 className="mt-1 font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">
+                กำไรรายสินค้าแยกตามสถานะค่าธรรมเนียม
+              </h2>
+            </div>
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                หักค่าธรรมเนียมแล้ว
+              </h3>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
+                  <h4 className="mb-2 font-medium text-slate-900 dark:text-slate-100">
+                    สินค้าที่ทำกำไรดีที่สุด
+                  </h4>
+                  <ProductTable rows={productSection.settled.best} emptyLabel="ยังไม่มีสินค้าที่กระทบยอดแล้ว" />
+                </div>
+                <div className="rounded-lg border border-rose-200 p-3 dark:border-rose-400/20">
+                  <h4 className="mb-2 font-medium text-rose-700 dark:text-rose-300">
+                    สินค้าที่ขาดทุนหลังค่าธรรมเนียม
+                  </h4>
+                  <ProductTable
+                    rows={productSection.settled.worst}
+                    emptyLabel="ไม่มีสินค้าที่ขาดทุนหลังค่าธรรมเนียม"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="border-t border-slate-200 pt-4 dark:border-white/10">
+              <h3 className="mb-1 text-sm font-semibold text-amber-700 dark:text-amber-300">
+                ยังไม่หักค่าธรรมเนียม
+              </h3>
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+                รายการยังไม่อยู่ในรอบรับเงิน จึงแสดงกำไรหลังค่าธรรมเนียมเป็นขีดแทนการประมาณ
+              </p>
+              <ProductTable rows={productSection.pending} emptyLabel="ไม่มีสินค้ารอหักค่าธรรมเนียม" />
+            </div>
+          </section>
+        );
+      })}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className={sectionCls}>
           <h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">
             ค่าธรรมเนียมและรายการปรับปรุงแยกประเภท
           </h2>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[420px] text-sm">
+          <div className="space-y-4">
+            {channels.map((channel) => {
+              const rows = feeBreakdown.filter((row) => row.channel === channel);
+              return (
+                <div key={channel} className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
+                  <h3 className="mb-2 font-medium text-slate-900 dark:text-slate-100">
+                    {getMarketplaceChannelConfig(channel).label}
+                  </h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
               <thead className="text-slate-500 dark:text-slate-300">
                 <tr>
                   <th className={thCls}>รหัส</th>
@@ -312,16 +358,16 @@ export default async function MarketplaceReportPage({
                 </tr>
               </thead>
               <tbody>
-                {feeBreakdown.length === 0 ? (
+                {rows.length === 0 ? (
                   <tr>
                     <td colSpan={3} className="p-8 text-center text-slate-400">
                       ยังไม่มีรอบรับเงินในช่วงนี้
                     </td>
                   </tr>
                 ) : (
-                  feeBreakdown.map((row) => (
+                  rows.map((row) => (
                     <tr
-                      key={`${row.feeCode}-${row.label}`}
+                      key={`${row.channel}-${row.feeCode}-${row.label}`}
                       className="border-t border-slate-100 dark:border-white/5"
                     >
                       <td className="p-2 font-mono">{row.feeCode}</td>
@@ -336,6 +382,10 @@ export default async function MarketplaceReportPage({
                 )}
               </tbody>
             </table>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
@@ -394,17 +444,18 @@ function ProductTable({
   emptyLabel,
 }: {
   rows: Array<{
+    channel: string;
     productId: string | null;
     productName: string;
     salesAmount: number;
     grossProfit: number;
-    estimatedProfitAfterFee: number;
+    estimatedProfitAfterFee: number | null;
   }>;
   emptyLabel: string;
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[420px] text-sm">
+      <table className="w-full text-xs sm:text-sm">
         <thead className="text-slate-500 dark:text-slate-300">
           <tr>
             <th className="p-2 text-left font-medium">สินค้า</th>
@@ -423,16 +474,16 @@ function ProductTable({
           ) : (
             rows.map((row) => (
               <tr
-                key={row.productId ?? row.productName}
+                key={`${row.channel}-${row.productId ?? row.productName}`}
                 className="border-t border-slate-100 dark:border-white/5"
               >
                 <td className="p-2">{row.productName}</td>
                 <td className="p-2 text-right tabular-nums">{money(row.salesAmount)}</td>
                 <td className="p-2 text-right tabular-nums">{money(row.grossProfit)}</td>
                 <td
-                  className={`p-2 text-right font-medium tabular-nums ${row.estimatedProfitAfterFee < 0 ? "text-rose-600 dark:text-rose-300" : "text-emerald-600 dark:text-emerald-300"}`}
+                  className={`p-2 text-right font-medium tabular-nums ${row.estimatedProfitAfterFee !== null && row.estimatedProfitAfterFee < 0 ? "text-rose-600 dark:text-rose-300" : "text-emerald-600 dark:text-emerald-300"}`}
                 >
-                  {money(row.estimatedProfitAfterFee)}
+                  {row.estimatedProfitAfterFee === null ? "—" : money(row.estimatedProfitAfterFee)}
                 </td>
               </tr>
             ))

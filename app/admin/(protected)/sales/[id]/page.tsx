@@ -170,7 +170,19 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         marketplaceSettlementLines: {
           where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
           take: 1,
-          select: { id: true },
+          select: {
+            id: true,
+            amount: true,
+            settlement: {
+              select: {
+                id: true,
+                settlementNo: true,
+                settlementDate: true,
+                payoutRef: true,
+                payoutAmount: true,
+              },
+            },
+          },
         },
       },
     }),
@@ -292,6 +304,38 @@ ${PRINT_COPY_VISIBILITY_CSS}
           <span className="text-gray-300 dark:text-slate-600">/</span>
           <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{sale.saleNo}</span>
         </div>
+
+        {sale.marketplaceSettlementLines[0] ? (
+          <div className="mb-6 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm dark:border-sky-400/30 dark:bg-sky-500/10">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="font-medium text-sky-900 dark:text-sky-100">
+                  ใบขายนี้กระทบยอดรับเงินแล้ว
+                </p>
+                <p className="mt-1 text-sky-700 dark:text-sky-200">
+                  รอบ {sale.marketplaceSettlementLines[0].settlement.settlementNo} · อ้างอิง{" "}
+                  {sale.marketplaceSettlementLines[0].settlement.payoutRef} · ยอดจับคู่{" "}
+                  {Number(sale.marketplaceSettlementLines[0].amount).toLocaleString("th-TH", {
+                    minimumFractionDigits: 2,
+                  })} บาท · วันที่รับเงิน{" "}
+                  {fmtDate(sale.marketplaceSettlementLines[0].settlement.settlementDate)} · เงินเข้าจริง{" "}
+                  {Number(sale.marketplaceSettlementLines[0].settlement.payoutAmount).toLocaleString("th-TH", {
+                    minimumFractionDigits: 2,
+                  })} บาท
+                </p>
+                <p className="mt-1 text-xs text-sky-600 dark:text-sky-300">
+                  ต้องยกเลิกรอบรับเงินก่อน จึงจะแก้ไขหรือยกเลิกใบขายนี้ได้
+                </p>
+              </div>
+              <NavLink
+                href={`/admin/marketplace/settlements/${sale.marketplaceSettlementLines[0].settlement.id}`}
+                className="inline-flex min-h-10 items-center rounded-lg border border-sky-300 px-3 font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-400/40 dark:text-sky-200 dark:hover:bg-sky-500/10"
+              >
+                ดูรายละเอียดรอบรับเงิน
+              </NavLink>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
           <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">

@@ -16,7 +16,9 @@ import {
   type ManualMarketplaceChannel,
 } from "@/lib/marketplace/config";
 import {
+  buildMarketplacePayoutDifferenceLine,
   calculateMarketplaceSettlement,
+  normalizeMarketplaceLineAmount,
   round2,
   SETTLEMENT_TOLERANCE,
 } from "@/lib/marketplace/settlement-math";
@@ -163,7 +165,10 @@ const feeLineSchema = z.object({
   amount: z
     .number()
     .refine((value) => Math.abs(value) >= 0.01, { message: "ยอดของแต่ละรายการต้องไม่เป็นศูนย์" }),
-});
+}).transform((line) => ({
+  ...line,
+  amount: normalizeMarketplaceLineAmount(line.kind, line.amount),
+}));
 
 const createSettlementSchema = z.object({
   channel: channelSchema,
@@ -234,6 +239,40 @@ async function ensureFeeExpenseCodes(
   return result;
 }
 
+/**
+ * คู่ค้าของค่าธรรมเนียม marketplace ใช้ชื่อช่องทางตามที่เจ้าของระบบกำหนด
+ * และจงใจไม่เติมรหัส/เลขภาษี/ข้อมูลติดต่อที่ยังไม่ได้รับการยืนยัน
+ */
+async function ensureMarketplaceSupplier(
+  tx: Prisma.TransactionClient,
+  channel: ManualMarketplaceChannel,
+  userId: string,
+): Promise<string> {
+  const name = getMarketplaceChannelConfig(channel).label;
+  const existing = await tx.supplier.findUnique({
+    where: { name },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const created = await tx.supplier.create({
+    data: { name },
+    select: { id: true },
+  });
+  await tx.auditLog.create({
+    data: {
+      userId,
+      action: AuditAction.CREATE,
+      entityType: "Supplier",
+      entityId: created.id,
+      entityRef: name,
+      after: { name },
+      meta: { source: "MARKETPLACE_SETTLEMENT" },
+    },
+  });
+  return created.id;
+}
+
 export async function createMarketplaceSettlement(payload: unknown) {
   const parsed = createSettlementSchema.safeParse(payload);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -241,11 +280,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
   const channel = input.channel as ManualMarketplaceChannel;
   const config = getMarketplaceChannelConfig(channel);
 
-  const hasIncomeLine = input.lines.some((line) => line.amount > 0);
-  const session = await requireSettlementPermissions(hasIncomeLine);
-  if (!session?.user?.id) {
-    return { error: "ต้องมีสิทธิ์จัดการช่องทางขาย เพิ่มค่าใช้จ่าย โอนเงิน และปรับยอดเงิน" };
-  }
+  const marketplaceSession = await requirePermission("marketplace.manage").catch(() => null);
+  if (!marketplaceSession?.user?.id) return { error: "ไม่มีสิทธิ์จัดการช่องทางขาย" };
 
   const setting = await db.marketplaceChannelSetting.findFirst({
     where: { channel, isActive: true },
@@ -290,19 +326,35 @@ export async function createMarketplaceSettlement(payload: unknown) {
     return { error: "มีเอกสารบางรายการไม่พร้อมกระทบยอดหรือถูกเลือกไปแล้ว กรุณาโหลดหน้าใหม่" };
   }
 
-  const calculation = calculateMarketplaceSettlement({
+  const actualPayout = round2(input.payoutAmount);
+  const baseCalculation = calculateMarketplaceSettlement({
     saleAmounts: sales.map((sale) => Number(sale.netAmount)),
     returnAmounts: creditNotes.map((creditNote) => Number(creditNote.totalAmount)),
     feeLines: input.lines,
-    payoutAmount: input.payoutAmount,
+    payoutAmount: actualPayout,
+  });
+  const payoutDifferenceLine = buildMarketplacePayoutDifferenceLine(baseCalculation.difference);
+  const payoutDifference = payoutDifferenceLine?.amount ?? 0;
+  const settlementFeeLines = payoutDifferenceLine
+    ? [...input.lines, payoutDifferenceLine]
+    : input.lines;
+  const calculation = calculateMarketplaceSettlement({
+    saleAmounts: sales.map((sale) => Number(sale.netAmount)),
+    returnAmounts: creditNotes.map((creditNote) => Number(creditNote.totalAmount)),
+    feeLines: settlementFeeLines,
+    payoutAmount: actualPayout,
   });
   if (!calculation.isBalanced) {
-    return {
-      error: `ยอดเงินเข้าจริงไม่ตรงกับที่คำนวณได้ ผลต่าง ${calculation.difference.toFixed(2)} บาท`,
-    };
+    return { error: "ไม่สามารถสร้างรายการส่วนต่างยอดโอนจริงให้ยอดสมดุลได้" };
   }
-  if (calculation.expectedPayout <= SETTLEMENT_TOLERANCE) {
-    return { error: "ยอดที่ควรได้รับต้องมากกว่า 0 บาท จึงจะบันทึกการโอนเงินได้" };
+  if (actualPayout <= SETTLEMENT_TOLERANCE) {
+    return { error: "ยอดเงินเข้าจริงต้องมากกว่า 0 บาท จึงจะบันทึกการโอนเงินได้" };
+  }
+
+  const hasIncomeLine = settlementFeeLines.some((line) => line.amount > 0);
+  const session = await requireSettlementPermissions(hasIncomeLine);
+  if (!session?.user?.id) {
+    return { error: "ต้องมีสิทธิ์จัดการช่องทางขาย เพิ่มค่าใช้จ่าย โอนเงิน และปรับยอดเงิน" };
   }
 
   const docDate = parseDateOnlyToDate(input.settlementDate);
@@ -313,8 +365,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
     calculation.incomeAmount > 0 ? generateCashBankAdjustmentNo(docDate) : Promise.resolve(null),
   ]);
 
-  const deductionLines = input.lines.filter((line) => line.amount < 0);
-  const incomeLines = input.lines.filter((line) => line.amount > 0);
+  const deductionLines = settlementFeeLines.filter((line) => line.amount < 0);
+  const incomeLines = settlementFeeLines.filter((line) => line.amount > 0);
 
   try {
     let createdSettlementId = "";
@@ -327,6 +379,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
 
       let expenseId: string | null = null;
       if (calculation.feeAmount > 0) {
+        const supplierId = await ensureMarketplaceSupplier(tx, channel, session.user!.id!);
         const codeIds = await ensureFeeExpenseCodes(
           tx,
           channel,
@@ -337,6 +390,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
             expenseNo: expenseNo as string,
             expenseDate: docDate,
             userId: session.user!.id!,
+            supplierId,
             cashBankAccountId: holdingAccountId,
             channel,
             totalAmount: calculation.feeAmount,
@@ -406,7 +460,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
           transferDate: docDate,
           fromAccountId: holdingAccountId,
           toAccountId: input.destinationAccountId,
-          amount: calculation.expectedPayout,
+          amount: actualPayout,
           note: `${config.label} payout ${input.payoutRef}`,
           userId: session.user!.id!,
         },
@@ -417,7 +471,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
           accountId: holdingAccountId,
           txnDate: docDate,
           direction: CashBankDirection.OUT,
-          amount: calculation.expectedPayout,
+          amount: actualPayout,
           referenceNo: transferNo,
           note: `${config.label} payout ${input.payoutRef}`,
         },
@@ -425,7 +479,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
           accountId: input.destinationAccountId,
           txnDate: docDate,
           direction: CashBankDirection.IN,
-          amount: calculation.expectedPayout,
+          amount: actualPayout,
           referenceNo: transferNo,
           note: `${config.label} payout ${input.payoutRef}`,
         },
@@ -444,7 +498,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
           returnAmount: calculation.returnAmount,
           feeAmount: calculation.feeAmount,
           incomeAmount: calculation.incomeAmount,
-          payoutAmount: calculation.expectedPayout,
+          payoutAmount: actualPayout,
           expenseId,
           cashBankAdjustmentId: adjustmentId,
           cashBankTransferId: transfer.id,
@@ -471,7 +525,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
             ],
           },
           fees: {
-            create: input.lines.map((line, index) => ({
+            create: settlementFeeLines.map((line, index) => ({
               lineNo: index + 1,
               kind: line.kind,
               feeCode: line.code,
@@ -501,7 +555,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
         returnAmount: calculation.returnAmount,
         feeAmount: calculation.feeAmount,
         incomeAmount: calculation.incomeAmount,
-        payoutAmount: calculation.expectedPayout,
+        payoutAmount: actualPayout,
+        payoutDifference,
         saleIds: sales.map((sale) => sale.id),
         creditNoteIds: creditNotes.map((creditNote) => creditNote.id),
       },
@@ -512,7 +567,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
         settlementId: createdSettlementId,
         settlementNo,
         channelLabel: config.label,
-        payoutAmount: calculation.expectedPayout.toLocaleString("th-TH", {
+        payoutAmount: actualPayout.toLocaleString("th-TH", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }),
@@ -529,8 +584,9 @@ export async function createMarketplaceSettlement(payload: unknown) {
     revalidateChannelPaths(channel);
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/expenses");
+    revalidatePath("/admin/master/suppliers");
     revalidatePath("/admin/cash-bank");
-    return { success: true, settlementNo };
+    return { success: true, settlementNo, payoutDifference };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "เลขอ้างอิงการรับเงินนี้ถูกบันทึกแล้ว หรือมีเอกสารถูกกระทบยอดซ้ำ" };

@@ -3,13 +3,21 @@ import { describe, it } from "node:test";
 import { MarketplaceFeeKind } from "@/lib/generated/prisma";
 import {
   allocateByShare,
+  buildMarketplacePayoutDifferenceLine,
   calculateMarketplaceSettlement,
+  normalizeMarketplaceLineAmount,
 } from "@/lib/marketplace/settlement-math";
 
 const fee = (amount: number) => ({ kind: MarketplaceFeeKind.FEE, amount });
 const adjustment = (amount: number) => ({ kind: MarketplaceFeeKind.ADJUSTMENT, amount });
 
 describe("calculateMarketplaceSettlement", () => {
+  it("normalizes fee input to a deduction while preserving adjustment signs", () => {
+    assert.equal(normalizeMarketplaceLineAmount(MarketplaceFeeKind.FEE, 120.5), -120.5);
+    assert.equal(normalizeMarketplaceLineAmount(MarketplaceFeeKind.FEE, -120.5), -120.5);
+    assert.equal(normalizeMarketplaceLineAmount(MarketplaceFeeKind.ADJUSTMENT, 25), 25);
+    assert.equal(normalizeMarketplaceLineAmount(MarketplaceFeeKind.ADJUSTMENT, -25), -25);
+  });
   it("balances sales minus fees when the payout matches", () => {
     const result = calculateMarketplaceSettlement({
       saleAmounts: [1000, 500],
@@ -62,6 +70,35 @@ describe("calculateMarketplaceSettlement", () => {
 
     assert.equal(result.difference, -20);
     assert.equal(result.isBalanced, false);
+  });
+
+  it("creates a signed automatic adjustment that balances the actual payout", () => {
+    const base = calculateMarketplaceSettlement({
+      saleAmounts: [1000],
+      returnAmounts: [],
+      feeLines: [fee(-100)],
+      payoutAmount: 880,
+    });
+    const line = buildMarketplacePayoutDifferenceLine(base.difference);
+
+    assert.deepEqual(line, {
+      code: "PAYOUT_DIFFERENCE",
+      label: "ส่วนต่างยอดโอนจริง",
+      kind: MarketplaceFeeKind.ADJUSTMENT,
+      amount: -20,
+    });
+    const reconciled = calculateMarketplaceSettlement({
+      saleAmounts: [1000],
+      returnAmounts: [],
+      feeLines: [fee(-100), line!],
+      payoutAmount: 880,
+    });
+    assert.equal(reconciled.expectedPayout, 880);
+    assert.equal(reconciled.isBalanced, true);
+  });
+
+  it("does not create an adjustment inside the rounding tolerance", () => {
+    assert.equal(buildMarketplacePayoutDifferenceLine(0.004), null);
   });
 
   it("treats a half-satang rounding gap as balanced", () => {

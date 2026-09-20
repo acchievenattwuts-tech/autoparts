@@ -103,6 +103,7 @@ export default async function SalesReportPage({ searchParams }: PageProps) {
             <option value="ALL">ทุกช่องทาง</option>
             <option value="STORE">หน้าร้าน</option>
             <option value="SHOPEE">Shopee</option>
+            <option value="LAZADA">Lazada</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

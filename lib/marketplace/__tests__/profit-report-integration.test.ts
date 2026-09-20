@@ -71,24 +71,52 @@ before(async () => {
             return [
               {
                 channel: SaleChannel.SHOPEE,
+                sourceType: "SALE",
+                sourceId: "shopee-sale-1",
                 productId: "shared-product",
                 productName: "Shared product",
                 _sum: { quantity: 1, salesAmountExVat: 900, grossProfit: 300 },
               },
               {
                 channel: SaleChannel.LAZADA,
+                sourceType: "SALE",
+                sourceId: "lazada-sale-1",
                 productId: "shared-product",
                 productName: "Shared product",
                 _sum: { quantity: 1, salesAmountExVat: 100, grossProfit: 50 },
               },
               {
                 channel: SaleChannel.SHOPEE,
+                sourceType: "SALE",
+                sourceId: "shopee-sale-2",
                 productId: "loss-product",
                 productName: "Loss product",
                 _sum: { quantity: 1, salesAmountExVat: 100, grossProfit: 5 },
               },
+              {
+                channel: SaleChannel.SHOPEE,
+                sourceType: "SALE",
+                sourceId: "shopee-sale-pending",
+                productId: "shared-product",
+                productName: "Shared product",
+                _sum: { quantity: 2, salesAmountExVat: 200, grossProfit: 80 },
+              },
             ];
           },
+        },
+        marketplaceSettlementLine: {
+          findMany: async () => [
+            {
+              saleId: "shopee-sale-1",
+              creditNoteId: null,
+              settlement: { feeAmount: 100, salesAmount: 1_000 },
+            },
+            {
+              saleId: "shopee-sale-2",
+              creditNoteId: null,
+              settlement: { feeAmount: 100, salesAmount: 1_000 },
+            },
+          ],
         },
       },
     },
@@ -124,27 +152,25 @@ test(
     assert.equal(estimate.estimatedPendingFee, 170);
     assert.equal(estimate.sampleSettlementCount, 3);
 
-    const feeRates = new Map(
-      estimate.byChannel.map((row) => [row.channel, row.averageFeeRate] as const),
-    );
     const products = await getChannelProductProfit(
       [SaleChannel.SHOPEE, SaleChannel.LAZADA],
       start,
       end,
-      feeRates,
     );
 
-    assert.deepEqual(products.best[0], {
+    assert.deepEqual(products[0].settled.best[0], {
+      channel: SaleChannel.SHOPEE,
       productId: "shared-product",
       productName: "Shared product",
-      quantity: 2,
-      salesAmount: 1_000,
-      grossProfit: 350,
-      estimatedProfitAfterFee: 230,
-      marginPct: 35,
+      quantity: 1,
+      salesAmount: 900,
+      grossProfit: 300,
+      estimatedProfitAfterFee: 210,
+      marginPct: 33.33333333333333,
     });
-    assert.deepEqual(products.worst, [
+    assert.deepEqual(products[0].settled.worst, [
       {
+        channel: SaleChannel.SHOPEE,
         productId: "loss-product",
         productName: "Loss product",
         quantity: 1,
@@ -154,8 +180,38 @@ test(
         marginPct: 5,
       },
     ]);
+    assert.deepEqual(products[0].pending, [
+      {
+        channel: SaleChannel.SHOPEE,
+        productId: "shared-product",
+        productName: "Shared product",
+        quantity: 2,
+        salesAmount: 200,
+        grossProfit: 80,
+        estimatedProfitAfterFee: null,
+        marginPct: 40,
+      },
+    ]);
+    assert.deepEqual(products[1].pending, [
+      {
+        channel: SaleChannel.LAZADA,
+        productId: "shared-product",
+        productName: "Shared product",
+        quantity: 1,
+        salesAmount: 100,
+        grossProfit: 50,
+        estimatedProfitAfterFee: null,
+        marginPct: 50,
+      },
+    ]);
     assert.deepEqual(settlementGroupArgs?.by, ["channel"]);
     assert.deepEqual(pendingSaleGroupArgs?.by, ["channel"]);
-    assert.deepEqual(productProfitGroupArgs?.by, ["channel", "productId", "productName"]);
+    assert.deepEqual(productProfitGroupArgs?.by, [
+      "channel",
+      "sourceType",
+      "sourceId",
+      "productId",
+      "productName",
+    ]);
   },
 );

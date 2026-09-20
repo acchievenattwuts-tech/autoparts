@@ -75,7 +75,7 @@ export type ReportFilters = {
   accountId?: string;
   paymentType?: string;  // for sales
   saleType?: string;     // for sales
-  channel?: string;      // for sales: ALL | STORE | SHOPEE
+  channel?: string;      // for sales: ALL | STORE | SHOPEE | LAZADA
   cnType?: string;       // for credit-notes
   paymentMethod?: string; // for receipts
   docType?: string;      // for payments: ALL | PURCHASE | EXPENSE
@@ -132,7 +132,9 @@ export function paymentTypeLabel(t: SalePaymentType): string {
 }
 
 export function saleChannelLabel(channel: SaleChannel): string {
-  return channel === "SHOPEE" ? "Shopee" : "หน้าร้าน";
+  if (channel === "SHOPEE") return "Shopee";
+  if (channel === "LAZADA") return "Lazada";
+  return "หน้าร้าน";
 }
 
 export function vatTypeLabel(t: VatType): string {

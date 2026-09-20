@@ -9,7 +9,10 @@ import {
   MARKETPLACE_FEE_OPTIONS,
   findMarketplaceLineOption,
 } from "@/lib/marketplace/config";
-import { calculateMarketplaceSettlement } from "@/lib/marketplace/settlement-math";
+import {
+  calculateMarketplaceSettlement,
+  normalizeMarketplaceLineAmount,
+} from "@/lib/marketplace/settlement-math";
 import { cancelMarketplaceSettlement, createMarketplaceSettlement } from "./actions";
 
 type SaleRow = { id: string; saleNo: string; orderNo: string; date: string; amount: number };
@@ -66,7 +69,7 @@ export default function SettlementManager({
   const [selectedSales, setSelectedSales] = useState<string[]>([]);
   const [selectedCreditNotes, setSelectedCreditNotes] = useState<string[]>([]);
   const [lines, setLines] = useState<LineRow[]>([emptyFeeRow()]);
-  const [payout, setPayout] = useState(0);
+  const [payoutOverride, setPayoutOverride] = useState<number | null>(null);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -76,6 +79,21 @@ export default function SettlementManager({
     () => lines.filter((line) => Math.abs(line.amount) >= 0.01),
     [lines],
   );
+  const automaticCalculation = useMemo(
+    () =>
+      calculateMarketplaceSettlement({
+        saleAmounts: sales
+          .filter((sale) => selectedSales.includes(sale.id))
+          .map((sale) => sale.amount),
+        returnAmounts: creditNotes
+          .filter((creditNote) => selectedCreditNotes.includes(creditNote.id))
+          .map((creditNote) => creditNote.amount),
+        feeLines: activeLines,
+        payoutAmount: 0,
+      }),
+    [sales, creditNotes, selectedSales, selectedCreditNotes, activeLines],
+  );
+  const payout = payoutOverride ?? automaticCalculation.expectedPayout;
   const calculation = useMemo(
     () =>
       calculateMarketplaceSettlement({
@@ -106,6 +124,14 @@ export default function SettlementManager({
         onSubmit={(event) => {
           event.preventDefault();
           const data = new FormData(event.currentTarget);
+          if (
+            !calculation.isBalanced &&
+            !window.confirm(
+              `ยอดเงินเข้าจริงต่างจากยอดคำนวณ ${money(Math.abs(calculation.difference))} บาท ระบบจะสร้างรายการ “ส่วนต่างยอดโอนจริง” ${calculation.difference > 0 ? "เป็นยอดรับเพิ่ม" : "เป็นยอดหักเพิ่ม"} ให้อัตโนมัติ ต้องการบันทึกต่อหรือไม่?`,
+            )
+          ) {
+            return;
+          }
           setPendingAction("create");
           startTransition(async () => {
             try {
@@ -121,12 +147,18 @@ export default function SettlementManager({
                 note: data.get("note") || undefined,
               });
               setIsError(Boolean(result.error));
-              setMessage(result.error ?? `บันทึกสำเร็จ เลขที่รอบ ${result.settlementNo}`);
+              const differenceMessage =
+                result.success && Math.abs(result.payoutDifference ?? 0) >= 0.01
+                  ? ` พร้อมรายการส่วนต่างยอดโอนจริง ${money(result.payoutDifference ?? 0)} บาท`
+                  : "";
+              setMessage(
+                result.error ?? `บันทึกสำเร็จ เลขที่รอบ ${result.settlementNo}${differenceMessage}`,
+              );
               if (result.success) {
                 setSelectedSales([]);
                 setSelectedCreditNotes([]);
                 setLines([emptyFeeRow()]);
-                setPayout(0);
+                setPayoutOverride(null);
               }
             } finally {
               setPendingAction(null);
@@ -140,7 +172,7 @@ export default function SettlementManager({
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
             เลือกใบขายและใบลดหนี้ตามรายละเอียดการโอนเงินของ {channelLabel} แล้วคีย์ค่าธรรมเนียมกับรายการปรับปรุงให้ครบ
-            ยอดต้องตรงกับเงินที่เข้าบัญชีจริงก่อนจึงจะบันทึกได้
+            หากยอดโอนจริงต่างจากยอดคำนวณ ระบบจะแจ้งเตือนและสร้างรายการส่วนต่างให้อัตโนมัติ
           </p>
         </div>
 
@@ -295,8 +327,8 @@ export default function SettlementManager({
             </div>
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            ค่าธรรมเนียมให้กรอกยอดติดลบ (เช่น -120.50) ส่วนรายการปรับปรุงกรอกได้ทั้งบวกและลบ —
-            ยอดบวกคือเงินที่แพลตฟอร์มจ่ายเพิ่มให้ร้าน
+            ค่าธรรมเนียมให้กรอกเป็นเลขบวกตามเอกสาร ระบบจะบันทึกเป็นยอดหักให้อัตโนมัติ
+            ส่วนรายการปรับปรุงกรอกได้ทั้งบวกและลบ — ยอดบวกคือเงินที่แพลตฟอร์มจ่ายเพิ่มให้ร้าน
           </p>
           {lines.map((line, index) => {
             const options =
@@ -311,7 +343,12 @@ export default function SettlementManager({
                   onChange={(event) => {
                     const option = findMarketplaceLineOption(event.target.value);
                     if (!option) return;
-                    updateLine(index, { code: option.code, label: option.label, kind: option.kind });
+                    updateLine(index, {
+                      code: option.code,
+                      label: option.label,
+                      kind: option.kind,
+                      amount: normalizeMarketplaceLineAmount(option.kind, line.amount),
+                    });
                   }}
                   className={`${inputCls} bg-white`}
                 >
@@ -331,10 +368,16 @@ export default function SettlementManager({
                 <input
                   type="number"
                   step="0.01"
-                  value={line.amount || ""}
+                  min={line.kind === MarketplaceFeeKind.FEE ? "0" : undefined}
+                  value={line.amount === 0 ? "" : line.kind === MarketplaceFeeKind.FEE ? Math.abs(line.amount) : line.amount}
                   aria-label="ยอดเงิน"
                   placeholder="0.00"
-                  onChange={(event) => updateLine(index, { amount: Number(event.target.value) })}
+                  onChange={(event) => {
+                    const amount = Number(event.target.value);
+                    updateLine(index, {
+                      amount: normalizeMarketplaceLineAmount(line.kind, amount),
+                    });
+                  }}
                   className={`${inputCls} text-right tabular-nums`}
                 />
                 <button
@@ -350,7 +393,7 @@ export default function SettlementManager({
           })}
         </section>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 rounded-xl border border-slate-200 p-4 dark:border-white/10 md:grid-cols-3">
           <label className="text-sm text-slate-700 dark:text-slate-300">
             วันที่เงินเข้า
             <input
@@ -382,17 +425,44 @@ export default function SettlementManager({
           </label>
         </div>
 
-        <label className="block text-sm text-slate-700 dark:text-slate-300">
-          ยอดเงินเข้าจริง
-          <input
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={payout || ""}
-            onChange={(event) => setPayout(Number(event.target.value))}
-            className={`${inputCls} mt-1 text-right text-lg font-semibold tabular-nums`}
-          />
-        </label>
+        <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-400/30 dark:bg-sky-500/10">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="min-w-0 flex-1 text-sm font-medium text-sky-900 dark:text-sky-100">
+              ยอดเงินเข้าจริง
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={payout || ""}
+                onChange={(event) =>
+                  setPayoutOverride(event.target.value === "" ? null : Number(event.target.value))
+                }
+                className={`${inputCls} mt-1 text-right text-lg font-semibold tabular-nums`}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setPayoutOverride(null)}
+              className="min-h-10 rounded-lg border border-sky-300 px-3 text-sm font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-400/40 dark:text-sky-200 dark:hover:bg-sky-500/10"
+            >
+              ใช้ยอดคำนวณ ฿{money(automaticCalculation.expectedPayout)}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-sky-700 dark:text-sky-200">
+            ระบบคำนวณจากใบขายที่เลือก หักใบลดหนี้และค่าธรรมเนียม แล้วบวกรายการปรับปรุง
+            คุณแก้เป็นยอดที่เข้าธนาคารจริงได้ ระบบจะบันทึกส่วนต่างเป็นรายการปรับปรุงให้อัตโนมัติ
+          </p>
+        </div>
+
+        {!calculation.isBalanced ? (
+          <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+            <p className="font-medium">ยอดเงินเข้าจริงต่างจากยอดคำนวณ</p>
+            <p className="mt-1">
+              เมื่อบันทึก ระบบจะสร้างรายการ “ส่วนต่างยอดโอนจริง” จำนวน {money(calculation.difference)} บาท
+              {calculation.difference > 0 ? " เป็นยอดรับเพิ่ม" : " เป็นยอดหักเพิ่ม"}
+            </p>
+          </div>
+        ) : null}
 
         <dl className="grid gap-3 rounded-xl bg-slate-50 p-4 text-sm dark:bg-white/5 sm:grid-cols-3 lg:grid-cols-6">
           <div>
@@ -445,7 +515,7 @@ export default function SettlementManager({
           </p>
         ) : null}
         <button
-          disabled={pending || nothingSelected || !calculation.isBalanced}
+          disabled={pending || nothingSelected || payout <= 0}
           aria-busy={pending && pendingAction === "create"}
           className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
         >

@@ -27,6 +27,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
           include: { expenseCode: { select: { id: true } } },
         },
         _count: { select: { attachments: true } },
+        marketplaceSettlement: { select: { status: true } },
       },
     }),
     getActiveExpenseCodeOptions(),
@@ -62,6 +63,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
 
   if (!expense) notFound();
   if (expense.status === "CANCELLED") redirect(`/admin/expenses/${id}`);
+  if (expense.marketplaceSettlement?.status === "ACTIVE") redirect(`/admin/expenses/${id}`);
 
   const certificateLine = expenseCertificate?.lines[0] ?? null;
 

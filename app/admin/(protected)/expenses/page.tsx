@@ -89,6 +89,9 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
         note: true,
         status: true,
         cancelNote: true,
+        marketplaceSettlement: {
+          select: { id: true, settlementNo: true, status: true },
+        },
         items: {
           orderBy: { lineNo: "asc" },
           select: {
@@ -250,7 +253,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                       {Number(exp.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {isCancelled ? <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}
+                      {isCancelled ? (
+                        <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge>
+                      ) : exp.marketplaceSettlement?.status === "ACTIVE" ? (
+                        <AdminStatusBadge tone="info">เอกสารระบบ</AdminStatusBadge>
+                      ) : (
+                        <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <AdminActionGroup align="end">
@@ -260,7 +269,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                         >
                           <Eye size={14} /> ดู
                         </Link>
-                        {!isCancelled ? (
+                        {!isCancelled && !exp.marketplaceSettlement ? (
                           <>
                             {canUpdate ? (
                               <Link

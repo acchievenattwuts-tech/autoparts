@@ -9,6 +9,20 @@ export type SettlementFeeLine = {
   amount: number;
 };
 
+export const MARKETPLACE_PAYOUT_DIFFERENCE_CODE = "PAYOUT_DIFFERENCE";
+export const MARKETPLACE_PAYOUT_DIFFERENCE_LABEL = "ส่วนต่างยอดโอนจริง";
+
+export function buildMarketplacePayoutDifferenceLine(difference: number) {
+  const amount = round2(difference);
+  if (Math.abs(amount) < SETTLEMENT_TOLERANCE) return null;
+  return {
+    code: MARKETPLACE_PAYOUT_DIFFERENCE_CODE,
+    label: MARKETPLACE_PAYOUT_DIFFERENCE_LABEL,
+    kind: MarketplaceFeeKind.ADJUSTMENT,
+    amount,
+  } as const;
+}
+
 export type SettlementCalculation = {
   /** ยอดขายรวมของใบขายที่เลือก (บวก) */
   salesAmount: number;
@@ -27,6 +41,13 @@ export type SettlementCalculation = {
 
 export function round2(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+export function normalizeMarketplaceLineAmount(
+  kind: MarketplaceFeeKind,
+  amount: number,
+): number {
+  return kind === MarketplaceFeeKind.FEE ? -Math.abs(amount) : amount;
 }
 
 const sum = (values: number[]): number => values.reduce((total, value) => total + value, 0);

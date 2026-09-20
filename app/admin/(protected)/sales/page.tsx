@@ -185,7 +185,10 @@ const SalesPage = async ({
         marketplaceSettlementLines: {
           where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
           take: 1,
-          select: { id: true },
+          select: {
+            id: true,
+            settlement: { select: { id: true, settlementNo: true } },
+          },
         },
       },
     }),
@@ -348,6 +351,8 @@ const SalesPage = async ({
                     <td className="px-4 py-3">
                       {s.status === "CANCELLED" ? (
                         <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
+                      ) : s.marketplaceSettlementLines.length > 0 ? (
+                        <AdminStatusBadge tone="info">กระทบยอดแล้ว</AdminStatusBadge>
                       ) : (
                         <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
                       )}
@@ -367,7 +372,9 @@ const SalesPage = async ({
                                 <Pencil size={14} /> แก้ไข
                               </Link>
                             ) : null}
-                            {canCancel ? <SaleCancelButton saleId={s.id} docNo={s.saleNo} /> : null}
+                            {canCancel && s.marketplaceSettlementLines.length === 0 ? (
+                              <SaleCancelButton saleId={s.id} docNo={s.saleNo} />
+                            ) : null}
                           </>
                         ) : null}
                       </AdminActionGroup>

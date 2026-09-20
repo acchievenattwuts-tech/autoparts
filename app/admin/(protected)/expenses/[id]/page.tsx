@@ -41,6 +41,16 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             uploadedBy: { select: { name: true } },
           },
         },
+        marketplaceSettlement: {
+          select: {
+            id: true,
+            settlementNo: true,
+            payoutRef: true,
+            channel: true,
+            settlementDate: true,
+            status: true,
+          },
+        },
       },
     }),
     db.documentPayment.findMany({
@@ -95,7 +105,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
             )}
           </div>
-          {expense.status === "ACTIVE" && canUpdate && (
+          {expense.status === "ACTIVE" && canUpdate && !expense.marketplaceSettlement && (
             <NavLink
               href={`/admin/expenses/${id}/edit`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -104,6 +114,25 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             </NavLink>
           )}
         </div>
+
+        {expense.marketplaceSettlement ? (
+          <div className="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm dark:border-sky-400/30 dark:bg-sky-500/10">
+            <p className="font-medium text-sky-900 dark:text-sky-100">
+              เอกสารระบบจากรอบรับเงิน {expense.marketplaceSettlement.channel}
+            </p>
+            <p className="mt-1 text-sky-700 dark:text-sky-200">
+              ค่าธรรมเนียมถูกหักจากบัญชีพักเงินโดยตรง จึงไม่มีรายการจ่ายเงินแยกในเอกสารนี้
+              และต้องยกเลิกผ่านรอบรับเงินเท่านั้น · วันที่รับเงิน{" "}
+              {formatDateThai(expense.marketplaceSettlement.settlementDate)}
+            </p>
+            <NavLink
+              href={`/admin/marketplace/settlements/${expense.marketplaceSettlement.id}`}
+              className="mt-3 inline-flex min-h-10 items-center rounded-lg border border-sky-300 px-3 font-medium text-sky-700 hover:bg-sky-100 dark:border-sky-400/40 dark:text-sky-200 dark:hover:bg-sky-500/10"
+            >
+              ดูรอบ {expense.marketplaceSettlement.settlementNo} · อ้างอิง {expense.marketplaceSettlement.payoutRef}
+            </NavLink>
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3">
           <div>
