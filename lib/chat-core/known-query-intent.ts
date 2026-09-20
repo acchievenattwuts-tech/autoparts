@@ -120,7 +120,13 @@ export async function resolveKnownQueryIntent(
 
   let fitmentYear: number | null = null;
   let nonYearTokenCount = 0;
+  // Code-shaped vehicle names are common (AE101, KUN25, TGN40). They must still
+  // be looked up in SearchKeyword before we assume they are part numbers. Keep a
+  // separate set for ordinary words, because those MUST resolve for the whole
+  // query to qualify as known; a genuine catalog code such as P0368 is allowed
+  // to have no SearchKeyword row and is validated later by the catalog resolver.
   const dictionaryNorms: string[] = [];
+  const requiredDictionaryNorms: string[] = [];
 
   for (const token of tokens) {
     if (isCarYearToken(token)) {
@@ -132,11 +138,10 @@ export async function resolveKnownQueryIntent(
     const norm = normalizeSearchText(token);
     if (!norm) return null; // punctuation-only token → treat as unknown
 
-    if (codeSet.has(norm)) {
-      continue; // code-like fragment is a known recall anchor (see contextFree below)
-    }
-
     dictionaryNorms.push(norm);
+    if (!codeSet.has(norm)) {
+      requiredDictionaryNorms.push(norm);
+    }
   }
 
   // A lone year (or empty) is not a "known" search — let the normal path handle it.
@@ -157,8 +162,11 @@ export async function resolveKnownQueryIntent(
       list.push({ kind: row.kind, term: row.term });
       entriesByNorm.set(row.normalized, list);
     }
-    // Every dictionary token must resolve — otherwise the query is NOT fully known.
-    for (const norm of dictionaryNorms) {
+    // Every ordinary dictionary token must resolve — otherwise the query is NOT
+    // fully known. Code-shaped tokens are optional here: an unresolved P0368 is
+    // still a valid catalog-code candidate, while a resolved AE101 can now be
+    // promoted through its synonym to the AE100-101 carModel below.
+    for (const norm of requiredDictionaryNorms) {
       if (!entriesByNorm.has(norm)) return null;
     }
   }

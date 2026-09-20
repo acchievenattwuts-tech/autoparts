@@ -48,6 +48,22 @@ type CacheState = {
 
 let cacheState: CacheState | null = null;
 
+/**
+ * SearchSynonym is shared by parts, brands and vehicle models. Only clusters whose
+ * canonical term is a real active CarModel may become hard-filter evidence; using
+ * every synonym row lets a part term such as "หม้อน้ำ" overwrite Fortuner in the
+ * inquiry frame.
+ */
+export const scopeSynonymRowsToCarModels = (
+  rows: CarModelSynonymRow[],
+  activeModelNames: Iterable<string>,
+): CarModelSynonymRow[] => {
+  const modelNames = new Set(
+    Array.from(activeModelNames, (name) => name.trim().toLowerCase()).filter(Boolean),
+  );
+  return rows.filter((row) => modelNames.has(row.term.trim().toLowerCase()));
+};
+
 export const invalidateCarModelAliasCache = () => {
   cacheState = null;
 };

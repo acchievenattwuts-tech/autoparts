@@ -3295,6 +3295,51 @@ test("product-code fast-path: a customer-typed code searches by that exact code"
   assert.equal(calls.searchFitmentHints.at(-1), null);
 });
 
+test("image follow-up vehicle code keeps the carried category instead of entering product-code fast-path", async () => {
+  // Production regression 2026-09-19 (conv cmqyvxy5a): vision correctly stored
+  // partType=คอยล์เย็น and asked for the vehicle; customer answered "AE101".
+  // AE101 occurs in many product names/keywords, so the old broad catalog resolver
+  // called it a product code, dropped the Evaporator filter, and returned 9 mixed
+  // categories. SearchKeyword resolves it to the AE100-101 car model instead.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    storedFrame: { partType: "คอยล์เย็น", carBrand: null, carModel: null, year: null },
+    consolidatedQuery: "AE101",
+    intentPartType: null,
+    intentCarBrand: null,
+    intentCarModel: "AE100-101",
+    intentYear: null,
+    intentPartKind: "fitment",
+    // Even if a dependency reports the token as catalog-resolvable, current-turn
+    // vehicle evidence must keep the normal category/model search path.
+    catalogCodes: ["ae101"],
+    fitmentFilters: {
+      categoryName: "คอยล์เย็น (Evaporator)",
+      carBrandName: "Toyota",
+      carModelName: "AE100-101",
+    },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("AE101"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.deepEqual(calls.searchFitmentHints.at(-1), {
+    categoryName: "คอยล์เย็น (Evaporator)",
+    // This processor test intentionally has no live SearchKeyword/model lookup;
+    // deterministic AE101 -> AE100-101 promotion is covered above in the known-
+    // query test. The downstream safety invariant is that the carried category
+    // survives even if vehicle resolution is temporarily unavailable.
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+  });
+  assert.ok(!calls.auditActions.includes("PRODUCT_CODE_DIRECT"));
+});
+
 test("fitment-first search: category/model filters block numeric-only code hijack", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
   const { calls, dependencies } = createProcessorTestDeps({

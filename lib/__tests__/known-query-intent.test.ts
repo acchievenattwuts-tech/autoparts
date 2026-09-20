@@ -75,6 +75,26 @@ test("Option B: a real part-number anchor (letters/hyphen) stays context-free", 
   assert.equal(result.contextFree, true);
 });
 
+test("code-shaped vehicle synonym is promoted to carModel before direct-code routing", async () => {
+  // Production regression 2026-09-19: a customer answered an image follow-up
+  // with "AE101". The token shape looks like a part code, but SearchKeyword
+  // already knows ae101 -> synonym AE100-101 -> carModel AE100-101.
+  const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
+  const result = deriveKnownQueryFilters({
+    dictionaryNorms: ["ae101"],
+    entriesByNorm: entries({
+      ae101: [{ kind: "synonym", term: "AE100-101" }],
+    }),
+    expandedByNorm: entries({
+      "ae100-101": [{ kind: "carModel", term: "AE100-101" }],
+    }),
+    requiredTokens: ["ae101"],
+  });
+
+  assert.equal(result.carModelName, "AE100-101");
+  assert.equal(result.contextFree, true);
+});
+
 test("direct carModel/category entries still win without any synonym expansion", async () => {
   const { deriveKnownQueryFilters } = await import("@/lib/chat-core/known-query-intent");
   const result = deriveKnownQueryFilters({

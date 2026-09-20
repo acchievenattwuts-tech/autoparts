@@ -3,6 +3,7 @@ import {
   extractChatProductVoltages,
   type ChatProductVoltage,
 } from "@/lib/chat-core/product-spec-resolve";
+import { extractChatEngineSizes } from "@/lib/chat-core/engine-displacement";
 
 export type ChatProductFitmentEvidence = {
   carBrandName: string | null;
@@ -59,23 +60,9 @@ const extractGenerations = (value?: string | null): Set<string> => {
   return generations;
 };
 
-const extractEngineSizes = (value?: string | null): Set<number> => {
-  const text = normalizeText(value);
-  const sizes = new Set<number>();
-  for (const match of text.matchAll(/(?:^|[^0-9])([1-9]\.[0-9])(?:\s*(?:l|liter|litre|ลิตร))?(?=$|[^0-9])/gi)) {
-    const parsed = Number(match[1]);
-    if (Number.isFinite(parsed)) sizes.add(parsed);
-  }
-  for (const match of text.matchAll(/(?:^|[^0-9])([1-9][0-9]{2,3})\s*cc(?=$|[^a-z0-9])/gi)) {
-    const parsed = Number(match[1]) / 1000;
-    if (Number.isFinite(parsed)) sizes.add(parsed);
-  }
-  return sizes;
-};
-
 export function extractChatVehicleConstraints(text?: string | null): ChatVehicleConstraints {
   const generations = extractGenerations(text);
-  const engineSizes = extractEngineSizes(text);
+  const engineSizes = extractChatEngineSizes(text);
   return {
     side: detectSide(text),
     generation: generations.size === 1 ? Array.from(generations)[0] : null,
@@ -116,7 +103,7 @@ function analyzeProductEvidence(
     .join(" ");
   const combinedText = `${product.name} ${fitmentText}`.trim();
   const fitmentEngineSizes = new Set(
-    fitments.flatMap((fitment) => Array.from(extractEngineSizes(fitment.engineSize))),
+    fitments.flatMap((fitment) => Array.from(extractChatEngineSizes(fitment.engineSize))),
   );
   return {
     side: detectSide(combinedText),
@@ -124,7 +111,7 @@ function analyzeProductEvidence(
     // Multi-fitment product names often mention an engine belonging to a different
     // vehicle on the same row. Once a relevant brand/model fitment exists, only
     // its structured engineSize is strong enough to declare a contradiction.
-    engineSizes: fitments.length > 0 ? fitmentEngineSizes : extractEngineSizes(product.name),
+    engineSizes: fitments.length > 0 ? fitmentEngineSizes : extractChatEngineSizes(product.name),
     // Product.name is the strongest catalog presentation fact available today.
     // Aliases/descriptions are intentionally excluded because they may mention
     // comparison variants (or contain a bad manual alias) without describing the

@@ -4,6 +4,7 @@ import { extractProductSearchRequiredTokens } from "@/lib/product-search-require
 import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
 import { containsWithinEditDistance, typoMaxEdits } from "@/lib/chat-core/typo-distance";
 import type { CarModelGroundingLookup } from "@/lib/car-model-alias-cache";
+import { extractChatEngineDisplacements } from "@/lib/chat-core/engine-displacement";
 
 export type ChatModelGroundingEvidenceSource =
   | "LITERAL_CANONICAL"
@@ -34,7 +35,13 @@ export type ChatExplicitModelEvidence = {
  * a broad search fallback cannot drift to a popular but unrelated car model.
  */
 export function extractChatRequiredSearchTokens(text?: string | null): string[] {
-  return extractProductSearchRequiredTokens(text);
+  const displacementCc = new Set(
+    extractChatEngineDisplacements(text).map((displacement) => String(displacement.cc)),
+  );
+  return extractProductSearchRequiredTokens(text).filter((token) => {
+    const numeric = token.match(/^(\d{3,4})(?:cc|ซีซี)?$/iu)?.[1];
+    return !numeric || !displacementCc.has(numeric);
+  });
 }
 
 export function lineQueryContainsRequiredTokens(query: string | null | undefined, requiredTokens: string[]) {

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import {
   buildCarModelGroundingLookup,
   buildCarModelVariantLookup,
+  scopeSynonymRowsToCarModels,
 } from "@/lib/car-model-alias-cache";
 
 test("maps every spelling of a cluster to the full variant list", () => {
@@ -51,4 +52,18 @@ test("grounding lookup merges case-only duplicate canonical clusters", () => {
     new Set(lookup.get("mirage")?.safeVariants),
     new Set(["mirage", "มิราจ", "มิราจน์"]),
   );
+});
+
+test("car-model lookup excludes part/category synonym clusters", () => {
+  const scoped = scopeSynonymRowsToCarModels(
+    [
+      { term: "Fortuner", synonyms: ["ฟอร์จูนเนอร์", "ฟอจูนเนอ"] },
+      { term: "หม้อน้ำ", synonyms: ["radiator"] },
+    ],
+    ["Fortuner"],
+  );
+  const lookup = buildCarModelGroundingLookup(scoped);
+
+  assert.ok(lookup.has("fortuner"));
+  assert.equal(lookup.has("หม้อน้ำ"), false);
 });

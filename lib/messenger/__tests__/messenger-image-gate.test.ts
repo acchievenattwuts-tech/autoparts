@@ -261,6 +261,29 @@ test(
 );
 
 test(
+  "Messenger image gate: a vehicle code in image hints is not treated as a direct product code",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    // Parity with the LINE AE101 regression: the shared strict resolver rejects
+    // vehicle/model tokens that only occur in product names or generic aliases.
+    await runImageTurn(
+      {
+        partType: "คอยล์เย็น",
+        partKind: "fitment",
+        confidence: "HIGH",
+        searchHints: ["คอยล์เย็น", "AE101"],
+        partNumber: null,
+        catalogCodes: [],
+      },
+      "event-img-vehicle-code-ae101",
+    );
+
+    assert.equal(calls.searches.length, 0, "vehicle code alone must not bypass the fitment gate");
+    assert.match(calls.textReplies[0] ?? "", /รุ่นรถ/);
+  },
+);
+
+test(
   "Messenger image gate: HIGH refrigerant searches without asking for a vehicle",
   { skip: moduleMocksUnavailable },
   async () => {

@@ -2,6 +2,7 @@ import { LineIntent } from "@/lib/generated/prisma";
 import type { ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
+import { normalizeChatEngineDisplacement } from "@/lib/chat-core/engine-displacement";
 import { repairThaiTyping, needsThaiTypingRepair } from "@/lib/thai-spelling-fold";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
 import { resolveChatNormalPrice, resolveLegacyChatPrice } from "@/lib/pricing/resolve-price";
@@ -377,7 +378,7 @@ function buildSearchQuery(input: ChatProductSearchBridgeInput): string | null {
   const seen = new Set<string>();
   const tokens: string[] = [];
   for (const source of sources) {
-    const normalized = normalizeSearchSeed(source);
+    const normalized = normalizeSearchSeed(normalizeChatEngineDisplacement(source));
     if (!normalized) continue;
     for (const token of normalized.split(/\s+/)) {
       const key = token.toLowerCase();
@@ -437,9 +438,15 @@ const fitmentCoversYear = (windows: FitmentYearWindow[] | undefined, year: numbe
   });
 };
 
-/** Resolves which code-like tokens actually exist in the catalog (product code /
- *  OEM / alias / name). Used to validate OCR-read part numbers from images before
- *  they shape the search. Injectable for tests. */
+/** Resolves which code-like tokens are strong, exact catalog identifiers.
+ *
+ * Vehicle/chassis codes (AE101, KUN25, TGN40) legitimately occur in product
+ * names and generic KEYWORD/TH aliases across many categories. Treating a
+ * substring hit in those fields as an exact product code lets the direct-code
+ * fast-path discard a carried image category and list unrelated parts. Only an
+ * exact Product.code or an exact identifier alias may bypass fitment filters.
+ * Ordinary names/keywords remain searchable through the normal product search.
+ * Injectable for tests. */
 export type ResolveCatalogCodesFn = (codes: string[]) => Promise<string[]>;
 
 const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
@@ -455,25 +462,27 @@ const defaultResolveCatalogCodes: ResolveCatalogCodesFn = async (codes) => {
       )}
     ) AS c
     WHERE EXISTS (
-      SELECT 1 FROM product_search_documents psd
-      INNER JOIN "Product" p ON p.id = psd.product_id
-      WHERE psd.is_active = true
+      SELECT 1
+      FROM "Product" p
+      WHERE p."isActive" = true
         AND p."isStorefrontVisible" = true
-        AND (
-          f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower('%' || c.code || '%'))
-          OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower('%' || c.code || '%'))
-          OR f_unaccent(lower(psd.alias_text)) LIKE f_unaccent(lower('%' || c.code || '%'))
-          OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower('%' || c.code || '%'))
-        )
+        AND f_unaccent(lower(p.code)) = f_unaccent(lower(c.code))
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM "ProductAlias" pa
+      INNER JOIN "Product" p ON p.id = pa."productId"
+      WHERE p."isActive" = true
+        AND p."isStorefrontVisible" = true
+        AND pa.kind IN ('OEM', 'PART_NO', 'CROSS_REF')
+        AND f_unaccent(lower(pa.alias)) = f_unaccent(lower(c.code))
     )
   `);
   return rows.map((row) => row.code);
 };
 
-/** Public handle to the catalog-code resolver (validates code-like tokens against
- *  product code / OEM / alias / name). Exposed so the LINE processor can run the
- *  product-code fast-path — resolving a customer-typed / image-OCR'd code straight
- *  to its product — before the completeness gate. Injectable for tests. */
+/** Public handle to the strong catalog-code resolver. Exposed so LINE and
+ *  Messenger share the same exact-code policy before their completeness gates. */
 export const resolveCatalogCodes: ResolveCatalogCodesFn = defaultResolveCatalogCodes;
 
 /** A token is "code-like" when it carries a digit and ≥3 chars (e.g. STB-2116S,

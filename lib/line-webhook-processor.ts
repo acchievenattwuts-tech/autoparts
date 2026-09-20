@@ -2314,7 +2314,18 @@ export async function processLineAiReply(
         input.imageClassification?.carModel ||
         input.imageClassification?.year,
     );
-    const directProductCode = hasCurrentTurnFitmentEvidence ? null : directProductCodeCandidate;
+    // A resolved scope may come from the inquiry frame rather than this exact
+    // message (the common image -> "which car?" -> "AE101" flow). Never let a
+    // code-shaped vehicle answer discard that carried category. Genuine product
+    // codes still use the fast-path when no category/vehicle scope exists.
+    const hasResolvedFitmentScope = Boolean(
+      fitmentFilters.categoryName ||
+        fitmentFilters.carBrandName ||
+        fitmentFilters.carModelName ||
+        frameYear !== null,
+    );
+    const directProductCode =
+      hasCurrentTurnFitmentEvidence || hasResolvedFitmentScope ? null : directProductCodeCandidate;
 
     // ── Category / part-type disagreement ──────────────────────────────────
     // The resolver produced a category that the customer's own part word cannot

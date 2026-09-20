@@ -7,7 +7,11 @@ import {
   lineValueHasCustomerTypoEvidence,
   resolveLatestExplicitCarModelEvidence,
 } from "@/lib/chat-core/search-guards";
-import { buildCarModelGroundingLookup } from "@/lib/car-model-alias-cache";
+import {
+  buildCarModelGroundingLookup,
+  buildCarModelVariantLookup,
+  scopeSynonymRowsToCarModels,
+} from "@/lib/car-model-alias-cache";
 import type { ChatSearchIntent } from "@/lib/chat-core/ai-service";
 
 test("typo evidence: a misspelled part word in the customer text counts as evidence", () => {
@@ -155,6 +159,33 @@ test("model synonym lookup grounds a Thai model glued to a cc anchor (Strada cas
     history: [],
   });
   assert.equal(withoutLookup.intent?.carModel, null);
+});
+
+test("Fortuner 2700 keeps the verified model and treats displacement as an engine constraint", () => {
+  const rows = scopeSynonymRowsToCarModels(
+    [
+      { term: "Fortuner", synonyms: ["ฟอร์จูนเนอร์", "ฟอร์จูนเนอ", "ฟอจูนเนอร์"] },
+      { term: "หม้อน้ำ", synonyms: ["radiator"] },
+    ],
+    ["Fortuner"],
+  );
+  const result = guardChatSearchIntent({
+    intent: baseIntent({
+      query: "หม้อน้ำ Fortuner เบนซิน 2700",
+      partType: "หม้อน้ำ",
+      carBrand: null,
+      carModel: "Fortuner",
+      year: null,
+    }),
+    latestText: "หม้อน้ำฟอร์จูนเนอร์เบนซิน 2700",
+    history: [],
+    modelLookup: buildCarModelVariantLookup(rows),
+    modelGroundingLookup: buildCarModelGroundingLookup(rows),
+  });
+
+  assert.deepEqual(result.requiredTokens, []);
+  assert.equal(result.intent?.carModel, "Fortuner");
+  assert.equal(result.modelGroundingShadow?.candidateModel, "Fortuner");
 });
 
 const groundingLookup = buildCarModelGroundingLookup([

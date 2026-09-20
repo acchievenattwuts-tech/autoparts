@@ -108,6 +108,13 @@ test("does not interpret digits inside real model names as generation markers", 
   });
 });
 
+test("reads bare cc as engine size only when the customer supplies engine context", () => {
+  assert.equal(extractChatVehicleConstraints("หม้อน้ำฟอร์จูนเนอร์เบนซิน2700").engineSize, 2.7);
+  assert.equal(extractChatVehicleConstraints("หม้อน้ำ Fortuner เครื่อง 2700").engineSize, 2.7);
+  assert.equal(extractChatVehicleConstraints("หม้อน้ำ Fortuner 2700cc").engineSize, 2.7);
+  assert.equal(extractChatVehicleConstraints("รหัสสินค้า 2700").engineSize, null);
+});
+
 test("voltage guard suppresses only an explicit opposite voltage and retains missing metadata", () => {
   const result = filterChatProductsByVehicleCompatibility({
     customerText: "คอมแอร์ 508 24V",

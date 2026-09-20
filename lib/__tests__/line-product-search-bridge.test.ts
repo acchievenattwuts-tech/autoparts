@@ -352,6 +352,31 @@ test("part number seed takes precedence over free text", async () => {
   assert.equal(result.query, "447220-1234");
 });
 
+test("normalizes contextual bare engine cc and does not require it as a literal code", async () => {
+  const calls: Array<{ query?: string | null; requiredTokens?: string[] | null }> = [];
+  const result = await searchChatProductInquiry(
+    {
+      route: searchableRoute,
+      text: "หม้อน้ำฟอร์จูนเนอร์เบนซิน 2700",
+      customerText: "หม้อน้ำฟอร์จูนเนอร์เบนซิน 2700",
+      fitmentHints: {
+        categoryName: "หม้อน้ำ (Radiator)",
+        carModelName: "Fortuner",
+      },
+    },
+    async (input) => {
+      calls.push({ query: input.query, requiredTokens: input.requiredTokens });
+      return { ids: ["P0498"], total: 1, mode: "v2", matchReasons: {} };
+    },
+  );
+
+  assert.equal(result.searched, true);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]?.query ?? "", /2\.7/);
+  assert.doesNotMatch(calls[0]?.query ?? "", /2700/);
+  assert.equal(calls[0]?.requiredTokens, undefined);
+});
+
 test("accessory head noun is required when there is no category filter", async () => {
   const calls: Array<string[] | null> = [];
   const result = await searchChatProductInquiry(
