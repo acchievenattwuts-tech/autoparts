@@ -12,13 +12,15 @@ import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { generateCNNo } from "@/lib/doc-number";
+import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CNRefundMethod,
   CNSettlementType,
   CreditNoteType,
+  MarketplaceReturnStockDisposition,
+  Prisma,
   SaleChannel,
   VatType,
 } from "@/lib/generated/prisma";
@@ -43,10 +45,11 @@ import {
   type DocumentPaymentRow,
 } from "@/lib/document-payments";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
-import { rebuildCreditNoteProfitFacts } from "@/lib/profit-fact";
+import { rebuildCreditNoteProfitFacts, rebuildExpenseProfitFacts } from "@/lib/profit-fact";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { notifyMarketplaceReturnRecorded } from "@/lib/notifications";
+import { isMarketplaceReturnQuantityAvailable } from "@/lib/marketplace/returns";
 
 type CreditNoteProductOption = {
   id: string;
@@ -173,11 +176,16 @@ const lotSubRowSchema = z.object({
 });
 
 const cnItemSchema = z.object({
+  saleItemId: z.string().min(1).max(50).optional(),
   productId: z.string().min(1).max(50),
   unitName:  z.string().min(1).max(20),
   qty:       z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   salePrice: z.coerce.number().min(0, "ราคาต้องไม่ติดลบ"),
   moreDetail: z.string().max(500).optional(),
+  stockDisposition: z
+    .nativeEnum(MarketplaceReturnStockDisposition)
+    .default(MarketplaceReturnStockDisposition.RESTOCK),
+  stockDispositionNote: z.string().trim().max(300).optional(),
   lotItems:  z.array(lotSubRowSchema).default([]),
 });
 
@@ -195,6 +203,33 @@ const cnSchema = z.object({
   vatRate:        z.coerce.number().min(0).max(100).default(0),
   items:          z.array(cnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
+
+const marketplaceCarrierExpenseSchema = z.object({
+  amount: z.coerce.number().min(0).default(0),
+  expenseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  supplierId: z.string().max(50).optional(),
+  cashBankAccountId: z.string().max(50).optional(),
+  vatType: z.nativeEnum(VatType).default(VatType.NO_VAT),
+  vatRate: z.coerce.number().min(0).max(100).default(0),
+  note: z.string().trim().max(500).optional(),
+});
+
+function getMarketplaceReturnCreateError(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    return "เลขอ้างอิงเคสคืน Marketplace นี้ถูกบันทึกแล้ว กรุณาตรวจสอบรายการเดิม";
+  }
+  if (!(error instanceof Error)) return null;
+  const messages: Record<string, string> = {
+    MARKETPLACE_RETURN_DUPLICATE_SALE_LINE: "สินค้าในใบขายบรรทัดเดียวกันถูกเลือกซ้ำ",
+    MARKETPLACE_RETURN_INVALID_SALE_LINE: "มีสินค้าบางรายการไม่ตรงกับใบขายต้นทาง",
+    MARKETPLACE_RETURN_UNIT_NOT_FOUND: "ไม่พบหน่วยนับของสินค้าที่คืน",
+    MARKETPLACE_RETURN_QTY_EXCEEDED: "จำนวนคืนสะสมเกินจำนวนที่ขายหรือเคยทำคืนไว้แล้ว",
+    MARKETPLACE_RETURN_DISPOSITION_NOTE_REQUIRED: "กรุณาระบุเหตุผลของสินค้าที่ไม่รับเข้าสต๊อก",
+    MARKETPLACE_RETURN_EXPENSE_ACCOUNT_NOT_FOUND: "ไม่พบบัญชีที่ใช้จ่ายค่าขนส่งตีกลับ",
+    MARKETPLACE_RETURN_EXPENSE_SUPPLIER_NOT_FOUND: "ไม่พบผู้รับเงินหรือขนส่งที่เลือก",
+  };
+  return messages[error.message] ?? null;
+}
 
 // Build a stable signature for a credit-note line in BASE-UNIT terms.
 // Matched signatures produce identical StockCard (RETURN_IN) + lot-ledger
@@ -341,7 +376,10 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
+          saleItemId: true,
           productId: true,
+          stockDisposition: true,
+          stockDispositionNote: true,
           qty: true,
           unitPrice: true,
           amount: true,
@@ -380,6 +418,7 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
     saleId: creditNote.saleId,
     saleNo: creditNote.sale?.saleNo ?? null,
     channel: creditNote.channel,
+    marketplaceReturnRef: creditNote.marketplaceReturnRef,
     cashBankAccountId: creditNote.cashBankAccountId,
     totalAmount: creditNote.totalAmount,
     amountRemain: creditNote.amountRemain,
@@ -391,7 +430,10 @@ async function getCreditNoteAuditSnapshot(creditNoteId: string) {
     cancelNote: creditNote.cancelNote,
     cancelledAt: creditNote.cancelledAt,
     items: creditNote.items.map((item) => ({
+      saleItemId: item.saleItemId,
       productId: item.productId,
+      stockDisposition: item.stockDisposition,
+      stockDispositionNote: item.stockDispositionNote,
       productCode: item.product?.code ?? null,
       productName: item.product?.name ?? null,
       qty: item.qty,
@@ -439,6 +481,57 @@ export async function createCreditNote(
 
   const { cnDate, customerId, customerName, saleId, type, settlementType, note, vatType, vatRate, items: validItems } = parsed.data;
 
+  const marketplaceReturnRefRaw = formData.get("marketplaceReturnRef");
+  const marketplaceReturnRef =
+    typeof marketplaceReturnRefRaw === "string" && marketplaceReturnRefRaw.trim()
+      ? marketplaceReturnRefRaw.trim().slice(0, 100)
+      : undefined;
+  let carrierExpense: z.infer<typeof marketplaceCarrierExpenseSchema> = {
+    amount: 0,
+    vatType: VatType.NO_VAT,
+    vatRate: 0,
+  };
+  try {
+    const raw = formData.get("carrierExpense");
+    if (typeof raw === "string" && raw.trim()) {
+      const carrierParsed = marketplaceCarrierExpenseSchema.safeParse(JSON.parse(raw));
+      if (!carrierParsed.success) {
+        return { error: carrierParsed.error.issues[0]?.message ?? "ข้อมูลค่าขนส่งตีกลับไม่ถูกต้อง" };
+      }
+      carrierExpense = carrierParsed.data;
+    }
+  } catch {
+    return { error: "รูปแบบข้อมูลค่าขนส่งตีกลับไม่ถูกต้อง" };
+  }
+
+  const sourceSale = saleId
+    ? await db.sale.findUnique({
+        where: { id: saleId },
+        select: { channel: true, cashBankAccountId: true },
+      })
+    : null;
+  const isMarketplaceReturn = Boolean(
+    sourceSale?.channel && isManualMarketplaceChannel(sourceSale.channel),
+  );
+  if (isMarketplaceReturn) {
+    const marketplaceSession = await requirePermission("marketplace.manage").catch(() => null);
+    if (!marketplaceSession?.user?.id) return { error: "ไม่มีสิทธิ์จัดการรายการคืน Marketplace" };
+    if (type !== CreditNoteType.RETURN || settlementType !== CNSettlementType.CASH_REFUND) {
+      return { error: "รายการคืน Marketplace ต้องเป็นใบคืนสินค้าและคืนเงินจากบัญชีพักเงิน" };
+    }
+    if (!validItems.every((item) => item.saleItemId)) {
+      return { error: "รายการคืนทุกบรรทัดต้องอ้างอิงรายการสินค้าในใบขายต้นทาง" };
+    }
+  }
+  if (carrierExpense.amount > 0) {
+    if (!isMarketplaceReturn) return { error: "ค่าขนส่งตีกลับใช้ได้เฉพาะรายการคืน Marketplace" };
+    const expenseSession = await requirePermission("expenses.create").catch(() => null);
+    if (!expenseSession?.user?.id) return { error: "ไม่มีสิทธิ์บันทึกค่าใช้จ่ายขนส่งตีกลับ" };
+    if (!carrierExpense.expenseDate || !carrierExpense.cashBankAccountId) {
+      return { error: "กรุณาระบุวันที่และบัญชีที่จ่ายค่าขนส่งตีกลับ" };
+    }
+  }
+
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
 
@@ -459,14 +552,85 @@ export async function createCreditNote(
     }
   }
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
+  if (isMarketplaceReturn) {
+    if (
+      !sourceSale?.cashBankAccountId ||
+      payments.length !== 1 ||
+      payments[0]?.cashBankAccountId !== sourceSale.cashBankAccountId
+    ) {
+      return { error: "รายการคืนต้องตัดเงินจากบัญชีพักเงินเดียวกับใบขายต้นทาง" };
+    }
+  }
   const docDate = parseDateOnlyToDate(cnDate);
   const cnNo    = await generateCNNo(docDate);
+  const carrierExpenseDate = carrierExpense.expenseDate
+    ? parseDateOnlyToDate(carrierExpense.expenseDate)
+    : null;
+  const carrierExpenseNo =
+    carrierExpense.amount > 0 && carrierExpenseDate
+      ? await generateExpenseNo(carrierExpenseDate)
+      : null;
   let createdCreditNoteId = "";
 
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
+      if (sourceChannel && isManualMarketplaceChannel(sourceChannel)) {
+        const saleItems = await tx.saleItem.findMany({
+          where: { saleId: saleId as string },
+          select: { id: true, productId: true, quantity: true },
+        });
+        const saleItemMap = new Map(saleItems.map((item) => [item.id, item]));
+        const saleItemIds = validItems.map((item) => item.saleItemId as string);
+        if (new Set(saleItemIds).size !== saleItemIds.length) {
+          throw new Error("MARKETPLACE_RETURN_DUPLICATE_SALE_LINE");
+        }
+        const returned = await tx.creditNoteItem.groupBy({
+          by: ["saleItemId"],
+          where: {
+            saleItemId: { in: saleItemIds },
+            creditNote: { status: "ACTIVE" },
+          },
+          _sum: { qty: true },
+        });
+        const returnedMap = new Map(
+          returned.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
+        );
+        const unitRows = await tx.productUnit.findMany({
+          where: {
+            OR: validItems.map((item) => ({ productId: item.productId, name: item.unitName })),
+          },
+          select: { productId: true, name: true, scale: true },
+        });
+        const unitScaleMap = new Map(
+          unitRows.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+        );
+        for (const item of validItems) {
+          const saleItem = saleItemMap.get(item.saleItemId as string);
+          if (!saleItem || saleItem.productId !== item.productId) {
+            throw new Error("MARKETPLACE_RETURN_INVALID_SALE_LINE");
+          }
+          const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
+          if (!scale) throw new Error("MARKETPLACE_RETURN_UNIT_NOT_FOUND");
+          const requestedBaseQty = item.qty * scale;
+          if (
+            !isMarketplaceReturnQuantityAvailable(
+              Number(saleItem.quantity),
+              returnedMap.get(saleItem.id) ?? 0,
+              requestedBaseQty,
+            )
+          ) {
+            throw new Error("MARKETPLACE_RETURN_QTY_EXCEEDED");
+          }
+          if (
+            item.stockDisposition !== MarketplaceReturnStockDisposition.RESTOCK &&
+            !item.stockDispositionNote
+          ) {
+            throw new Error("MARKETPLACE_RETURN_DISPOSITION_NOTE_REQUIRED");
+          }
+        }
+      }
       const referenceCostMap = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
         : new Map<string, number>();
@@ -491,6 +655,7 @@ export async function createCreditNote(
           subtotalAmount,
           vatAmount,
           note:           note ?? null,
+          marketplaceReturnRef: isMarketplaceReturn ? marketplaceReturnRef ?? null : null,
           cnDate:         docDate,
         },
       });
@@ -515,7 +680,11 @@ export async function createCreditNote(
         if (!product) throw new Error("Missing product");
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const isLotControl = isTracked && product.isLotControl;
-        if (type === CreditNoteType.RETURN && isLotControl) {
+        if (
+          type === CreditNoteType.RETURN &&
+          isLotControl &&
+          item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
+        ) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -526,7 +695,10 @@ export async function createCreditNote(
             creditNoteId:  cn.id,
             lineNo:        itemIndex + 1,
             productId:     item.productId,
-            qty:           Math.round(qtyInBase),
+            saleItemId:    item.saleItemId ?? null,
+            stockDisposition: item.stockDisposition,
+            stockDispositionNote: item.stockDispositionNote || null,
+            qty:           qtyInBase,
             unitPrice:     item.salePrice,
             amount:        itemTotal,
             subtotalAmount: itemSubtotal,
@@ -539,7 +711,11 @@ export async function createCreditNote(
         });
 
         // Write StockCard only for RETURN type
-        if (type === CreditNoteType.RETURN && isTracked) {
+        if (
+          type === CreditNoteType.RETURN &&
+          isTracked &&
+          item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
+        ) {
           const referenceCost = referenceCostMap.get(item.productId);
           const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
           const stockCardId = await writeStockCard(tx, {
@@ -605,6 +781,102 @@ export async function createCreditNote(
       );
 
       await rebuildCreditNoteProfitFacts(tx, cn.id);
+
+      if (carrierExpense.amount > 0 && carrierExpenseDate && carrierExpenseNo && sourceChannel) {
+        const config = getMarketplaceChannelConfig(sourceChannel as "SHOPEE" | "LAZADA");
+        const carrierAccountId = carrierExpense.cashBankAccountId as string;
+        const account = await tx.cashBankAccount.findFirst({
+          where: { id: carrierAccountId, isActive: true },
+          select: { id: true },
+        });
+        if (!account) throw new Error("MARKETPLACE_RETURN_EXPENSE_ACCOUNT_NOT_FOUND");
+        if (carrierExpense.supplierId) {
+          const supplier = await tx.supplier.findFirst({
+            where: { id: carrierExpense.supplierId, isActive: true },
+            select: { id: true },
+          });
+          if (!supplier) throw new Error("MARKETPLACE_RETURN_EXPENSE_SUPPLIER_NOT_FOUND");
+        }
+        const expenseCode = await tx.expenseCode.upsert({
+          where: { code: `${config.feeExpenseCodePrefix}RET` },
+          create: {
+            code: `${config.feeExpenseCodePrefix}RET`,
+            name: `ค่าขนส่งสินค้าตีกลับ ${config.label}`,
+            description: `ค่าขนส่งที่ร้านจ่ายเมื่อสินค้าตีกลับจาก ${config.label}`,
+          },
+          update: {},
+          select: { id: true },
+        });
+        const expenseVat = calcVat(
+          carrierExpense.amount,
+          carrierExpense.vatType,
+          carrierExpense.vatRate,
+        );
+        const expense = await tx.expense.create({
+          data: {
+            expenseNo: carrierExpenseNo,
+            expenseDate: carrierExpenseDate,
+            userId: session.user!.id!,
+            supplierId: carrierExpense.supplierId || null,
+            cashBankAccountId: carrierAccountId,
+            channel: sourceChannel,
+            marketplaceReturnCreditNoteId: cn.id,
+            totalAmount: carrierExpense.amount,
+            subtotalAmount: expenseVat.subtotalAmount,
+            vatAmount: expenseVat.vatAmount,
+            vatRate: carrierExpense.vatRate,
+            vatType: carrierExpense.vatType,
+            netAmount: expenseVat.netAmount,
+            note: carrierExpense.note || `ค่าขนส่งสินค้าตีกลับ อ้างอิง ${cnNo}`,
+            items: {
+              create: {
+                lineNo: 1,
+                expenseCodeId: expenseCode.id,
+                description: carrierExpense.note || `ค่าขนส่งสินค้าตีกลับ ${config.label}`,
+                amount: carrierExpense.amount,
+              },
+            },
+          },
+          select: { id: true },
+        });
+        const expensePayments = [
+          { cashBankAccountId: carrierAccountId, amount: expenseVat.netAmount },
+        ];
+        await replaceDocumentPayments(
+          tx,
+          DocumentPaymentDocType.EXPENSE,
+          expense.id,
+          CashBankDirection.OUT,
+          expensePayments,
+        );
+        await replaceCashBankSourceMovements(
+          tx,
+          CashBankSourceType.EXPENSE,
+          expense.id,
+          toCashBankEntries(expensePayments, {
+            txnDate: carrierExpenseDate,
+            direction: CashBankDirection.OUT,
+            referenceNo: carrierExpenseNo,
+            note: carrierExpense.note || `ค่าขนส่งสินค้าตีกลับ ${cnNo}`,
+          }),
+        );
+        await rebuildExpenseProfitFacts(tx, expense.id);
+        await tx.auditLog.create({
+          data: {
+            userId: session.user!.id!,
+            action: AuditAction.CREATE,
+            entityType: "Expense",
+            entityId: expense.id,
+            entityRef: carrierExpenseNo,
+            after: {
+              source: "MARKETPLACE_RETURN",
+              creditNoteId: cn.id,
+              creditNoteNo: cnNo,
+              amount: expenseVat.netAmount,
+            },
+          },
+        });
+      }
     }, { timeout: 180_000 });
 
     const afterSnapshot = createdCreditNoteId
@@ -645,9 +917,16 @@ export async function createCreditNote(
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
+    if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
+      revalidatePath(`/admin/sales/${getMarketplaceChannelConfig(afterSnapshot.channel).slug}/settlements`);
+      revalidatePath("/admin/expenses");
+      revalidatePath("/admin/reports/marketplace");
+    }
     return { success: true, cnNo };
   } catch (err) {
     await reportCriticalError(err, { scope: "credit_notes.create" });
+    const marketplaceError = getMarketplaceReturnCreateError(err);
+    if (marketplaceError) return { error: marketplaceError };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -673,7 +952,12 @@ export async function cancelCreditNote(
 
   const cn = await db.creditNote.findUnique({
     where: { id: cnId },
-    include: { items: { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } } },
+    include: {
+      items: {
+        orderBy: { lineNo: "asc" },
+        select: { id: true, productId: true, stockDisposition: true },
+      },
+    },
   });
   if (!cn)                        return { error: "ไม่พบเอกสาร" };
   if (cn.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
@@ -708,7 +992,10 @@ export async function cancelCreditNote(
       if (cn.type === "RETURN") {
         // Reverse Lot balances (ลบ stock ที่เคยรับคืนจากลูกค้า)
         for (const item of cn.items) {
-          if (item.productId) {
+          if (
+            item.productId &&
+            item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
+          ) {
             await reverseCreditNoteLotBalance(tx, item.id, item.productId);
           }
         }
@@ -788,6 +1075,11 @@ export async function updateCreditNote(
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
   if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  if (existing.channel && isManualMarketplaceChannel(existing.channel)) {
+    return {
+      error: "รายการคืน Marketplace ไม่อนุญาตให้แก้ผ่านฟอร์มใบลดหนี้ทั่วไป กรุณายกเลิกเอกสารอ้างอิงตามลำดับแล้วบันทึกใหม่",
+    };
+  }
   const mutationBlockMessage = await getDocumentMutationBlockMessage("CreditNote", id, "update");
   if (mutationBlockMessage) return { error: mutationBlockMessage };
 
@@ -1097,7 +1389,9 @@ export async function updateCreditNote(
             creditNoteId:   id,
             lineNo:         newIdx + 1,
             productId:      item.productId,
-            qty:            Math.round(qtyInBase),
+            stockDisposition: item.stockDisposition,
+            stockDispositionNote: item.stockDispositionNote || null,
+            qty:            qtyInBase,
             unitPrice:      item.salePrice,
             amount:         itemTotal,
             subtotalAmount: itemSubtotal,
@@ -1222,7 +1516,15 @@ export type SaleDetailResult = {
   customerName: string | null;
   vatType: string;
   vatRate: number;
-  items: { productId: string; unitName: string; qty: number; salePrice: number }[];
+  items: {
+    saleItemId: string;
+    productId: string;
+    unitName: string;
+    qty: number;
+    salePrice: number;
+    stockDisposition: MarketplaceReturnStockDisposition;
+    stockDispositionNote: string;
+  }[];
   products: CreditNoteProductOption[];
 } | null;
 
@@ -1238,6 +1540,7 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
       items: {
         orderBy: { lineNo: "asc" },
         select: {
+          id: true,
           productId: true,
           quantity:  true,
           salePrice: true,
@@ -1268,18 +1571,38 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
   });
   if (!sale) return null;
 
+  const returnedRows = await db.creditNoteItem.groupBy({
+    by: ["saleItemId"],
+    where: {
+      saleItemId: { in: sale.items.map((item) => item.id) },
+      creditNote: { status: "ACTIVE" },
+    },
+    _sum: { qty: true },
+  });
+  const returnedBySaleItemId = new Map(
+    returnedRows.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
+  );
+
   const productMap = new Map<string, CreditNoteProductOption>();
-  const items = sale.items.map((item) => {
+  const items = sale.items.flatMap((item) => {
     const unitName = item.product.saleUnitName ?? "";
     const unit     = item.product.units.find((u) => u.name === unitName);
     const scale    = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
     productMap.set(item.productId, serializeCreditNoteProductOption(item.product));
-    return {
+    const remainingBaseQty = Math.max(
+      0,
+      Number(item.quantity) - (returnedBySaleItemId.get(item.id) ?? 0),
+    );
+    if (remainingBaseQty <= 0.0001) return [];
+    return [{
+      saleItemId: item.id,
       productId: item.productId,
       unitName: item.showUnitName ?? unitName,
-      qty: item.showQty != null ? Number(item.showQty) : Number(item.quantity) / scale,
+      qty: remainingBaseQty / scale,
       salePrice: item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice),
-    };
+      stockDisposition: MarketplaceReturnStockDisposition.RESTOCK,
+      stockDispositionNote: "",
+    }];
   });
 
   return {

@@ -17,6 +17,7 @@ import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationB
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 import { getCreditNoteProductOptionsByIds, getTransactionCustomers } from "@/lib/transaction-options";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("credit_notes.update");
@@ -42,6 +43,9 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
 
   if (!cn) notFound();
   if (cn.status === "CANCELLED") redirect(`/admin/credit-notes/${id}`);
+  if (cn.channel && isManualMarketplaceChannel(cn.channel)) {
+    redirect(`/admin/credit-notes/${id}`);
+  }
 
   const cnPayments = await db.documentPayment.findMany({
     where: { docType: "CN_SALE", docId: id },

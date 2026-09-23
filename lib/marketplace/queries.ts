@@ -12,6 +12,7 @@ import {
   MANUAL_MARKETPLACE_CHANNELS,
   type ManualMarketplaceChannel,
 } from "./config";
+import { calculateMarketplaceOrderOutstanding } from "./returns";
 
 /** จำนวนเอกสารสูงสุดที่ดึงมาให้เลือกในหน้ากระทบยอดหนึ่งรอบ */
 const PENDING_DOC_LIMIT = 200;
@@ -56,7 +57,10 @@ export type PendingSaleRow = {
   saleNo: string;
   orderRefNo: string;
   saleDate: Date;
+  grossAmount: number;
+  returnAmount: number;
   amount: number;
+  creditNoteIds: string[];
 };
 
 export type PendingCreditNoteRow = {
@@ -86,7 +90,21 @@ export async function getPendingSettlementDocuments(
       },
       orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
       take: PENDING_DOC_LIMIT,
-      select: { id: true, saleNo: true, channelRefNo: true, saleDate: true, netAmount: true },
+      select: {
+        id: true,
+        saleNo: true,
+        channelRefNo: true,
+        saleDate: true,
+        netAmount: true,
+        creditNotes: {
+          where: {
+            status: DocStatus.ACTIVE,
+            settlementType: CNSettlementType.CASH_REFUND,
+            marketplaceSettlementLines: { none: { activeCreditNoteId: { not: null } } },
+          },
+          select: { id: true, totalAmount: true },
+        },
+      },
     }),
     db.creditNote.findMany({
       where: {
@@ -100,23 +118,58 @@ export async function getPendingSettlementDocuments(
       take: PENDING_DOC_LIMIT,
       select: {
         id: true,
+        saleId: true,
         cnNo: true,
         cnDate: true,
         totalAmount: true,
-        sale: { select: { saleNo: true } },
+        sale: {
+          select: {
+            id: true,
+            saleNo: true,
+            marketplaceSettlementLines: {
+              where: { activeSaleId: { not: null } },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
       },
     }),
   ]);
 
-  return {
-    sales: sales.map((sale) => ({
+  const pendingSaleIds = new Set(sales.map((sale) => sale.id));
+  const groupedSales = sales.flatMap((sale) => {
+    const grossAmount = Number(sale.netAmount);
+    const returnAmount = sale.creditNotes.reduce(
+      (sum, creditNote) => sum + Number(creditNote.totalAmount),
+      0,
+    );
+    const netAmount = calculateMarketplaceOrderOutstanding(grossAmount, returnAmount);
+    // คืนเต็มจำนวนแล้วไม่ต้องปล่อยใบขาย/ใบคืนค้างในหน้ากระทบยอด ทั้งสองฝั่ง
+    // หักล้างกันในบัญชีพักเงินเรียบร้อยแล้ว ส่วนค่าธรรมเนียมภายหลังยังคีย์เป็น
+    // บรรทัด Statement ในรอบที่แพลตฟอร์มแจ้งจริงได้ตามปกติ
+    if (Math.abs(netAmount) < 0.005) return [];
+    return [{
       id: sale.id,
       saleNo: sale.saleNo,
       orderRefNo: sale.channelRefNo ?? "-",
       saleDate: sale.saleDate,
-      amount: Number(sale.netAmount),
-    })),
-    creditNotes: creditNotes.map((creditNote) => ({
+      grossAmount,
+      returnAmount,
+      amount: netAmount,
+      creditNoteIds: sale.creditNotes.map((creditNote) => creditNote.id),
+    }];
+  });
+
+  return {
+    sales: groupedSales,
+    // ถ้าใบขายยังรอกระทบยอด ใบคืนจะถูกรวมอยู่ในแถวออเดอร์ด้านบน ไม่แสดงซ้ำ
+    // ใบคืนจะแสดงเดี่ยวเฉพาะเมื่อใบขายถูกกระทบยอดไปก่อนแล้ว
+    creditNotes: creditNotes.filter((creditNote) =>
+      !creditNote.saleId ||
+      !pendingSaleIds.has(creditNote.saleId) ||
+      (creditNote.sale?.marketplaceSettlementLines.length ?? 0) > 0
+    ).map((creditNote) => ({
       id: creditNote.id,
       cnNo: creditNote.cnNo,
       saleNo: creditNote.sale?.saleNo ?? "-",
@@ -266,7 +319,7 @@ export async function getChannelCashHealth(
   channel: ManualMarketplaceChannel,
   holdingAccountId: string,
 ): Promise<ChannelCashHealth> {
-  const [account, movements, pendingSales, pendingReturns, oldest] = await Promise.all([
+  const [account, movements, pendingDocuments] = await Promise.all([
     db.cashBankAccount.findUnique({
       where: { id: holdingAccountId },
       select: { openingBalance: true },
@@ -276,36 +329,7 @@ export async function getChannelCashHealth(
       where: { accountId: holdingAccountId },
       _sum: { amount: true },
     }),
-    db.sale.aggregate({
-      where: {
-        channel,
-        status: DocStatus.ACTIVE,
-        cashBankAccountId: holdingAccountId,
-        marketplaceSettlementLines: { none: { activeSaleId: { not: null } } },
-      },
-      _count: true,
-      _sum: { netAmount: true },
-    }),
-    db.creditNote.aggregate({
-      where: {
-        channel,
-        status: DocStatus.ACTIVE,
-        settlementType: CNSettlementType.CASH_REFUND,
-        cashBankAccountId: holdingAccountId,
-        marketplaceSettlementLines: { none: { activeCreditNoteId: { not: null } } },
-      },
-      _sum: { totalAmount: true },
-    }),
-    db.sale.findFirst({
-      where: {
-        channel,
-        status: DocStatus.ACTIVE,
-        cashBankAccountId: holdingAccountId,
-        marketplaceSettlementLines: { none: { activeSaleId: { not: null } } },
-      },
-      orderBy: { saleDate: "asc" },
-      select: { saleDate: true },
-    }),
+    getPendingSettlementDocuments(channel, holdingAccountId),
   ]);
 
   const inflow = movements
@@ -314,15 +338,19 @@ export async function getChannelCashHealth(
   const outflow = movements
     .filter((row) => row.direction === CashBankDirection.OUT)
     .reduce((sum, row) => sum + Number(row._sum.amount ?? 0), 0);
+  const pendingSaleAmount = pendingDocuments.sales.reduce((sum, sale) => sum + sale.amount, 0);
+  const pendingReturnAmount =
+    pendingDocuments.sales.reduce((sum, sale) => sum + sale.returnAmount, 0) +
+    pendingDocuments.creditNotes.reduce((sum, creditNote) => sum + creditNote.amount, 0);
 
   return {
     channel,
     label: getMarketplaceChannelConfig(channel).label,
     holdingBalance: Number(account?.openingBalance ?? 0) + inflow - outflow,
-    pendingSaleCount: pendingSales._count,
-    pendingSaleAmount: Number(pendingSales._sum.netAmount ?? 0),
-    pendingReturnAmount: Number(pendingReturns._sum.totalAmount ?? 0),
-    oldestPendingSaleDate: oldest?.saleDate ?? null,
+    pendingSaleCount: pendingDocuments.sales.length,
+    pendingSaleAmount,
+    pendingReturnAmount,
+    oldestPendingSaleDate: pendingDocuments.sales[0]?.saleDate ?? null,
   };
 }
 

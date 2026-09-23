@@ -8,6 +8,7 @@ import {
   SaleChannel,
 } from "@/lib/generated/prisma";
 import { calcItemSubtotal } from "@/lib/vat";
+import { returnDispositionReversesStockCost } from "@/lib/marketplace/returns";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -399,6 +400,7 @@ export async function rebuildCreditNoteProfitFacts(
           qty: true,
           amount: true,
           unitPrice: true,
+          stockDisposition: true,
           product: {
             select: {
               code: true,
@@ -445,12 +447,15 @@ export async function rebuildCreditNoteProfitFacts(
     const salesAmountExVat = roundMoney(-(allocatedRevenueExVat[index] ?? 0));
     const salesAmountIncVat = roundMoney(-(allocatedRevenueIncVat[index] ?? 0));
     const salesAmount = salesAmountExVat;
+    const reversesStockCost =
+      creditNote.type === CreditNoteType.RETURN &&
+      returnDispositionReversesStockCost(item.stockDisposition);
     const resolvedCost =
-      creditNote.type === CreditNoteType.RETURN
+      reversesStockCost
         ? saleCostMap.get(item.productId ?? "") ?? roundMoney(Number(item.product?.avgCost ?? 0))
         : 0;
     const costAmount =
-      creditNote.type === CreditNoteType.RETURN
+      reversesStockCost
         ? roundMoney(-(quantityAbs * resolvedCost))
         : 0;
     const grossProfit = roundMoney(salesAmountExVat - costAmount);

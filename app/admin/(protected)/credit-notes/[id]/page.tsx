@@ -6,12 +6,18 @@ import DocumentActivityTimeline from "@/components/admin/DocumentActivityTimelin
 import NavLink from "@/components/shared/NavLink";
 import { ChevronLeft, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
-import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
+import {
+  CNRefundMethod,
+  CNSettlementType,
+  CreditNoteType,
+  MarketplaceReturnStockDisposition,
+} from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 
 const cnTypeLabel: Record<CreditNoteType, string> = {
   RETURN:   "รับคืนสินค้า",
@@ -27,6 +33,12 @@ const settlementTypeLabel: Record<CNSettlementType, string> = {
 const refundMethodLabel: Record<CNRefundMethod, string> = {
   CASH:     "เงินสด",
   TRANSFER: "โอนเงิน",
+};
+
+const stockDispositionLabel: Record<MarketplaceReturnStockDisposition, string> = {
+  RESTOCK: "รับเข้าสต๊อก",
+  REFUND_ONLY: "คืนเงินอย่างเดียว — ไม่ได้รับสินค้า",
+  DAMAGED_NO_RESTOCK: "สินค้าเสียหาย — ไม่รับเข้าสต๊อก",
 };
 
 const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -86,7 +98,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
             )}
           </div>
-          {cn.status === "ACTIVE" && canUpdate && (
+          {cn.status === "ACTIVE" && canUpdate && !(cn.channel && isManualMarketplaceChannel(cn.channel)) && (
             <NavLink
               href={`/admin/credit-notes/${id}/edit`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -219,6 +231,12 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
                         Lot: {item.lotItems.map((lot) => `${lot.lotNo}${lot.isReturnLot ? " [RET]" : ""} (${(Number(lot.qty) / displayScale).toLocaleString("th-TH")} ${displayUnitName})`).join(", ")}
                       </div>
                     )}
+                    {cn.channel && isManualMarketplaceChannel(cn.channel) ? (
+                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {stockDispositionLabel[item.stockDisposition]}
+                        {item.stockDispositionNote ? ` — ${item.stockDispositionNote}` : ""}
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{displayQty.toLocaleString("th-TH")}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{displayUnitName}</td>

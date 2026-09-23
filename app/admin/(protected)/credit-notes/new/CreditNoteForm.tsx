@@ -28,6 +28,8 @@ export type MarketplaceReturnPreset = {
   products: ProductOption[];
   vatType: string;
   vatRate: number;
+  canCreateCarrierExpense: boolean;
+  suppliers: { id: string; name: string; code: string }[];
 };
 
 interface CustomerOption {
@@ -72,11 +74,14 @@ interface CreditNoteLotRow extends LotSubRow {
 }
 
 interface LineItem {
+  saleItemId?: string;
   productId: string;
   unitName: string;
   qty: number;
   salePrice: number;
   moreDetail?: string;
+  stockDisposition?: "RESTOCK" | "REFUND_ONLY" | "DAMAGED_NO_RESTOCK";
+  stockDispositionNote?: string;
   lotItems: CreditNoteLotRow[];
 }
 
@@ -100,7 +105,16 @@ interface InitialData {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, moreDetail: "", lotItems: [] });
+const emptyItem = (): LineItem => ({
+  productId: "",
+  unitName: "",
+  qty: 1,
+  salePrice: 0,
+  moreDetail: "",
+  stockDisposition: "RESTOCK",
+  stockDispositionNote: "",
+  lotItems: [],
+});
 
 const CreditNoteForm = ({
   products,
@@ -159,6 +173,15 @@ const CreditNoteForm = ({
   const [productOptions, setProductOptions] = useState<ProductOption[]>(
     marketplacePreset ? [...products, ...marketplacePreset.products] : products,
   );
+  const [marketplaceReturnRef, setMarketplaceReturnRef] = useState("");
+  const [hasCarrierExpense, setHasCarrierExpense] = useState(false);
+  const [carrierExpenseAmount, setCarrierExpenseAmount] = useState(0);
+  const [carrierExpenseDate, setCarrierExpenseDate] = useState(getThailandDateKey());
+  const [carrierSupplierId, setCarrierSupplierId] = useState("");
+  const [carrierCashBankAccountId, setCarrierCashBankAccountId] = useState("");
+  const [carrierVatType, setCarrierVatType] = useState<VatType>("NO_VAT");
+  const [carrierVatRate, setCarrierVatRate] = useState(7);
+  const [carrierExpenseNote, setCarrierExpenseNote] = useState("");
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
 
@@ -340,12 +363,35 @@ const CreditNoteForm = ({
         return;
       }
       const product = productMap.get(item.productId);
-      if (cnType === "RETURN" && product?.isLotControl) {
+      if (
+        cnType === "RETURN" &&
+        product?.isLotControl &&
+        item.stockDisposition === "RESTOCK"
+      ) {
         const lotErr = validateCreditNoteLots(item);
         if (lotErr) {
           setError(lotErr);
           return;
         }
+      }
+      if (
+        marketplacePreset &&
+        item.stockDisposition !== "RESTOCK" &&
+        !item.stockDispositionNote?.trim()
+      ) {
+        setError("กรุณาระบุเหตุผลสำหรับรายการที่ไม่รับเข้าสต๊อก");
+        return;
+      }
+    }
+
+    if (marketplacePreset && hasCarrierExpense) {
+      if (!marketplacePreset.canCreateCarrierExpense) {
+        setError("ไม่มีสิทธิ์บันทึกค่าใช้จ่ายขนส่งตีกลับ");
+        return;
+      }
+      if (carrierExpenseAmount <= 0 || !carrierExpenseDate || !carrierCashBankAccountId) {
+        setError("กรุณาระบุยอด วันที่ และบัญชีที่จ่ายค่าขนส่งตีกลับ");
+        return;
       }
     }
 
@@ -376,6 +422,25 @@ const CreditNoteForm = ({
     formData.set("payments", JSON.stringify(submitPayments));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
+    if (marketplacePreset) {
+      formData.set("marketplaceReturnRef", marketplaceReturnRef);
+      formData.set(
+        "carrierExpense",
+        JSON.stringify(
+          hasCarrierExpense
+            ? {
+                amount: carrierExpenseAmount,
+                expenseDate: carrierExpenseDate,
+                supplierId: carrierSupplierId || undefined,
+                cashBankAccountId: carrierCashBankAccountId,
+                vatType: carrierVatType,
+                vatRate: carrierVatType === "NO_VAT" ? 0 : carrierVatRate,
+                note: carrierExpenseNote || undefined,
+              }
+            : { amount: 0 },
+        ),
+      );
+    }
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -423,9 +488,22 @@ const CreditNoteForm = ({
             </div>
           </dl>
           <p className="mt-3 text-sm text-sky-800 dark:text-sky-200">
-            เก็บเฉพาะรายการที่ได้ของกลับมาจริง แล้วแก้จำนวนให้ตรงกับที่รับคืน ระบบจะรับสินค้าเข้าสต็อกและตัดยอดคืนออกจากบัญชีพักเงินให้อัตโนมัติ
-            จากนั้นใบลดหนี้นี้จะไปหักในรอบรับเงินรอบถัดไปเอง
+            ลบรายการที่ไม่เกี่ยวข้องและแก้จำนวน/ยอดคืนให้ตรงเหตุการณ์จริง แต่ละรายการเลือกได้ว่า
+            รับเข้าสต๊อก คืนเงินโดยไม่ได้สินค้า หรือได้รับสินค้าที่เสียหาย ระบบจะตัดสต๊อกและต้นทุนตามตัวเลือกนั้น
           </p>
+          <div className="mt-4">
+            <label className="block text-sm font-medium text-sky-800 dark:text-sky-200">
+              เลขอ้างอิงเคสคืนจาก {marketplacePreset.channelLabel}
+            </label>
+            <input
+              type="text"
+              value={marketplaceReturnRef}
+              onChange={(event) => setMarketplaceReturnRef(event.target.value)}
+              maxLength={100}
+              className={`${inputCls} mt-1 bg-white dark:bg-slate-900`}
+              placeholder="ไม่บังคับ แต่แนะนำให้คีย์เพื่อป้องกันลงซ้ำ"
+            />
+          </div>
         </div>
       ) : null}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 dark:border-white/10 dark:bg-[#101b2e]">
@@ -615,7 +693,10 @@ const CreditNoteForm = ({
               {items.map((item, i) => {
                 const units = getUnits(item.productId);
                 const product = productMap.get(item.productId);
-                const showLots = cnType === "RETURN" && !!product?.isLotControl;
+                const showLots =
+                  cnType === "RETURN" &&
+                  !!product?.isLotControl &&
+                  item.stockDisposition === "RESTOCK";
 
                 return (
                   <>
@@ -631,7 +712,39 @@ const CreditNoteForm = ({
                           }}
                           onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
                           selectedProduct={productMap.get(item.productId) ?? null}
+                          disabled={Boolean(marketplacePreset)}
                         />
+                        {marketplacePreset ? (
+                          <div className="mt-2 grid gap-2 md:grid-cols-2">
+                            <select
+                              value={item.stockDisposition ?? "RESTOCK"}
+                              onChange={(event) =>
+                                updateItem(
+                                  i,
+                                  "stockDisposition",
+                                  event.target.value,
+                                )
+                              }
+                              className={`${inputCls} bg-white`}
+                            >
+                              <option value="RESTOCK">รับสินค้าเข้าสต๊อก</option>
+                              <option value="REFUND_ONLY">คืนเงินอย่างเดียว — ไม่ได้รับสินค้า</option>
+                              <option value="DAMAGED_NO_RESTOCK">สินค้าเสียหาย — ไม่รับเข้าสต๊อก</option>
+                            </select>
+                            {item.stockDisposition !== "RESTOCK" ? (
+                              <input
+                                type="text"
+                                value={item.stockDispositionNote ?? ""}
+                                maxLength={300}
+                                onChange={(event) =>
+                                  updateItem(i, "stockDispositionNote", event.target.value)
+                                }
+                                className={inputCls}
+                                placeholder="เหตุผลที่ไม่รับเข้าสต๊อก *"
+                              />
+                            ) : null}
+                          </div>
+                        ) : null}
                         {item.productId && (
                           <input
                             type="text"
@@ -807,6 +920,107 @@ const CreditNoteForm = ({
         </div>
       </div>
 
+      {marketplacePreset ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-800 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={hasCarrierExpense}
+              onChange={(event) => setHasCarrierExpense(event.target.checked)}
+              disabled={!marketplacePreset.canCreateCarrierExpense}
+            />
+            ขนส่งเรียกเก็บค่าส่งตีกลับจากร้าน — บันทึกเป็นค่าใช้จ่าย
+          </label>
+          {!marketplacePreset.canCreateCarrierExpense ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              บัญชีผู้ใช้นี้ไม่มีสิทธิ์สร้างค่าใช้จ่าย จึงบันทึกค่าส่งตีกลับพร้อมใบคืนไม่ได้
+            </p>
+          ) : null}
+          {hasCarrierExpense ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div>
+                <label className={labelCls}>วันที่จ่าย *</label>
+                <input
+                  type="date"
+                  value={carrierExpenseDate}
+                  onChange={(event) => setCarrierExpenseDate(event.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>ยอดค่าขนส่ง *</label>
+                <AdminNumberInput
+                  value={carrierExpenseAmount}
+                  onValueChange={setCarrierExpenseAmount}
+                  min={0}
+                  step={0.01}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>บัญชีที่จ่าย *</label>
+                <SearchableSelect
+                  options={cashBankAccounts.map((account) => ({
+                    id: account.id,
+                    label: `${account.code} — ${account.name}`,
+                  }))}
+                  value={carrierCashBankAccountId}
+                  onChange={setCarrierCashBankAccountId}
+                  placeholder="เลือกเงินสด/ธนาคาร"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>ผู้รับเงิน/ขนส่ง</label>
+                <SearchableSelect
+                  options={marketplacePreset.suppliers.map((supplier) => ({
+                    id: supplier.id,
+                    label: `${supplier.code} — ${supplier.name}`,
+                  }))}
+                  value={carrierSupplierId}
+                  onChange={setCarrierSupplierId}
+                  placeholder="ไม่บังคับ"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>VAT</label>
+                <div className="flex gap-2">
+                  <select
+                    value={carrierVatType}
+                    onChange={(event) => setCarrierVatType(event.target.value as VatType)}
+                    className={`${inputCls} bg-white`}
+                  >
+                    <option value="NO_VAT">ไม่มี VAT</option>
+                    <option value="INCLUDING_VAT">รวม VAT</option>
+                    <option value="EXCLUDING_VAT">ยังไม่รวม VAT</option>
+                  </select>
+                  {carrierVatType !== "NO_VAT" ? (
+                    <AdminNumberInput
+                      value={carrierVatRate}
+                      onValueChange={setCarrierVatRate}
+                      min={0}
+                      max={100}
+                      step={0.01}
+                      className="w-24 rounded-lg border border-gray-300 px-2 text-sm dark:border-white/20 dark:bg-slate-900"
+                    />
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>หมายเหตุค่าใช้จ่าย</label>
+                <input
+                  type="text"
+                  value={carrierExpenseNote}
+                  onChange={(event) => setCarrierExpenseNote(event.target.value)}
+                  maxLength={500}
+                  className={inputCls}
+                  placeholder="เช่น ค่าส่งตีกลับเก็บปลายทาง"
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -820,13 +1034,13 @@ const CreditNoteForm = ({
       )}
 
       <div className="flex justify-end items-center gap-3">
-        <button
+        {!marketplacePreset ? <button
           type="button"
           onClick={addItem}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:border-[#1e3a5f] bg-white text-gray-700 hover:text-[#1e3a5f] text-sm font-semibold rounded-lg transition-colors dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300"
         >
           <Plus size={14} /> เพิ่มรายการ
-        </button>
+        </button> : null}
         <button
           type="submit"
           disabled={isPending || submitLocked}

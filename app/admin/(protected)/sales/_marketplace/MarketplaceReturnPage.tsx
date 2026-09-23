@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
-import { getTransactionCustomers } from "@/lib/transaction-options";
+import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import { DocStatus } from "@/lib/generated/prisma";
 import { formatDateThai } from "@/lib/th-date";
 import {
@@ -58,7 +58,15 @@ export default async function MarketplaceReturnPage({
   const selectedSale = saleId
     ? await db.sale.findFirst({
         where: { id: saleId, channel, status: DocStatus.ACTIVE },
-        select: { id: true, saleNo: true, saleDate: true, channelRefNo: true, netAmount: true },
+        select: {
+          id: true,
+          saleNo: true,
+          saleDate: true,
+          channelRefNo: true,
+          netAmount: true,
+          cashBankAccountId: true,
+          cashBankAccount: { select: { code: true, name: true } },
+        },
       })
     : null;
 
@@ -127,14 +135,38 @@ export default async function MarketplaceReturnPage({
     );
   }
 
-  const [customers, siteConfig, accounts, saleDetail] = await Promise.all([
+  if (!selectedSale.cashBankAccountId || !selectedSale.cashBankAccount) {
+    return (
+      <div className="space-y-6">
+        {backLink}
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+          ใบขายนี้ไม่มีบัญชีพักเงินต้นทาง จึงยังทำคืนไม่ได้ กรุณาตรวจสอบข้อมูลใบขายก่อน
+        </div>
+      </div>
+    );
+  }
+
+  const [customers, siteConfig, accounts, saleDetail, suppliers, expensePermission] = await Promise.all([
     getTransactionCustomers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
     // ดึงรายการของใบขายต้นทางจากฝั่ง server เลย ผู้ใช้จะเห็นรายการพร้อมแก้ทันที
     // ที่หน้าโหลดเสร็จ ไม่ต้องรอ round-trip ตอน mount
     getSaleDetail(selectedSale.id),
+    getTransactionSuppliers(),
+    requirePermission("expenses.create").catch(() => null),
   ]);
+
+  if (!saleDetail || saleDetail.items.length === 0) {
+    return (
+      <div className="space-y-6">
+        {backLink}
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100">
+          ใบขาย {selectedSale.saleNo} คืนสินค้าครบทุกบรรทัดแล้ว จึงไม่มีรายการเหลือให้ทำคืนซ้ำ
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -157,12 +189,18 @@ export default async function MarketplaceReturnPage({
           orderRefNo: selectedSale.channelRefNo ?? "-",
           customerId: setting.defaultCustomerId,
           customerName: setting.defaultCustomerName,
-          cashBankAccountId: setting.settlementCashBankAccountId,
-          holdingAccountLabel: setting.holdingAccountLabel,
-          items: (saleDetail?.items ?? []).map((item) => ({ ...item, lotItems: [] })),
-          products: saleDetail?.products ?? [],
-          vatType: saleDetail?.vatType ?? siteConfig.vatType,
-          vatRate: saleDetail?.vatRate ?? siteConfig.vatRate,
+          cashBankAccountId: selectedSale.cashBankAccountId,
+          holdingAccountLabel: `${selectedSale.cashBankAccount.code} — ${selectedSale.cashBankAccount.name}`,
+          items: saleDetail.items.map((item) => ({ ...item, lotItems: [] })),
+          products: saleDetail.products,
+          vatType: saleDetail.vatType,
+          vatRate: saleDetail.vatRate,
+          canCreateCarrierExpense: Boolean(expensePermission?.user?.id),
+          suppliers: suppliers.map((supplier) => ({
+            id: supplier.id,
+            name: supplier.name,
+            code: supplier.code ?? "-",
+          })),
         }}
       />
     </div>

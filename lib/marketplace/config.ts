@@ -93,8 +93,8 @@ export type MarketplaceFeeOption = {
 
 /**
  * รายการหัก (FEE) — เก็บเป็นยอดติดลบเสมอในฐานข้อมูล
- * PENALTY ใช้กับเคสคืนเงินลูกค้าโดยไม่มีสินค้ากลับมา (refund only / ชดเชย / ค่าปรับ)
- * ซึ่งไม่ออกใบลดหนี้เพราะไม่มีการรับสินค้าคืนเข้าสต็อก
+ * PENALTY ใช้กับค่าปรับหรือยอดชดเชยที่แพลตฟอร์มหักใน Statement ส่วน refund only
+ * บันทึกเป็นใบลดหนี้ที่กำหนด stockDisposition=REFUND_ONLY เพื่อย้อนรายได้โดยไม่เพิ่มสต๊อก
  */
 export const MARKETPLACE_FEE_OPTIONS: readonly MarketplaceFeeOption[] = [
   { code: "COMMISSION", label: "ค่าคอมมิชชัน", kind: MarketplaceFeeKind.FEE },

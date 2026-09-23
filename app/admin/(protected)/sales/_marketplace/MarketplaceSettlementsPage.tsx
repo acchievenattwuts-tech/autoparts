@@ -180,7 +180,10 @@ export default async function MarketplaceSettlementsPage({
               saleNo: sale.saleNo,
               orderNo: sale.orderRefNo,
               date: formatDateThai(sale.saleDate),
+              grossAmount: sale.grossAmount,
+              returnAmount: sale.returnAmount,
               amount: sale.amount,
+              creditNoteIds: sale.creditNoteIds,
             }))}
             creditNotes={pending.creditNotes.map((creditNote) => ({
               id: creditNote.id,

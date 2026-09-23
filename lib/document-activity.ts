@@ -393,6 +393,18 @@ async function getCreditNoteRelationEvents(id: string,
       },
     },
   });
+  const returnExpenses = await db.expense.findMany({
+    where: { marketplaceReturnCreditNoteId: id },
+    orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
+    select: {
+      id: true,
+      expenseNo: true,
+      expenseDate: true,
+      createdAt: true,
+      netAmount: true,
+      status: true,
+    },
+  });
 
   return [
     ...(cn?.sale ? [buildRelationActivityEvent({
@@ -416,6 +428,16 @@ async function getCreditNoteRelationEvents(id: string,
       tone: "used",
     }),
     ),
+    ...returnExpenses.map((expense) => buildRelationActivityEvent({
+      id: `credit-note-${id}-expense-${expense.id}`,
+      kind: "USED_BY",
+      occurredAt: expense.createdAt ?? expense.expenseDate,
+      title: expense.status === "ACTIVE" ? "มีค่าใช้จ่ายขนส่งตีกลับ" : "ค่าใช้จ่ายขนส่งตีกลับถูกยกเลิก",
+      description: `ยอด ${formatMoneyActivity(String(expense.netAmount))}`,
+      href: `/admin/expenses/${expense.id}`,
+      hrefLabel: expense.expenseNo,
+      tone: expense.status === "ACTIVE" ? "used" : "cancel",
+    })),
   ];
 }
 

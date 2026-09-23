@@ -67,6 +67,19 @@ describe("document mutation guard", () => {
     ]);
   });
 
+  it("blocks marketplace return cancellation while its carrier expense is active", async () => {
+    const guard = createDocumentMutationGuard({
+      expense: {
+        findMany: async () => [{ id: "expense-return-1", expenseNo: "OE26090001" }],
+      },
+    });
+    const result = await guard.check("CreditNote", "cn-return-1", "cancel");
+    assert.equal(result.blocked, true);
+    assert.deepEqual(result.references, [
+      { entityType: "Expense", id: "expense-return-1", refNo: "OE26090001" },
+    ]);
+  });
+
   it("blocks cancelling the fee expense a settlement created", async () => {
     const guard = createDocumentMutationGuard({
       marketplaceSettlement: {

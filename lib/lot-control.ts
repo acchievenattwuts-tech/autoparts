@@ -317,7 +317,7 @@ export async function reversePurchaseReturnLotBalance(
 /**
  * บันทึก CreditNoteItemLot + เพิ่ม LotBalance เมื่อสร้าง CN ประเภท RETURN
  * - isReturnLot=false → merge กลับ lot เดิม
- * - isReturnLot=true  → สร้าง lot ใหม่ prefix "RET-{lotNo}"
+ * - isReturnLot=true  → สร้าง lot ใหม่ที่ผูกกับบรรทัด CN เพื่อไม่ชนกับเอกสารคืนใบอื่น
  */
 export async function writeCreditNoteLots(
   tx: TxClient,
@@ -326,7 +326,11 @@ export async function writeCreditNoteLots(
   lots: (LotSubRowBase & { isReturnLot: boolean })[]
 ): Promise<void> {
   for (const lot of lots) {
-    const effectiveLotNo = lot.isReturnLot ? `RET-${lot.lotNo}` : lot.lotNo;
+    const returnSuffix = `-${cnItemId.slice(-8)}`;
+    const maxSourceLength = Math.max(1, 100 - "RET-".length - returnSuffix.length);
+    const effectiveLotNo = lot.isReturnLot
+      ? `RET-${lot.lotNo.slice(0, maxSourceLength)}${returnSuffix}`
+      : lot.lotNo;
 
     if (lot.isReturnLot) {
       // สร้าง ProductLot ใหม่สำหรับ RET-lot ถ้ายังไม่มี

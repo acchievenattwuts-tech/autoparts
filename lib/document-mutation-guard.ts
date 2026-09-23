@@ -44,6 +44,7 @@ export type GuardDb = {
   customerAdvanceRefund?: { findMany(args: FindManyArgs): FindManyResult };
   marketplaceSettlementLine?: { findMany(args: FindManyArgs): FindManyResult };
   marketplaceSettlement?: { findMany(args: FindManyArgs): FindManyResult };
+  expense?: { findMany(args: FindManyArgs): FindManyResult };
 };
 
 const allow = (): MutationBlockResult => ({
@@ -209,7 +210,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
       }
 
       if (entityType === "CreditNote") {
-        const [receiptItems, settlements] = await Promise.all([
+        const [receiptItems, settlements, expenses] = await Promise.all([
           database.receiptItem?.findMany({
             where: { cnId: entityId, receipt: { status: "ACTIVE" } },
             select: { receipt: { select: { id: true, receiptNo: true } } },
@@ -222,10 +223,15 @@ export function createDocumentMutationGuard(database: GuardDb) {
             },
             select: { settlement: { select: { id: true, settlementNo: true } } },
           }) ?? Promise.resolve([]),
+          database.expense?.findMany({
+            where: { marketplaceReturnCreditNoteId: entityId, status: "ACTIVE" },
+            select: { id: true, expenseNo: true },
+          }) ?? Promise.resolve([]),
         ]);
         return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
           ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
           ...mapNestedRefs(settlements, "settlement", "MarketplaceSettlement", "settlementNo"),
+          ...mapDirectRefs(expenses, "Expense", "expenseNo"),
         ]);
       }
 

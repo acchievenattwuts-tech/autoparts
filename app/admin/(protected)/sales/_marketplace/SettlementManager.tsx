@@ -15,7 +15,16 @@ import {
 } from "@/lib/marketplace/settlement-math";
 import { cancelMarketplaceSettlement, createMarketplaceSettlement } from "./actions";
 
-type SaleRow = { id: string; saleNo: string; orderNo: string; date: string; amount: number };
+type SaleRow = {
+  id: string;
+  saleNo: string;
+  orderNo: string;
+  date: string;
+  grossAmount: number;
+  returnAmount: number;
+  amount: number;
+  creditNoteIds: string[];
+};
 type CreditNoteRow = { id: string; cnNo: string; saleNo: string; date: string; amount: number };
 type Account = { id: string; label: string };
 type HistoryRow = {
@@ -79,15 +88,28 @@ export default function SettlementManager({
     () => lines.filter((line) => Math.abs(line.amount) >= 0.01),
     [lines],
   );
+  const selectedOrderReturns = useMemo(
+    () => sales.filter((sale) => selectedSales.includes(sale.id)).flatMap((sale) => sale.creditNoteIds),
+    [sales, selectedSales],
+  );
+  const submittedCreditNoteIds = useMemo(
+    () => [...new Set([...selectedOrderReturns, ...selectedCreditNotes])],
+    [selectedOrderReturns, selectedCreditNotes],
+  );
   const automaticCalculation = useMemo(
     () =>
       calculateMarketplaceSettlement({
         saleAmounts: sales
           .filter((sale) => selectedSales.includes(sale.id))
-          .map((sale) => sale.amount),
-        returnAmounts: creditNotes
-          .filter((creditNote) => selectedCreditNotes.includes(creditNote.id))
-          .map((creditNote) => creditNote.amount),
+          .map((sale) => sale.grossAmount),
+        returnAmounts: [
+          ...sales
+            .filter((sale) => selectedSales.includes(sale.id) && sale.returnAmount > 0)
+            .map((sale) => sale.returnAmount),
+          ...creditNotes
+            .filter((creditNote) => selectedCreditNotes.includes(creditNote.id))
+            .map((creditNote) => creditNote.amount),
+        ],
         feeLines: activeLines,
         payoutAmount: 0,
       }),
@@ -99,10 +121,15 @@ export default function SettlementManager({
       calculateMarketplaceSettlement({
         saleAmounts: sales
           .filter((sale) => selectedSales.includes(sale.id))
-          .map((sale) => sale.amount),
-        returnAmounts: creditNotes
-          .filter((creditNote) => selectedCreditNotes.includes(creditNote.id))
-          .map((creditNote) => creditNote.amount),
+          .map((sale) => sale.grossAmount),
+        returnAmounts: [
+          ...sales
+            .filter((sale) => selectedSales.includes(sale.id) && sale.returnAmount > 0)
+            .map((sale) => sale.returnAmount),
+          ...creditNotes
+            .filter((creditNote) => selectedCreditNotes.includes(creditNote.id))
+            .map((creditNote) => creditNote.amount),
+        ],
         feeLines: activeLines,
         payoutAmount: payout,
       }),
@@ -142,7 +169,7 @@ export default function SettlementManager({
                 destinationAccountId: data.get("destinationAccountId"),
                 payoutAmount: payout,
                 saleIds: selectedSales,
-                creditNoteIds: selectedCreditNotes,
+                creditNoteIds: submittedCreditNoteIds,
                 lines: activeLines,
                 note: data.get("note") || undefined,
               });
@@ -171,14 +198,14 @@ export default function SettlementManager({
             สร้างรอบรับเงิน
           </h2>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            เลือกใบขายและใบลดหนี้ตามรายละเอียดการโอนเงินของ {channelLabel} แล้วคีย์ค่าธรรมเนียมกับรายการปรับปรุงให้ครบ
+            เลือกออเดอร์ตามรายละเอียดการโอนเงินของ {channelLabel} ระบบรวมยอดคืนที่ยังไม่กระทบยอดไว้ในออเดอร์เดียวกัน แล้วคีย์ค่าธรรมเนียมกับรายการปรับปรุงให้ครบ
             หากยอดโอนจริงต่างจากยอดคำนวณ ระบบจะแจ้งเตือนและสร้างรายการส่วนต่างให้อัตโนมัติ
           </p>
         </div>
 
         <section className="space-y-2">
           <h3 className="text-sm font-medium text-slate-800 dark:text-slate-200">
-            ใบขายที่รอรับเงิน ({sales.length})
+            ออเดอร์ที่รอกระทบยอด ({sales.length})
           </h3>
           <div className="max-h-72 overflow-auto rounded-lg border border-slate-200 dark:border-white/10">
             <table className="w-full min-w-[680px] text-sm">
@@ -187,7 +214,7 @@ export default function SettlementManager({
                   <th className="p-3 text-center">
                     <input
                       type="checkbox"
-                      aria-label="เลือกใบขายทั้งหมด"
+                      aria-label="เลือกออเดอร์ทั้งหมด"
                       checked={sales.length > 0 && selectedSales.length === sales.length}
                       onChange={(event) =>
                         setSelectedSales(event.target.checked ? sales.map((sale) => sale.id) : [])
@@ -198,13 +225,15 @@ export default function SettlementManager({
                   <th className="p-3 text-left">{orderRefLabel}</th>
                   <th className="p-3 text-left">วันที่ขาย</th>
                   <th className="p-3 text-right">ยอดขาย</th>
+                  <th className="p-3 text-right">คืนแล้ว</th>
+                  <th className="p-3 text-right">ยอดสุทธิ</th>
                 </tr>
               </thead>
               <tbody>
                 {sales.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400">
-                      ไม่มีใบขายที่รอกระทบยอด
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
+                      ไม่มีออเดอร์ที่รอกระทบยอด
                     </td>
                   </tr>
                 ) : (
@@ -213,7 +242,7 @@ export default function SettlementManager({
                       <td className="p-3 text-center">
                         <input
                           type="checkbox"
-                          aria-label={`เลือกใบขาย ${sale.saleNo}`}
+                          aria-label={`เลือกออเดอร์ ${sale.saleNo}`}
                           checked={selectedSales.includes(sale.id)}
                           onChange={() => setSelectedSales((current) => toggle(current, sale.id))}
                         />
@@ -221,7 +250,11 @@ export default function SettlementManager({
                       <td className="p-3 font-mono text-sky-700 dark:text-sky-300">{sale.saleNo}</td>
                       <td className="p-3">{sale.orderNo}</td>
                       <td className="p-3">{sale.date}</td>
-                      <td className="p-3 text-right tabular-nums">{money(sale.amount)}</td>
+                      <td className="p-3 text-right tabular-nums">{money(sale.grossAmount)}</td>
+                      <td className="p-3 text-right tabular-nums text-rose-600 dark:text-rose-300">
+                        {sale.returnAmount > 0 ? `-${money(sale.returnAmount)}` : "—"}
+                      </td>
+                      <td className="p-3 text-right font-semibold tabular-nums">{money(sale.amount)}</td>
                     </tr>
                   ))
                 )}
