@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/client-ip";
 import { shouldRejectRootPost } from "@/lib/root-request-guard";
+import { countsTowardStorefrontCatalogLimit } from "@/lib/storefront-catalog-rate-limit";
 import {
   isAggressiveBotUserAgent,
   isAiAnswerBotPathAllowed,
@@ -83,10 +84,9 @@ export const proxy = auth(async (req) => {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
-  if (
-    (method === "GET" || method === "HEAD") &&
-    (pathname.startsWith("/product/") || pathname === "/products" || pathname.startsWith("/products/"))
-  ) {
+  // Link prefetches are not counted (see lib/storefront-catalog-rate-limit.ts);
+  // page loads and real navigations still are.
+  if (countsTowardStorefrontCatalogLimit(pathname, method, req.headers)) {
     const now = Date.now();
     const ip = getClientIp(req.headers);
     if (isRateLimited(`storefront-catalog:${ip}`, RATE_LIMIT_MAX_STOREFRONT_CATALOG_PER_MIN, now)) {
