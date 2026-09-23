@@ -171,6 +171,8 @@ Adding or changing any admin `ค้นหา`, `แสดงรายงาน`
 
 Admin export and download actions must use the shared `AdminExportLink`, which renders a native anchor. Never render an export/download route with `Link`, `router.prefetch()`, or any speculative-prefetch mechanism — production prefetch can execute the route's expensive database reads and audit writes without a user click.
 
+Do not bypass the shared primitive with a raw `<a>`, even though a plain anchor does not prefetch today. `AdminExportLink` is mandatory so every export entrypoint stays recognizable and covered by the same regression guard. When adding or changing an admin export/download action, run `lib/__tests__/admin-export-link.test.ts`; the test must continue to reject both `next/link` export navigation and direct export anchors.
+
 New CSV, Excel, PDF, or backup entrypoints reuse `AdminExportLink` for link-style actions, or an explicit click handler for generated downloads. Keep the route's server-side permission check and audit logging; preventing prefetch is not an authorization substitute.
 
 ### 8.7 Transaction reference safety

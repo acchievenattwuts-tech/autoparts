@@ -28,6 +28,25 @@ test("admin export and download routes are never rendered with Next Link", () =>
   assert.deepEqual(violations, []);
 });
 
+test("admin export routes use AdminExportLink instead of direct anchors", () => {
+  const violations: string[] = [];
+
+  for (const filePath of listTsxFiles(adminRoot)) {
+    const source = readFileSync(filePath, "utf8");
+    const exportHrefNames = [...source.matchAll(/\bconst\s+(\w*export\w*Href)\s*=/gi)].map(
+      (match) => match[1],
+    );
+    const openingAnchorTags = source.match(/<a\b[\s\S]*?>/g) ?? [];
+    const hasExportAnchor = openingAnchorTags.some((tag) => {
+      if (/(?:\/export|export-excel)/.test(tag)) return true;
+      return exportHrefNames.some((name) => tag.includes(`href={${name}}`));
+    });
+    if (hasExportAnchor) violations.push(path.relative(repoRoot, filePath));
+  }
+
+  assert.deepEqual(violations, []);
+});
+
 test("AdminExportLink remains a native anchor without next/link", () => {
   const source = readFileSync(
     path.join(repoRoot, "components", "shared", "AdminExportLink.tsx"),

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import NavLink from "@/components/shared/NavLink";
+import AdminExportLink from "@/components/shared/AdminExportLink";
 import { FileSpreadsheet, FileText, Truck } from "lucide-react";
 
 import Pagination from "@/components/shared/Pagination";
@@ -411,20 +412,20 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
           {totalCount > 10000 ? <span className="text-orange-600 dark:text-orange-400"> (export จะจำกัดที่ 10,000 แถวแรก)</span> : null}
         </p>
         <div className="flex gap-2">
-          <a
+          <AdminExportLink
             href={exportCsvHref}
             className="inline-flex h-9 items-center gap-2 rounded-md bg-gray-600 px-3 text-sm font-medium text-white hover:bg-gray-700 dark:bg-slate-600 dark:hover:bg-slate-500"
           >
             <FileText size={14} />
             CSV
-          </a>
-          <a
+          </AdminExportLink>
+          <AdminExportLink
             href={exportExcelHref}
             className="inline-flex h-9 items-center gap-2 rounded-md bg-green-600 px-3 text-sm font-medium text-white hover:bg-green-700 dark:bg-emerald-700 dark:hover:bg-emerald-600"
           >
             <FileSpreadsheet size={14} />
             Excel
-          </a>
+          </AdminExportLink>
         </div>
       </div>
 
