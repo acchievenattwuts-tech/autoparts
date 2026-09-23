@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { createProfitDistribution } from "./actions";
 
@@ -22,6 +32,17 @@ type CarryForwardRow = {
 };
 
 type RetainedMode = "KEEP_IN_SHOP" | "CARRY_FORWARD";
+
+type PendingSettlement = {
+  billCount: number;
+  totalAmount: number;
+  channels: Array<{
+    channel: string;
+    label: string;
+    billCount: number;
+    amount: number;
+  }>;
+};
 
 const CARRY_FORWARD_KIND_LABEL: Record<CarryForwardRow["kind"], string> = {
   UNDECLARED: "ยังไม่ได้ประกาศ",
@@ -71,6 +92,7 @@ type Props = {
   stockValue: number;
   hasActiveDistribution: boolean;
   blockingPeriods: Array<{ periodKey: string; label: string }>;
+  pendingSettlement: PendingSettlement;
 };
 
 const PERCENT_TOLERANCE = 0.01;
@@ -109,10 +131,12 @@ const DeclareForm = ({
   stockValue,
   hasActiveDistribution,
   blockingPeriods,
+  pendingSettlement,
 }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
+  const [pendingSettlementConfirmOpen, setPendingSettlementConfirmOpen] = useState(false);
 
   const [payDate, setPayDate] = useState(today);
   const [accountId, setAccountId] = useState(accountOptions[0]?.id ?? "");
@@ -219,6 +243,19 @@ const DeclareForm = ({
         router.refresh();
       }
     });
+  };
+
+  const handleSubmitRequest = () => {
+    if (pendingSettlement.billCount > 0) {
+      setPendingSettlementConfirmOpen(true);
+      return;
+    }
+    handleSubmit();
+  };
+
+  const handlePendingSettlementConfirm = () => {
+    setPendingSettlementConfirmOpen(false);
+    handleSubmit();
   };
 
   return (
@@ -612,7 +649,7 @@ const DeclareForm = ({
         </button>
         <button
           type="button"
-          onClick={handleSubmit}
+          onClick={handleSubmitRequest}
           disabled={!canSubmit}
           className="inline-flex h-11 items-center justify-center rounded-xl bg-[#1e3a5f] px-6 text-sm font-semibold text-white hover:bg-[#274b78] disabled:cursor-not-allowed disabled:opacity-50 dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400"
         >
@@ -623,6 +660,53 @@ const DeclareForm = ({
               : "ยืนยันบันทึกงวด (ไม่แบ่ง)"}
         </button>
       </div>
+
+      <AlertDialog
+        open={pendingSettlementConfirmOpen}
+        onOpenChange={setPendingSettlementConfirmOpen}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-800 dark:text-amber-100">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-500" />
+              ยืนยันปันผลทั้งที่ยังกระทบยอดไม่ครบ
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              งวด {periodLabel} ยังมี {pendingSettlement.billCount.toLocaleString("th-TH")} บิล
+              รวม {money(pendingSettlement.totalAmount)} บาท ที่ยังไม่ได้กระทบยอด
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2 text-sm">
+            {pendingSettlement.channels.map((row) => (
+              <div
+                key={row.channel}
+                className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-amber-100"
+              >
+                <span>{row.label}</span>
+                <span className="text-right tabular-nums">
+                  {row.billCount.toLocaleString("th-TH")} บิล · {money(row.amount)} บาท
+                </span>
+              </div>
+            ))}
+            <p className="text-rose-700 dark:text-rose-300">
+              ค่าธรรมเนียมจริงยังไม่ถูกรับรู้ กำไรสุทธิของงวดนี้อาจลดลงภายหลัง
+              และส่วนต่างจะถูกยกไปปรับในงวดถัดไป
+            </p>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>กลับไปตรวจสอบ</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handlePendingSettlementConfirm}
+              disabled={!canSubmit}
+              className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:text-slate-950 dark:hover:bg-amber-400"
+            >
+              ยืนยันทำรายการต่อ
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

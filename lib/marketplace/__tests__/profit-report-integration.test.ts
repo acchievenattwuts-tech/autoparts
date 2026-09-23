@@ -17,6 +17,7 @@ type SettlementGroupArgs = {
 type PendingSaleGroupArgs = {
   by: string[];
   where: { saleDate: DateRange };
+  _count: { _all: boolean };
 };
 type ProductProfitGroupArgs = {
   by: string[];
@@ -60,8 +61,8 @@ before(async () => {
           groupBy: async (args: PendingSaleGroupArgs) => {
             pendingSaleGroupArgs = args;
             return [
-              { channel: SaleChannel.SHOPEE, _sum: { netAmount: 500 } },
-              { channel: SaleChannel.LAZADA, _sum: { netAmount: 400 } },
+              { channel: SaleChannel.SHOPEE, _count: { _all: 3 }, _sum: { netAmount: 500 } },
+              { channel: SaleChannel.LAZADA, _count: { _all: 2 }, _sum: { netAmount: 400 } },
             ];
           },
         },
@@ -141,13 +142,28 @@ test(
       estimate.byChannel.map((row) => ({
         channel: row.channel,
         rate: row.averageFeeRate,
+        pendingSaleCount: row.pendingSaleCount,
+        pendingSalesAmount: row.pendingSalesAmount,
         pendingFee: row.estimatedPendingFee,
       })),
       [
-        { channel: SaleChannel.SHOPEE, rate: 0.1, pendingFee: 50 },
-        { channel: SaleChannel.LAZADA, rate: 0.3, pendingFee: 120 },
+        {
+          channel: SaleChannel.SHOPEE,
+          rate: 0.1,
+          pendingSaleCount: 3,
+          pendingSalesAmount: 500,
+          pendingFee: 50,
+        },
+        {
+          channel: SaleChannel.LAZADA,
+          rate: 0.3,
+          pendingSaleCount: 2,
+          pendingSalesAmount: 400,
+          pendingFee: 120,
+        },
       ],
     );
+    assert.equal(estimate.pendingSaleCount, 5);
     assert.equal(estimate.pendingSalesAmount, 900);
     assert.equal(estimate.estimatedPendingFee, 170);
     assert.equal(estimate.sampleSettlementCount, 3);
@@ -206,6 +222,7 @@ test(
     ]);
     assert.deepEqual(settlementGroupArgs?.by, ["channel"]);
     assert.deepEqual(pendingSaleGroupArgs?.by, ["channel"]);
+    assert.deepEqual(pendingSaleGroupArgs?._count, { _all: true });
     assert.deepEqual(productProfitGroupArgs?.by, [
       "channel",
       "sourceType",

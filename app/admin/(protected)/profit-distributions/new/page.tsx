@@ -5,6 +5,7 @@ import { PieChart } from "lucide-react";
 import NavLink from "@/components/shared/NavLink";
 import type { SelectOption } from "@/components/shared/SearchableSelect";
 import { db } from "@/lib/db";
+import { getMarketplaceChannelConfig } from "@/lib/marketplace/config";
 import { buildDistributionPreview, listSelectablePeriods } from "@/lib/profit-distribution";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateOnlyForInput, getThailandDateKey } from "@/lib/th-date";
@@ -53,6 +54,18 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
     id: account.id,
     label: `${account.code} ${account.name}`,
   }));
+  const pendingSettlement = {
+    billCount: preview.pendingChannelFees.pendingSaleCount,
+    totalAmount: preview.pendingChannelFees.pendingSalesAmount,
+    channels: preview.pendingChannelFees.byChannel
+      .filter((row) => row.pendingSaleCount > 0)
+      .map((row) => ({
+        channel: row.channel,
+        label: getMarketplaceChannelConfig(row.channel).label,
+        billCount: row.pendingSaleCount,
+        amount: row.pendingSalesAmount,
+      })),
+  };
 
   return (
     <div className="space-y-5">
@@ -71,23 +84,33 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
         </div>
       </div>
 
-      {preview.pendingChannelFees.pendingSalesAmount > 0 ? (
+      {pendingSettlement.billCount > 0 ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-400/30 dark:bg-amber-500/10">
           <p className="font-medium text-amber-900 dark:text-amber-100">
-            งวดนี้ยังมีค่าธรรมเนียมช่องทางขายที่ยังไม่รับรู้ ประมาณ{" "}
-            {preview.pendingChannelFees.estimatedPendingFee.toLocaleString("th-TH", {
+            งวดนี้ยังมี {pendingSettlement.billCount.toLocaleString("th-TH")} บิลที่ยังไม่ได้กระทบยอด
+            รวมเป็นเงิน {pendingSettlement.totalAmount.toLocaleString("th-TH", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
-            })}{" "}
-            บาท
+            })} บาท
           </p>
-          <p className="mt-1 text-amber-800 dark:text-amber-200">
-            มียอดขายออนไลน์{" "}
-            {preview.pendingChannelFees.pendingSalesAmount.toLocaleString("th-TH", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            })}{" "}
-            บาท ที่แพลตฟอร์มยังไม่โอน ค่าธรรมเนียมจะถูกบันทึกย้อนกลับมาที่วันขายเมื่อกระทบยอด
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {pendingSettlement.channels.map((row) => (
+              <div
+                key={row.channel}
+                className="rounded-lg border border-amber-200 bg-white/70 px-3 py-2 text-amber-900 dark:border-amber-400/20 dark:bg-black/10 dark:text-amber-100"
+              >
+                <p className="font-medium">{row.label}</p>
+                <p>
+                  {row.billCount.toLocaleString("th-TH")} บิล · {row.amount.toLocaleString("th-TH", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })} บาท
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-amber-800 dark:text-amber-200">
+            ค่าธรรมเนียมจะถูกบันทึกย้อนกลับมาที่วันขายเมื่อกระทบยอด
             ทำให้กำไรของงวดนี้ลดลงภายหลัง และส่วนต่างจะไปโผล่เป็นยอดยกมาของงวดถัดไป —
             แนะนำให้กระทบยอดรับเงินให้ครบก่อนประกาศแบ่งกำไร
           </p>
@@ -131,6 +154,7 @@ export default async function NewProfitDistributionPage({ searchParams }: PagePr
           periodKey: period.periodKey,
           label: period.label,
         }))}
+        pendingSettlement={pendingSettlement}
       />
     </div>
   );

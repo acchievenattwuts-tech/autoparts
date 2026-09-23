@@ -388,6 +388,8 @@ export type ChannelFeeRateEstimate = {
   sampleSettlementCount: number;
   /** ยอดขายในงวดที่ยังไม่ถูกกระทบยอด — ค่าธรรมเนียมของก้อนนี้ยังไม่เข้ากำไร */
   pendingSalesAmount: number;
+  /** จำนวนบิลขายในงวดที่ยังไม่ถูกกระทบยอด */
+  pendingSaleCount: number;
   /** ประมาณการค่าธรรมเนียมที่จะย้อนกลับมาลดกำไรของงวดนี้เมื่อแพลตฟอร์มโอนเงิน */
   estimatedPendingFee: number;
   /** อัตราและยอดค้างแยกช่องทาง เพื่อไม่ใช้ค่าเฉลี่ยรวมข้าม Shopee / Lazada */
@@ -395,6 +397,7 @@ export type ChannelFeeRateEstimate = {
     channel: ManualMarketplaceChannel;
     averageFeeRate: number;
     sampleSettlementCount: number;
+    pendingSaleCount: number;
     pendingSalesAmount: number;
     estimatedPendingFee: number;
   }>;
@@ -426,6 +429,7 @@ export async function estimatePendingChannelFees(
         saleDate: { gte: start, lte: end },
         marketplaceSettlementLines: { none: { activeSaleId: { not: null } } },
       },
+      _count: { _all: true },
       _sum: { netAmount: true },
     }),
   ]);
@@ -443,6 +447,7 @@ export async function estimatePendingChannelFees(
       channel,
       averageFeeRate,
       sampleSettlementCount: settled?._count._all ?? 0,
+      pendingSaleCount: pending?._count._all ?? 0,
       pendingSalesAmount,
       estimatedPendingFee: pendingSalesAmount * averageFeeRate,
     };
@@ -457,11 +462,13 @@ export async function estimatePendingChannelFees(
     0,
   );
   const averageFeeRate = settledSales > 0 ? settledFees / settledSales : 0;
+  const pendingSaleCount = byChannel.reduce((sum, row) => sum + row.pendingSaleCount, 0);
   const pendingSalesAmount = byChannel.reduce((sum, row) => sum + row.pendingSalesAmount, 0);
 
   return {
     averageFeeRate,
     sampleSettlementCount: byChannel.reduce((sum, row) => sum + row.sampleSettlementCount, 0),
+    pendingSaleCount,
     pendingSalesAmount,
     estimatedPendingFee: byChannel.reduce((sum, row) => sum + row.estimatedPendingFee, 0),
     byChannel,
