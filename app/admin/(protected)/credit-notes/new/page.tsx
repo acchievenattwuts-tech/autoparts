@@ -33,7 +33,7 @@ const NewCreditNotePage = async () => {
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบลดหนี้ (Credit Note)</h1>
       <CreditNoteForm
         products={[]}
-        customers={customers}
+        customers={customers.map((customer) => ({ id: customer.id, name: customer.name, isActive: customer.isActive }))}
         cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}

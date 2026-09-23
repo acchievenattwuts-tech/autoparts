@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createExpense, updateExpense } from "../actions";
-import { uploadExpenseAttachments } from "../attachment-actions";
+import { uploadExpenseAttachmentsSequentially } from "../upload-attachments-sequentially";
 import ExpenseAttachmentPicker from "@/components/shared/ExpenseAttachmentPicker";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
@@ -128,12 +128,10 @@ const NewExpenseForm = ({
   /** Uploads the picked evidence files once the expense document exists. */
   const uploadPendingAttachments = async (expenseId: string): Promise<string | null> => {
     if (attachmentFiles.length === 0) return null;
-    const attachmentData = new FormData();
-    for (const file of attachmentFiles) attachmentData.append("files", file);
-    const res = await uploadExpenseAttachments(expenseId, attachmentData);
-    if (res.error) return res.error;
-    setAttachmentFiles([]);
-    return null;
+    const { uploadedCount, error } = await uploadExpenseAttachmentsSequentially(expenseId, attachmentFiles);
+    // Drop the files that already made it, so a retry never uploads them twice.
+    setAttachmentFiles(attachmentFiles.slice(uploadedCount));
+    return error;
   };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

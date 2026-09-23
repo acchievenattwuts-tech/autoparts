@@ -11,7 +11,7 @@ import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
@@ -27,7 +27,14 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
-import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
+import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
+import {
+  CreditNoteNotActiveError,
+  creditNoteUnitKey,
+  dropLotRowsUnlessReturn,
+  loadCreditNoteLineRefs,
+  lockActiveCreditNote,
+} from "./credit-note-action-helpers";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import {
   getTransactionProductDetailRowsByIds,
@@ -170,12 +177,18 @@ export async function searchCreditNoteCustomers(query: string) {
   }));
 }
 
+/** Empty, or a real YYYY-MM-DD date — lot MFG/EXP dates are optional. */
+const optionalDateOnly = z
+  .string()
+  .default("")
+  .refine((value) => value === "" || isDateOnlyString(value), "รูปแบบวันที่ของ Lot ไม่ถูกต้อง");
+
 const lotSubRowSchema = z.object({
-  lotNo:       z.string().min(1).max(100),
+  lotNo:       z.string().min(1, "กรุณาระบุเลข Lot").max(100),
   qty:         z.coerce.number().positive(),
   unitCost:    z.coerce.number().min(0),
-  mfgDate:     z.string().default(""),
-  expDate:     z.string().default(""),
+  mfgDate:     optionalDateOnly,
+  expDate:     optionalDateOnly,
   isReturnLot: z.coerce.boolean().default(false),
 });
 
@@ -194,7 +207,10 @@ const cnItemSchema = z.object({
 });
 
 const cnSchema = z.object({
-  cnDate:         z.string().min(1, "กรุณาระบุวันที่"),
+  cnDate:         z
+    .string()
+    .min(1, "กรุณาระบุวันที่")
+    .refine(isDateOnlyString, "รูปแบบวันที่ไม่ถูกต้อง"),
   customerId:     z.string().min(1, "กรุณาเลือกลูกค้า").max(50),
   customerName:   z.string().max(100).optional(),
   saleId:         z.string().max(50).optional(),
@@ -563,7 +579,7 @@ export async function createCreditNote(
     note:           formData.get("note") || undefined,
     vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:        formData.get("vatRate") || 0,
-    items,
+    items: dropLotRowsUnlessReturn(items, formData.get("type")),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -659,18 +675,20 @@ export async function createCreditNote(
       return { error: "รายการคืนต้องตัดเงินจากบัญชีพักเงินเดียวกับใบขายต้นทาง" };
     }
   }
-  const docDate = parseDateOnlyToDate(cnDate);
-  const cnNo    = await generateCNNo(docDate);
-  const carrierExpenseDate = carrierExpense.expenseDate
-    ? parseDateOnlyToDate(carrierExpense.expenseDate)
-    : null;
-  const carrierExpenseNo =
-    carrierExpense.amount > 0 && carrierExpenseDate
-      ? await generateExpenseNo(carrierExpenseDate)
-      : null;
   let createdCreditNoteId = "";
 
   try {
+    // Document numbers are generated inside the try so a DB failure here returns
+    // a Thai error instead of an unhandled Server Action exception.
+    const docDate = parseDateOnlyToDate(cnDate);
+    const cnNo    = await generateCNNo(docDate);
+    const carrierExpenseDate = carrierExpense.expenseDate
+      ? parseDateOnlyToDate(carrierExpense.expenseDate)
+      : null;
+    const carrierExpenseNo =
+      carrierExpense.amount > 0 && carrierExpenseDate
+        ? await generateExpenseNo(carrierExpenseDate)
+        : null;
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
@@ -708,22 +726,20 @@ export async function createCreditNote(
       });
       createdCreditNoteId = cn.id;
 
+      // One lookup for every line's unit and product instead of two per line.
+      const lineRefs = await loadCreditNoteLineRefs(tx, validItems);
+
       // Process each line item
       for (const [itemIndex, item] of validItems.entries()) {
         // Get unit scale
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = lineRefs.unitByKey.get(creditNoteUnitKey(item.productId, item.unitName));
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
         const scale     = Number(unit.scale);
         const qtyInBase = item.qty * scale;
         const itemTotal = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { inventoryTracking: true, isLotControl: true },
-        });
+        const product = lineRefs.productById.get(item.productId);
         if (!product) throw new Error("Missing product");
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const isLotControl = isTracked && product.isLotControl;
@@ -1047,6 +1063,7 @@ export async function cancelCreditNote(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(cnId);
     await dbTx(async (tx) => {
+      await lockActiveCreditNote(tx, cnId);
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.CN_SALE, cnId);
 
@@ -1063,9 +1080,7 @@ export async function cancelCreditNote(
         }
         if (affectedProductIds.length > 0) {
           await tx.stockCard.deleteMany({ where: { docNo: cn.cnNo } });
-          for (const productId of affectedProductIds) {
-            await recalculateStockCard(tx, productId);
-          }
+          await recalculateStockCardMany(tx, affectedProductIds);
         }
       }
 
@@ -1097,6 +1112,7 @@ export async function cancelCreditNote(
     revalidatePath("/admin/credit-notes");
     return { success: true };
   } catch (err) {
+    if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };
     await reportCriticalError(err, { scope: "credit_notes.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1179,7 +1195,7 @@ export async function updateCreditNote(
     note:           formData.get("note") || undefined,
     vatType:        (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:        formData.get("vatRate") || 0,
-    items,
+    items: dropLotRowsUnlessReturn(items, formData.get("type")),
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
@@ -1342,6 +1358,7 @@ export async function updateCreditNote(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockActiveCreditNote(tx, id);
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
       const resolvedSaleItemIds =
         type === CreditNoteType.RETURN && saleId
@@ -1379,9 +1396,7 @@ export async function updateCreditNote(
           });
         }
         if (oldHadStock) {
-          for (const productId of affectedProductIds) {
-            await recalculateStockCard(tx, productId);
-          }
+          await recalculateStockCardMany(tx, affectedProductIds);
         }
       } else {
         if (oldHadStock && oldProductIds.length > 0) {
@@ -1394,9 +1409,7 @@ export async function updateCreditNote(
             }
           }
           await tx.stockCard.deleteMany({ where: { docNo: existing.cnNo } });
-          for (const productId of oldProductIds) {
-            await recalculateStockCard(tx, productId);
-          }
+          await recalculateStockCardMany(tx, oldProductIds);
         }
         await tx.creditNoteItem.deleteMany({ where: { creditNoteId: id } });
       }
@@ -1467,20 +1480,18 @@ export async function updateCreditNote(
         ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], newIdx: a.newIdx }))
         : validItems.map((item, idx) => ({ item, newIdx: idx }));
 
+      // One lookup for every line's unit and product instead of two per line.
+      const lineRefs = await loadCreditNoteLineRefs(tx, itemsToCreate.map((entry) => entry.item));
+
       for (const { item, newIdx } of itemsToCreate) {
-        const unit = await tx.productUnit.findUnique({
-          where: { productId_name: { productId: item.productId, name: item.unitName } },
-        });
+        const unit = lineRefs.unitByKey.get(creditNoteUnitKey(item.productId, item.unitName));
         if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
         const scale     = Number(unit.scale);
         const qtyInBase = item.qty * scale;
         const itemTotal = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-          select: { inventoryTracking: true, isLotControl: true },
-        });
+        const product = lineRefs.productById.get(item.productId);
         if (!product) throw new Error("Missing product");
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const isLotControl = isTracked && product.isLotControl;
@@ -1617,6 +1628,9 @@ export async function updateCreditNote(
     revalidatePath("/admin/products");
     return { success: true };
   } catch (err) {
+    if (err instanceof CreditNoteNotActiveError) {
+      return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+    }
     await reportCriticalError(err, { scope: "credit_notes.update" });
     const returnError = getCreditNoteReturnError(err);
     if (returnError) return { error: returnError };

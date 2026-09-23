@@ -10,8 +10,13 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import {
+  getPurchasePaymentDisplayStatus,
+  PURCHASE_PAYMENT_STATUS_LABEL,
+  PURCHASE_PAYMENT_STATUS_TONE,
+} from "../purchase-payment-status";
 
 const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchases.view");
@@ -47,6 +52,13 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
 
   if (!purchase) notFound();
   const activityEvents = await getDocumentActivityTimeline("Purchase", purchase.id);
+  // Credit purchases (AP): show the stored credit term, due date, and outstanding balance read-only.
+  const showCreditPaymentInfo = purchase.purchaseType === "CREDIT_PURCHASE" && purchase.status === "ACTIVE";
+  const paymentStatus = getPurchasePaymentDisplayStatus(
+    purchase.purchaseType,
+    Number(purchase.netAmount),
+    Number(purchase.amountRemain),
+  );
 
   const purchaseTypeLabel: Record<PurchaseType, string> = {
     CASH_PURCHASE: "ซื้อสด",
@@ -166,6 +178,29 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                   : "-"}
               </p>
             </div>
+          )}
+          {showCreditPaymentInfo && (
+            <>
+              <div>
+                <p className="mb-0.5 text-gray-500 dark:text-slate-400">เครดิตเทอม / ครบกำหนด</p>
+                <p className="font-medium text-gray-900 dark:text-slate-100">
+                  {purchase.creditTerm != null
+                    ? `${purchase.creditTerm} วัน / ${formatDateThai(addThailandDays(purchase.purchaseDate, purchase.creditTerm))}`
+                    : "-"}
+                </p>
+              </div>
+              <div>
+                <p className="mb-0.5 text-gray-500 dark:text-slate-400">สถานะชำระ / ยอดค้างชำระ</p>
+                <p className="flex flex-wrap items-center gap-2 font-medium text-gray-900 dark:text-slate-100">
+                  <AdminStatusBadge tone={PURCHASE_PAYMENT_STATUS_TONE[paymentStatus]}>
+                    {PURCHASE_PAYMENT_STATUS_LABEL[paymentStatus]}
+                  </AdminStatusBadge>
+                  <span className="font-mono">
+                    {Number(purchase.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                  </span>
+                </p>
+              </div>
+            </>
           )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>

@@ -11,17 +11,61 @@ type DatePart =
 
 type DateInput = Date | string;
 
+// Constructing an Intl.DateTimeFormat is far more expensive than formatting with
+// one, and these helpers run per row in reports/exports. Formatters are
+// immutable, so each distinct locale+options set is built once and reused; the
+// options passed are exactly the ones used before, so output is unchanged.
+const datePartFormatters = new Map<DatePart, Intl.DateTimeFormat>();
+
 function getThailandDatePart(date: Date, part: DatePart): string {
-  return (
-    new Intl.DateTimeFormat("en-US", {
+  let formatter = datePartFormatters.get(part);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: THAILAND_TIME_ZONE,
       [part]: "numeric",
       hour12: false,
-    })
-      .formatToParts(date)
-      .find((item) => item.type === part)?.value ?? ""
-  );
+    });
+    datePartFormatters.set(part, formatter);
+  }
+  return formatter.formatToParts(date).find((item) => item.type === part)?.value ?? "";
 }
+
+const MAX_CACHED_DISPLAY_FORMATTERS = 64;
+const displayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+type FormatterOptionValue = string | number | boolean | undefined;
+
+/**
+ * Cache key for a display formatter, or null when an option value is not a
+ * plain primitive (then the caller builds a fresh formatter, as before).
+ * Undefined values are left out of the key: Intl treats an undefined option
+ * exactly like an absent one.
+ */
+function getDisplayFormatterKey(options: Intl.DateTimeFormatOptions): string | null {
+  const entries: [string, FormatterOptionValue][] = [];
+  for (const [key, value] of Object.entries(options) as [string, unknown][]) {
+    if (value === undefined) continue;
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") return null;
+    if (typeof value === "number" && !Number.isFinite(value)) return null;
+    entries.push([key, value]);
+  }
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify(entries);
+}
+
+function getThaiDisplayFormatter(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = getDisplayFormatterKey(options);
+  const cached = key === null ? undefined : displayFormatters.get(key);
+  if (cached) return cached;
+
+  const formatter = new Intl.DateTimeFormat("th-TH-u-ca-gregory", options);
+  if (key !== null && displayFormatters.size < MAX_CACHED_DISPLAY_FORMATTERS) {
+    displayFormatters.set(key, formatter);
+  }
+  return formatter;
+}
+
+let weekdayFormatter: Intl.DateTimeFormat | null = null;
 
 function toDate(value: DateInput): Date {
   return value instanceof Date ? value : new Date(value);
@@ -66,10 +110,11 @@ export function isThailandMonthEndDateKey(dayKey: string): boolean {
 }
 
 export function getThailandWeekdayIndex(value: DateInput): number {
-  const weekday = new Intl.DateTimeFormat("en-US", {
+  weekdayFormatter ??= new Intl.DateTimeFormat("en-US", {
     timeZone: THAILAND_TIME_ZONE,
     weekday: "short",
-  }).format(toDate(value));
+  });
+  const weekday = weekdayFormatter.format(toDate(value));
   return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
 }
 
@@ -128,7 +173,7 @@ export function formatDateThai(value: DateInput, options?: Intl.DateTimeFormatOp
         ...options,
       };
 
-  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", formatterOptions).format(toDate(value));
+  return getThaiDisplayFormatter(formatterOptions).format(toDate(value));
 }
 
 export function formatDateTimeThai(
@@ -152,5 +197,5 @@ export function formatDateTimeThai(
         ...options,
       };
 
-  return new Intl.DateTimeFormat("th-TH-u-ca-gregory", formatterOptions).format(toDate(value));
+  return getThaiDisplayFormatter(formatterOptions).format(toDate(value));
 }

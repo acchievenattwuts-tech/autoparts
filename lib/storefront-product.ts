@@ -13,6 +13,17 @@ const FITMENT_ORDER_BY: Prisma.ProductFitmentOrderByWithRelationInput[] = [
   { id: "asc" },
 ];
 
+/**
+ * "สินค้าใกล้เคียง" order, shared by the cached first batch and the live
+ * load-more pages. `stock`/`updatedAt` are not unique, so `id` makes it a total
+ * order — without it, skip/take could repeat or drop a product between pages.
+ */
+export const RELATED_PRODUCTS_ORDER_BY: Prisma.ProductOrderByWithRelationInput[] = [
+  { stock: "desc" },
+  { updatedAt: "desc" },
+  { id: "asc" },
+];
+
 export const getActiveStorefrontProductById = async (productId: string) => {
   return unstable_cache(
     // Retry once on a transient pooler drop so a background ISR revalidation does
@@ -128,7 +139,7 @@ export const getRelatedStorefrontProductsByCategory = async ({
             take: 6,
           },
         },
-        orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
+        orderBy: RELATED_PRODUCTS_ORDER_BY,
         take: 9,
       }),
     ),
@@ -189,7 +200,7 @@ export const getRelatedStorefrontProductsPaginated = async ({
       id: { not: currentProductId },
     },
     select: RELATED_SELECT,
-    orderBy: [{ stock: "desc" }, { updatedAt: "desc" }],
+    orderBy: RELATED_PRODUCTS_ORDER_BY,
     skip,
     take,
   });

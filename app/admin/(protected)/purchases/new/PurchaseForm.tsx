@@ -11,7 +11,7 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import PurchaseInvoiceUploader, { type AppliedOcrItem } from "./PurchaseInvoiceUploader";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
-import { getThailandDateKey } from "@/lib/th-date";
+import { formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 import {
   buildPurchaseDraft,
   getPurchaseDraftKey,
@@ -432,7 +432,7 @@ const PurchaseForm = ({
     <form onSubmit={handleSubmit} className="space-y-6">
       {availableDraft && (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-          <p>พบ draft ที่ยังไม่ได้บันทึกจริงจาก {new Date(availableDraft.updatedAt).toLocaleString("th-TH")}</p>
+          <p>พบ draft ที่ยังไม่ได้บันทึกจริงจาก {formatDateTimeThai(availableDraft.updatedAt)}</p>
           <div className="flex gap-2">
             <button
               type="button"
@@ -614,8 +614,10 @@ const PurchaseForm = ({
         </div>
       </div>
 
-      {/* AI invoice scan — new purchases only (edit form stays fully manual) */}
-      {!isEdit && (
+      {/* AI invoice scan — new purchases only (edit form stays fully manual).
+          Also hidden once this form has saved the purchase and switched to edit mode,
+          so a second invoice cannot be scanned into the already-saved document. */}
+      {!isEdit && !persistedPurchaseId && (
         <PurchaseInvoiceUploader
           existingProducts={productOptions}
           onApply={mergeOcrItems}

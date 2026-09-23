@@ -147,7 +147,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       )}
       <CreditNoteForm
         products={products}
-        customers={customers}
+        customers={customers.map((customer) => ({ id: customer.id, name: customer.name, isActive: customer.isActive }))}
         cashBankAccounts={cashBankAccounts}
         initialSales={initialSales}
         defaultVatType={config.vatType}

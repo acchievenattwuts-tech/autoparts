@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import SharedReceiptSettlementPrintDocument from "@/app/admin/_components/SharedReceiptSettlementPrintDocument";
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
@@ -168,19 +169,23 @@ export default async function LiffOrderReceiptPage({
     });
     if (!tokenAccess && liffCustomer) {
       const requestContext = await getRequestContext();
-      void safeWriteAuditLog({
-        ...requestContext,
-        action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
-        entityType: "Sale",
-        entityId: sale.id,
-        entityRef: sale.saleNo,
-        meta: {
-          customerId,
-          lineLinkedAt: liffCustomer.lineLinkedAt,
-          receiptSource: "cash_sale",
-          source: "LIFF",
-        },
-      });
+      // after(): on serverless the response can finish before a detached
+      // promise does; after() keeps the function alive until the audit is written.
+      after(() =>
+        safeWriteAuditLog({
+          ...requestContext,
+          action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
+          entityType: "Sale",
+          entityId: sale.id,
+          entityRef: sale.saleNo,
+          meta: {
+            customerId,
+            lineLinkedAt: liffCustomer.lineLinkedAt,
+            receiptSource: "cash_sale",
+            source: "LIFF",
+          },
+        }),
+      );
     }
 
     return (
@@ -276,20 +281,24 @@ export default async function LiffOrderReceiptPage({
   });
   if (!tokenAccess && liffCustomer) {
     const requestContext = await getRequestContext();
-    void safeWriteAuditLog({
-      ...requestContext,
-      action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
-      entityType: "Receipt",
-      entityId: receipt.id,
-      entityRef: receipt.receiptNo,
-      meta: {
-        customerId,
-        lineLinkedAt: liffCustomer.lineLinkedAt,
-        saleId: sale.id,
-        saleNo: sale.saleNo,
-        source: "LIFF",
-      },
-    });
+    // after(): on serverless the response can finish before a detached
+    // promise does; after() keeps the function alive until the audit is written.
+    after(() =>
+      safeWriteAuditLog({
+        ...requestContext,
+        action: AuditAction.CUSTOMER_VIEW_RECEIPT_PDF,
+        entityType: "Receipt",
+        entityId: receipt.id,
+        entityRef: receipt.receiptNo,
+        meta: {
+          customerId,
+          lineLinkedAt: liffCustomer.lineLinkedAt,
+          saleId: sale.id,
+          saleNo: sale.saleNo,
+          source: "LIFF",
+        },
+      }),
+    );
   }
 
   return (

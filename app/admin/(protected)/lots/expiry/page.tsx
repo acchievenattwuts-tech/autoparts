@@ -5,6 +5,13 @@ import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { addThailandDays, getThailandDateKey, parseDateOnlyToDate, formatDateThai } from "@/lib/th-date";
 import Pagination from "@/components/shared/Pagination";
+import {
+  chunkLotKeys,
+  compareLotsByExpiry,
+  groupLotKeysByProduct,
+  lotKeyOf,
+  pageSlice,
+} from "../lot-report-query";
 
 const LOT_PAGE_SIZE = 50;
 
@@ -56,71 +63,79 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
           return addThailandDays(today, parseInt(days, 10));
         })();
 
-  const productLots = await db.productLot.findMany({
-    where: {
-      expDate: {
-        not: null,
-        ...(thresholdDate ? { lte: thresholdDate } : {}),
-      },
-    },
-    include: {
-      product: {
-        select: {
-          name: true,
-          code: true,
-          reportUnitName: true,
-          units: { select: { name: true, scale: true, isBase: true } },
-        },
-      },
-    },
-    orderBy: { expDate: "asc" },
-    take: 300,
+  // Start from lots that still have stock, THEN look up their expiry. Filtering
+  // ProductLot first (with a row cap) let sold-out lots — which are never
+  // deleted — use up the cap and silently hide lots that still have stock.
+  const lotBalances = await db.lotBalance.findMany({
+    where: { qtyOnHand: { gt: 0 } },
+    select: { productId: true, lotNo: true, qtyOnHand: true },
   });
-
-  const keys = productLots.map((productLot) => ({
-    productId: productLot.productId,
-    lotNo: productLot.lotNo,
-  }));
-  const lotBalances =
-    keys.length > 0
-      ? await db.lotBalance.findMany({
-          where: { OR: keys, qtyOnHand: { gt: 0 } },
-          select: { productId: true, lotNo: true, qtyOnHand: true },
-        })
-      : [];
   const lotBalanceMap = new Map(
-    lotBalances.map((lotBalance) => [
-      `${lotBalance.productId}:${lotBalance.lotNo}`,
-      Number(lotBalance.qtyOnHand),
-    ]),
+    lotBalances.map((lotBalance) => [lotKeyOf(lotBalance), Number(lotBalance.qtyOnHand)]),
   );
 
-  const rows = productLots
-    .map((productLot) => {
-      const balance = lotBalanceMap.get(`${productLot.productId}:${productLot.lotNo}`);
-      if (balance == null || balance <= 0) {
-        return null;
+  const matchedLots: { productId: string; lotNo: string; expDate: Date }[] = [];
+  for (const keyChunk of chunkLotKeys(lotBalances)) {
+    const chunkLots = await db.productLot.findMany({
+      where: {
+        OR: groupLotKeysByProduct(keyChunk),
+        expDate: {
+          not: null,
+          ...(thresholdDate ? { lte: thresholdDate } : {}),
+        },
+      },
+      select: { productId: true, lotNo: true, expDate: true },
+    });
+    for (const productLot of chunkLots) {
+      if (productLot.expDate) {
+        matchedLots.push({ productId: productLot.productId, lotNo: productLot.lotNo, expDate: productLot.expDate });
       }
+    }
+  }
+  matchedLots.sort(compareLotsByExpiry);
 
-      const reportUnit = resolveReportUnit({
-        reportUnitName: productLot.product.reportUnitName,
-        units: productLot.product.units,
-      });
-      const daysUntil = Math.ceil(
-        (productLot.expDate!.getTime() - today.getTime()) / 86_400_000,
-      );
+  const totalRows = matchedLots.length;
+  const totalPages = Math.ceil(totalRows / LOT_PAGE_SIZE);
+  const pagedLots = pageSlice(matchedLots, page, LOT_PAGE_SIZE);
 
-      return {
-        productLot,
+  const pageProductIds = [...new Set(pagedLots.map((lot) => lot.productId))];
+  const pageProducts =
+    pageProductIds.length > 0
+      ? await db.product.findMany({
+          where: { id: { in: pageProductIds } },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            reportUnitName: true,
+            units: { select: { name: true, scale: true, isBase: true } },
+          },
+        })
+      : [];
+  const productMap = new Map(pageProducts.map((product) => [product.id, product]));
+
+  const pagedRows = pagedLots.flatMap((lot) => {
+    const product = productMap.get(lot.productId);
+    const balance = lotBalanceMap.get(lotKeyOf(lot));
+    if (!product || balance == null || balance <= 0) {
+      return [];
+    }
+
+    const reportUnit = resolveReportUnit({
+      reportUnitName: product.reportUnitName,
+      units: product.units,
+    });
+    const daysUntil = Math.ceil((lot.expDate.getTime() - today.getTime()) / 86_400_000);
+
+    return [
+      {
+        productLot: { ...lot, product },
         daysUntil,
         unitName: reportUnit.unitName,
         qtyOnHand: toReportUnitQty(balance, reportUnit.scale),
-      };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
-
-  const totalPages = Math.ceil(rows.length / LOT_PAGE_SIZE);
-  const pagedRows = rows.slice((page - 1) * LOT_PAGE_SIZE, page * LOT_PAGE_SIZE);
+      },
+    ];
+  });
 
   return (
     <div className="space-y-4">
@@ -148,8 +163,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
       </form>
 
       <p className="text-sm text-muted-foreground">
-        พบ {rows.length} รายการที่มีสต็อกคงเหลือ
-        {rows.length >= 300 ? " (จำกัด 300 รายการ)" : ""}
+        พบ {totalRows} รายการที่มีสต็อกคงเหลือ
       </p>
 
       <div className="flex flex-wrap gap-3 text-xs">
@@ -181,7 +195,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {rows.length === 0 && (
+            {totalRows === 0 && (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   ไม่พบ lot ที่ตรงเงื่อนไข
@@ -204,7 +218,7 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
                   })}
                 </td>
                 <td className="px-4 py-2.5 tabular-nums">
-                    {formatDateThai(productLot.expDate!)}
+                    {formatDateThai(productLot.expDate)}
                 </td>
                 <td className="px-4 py-2.5 text-center">
                   <span

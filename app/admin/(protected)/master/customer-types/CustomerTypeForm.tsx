@@ -10,6 +10,7 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { submitFormData } from "../submit-form-data";
 
 type CustomerTypeRow = Pick<
   CustomerType,
@@ -48,6 +49,7 @@ const CustomerTypeRowEditor = ({
   canCancel,
   isBusy,
   onToggle,
+  toggleError,
   priceLists,
 }: {
   item: CustomerTypeRow;
@@ -55,6 +57,7 @@ const CustomerTypeRowEditor = ({
   canCancel: boolean;
   isBusy: boolean;
   onToggle: (id: string, currentActive: boolean) => void;
+  toggleError?: string;
   priceLists: PriceListOption[];
 }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -80,7 +83,7 @@ const CustomerTypeRowEditor = ({
       <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={5} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
-          <form action={handleUpdate} className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <form onSubmit={(event) => submitFormData(event, handleUpdate)} className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="flex-1">
               <input
                 type="text"
@@ -195,6 +198,7 @@ const CustomerTypeRowEditor = ({
             </>
           )}
         </AdminActionGroup>
+        {toggleError && <p role="alert" className="mt-1 text-xs text-red-500 dark:text-red-300">{toggleError}</p>}
       </td>
     </tr>
   );
@@ -205,6 +209,7 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<{ id: string; message: string } | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError("");
@@ -216,9 +221,11 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
   };
 
   const handleToggle = (id: string, currentActive: boolean) => {
+    setToggleError(null);
     setTogglingId(id);
     startTransition(async () => {
-      await toggleCustomerType(id, !currentActive);
+      const result = await toggleCustomerType(id, !currentActive);
+      if (result.error) setToggleError({ id, message: result.error });
       setTogglingId(null);
     });
   };
@@ -227,7 +234,7 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
     <div className="space-y-6">
       {canCreate && (
         <AdminSectionCard title="เพิ่มประเภทลูกค้าใหม่">
-          <form ref={formRef} action={handleCreate}>
+          <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex-1">
                 <input
@@ -306,6 +313,7 @@ const CustomerTypeForm = ({ customerTypes, priceLists, canCreate, canUpdate, can
                   canCancel={canCancel}
                   isBusy={togglingId === item.id || isPending}
                   onToggle={handleToggle}
+                  toggleError={toggleError?.id === item.id ? toggleError.message : undefined}
                   priceLists={priceLists}
                 />
               ))}

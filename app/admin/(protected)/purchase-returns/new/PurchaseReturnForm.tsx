@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts } from "../actions";
@@ -128,6 +128,8 @@ const PurchaseReturnForm = ({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // True once the document is saved; keeps the submit button disabled until the redirect lands.
+  const [submitted, setSubmitted] = useState(false);
   const [supplierId, setSupplierId] = useState(seedData?.supplierId ?? "");
   const [selectedSupplierOption, setSelectedSupplierOption] = useState<SelectOption | null>(
     supplierId
@@ -171,7 +173,22 @@ const PurchaseReturnForm = ({
     setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
   };
 
+  // Set when the user declines the "clear items" confirmation, so the option the
+  // SearchableSelect reports right after onChange is not shown as selected.
+  const supplierChangeDeclinedRef = useRef(false);
+
   const handleSupplierChange = async (id: string) => {
+    supplierChangeDeclinedRef.current = false;
+    // Re-selecting the current supplier changes nothing, so keep the entered lines.
+    if (id === supplierId) return;
+    const hasEnteredItems = items.some((item) => item.productId);
+    if (
+      hasEnteredItems &&
+      !window.confirm("เปลี่ยนซัพพลายเออร์จะล้างรายการสินค้าที่กรอกไว้ทั้งหมด ต้องการดำเนินการต่อหรือไม่?")
+    ) {
+      supplierChangeDeclinedRef.current = true;
+      return;
+    }
     setSupplierId(id);
     if (!id) setSelectedSupplierOption(null);
     setPurchaseId("");
@@ -204,6 +221,14 @@ const PurchaseReturnForm = ({
     detail.items.forEach((item, index) => {
       if (item.lotItems.length > 0) void loadLots(index, item.productId);
     });
+  };
+
+  const handleSupplierOptionSelect = (option: SelectOption) => {
+    if (supplierChangeDeclinedRef.current) {
+      supplierChangeDeclinedRef.current = false;
+      return;
+    }
+    setSelectedSupplierOption(option);
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
@@ -362,6 +387,8 @@ const PurchaseReturnForm = ({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Already saved and waiting for the redirect: never submit the same document twice.
+    if (submitted) return;
     setError("");
     setSuccess("");
 
@@ -425,12 +452,16 @@ const PurchaseReturnForm = ({
       if (isEdit && initialData) {
         const result = await updatePurchaseReturn(initialData.id, formData);
         if (result.error) setError(result.error);
-        else router.push("/admin/purchase-returns");
+        else {
+          setSubmitted(true);
+          router.push("/admin/purchase-returns");
+        }
       } else {
         const result = await createPurchaseReturn(formData);
         if (result.error) {
           setError(result.error);
         } else {
+          setSubmitted(true);
           setSuccess(`บันทึกสำเร็จ เลขที่คืนสินค้า: ${result.returnNo}`);
           setTimeout(() => router.push("/admin/purchase-returns"), 1500);
         }
@@ -494,7 +525,7 @@ const PurchaseReturnForm = ({
               options={suppliers.map((supplier): SelectOption => ({ id: supplier.id, label: supplier.name, disabled: supplier.isActive === false }))}
               value={supplierId}
               onChange={handleSupplierChange}
-              onOptionSelect={setSelectedSupplierOption}
+              onOptionSelect={handleSupplierOptionSelect}
               selectedOption={selectedSupplierOption}
               placeholder="โปรดระบุผู้จำหน่าย"
             />
@@ -882,7 +913,7 @@ const PurchaseReturnForm = ({
         </button>
         <button
           type="submit"
-          disabled={isPending || submitLocked}
+          disabled={isPending || submitLocked || submitted}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60 dark:bg-orange-600 dark:hover:bg-orange-500 dark:disabled:bg-orange-900/50"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึกการคืนสินค้า"}

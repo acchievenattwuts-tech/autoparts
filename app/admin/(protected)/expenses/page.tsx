@@ -22,6 +22,8 @@ import {
 } from "@/lib/th-date";
 
 const PAGE_SIZE = 30;
+/** Status filter values the page accepts; "" means every status (ทั้งหมด). */
+const EXPENSE_STATUS_FILTERS = new Set(["ACTIVE", "CANCELLED", ""]);
 /* Filter row tokens copied from the products filter (ProductFilterForm) — see the
    note on the row markup below for why the row must be an inner div. */
 const FILTER_CONTROL = "rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
@@ -43,6 +45,9 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const from = fromParam ?? "";
   const to = toParam ?? "";
+  // Same default as the dropdown: no status param = only ACTIVE documents.
+  // Unknown values fall back to ACTIVE instead of reaching the Prisma enum filter.
+  const statusFilter = status !== undefined && EXPENSE_STATUS_FILTERS.has(status) ? status : "ACTIVE";
 
   const dateFilter = (from || to)
     ? {
@@ -56,7 +61,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   const whereCondition = {
     AND: [
       dateFilter,
-      status ? { status: status as "ACTIVE" | "CANCELLED" } : {},
+      statusFilter ? { status: statusFilter as "ACTIVE" | "CANCELLED" } : {},
       q
         ? {
             OR: [
@@ -113,7 +118,8 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
 
   const paginationParams: Record<string, string> = {};
   if (q) paginationParams.q = q;
-  if (status) paginationParams.status = status;
+  // Keep "" (ทั้งหมด) and CANCELLED across pages; ACTIVE is the default.
+  if (statusFilter !== "ACTIVE") paginationParams.status = statusFilter;
   if (from) paginationParams.from = from;
   if (to) paginationParams.to = to;
 
@@ -171,13 +177,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
               <span className="text-gray-400 dark:text-slate-500">–</span>
               <input type="date" name="to" defaultValue={to} className={`w-[150px] ${FILTER_CONTROL}`} />
             </div>
-            <select name="status" defaultValue={status ?? "ACTIVE"} className={`shrink-0 ${FILTER_CONTROL}`}>
+            <select name="status" defaultValue={statusFilter} className={`shrink-0 ${FILTER_CONTROL}`}>
               <option value="ACTIVE">เฉพาะที่ใช้งาน</option>
               <option value="CANCELLED">เฉพาะที่ยกเลิก</option>
               <option value="">ทั้งหมด</option>
             </select>
             <AdminSearchSubmitButton className={FILTER_SUBMIT}>ค้นหา</AdminSearchSubmitButton>
-            {(q || from || to || (status && status !== "ACTIVE")) && (
+            {(q || from || to || statusFilter !== "ACTIVE") && (
               <Link href="/admin/expenses" className={FILTER_CLEAR}>
                 ล้าง
               </Link>

@@ -1,6 +1,6 @@
-import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import OgImageTemplate from "@/components/seo/OgImageTemplate";
+import { renderOgCard, stripOgEmoji } from "@/lib/og-render";
 import { extractProductIdFromSlug } from "@/lib/product-slug";
 import {
   buildStorefrontProductDescription,
@@ -20,7 +20,7 @@ interface Props {
   }>;
 }
 
-export default async function OpenGraphImage({ params }: Props) {
+export default async function OpenGraphImage({ params }: Props): Promise<Response> {
   const { productSlug } = await params;
   const productId = extractProductIdFromSlug(productSlug);
 
@@ -34,15 +34,16 @@ export default async function OpenGraphImage({ params }: Props) {
     notFound();
   }
 
-  return new ImageResponse(
+  // Same shared renderer as the canonical /product/[slug] card (lib/og-render.tsx).
+  return renderOgCard(
     (
       <OgImageTemplate
-        eyebrow={product.category.name}
-        title={product.name}
-        description={buildStorefrontProductDescription(product)}
-        meta={product.brand?.name || product.code}
+        eyebrow={stripOgEmoji(product.category.name)}
+        title={stripOgEmoji(product.name)}
+        description={stripOgEmoji(buildStorefrontProductDescription(product))}
+        meta={stripOgEmoji(product.brand?.name || product.code)}
       />
     ),
-    size,
+    "opengraph-image:legacy-product",
   );
 }

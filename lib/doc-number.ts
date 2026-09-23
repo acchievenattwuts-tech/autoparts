@@ -3,6 +3,23 @@ import { db } from "@/lib/db";
 import { getThailandDateKey } from "@/lib/th-date";
 
 /**
+ * Serialize allocation of one monthly sequence (e.g. "ADJ2609") until the
+ * caller's transaction ends. A generator that receives `tx` takes this lock and
+ * reads the last number through the same transaction, so two concurrent saves
+ * wait for each other instead of computing the same number and failing on the
+ * unique constraint. The number produced is exactly the one a serial save
+ * would get — only the allocation is serialized, the format is unchanged.
+ * $executeRaw (not $queryRaw): pg_advisory_xact_lock() returns void (see
+ * generateSalesQuotationNo).
+ */
+async function lockDocNumberSequence(
+  tx: Prisma.TransactionClient,
+  pattern: string,
+): Promise<void> {
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${pattern}))`);
+}
+
+/**
  * Generate document number: {PREFIX}{YYMM}{4-digit sequence}
  * Format: SA2603001 = SA prefix, year 2026, month 03, sequence 0001
  * Sequence resets every month (counts only records with same PREFIX+YYMM pattern)
@@ -27,12 +44,16 @@ export async function generateDocNo(prefix: string, date?: Date,
  * Because cancelled BFs delete their StockCard rows but keep the BalanceForward record.
  * Format: BF{YYMM}{4-digit}
  */
-export async function generateBFNo(date?: Date): Promise<string> {
+export async function generateBFNo(
+  date?: Date,
+  tx?: Prisma.TransactionClient,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
   const pattern = `BF${yy}${mm}`;
-  const last = await db.balanceForward.findFirst({
+  if (tx) await lockDocNumberSequence(tx, pattern);
+  const last = await (tx ?? db).balanceForward.findFirst({
     where: { docNo: { startsWith: pattern } },
     orderBy: { docNo: "desc" },
     select: { docNo: true },
@@ -260,12 +281,16 @@ export async function generateCNNo(date?: Date): Promise<string> {
  * Generate adjustment number using Adjustment table
  * Format: ADJ{YYMM}{4-digit}
  */
-export async function generateAdjNo(date?: Date): Promise<string> {
+export async function generateAdjNo(
+  date?: Date,
+  tx?: Prisma.TransactionClient,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
   const pattern = `ADJ${yy}${mm}`;
-  const last = await db.adjustment.findFirst({
+  if (tx) await lockDocNumberSequence(tx, pattern);
+  const last = await (tx ?? db).adjustment.findFirst({
     where: { adjustNo: { startsWith: pattern } },
     orderBy: { adjustNo: "desc" },
     select: { adjustNo: true },

@@ -147,6 +147,44 @@ const refreshSearchSynonymCaches = () => {
   revalidatePath(SEARCH_SYNONYM_ADMIN_PATH);
 };
 
+const PRODUCT_OPTION_SEARCH_LIMIT = 50;
+const productOptionQuerySchema = z.string().trim().min(2).max(100);
+
+export type ProductCodeOption = { id: string; label: string; sublabel?: string };
+
+/**
+ * Server-side product picker search for the review Sheet (SearchableSelect
+ * `searchOptions`). Matches code or name like the old client-side filter did,
+ * but over every active product instead of the first 500 by code.
+ */
+export async function searchProductCodeOptions(query: string): Promise<ProductCodeOption[]> {
+  const session = await requirePermission("product_search_report.view").catch(() => null);
+  if (!session?.user?.id) return [];
+
+  const parsed = productOptionQuerySchema.safeParse(query);
+  if (!parsed.success) return [];
+  const term = parsed.data;
+
+  try {
+    const products = await db.product.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { code: { contains: term, mode: "insensitive" } },
+          { name: { contains: term, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { code: "asc" },
+      take: PRODUCT_OPTION_SEARCH_LIMIT,
+      select: { code: true, name: true },
+    });
+    return products.map((product) => ({ id: product.code, label: product.code, sublabel: product.name }));
+  } catch (error) {
+    console.error("[product-search-quality] product option search failed", error);
+    return [];
+  }
+}
+
 async function getSearchSynonymSnapshot(id: string) {
   return db.searchSynonym.findUnique({
     where: { id },
@@ -171,8 +209,8 @@ async function getReviewOutcomeSnapshot(normalizedQuery: string, candidateAction
   });
 }
 
-async function getBaselineMetricsSnapshot(normalizedQuery: string, reviewedAt: Date) {
-  const logs = await db.productSearchLog.findMany({
+async function getBaselineLogs(reviewedAt: Date) {
+  return db.productSearchLog.findMany({
     where: {
       resultCount: { lte: LOW_RESULT_SEARCH_THRESHOLD },
       createdAt: { lte: reviewedAt },
@@ -181,8 +219,12 @@ async function getBaselineMetricsSnapshot(normalizedQuery: string, reviewedAt: D
     take: 1000,
     select: { query: true, resultCount: true, source: true, createdAt: true, hitCount: true },
   });
+}
 
-  return findProductSearchQualityMetrics(logs, normalizedQuery);
+type BaselineLogRow = Awaited<ReturnType<typeof getBaselineLogs>>[number];
+
+async function getBaselineMetricsSnapshot(normalizedQuery: string, reviewedAt: Date) {
+  return findProductSearchQualityMetrics(await getBaselineLogs(reviewedAt), normalizedQuery);
 }
 
 async function upsertReviewOutcome({
@@ -530,16 +572,30 @@ export async function autoApplySearchSynonymCandidates(formData: FormData): Prom
   // Pre-fetch outcome before-snapshots and baselines OUTSIDE the transaction.
   // Baseline computation reads up to 1000 rows from ProductSearchLog and must
   // not run inside the tx (would exhaust the tx timeout under load).
+  // One query each instead of per-candidate round trips: the before-snapshots
+  // are the same full rows findUnique returned, and the baseline log window does
+  // not depend on the candidate (only on reviewedAt, fixed for the whole batch),
+  // so it is read once and filtered per query in memory.
   const reviewedAt = new Date();
   const outcomeBeforeMap = new Map<string, Awaited<ReturnType<typeof getReviewOutcomeSnapshot>>>();
   const baselineByKey = new Map<string, ProductSearchQualityMetrics | null>();
+  const outcomeRowsBefore = await db.productSearchReviewOutcome.findMany({
+    where: {
+      OR: validatedPlan.map(({ item }) => ({
+        normalizedQuery: item.normalizedQuery,
+        candidateAction: "search-synonym",
+      })),
+    },
+  });
+  const outcomeRowByQuery = new Map(outcomeRowsBefore.map((row) => [row.normalizedQuery, row]));
+  let baselineLogs: BaselineLogRow[] | null = null;
   for (const { item } of validatedPlan) {
     const key = `${item.normalizedQuery} search-synonym`;
-    const outcome = await getReviewOutcomeSnapshot(item.normalizedQuery, "search-synonym");
+    const outcome = outcomeRowByQuery.get(item.normalizedQuery) ?? null;
     outcomeBeforeMap.set(key, outcome);
     if (!outcome?.baselineCount) {
-      const baseline = await getBaselineMetricsSnapshot(item.normalizedQuery, reviewedAt);
-      baselineByKey.set(key, baseline);
+      baselineLogs ??= await getBaselineLogs(reviewedAt);
+      baselineByKey.set(key, findProductSearchQualityMetrics(baselineLogs, item.normalizedQuery));
     }
   }
 

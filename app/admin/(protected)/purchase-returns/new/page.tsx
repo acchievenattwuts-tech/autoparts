@@ -93,7 +93,7 @@ const NewPurchaseReturnPage = async ({
   const claimUnitScale = claimPurchaseUnit ? Number(claimPurchaseUnit.scale) : 1;
   const initialPurchases = linkedClaim?.supplierId
     ? await db.purchase.findMany({
-        where: { supplierId: linkedClaim.supplierId },
+        where: { supplierId: linkedClaim.supplierId, status: "ACTIVE" },
         orderBy: { purchaseDate: "desc" },
         take: 200,
         select: { id: true, purchaseNo: true, purchaseDate: true },

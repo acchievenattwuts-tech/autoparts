@@ -117,6 +117,15 @@ function detectDailyQuota(body: string): boolean {
   return /per\s*day/i.test(body) || /PerDay/.test(body);
 }
 
+/**
+ * Gemini reports a bad/expired API key as HTTP 400 (reason API_KEY_INVALID),
+ * the same status it uses for a malformed request. Only the former is a
+ * key-health problem, so tell them apart by the error body.
+ */
+export function isGeminiInvalidKeyError(message: string): boolean {
+  return /API_KEY_INVALID|API key not valid|API key expired/i.test(message);
+}
+
 function extractText(payload: unknown): string {
   if (typeof payload !== "object" || payload === null) {
     return "";
@@ -230,10 +239,21 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
           await markGeminiKeyTransientError(key.keyRef, error.message);
           continue;
         }
-        if (error.status === 400 || error.status === 401 || error.status === 403) {
+        if (
+          error.status === 401 ||
+          error.status === 403 ||
+          (error.status === 400 && isGeminiInvalidKeyError(error.message))
+        ) {
           // Invalid / revoked / unauthorized key — stop using it until fixed.
           await markGeminiKeyDisabled(key.keyRef, error.message);
           continue;
+        }
+        if (error.status === 400 || error.status === 404) {
+          // Malformed request (bad image, unsupported option, prompt too large)
+          // or unknown model: every key would fail the same way and it is not a
+          // key-health problem. Abort without touching key state — mirrors the
+          // embedding path — so one bad request cannot disable the whole pool.
+          throw new AllGeminiKeysExhaustedError(`GEMINI_REQUEST_ERROR:${error.message}`);
         }
       }
 

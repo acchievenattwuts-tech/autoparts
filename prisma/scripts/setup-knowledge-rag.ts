@@ -128,6 +128,15 @@ CREATE TABLE IF NOT EXISTS knowledge_rag_gap_signals (
 );
 CREATE INDEX IF NOT EXISTS idx_knowledge_rag_gap_status
   ON knowledge_rag_gap_signals (status, occurrences DESC, last_seen_at DESC);
+
+-- RLS on with no policies: the app connects as the table owner through
+-- DATABASE_URL (unaffected), while the public anon/authenticated roles that
+-- Supabase's Data API exposes get no rows. Idempotent on re-run.
+ALTER TABLE knowledge_documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_sync_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_rag_daily_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_rag_feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE knowledge_rag_gap_signals ENABLE ROW LEVEL SECURITY;
 `;
 
 async function main(): Promise<void> {

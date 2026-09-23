@@ -3,6 +3,22 @@ import { CashBankDirection, CashBankSourceType, Prisma,
 
 type TxClient = Prisma.TransactionClient;
 
+/**
+ * A posting rule the user can fix (missing / inactive account, date before the
+ * account opening date). The message is written for users, so callers may show it
+ * as-is instead of their generic error text.
+ */
+export class CashBankPostingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CashBankPostingError";
+  }
+}
+
+export function isCashBankPostingError(error: unknown): error is CashBankPostingError {
+  return error instanceof CashBankPostingError || (error instanceof Error && error.name === "CashBankPostingError");
+}
+
 type CashBankEntryInput = {
   accountId: string;
   txnDate: Date;
@@ -80,7 +96,7 @@ export async function assertCashBankAccountsExist(
   const missingId = normalizedIds.find((accountId) => !existingIds.has(accountId),
   );
   if (missingId) {
-    throw new Error("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
+    throw new CashBankPostingError("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
   }
 }
 
@@ -106,7 +122,7 @@ async function assertCashBankAccountsCanPost(
   const missingId = normalizedIds.find((accountId) => !accountById.has(accountId),
   );
   if (missingId) {
-    throw new Error("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
+    throw new CashBankPostingError("ไม่พบบัญชีเงินสด/ธนาคารที่เลือก");
   }
 
   for (const entry of entries) {
@@ -115,10 +131,10 @@ async function assertCashBankAccountsCanPost(
 
     const accountLabel = `${account.code} - ${account.name}`;
     if (!account.isActive) {
-      throw new Error(`บัญชีเงินสด/ธนาคาร ${accountLabel} ถูกปิดใช้งานแล้ว`);
+      throw new CashBankPostingError(`บัญชีเงินสด/ธนาคาร ${accountLabel} ถูกปิดใช้งานแล้ว`);
     }
     if (entry.txnDate < account.openingDate) {
-      throw new Error(`วันที่รายการของบัญชี ${accountLabel} ต้องไม่ก่อนวันที่ยอดยกมา`,
+      throw new CashBankPostingError(`วันที่รายการของบัญชี ${accountLabel} ต้องไม่ก่อนวันที่ยอดยกมา`,
       );
     }
   }

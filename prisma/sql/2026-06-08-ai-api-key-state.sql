@@ -30,3 +30,7 @@ CREATE TABLE IF NOT EXISTS "AiApiKeyState" (
 CREATE UNIQUE INDEX IF NOT EXISTS "AiApiKeyState_keyRef_key" ON "AiApiKeyState"("keyRef");
 CREATE INDEX IF NOT EXISTS "AiApiKeyState_provider_status_cooldownUntil_idx" ON "AiApiKeyState"("provider", "status", "cooldownUntil");
 CREATE INDEX IF NOT EXISTS "AiApiKeyState_provider_lastUsedAt_idx" ON "AiApiKeyState"("provider", "lastUsedAt");
+
+-- RLS on with no policies: the app connects as the table owner (unaffected);
+-- Supabase's public anon/authenticated Data API roles get no rows. Idempotent.
+ALTER TABLE "AiApiKeyState" ENABLE ROW LEVEL SECURITY;

@@ -17,6 +17,7 @@ import WhtReceivedFields, {
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
+import { shiftRowIndexCacheAfterRemoval } from "../row-index-cache";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import {
@@ -458,7 +459,12 @@ const SaleForm = ({
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
-  const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
+  const removeItem = (i: number) => {
+    setItems((prev) => prev.filter((_, idx) => idx !== i));
+    // Lot caches are keyed by row index — shift them so each remaining row keeps its own product's lots.
+    setAvailableLots((prev) => shiftRowIndexCacheAfterRemoval(prev, i));
+    setLotsLoading((prev) => shiftRowIndexCacheAfterRemoval(prev, i));
+  };
 
   const clearCachedLots = (itemIndex: number) => {
     setAvailableLots((prev) => {

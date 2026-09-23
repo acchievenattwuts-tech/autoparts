@@ -179,6 +179,28 @@ export type StockReplayRow = StockSequenceRow & {
   priceOut: Prisma.Decimal;
 };
 
+/**
+ * Exactly the StockCard columns the recalculators read: StockReplayRow's fields
+ * (ordering + MAVG replay + diff-write comparison) plus productId for grouping.
+ * Skips docNo / detail / referenceId / createdAt, which replay never uses.
+ * `satisfies` keeps this in sync with StockReplayRow at compile time.
+ */
+export const STOCK_REPLAY_SELECT = {
+  id: true,
+  productId: true,
+  docDate: true,
+  sorder: true,
+  source: true,
+  qtyIn: true,
+  qtyOut: true,
+  priceIn: true,
+  landedCost: true,
+  usesReferenceCost: true,
+  qtyBalance: true,
+  priceBalance: true,
+  priceOut: true,
+} as const satisfies Record<keyof StockReplayRow | "productId", true>;
+
 type StockBalanceUpdate = {
   id: string;
   priceOut: number;
@@ -351,6 +373,7 @@ export async function recalculateStockCard(
   const rows = await tx.stockCard.findMany({
     where: { productId },
     orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+    select: STOCK_REPLAY_SELECT,
   });
 
   const orderedRows = sortRowsForReplay(rows);
@@ -397,6 +420,7 @@ export async function recalculateStockCardMany(
   const rows = await tx.stockCard.findMany({
     where: { productId: { in: productIds } },
     orderBy: [{ productId: "asc" }, { docDate: "asc" }, { sorder: "asc" }],
+    select: STOCK_REPLAY_SELECT,
   });
 
   const byProduct = new Map<string, StockReplayRow[]>();

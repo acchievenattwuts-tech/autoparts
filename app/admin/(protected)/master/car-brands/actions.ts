@@ -30,15 +30,20 @@ const modelSchema = z.object({
   carBrandId: z.string().min(1, "ไม่พบยี่ห้อรถ").max(50),
 });
 
-const refreshCarSearchCaches = async (filters?: {
-  carBrandId?: string;
-  carModelId?: string;
-}) => {
+const refreshCarSearchCaches = async (
+  filters?: {
+    carBrandId?: string;
+    carModelId?: string;
+  },
+  // buildSearchKeywordRows() reads CarBrand/CarModel names but never CarBrandAlias,
+  // so an alias write cannot change the autocomplete index — skip the full rebuild.
+  { affectsKeywordIndex = true }: { affectsKeywordIndex?: boolean } = {},
+) => {
   revalidatePath("/products");
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
   updateProductSearchCache();
-  triggerSearchKeywordRefresh();
+  if (affectsKeywordIndex) triggerSearchKeywordRefresh();
 
   if (!filters?.carBrandId && !filters?.carModelId) {
     return;
@@ -289,7 +294,7 @@ export const createCarBrandAlias = async (
     invalidateCarBrandAliasCache();
     revalidatePath("/admin/master/car-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
-    await refreshCarSearchCaches({ carBrandId });
+    await refreshCarSearchCaches({ carBrandId }, { affectsKeywordIndex: false });
     return {};
   } catch {
     return { error: "ไม่สามารถเพิ่ม alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
@@ -333,7 +338,7 @@ export const toggleCarBrandAlias = async (
     invalidateCarBrandAliasCache();
     revalidatePath("/admin/master/car-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.carBrands);
-    await refreshCarSearchCaches({ carBrandId: beforeSnapshot.carBrandId });
+    await refreshCarSearchCaches({ carBrandId: beforeSnapshot.carBrandId }, { affectsKeywordIndex: false });
     return {};
   } catch {
     return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };

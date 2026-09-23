@@ -13,6 +13,7 @@ import {
 } from "@/lib/delivery-tracking";
 
 const POLL_INTERVAL_MS = 3 * 60 * 1000;
+const FINAL_TRACKING_STATUSES: ReadonlySet<string> = new Set(["DELIVERED", "CANCELLED"]);
 const STALE_MINUTES = 30;
 const RESUME_REFRESH_DEBOUNCE_MS = 5000;
 const DRIVER_ICON_HTML =
@@ -330,13 +331,17 @@ const InlineDeliveryTracker = ({
     [token, updateMapMarkers],
   );
 
+  // Delivered/cancelled is final: stop the background poll (a resume/focus or
+  // the refresh button still re-checks).
+  const isFinalStatus = FINAL_TRACKING_STATUSES.has(data.status);
   useEffect(() => {
+    if (isFinalStatus) return;
     const id = setInterval(() => {
       if (document.hidden) return;
       void refreshTracking();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [refreshTracking]);
+  }, [isFinalStatus, refreshTracking]);
 
   useEffect(() => {
     const refreshAfterResume = () => {
@@ -346,7 +351,10 @@ const InlineDeliveryTracker = ({
       lastResumeRefreshRef.current = now;
       window.setTimeout(() => {
         mapRef.current?.invalidateSize();
-        void refreshTracking({ forceRoute: true, recenter: true });
+        // Re-route only when no real route line is on the map (last attempt
+        // failed/estimated); otherwise the >100 m movement check decides, as
+        // the same position always yields the same OSRM route.
+        void refreshTracking({ forceRoute: !routeLayerRef.current, recenter: true });
       }, 250);
     };
 

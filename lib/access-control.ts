@@ -413,7 +413,10 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/reports/search-coverage", permission: "search_coverage.view" },
   { prefix: "/admin/reports", permission: "reports.view" },
   { prefix: "/admin/settings/company", permission: "settings.company.view" },
-  { prefix: "/admin", permission: "workboard.view" },
+  // No catch-all "/admin" prefix: the home page is matched exactly in
+  // getRoutePermission(), so an unregistered admin path resolves to undefined
+  // and decideAdminRouteAccess() fails closed instead of opening it to every
+  // role holding workboard.view.
 ];
 
 export async function ensureAccessControlSetup(): Promise<void> {
@@ -564,6 +567,7 @@ export function hasAnyPermissionAccess(
 }
 
 export function getRoutePermission(pathname: string): PermissionKey | null | undefined {
+  if (pathname === "/admin" || pathname === "/admin/") return "workboard.view";
   if (pathname === "/admin/products/new") return "products.create";
   if (/^\/admin\/products\/[^/]+\/edit$/.test(pathname)) return "products.update";
   if (pathname === "/admin/customers/new") return "customers.create";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle, Copy, EyeOff, Search } from "lucide-react";
 
 import {
@@ -24,6 +24,7 @@ import {
   applyProductFitmentCandidate,
   applySearchSynonymCandidate,
   markProductSearchReviewOutcome,
+  searchProductCodeOptions,
 } from "./actions";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -54,8 +55,6 @@ type OutcomeProps = {
   suggestedTerm: string | null;
 } | null;
 
-type ProductOption = { code: string; name: string };
-
 type CarBrandOption = {
   id: string;
   name: string;
@@ -67,11 +66,13 @@ type FitmentHint = { yearStart: number | null; yearEnd: number | null };
 type Props = {
   cluster: ClusterProps;
   outcome: OutcomeProps;
-  products: ProductOption[];
   carBrands: CarBrandOption[];
   fitmentYearHint: FitmentHint;
   returnTo: string;
 };
+
+// Product pickers are server-searched; there is no preloaded list to filter.
+const NO_LOCAL_OPTIONS: SelectOption[] = [];
 
 const aliasKindOptions = ["OEM", "PART_NO", "CROSS_REF", "ALIAS", "KEYWORD", "MISSPELL"] as const;
 
@@ -96,7 +97,6 @@ const remediationLabel: Record<RemediationKey, string> = {
 export const ProductSearchReviewSheet = ({
   cluster,
   outcome,
-  products,
   carBrands,
   fitmentYearHint,
   returnTo,
@@ -120,22 +120,24 @@ export const ProductSearchReviewSheet = ({
   const [selectedRemediation, setSelectedRemediation] = useState<RemediationKey>(defaultRemediation);
 
   // SearchableSelect state
+  // Product pickers search the server (every active product), so each keeps the
+  // picked option itself for SearchableSelect to display.
   const [productCodeForAlias, setProductCodeForAlias] = useState("");
+  const [productOptionForAlias, setProductOptionForAlias] = useState<SelectOption | null>(null);
   const [productCodeForFitment, setProductCodeForFitment] = useState("");
+  const [productOptionForFitment, setProductOptionForFitment] = useState<SelectOption | null>(null);
   const [carModelId, setCarModelId] = useState("");
 
-  const productOptions: SelectOption[] = products.map((p) => ({
-    id: p.code,
-    label: p.code,
-    sublabel: p.name,
-  }));
-
-  const carModelOptions: SelectOption[] = carBrands.flatMap((brand) =>
-    brand.carModels.map((model) => ({
-      id: model.id,
-      label: `${brand.name} / ${model.name}`,
-      sublabel: brand.name,
-    })),
+  const carModelOptions: SelectOption[] = useMemo(
+    () =>
+      carBrands.flatMap((brand) =>
+        brand.carModels.map((model) => ({
+          id: model.id,
+          label: `${brand.name} / ${model.name}`,
+          sublabel: brand.name,
+        })),
+      ),
+    [carBrands],
   );
 
   // Intercept form submit — show confirmation dialog first
@@ -281,9 +283,15 @@ export const ProductSearchReviewSheet = ({
                     <label className={labelCls}>
                       Product code
                       <SearchableSelect
-                        options={productOptions}
+                        options={NO_LOCAL_OPTIONS}
                         value={productCodeForAlias}
-                        onChange={setProductCodeForAlias}
+                        onChange={(code) => {
+                          setProductCodeForAlias(code);
+                          if (!code) setProductOptionForAlias(null);
+                        }}
+                        onOptionSelect={setProductOptionForAlias}
+                        searchOptions={searchProductCodeOptions}
+                        selectedOption={productOptionForAlias}
                         placeholder="พิมพ์เพื่อค้นหา product code"
                       />
                       <input type="hidden" name="productCode" value={productCodeForAlias} />
@@ -328,9 +336,15 @@ export const ProductSearchReviewSheet = ({
                     <label className={labelCls}>
                       Product code
                       <SearchableSelect
-                        options={productOptions}
+                        options={NO_LOCAL_OPTIONS}
                         value={productCodeForFitment}
-                        onChange={setProductCodeForFitment}
+                        onChange={(code) => {
+                          setProductCodeForFitment(code);
+                          if (!code) setProductOptionForFitment(null);
+                        }}
+                        onOptionSelect={setProductOptionForFitment}
+                        searchOptions={searchProductCodeOptions}
+                        selectedOption={productOptionForFitment}
                         placeholder="พิมพ์เพื่อค้นหา product code"
                       />
                       <input type="hidden" name="productCode" value={productCodeForFitment} />

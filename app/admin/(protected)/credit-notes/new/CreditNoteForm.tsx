@@ -144,6 +144,9 @@ const CreditNoteForm = ({
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // Set once a new CN is saved, so the form cannot submit it a second time while
+  // the success message is shown before the redirect.
+  const [createdCnNo, setCreatedCnNo] = useState("");
   const [customerId, setCustomerId] = useState(
     initialData?.customerId ?? marketplacePreset?.customerId ?? "",
   );
@@ -375,6 +378,7 @@ const CreditNoteForm = ({
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (createdCnNo) return;
     setError("");
     setSuccess("");
 
@@ -461,7 +465,12 @@ const CreditNoteForm = ({
     const formData = new FormData(form);
     formData.set("customerId", customerId);
     formData.set("customerName", customerName);
-    formData.set("items", JSON.stringify(items));
+    // Lot rows apply only to RETURN; other types hide the lot inputs, so any
+    // seeded lot row would be empty and fail validation.
+    formData.set(
+      "items",
+      JSON.stringify(cnType === "RETURN" ? items : items.map((item) => ({ ...item, lotItems: [] }))),
+    );
     formData.set("payments", JSON.stringify(submitPayments));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
@@ -495,6 +504,7 @@ const CreditNoteForm = ({
         if (result.error) {
           setError(result.error);
         } else {
+          setCreatedCnNo(result.cnNo ?? "saved");
           setSuccess(`บันทึกสำเร็จ เลขที่ CN: ${result.cnNo}`);
           const destination = marketplacePreset
             ? `/admin/sales/${marketplacePreset.channelSlug}/settlements`
@@ -1108,7 +1118,7 @@ const CreditNoteForm = ({
         </button> : null}
         <button
           type="submit"
-          disabled={isPending || submitLocked}
+          disabled={isPending || submitLocked || (!isEdit && !!createdCnNo)}
           className="inline-flex items-center gap-2 px-6 py-2.5 bg-[#f97316] hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPending ? "กำลังบันทึก..." : isEdit ? "บันทึกการแก้ไข" : "บันทึก Credit Note"}

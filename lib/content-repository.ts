@@ -139,18 +139,38 @@ export async function createScheduledPublishJob(params: {
   });
 }
 
+/**
+ * A publish job stays RUNNING only while its function is alive. Vercel caps a
+ * function at 800s, so a RUNNING job older than this lease belongs to a
+ * function that died (timeout/crash) and will never finish on its own.
+ */
+export const CONTENT_PUBLISH_RUNNING_LEASE_MS = 15 * 60 * 1000;
+
+export function isContentPublishRunLeaseExpired(startedAt: Date | null, now: Date = new Date()): boolean {
+  // No start time recorded: cannot prove it is dead, so treat it as live.
+  if (!startedAt) return false;
+  return now.getTime() - startedAt.getTime() > CONTENT_PUBLISH_RUNNING_LEASE_MS;
+}
+
 export async function hasActiveContentPublishJob(postId: string) {
+  const leaseCutoff = new Date(Date.now() - CONTENT_PUBLISH_RUNNING_LEASE_MS);
   const existing = await db.contentScheduledJob.findFirst({
     where: {
       postId,
       type: ContentScheduledJobType.PUBLISH_POST,
-      status: {
-        in: [
-          ContentScheduledJobStatus.PENDING,
-          ContentScheduledJobStatus.DISPATCHED,
-          ContentScheduledJobStatus.RUNNING,
-        ],
-      },
+      OR: [
+        {
+          status: {
+            in: [ContentScheduledJobStatus.PENDING, ContentScheduledJobStatus.DISPATCHED],
+          },
+        },
+        // A RUNNING job whose lease expired is dead; it must not block
+        // approve/requeue forever.
+        {
+          status: ContentScheduledJobStatus.RUNNING,
+          OR: [{ startedAt: null }, { startedAt: { gte: leaseCutoff } }],
+        },
+      ],
     },
     select: { id: true },
   });

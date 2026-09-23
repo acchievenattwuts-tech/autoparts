@@ -61,7 +61,6 @@ type PageProps = {
 const RECENT_LIMIT = 100;
 const CLUSTER_LIMIT = 20;
 const ANALYSIS_LIMIT = 500;
-const PRODUCT_SELECT_LIMIT = 500;
 
 const parseDateParam = (value: string | undefined, boundary: "start" | "end"): Date | undefined => {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
@@ -221,7 +220,6 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
     logCountGroups,
     outcomeStatusGroups,
     carBrands,
-    products,
   ] = await Promise.all([
     db.productSearchLog.findMany({
       where,
@@ -261,12 +259,6 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
           select: { id: true, name: true },
         },
       },
-    }),
-    db.product.findMany({
-      where: { isActive: true },
-      orderBy: { code: "asc" },
-      take: PRODUCT_SELECT_LIMIT,
-      select: { code: true, name: true },
     }),
   ]);
 
@@ -492,7 +484,9 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         description={`ติดตามคำค้นหาที่ไม่พบผลลัพธ์และคำค้นหาที่ได้ผลลัพธ์น้อยกว่า ${LOW_RESULT_SEARCH_THRESHOLD} รายการ เพื่อใช้ปรับ SearchSynonym, ProductAlias/OEM และ fitment`}
       />
 
-      <FlashMessage f2Applied={f2Applied} f2Error={f2Error} />
+      {/* keyed so each new flash remounts it: a search-param-only redirect keeps
+          client state, and FlashMessage hides itself for good after auto-clear */}
+      <FlashMessage key={`${f2Applied}\u0000${f2Error}`} f2Applied={f2Applied} f2Error={f2Error} />
 
       {/* ── How-to helper (collapsible) ── */}
       <details className="group overflow-hidden rounded-xl border border-sky-200 bg-sky-50/60 shadow-sm dark:border-sky-400/20 dark:bg-sky-400/5">
@@ -986,7 +980,6 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
                             ? { status: outcome.status, note: outcome.note ?? null, suggestedTerm: null }
                             : null
                         }
-                        products={products}
                         carBrands={carBrands}
                         fitmentYearHint={fitmentYearHint}
                         returnTo={returnTo}

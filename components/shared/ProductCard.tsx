@@ -38,7 +38,19 @@ interface Props {
   product: ProductForCard;
   lineUrl: string;
   prefetchDetail?: boolean;
+  /**
+   * `sizes` for the product photo. Pass one that matches the caller's grid when
+   * it differs from the default (e.g. a grid that shares the row with a sidebar).
+   */
+  imageSizes?: string;
 }
+
+/**
+ * Every grid that renders this card is two columns on phones (≤640px), two on
+ * tablets and four on desktop. The phone slot used to be declared as 100vw,
+ * which made DPR-2/3 phones download roughly twice the pixels the card shows.
+ */
+export const PRODUCT_CARD_IMAGE_SIZES = "(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw";
 
 const formatFitmentYear = (yearStart?: number | null, yearEnd?: number | null) => {
   if (yearStart && yearEnd) return `${yearStart}-${yearEnd}`;
@@ -47,7 +59,12 @@ const formatFitmentYear = (yearStart?: number | null, yearEnd?: number | null) =
   return null;
 };
 
-const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
+const ProductCard = ({
+  product,
+  lineUrl,
+  prefetchDetail,
+  imageSizes = PRODUCT_CARD_IMAGE_SIZES,
+}: Props) => {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
@@ -107,7 +124,7 @@ const ProductCard = ({ product, lineUrl, prefetchDetail }: Props) => {
             alt={`${product.name}${product.brand ? ` ${product.brand.name}` : ""} | อะไหล่แอร์รถยนต์ ${product.category.name}`}
             fill
             className="object-cover transition-transform duration-700 ease-out group-hover:scale-[1.1] motion-reduce:transform-none motion-reduce:transition-none"
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+            sizes={imageSizes}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

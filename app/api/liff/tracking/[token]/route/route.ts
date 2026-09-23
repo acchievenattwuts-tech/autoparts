@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { getClientIp } from "@/lib/client-ip";
 import { db } from "@/lib/db";
 import {
   estimateDeliveryRoute,
@@ -8,8 +9,16 @@ import {
   isTrackingExpired,
   type TrackingRouteResponse,
 } from "@/lib/delivery-tracking";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+// Public (token-only) and every request can fan out to the external OSRM
+// servers, so it gets a shared ceiling like the sibling tracking endpoint. Its
+// own bucket, set above what a real tracking page needs (the page calls this at
+// most once per tracking refresh, and tracking itself is capped at 10/min/IP).
+const ROUTE_RATE_LIMIT_MAX = 20; // requests per window
+const ROUTE_RATE_LIMIT_WINDOW_MS = 60 * 1000;
 
 const routeParamsSchema = z.object({
   token: z.string().uuid().max(64),
@@ -25,13 +34,25 @@ const emptyRouteResponse = (provider: TrackingRouteResponse["provider"]): Tracki
 });
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ token: string }> },
 ) {
   try {
     const parsed = routeParamsSchema.safeParse(await params);
     if (!parsed.success) {
       return NextResponse.json({ error: "ลิงก์ไม่ถูกต้อง" }, { status: 400 });
+    }
+
+    const rate = await checkRateLimit({
+      key: `liff-tracking-route:${getClientIp(req.headers)}`,
+      limit: ROUTE_RATE_LIMIT_MAX,
+      windowMs: ROUTE_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rate.ok) {
+      return NextResponse.json(
+        { error: "ขอข้อมูลบ่อยเกินไป กรุณารอสักครู่" },
+        { status: 429, headers: { "Retry-After": "60" } },
+      );
     }
 
     const sale = await db.sale.findUnique({

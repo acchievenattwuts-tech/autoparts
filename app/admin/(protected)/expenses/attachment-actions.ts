@@ -19,6 +19,7 @@ import {
   deleteExpenseAttachmentObjects,
   prepareExpenseAttachment,
   uploadExpenseAttachmentObject,
+  type PreparedExpenseAttachment,
 } from "@/lib/expense-attachment-storage";
 
 /**
@@ -53,7 +54,14 @@ export async function uploadExpenseAttachments(
   const files = formData.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
   if (files.length === 0) return { error: "ไม่พบไฟล์แนบ" };
 
-  const uploadedUrls: string[] = [];
+  // Blob uploaded but its ExpenseAttachment row not yet created. Only this one is
+  // cleaned up on failure — blobs whose rows were already saved must stay, or the
+  // saved rows would point at deleted files.
+  let unsavedUrl: string | null = null;
+  const savedNames: string[] = [];
+  let requestContext: Awaited<ReturnType<typeof getRequestContext>> | null = null;
+  let expenseRef: { id: string; expenseNo: string } | null = null;
+  let auditWritten = false;
   try {
     const [expense, existingCount] = await Promise.all([
       db.expense.findUnique({
@@ -75,22 +83,25 @@ export async function uploadExpenseAttachments(
       }
     }
 
-    const requestContext = await getRequestContext();
-    const savedNames: string[] = [];
+    requestContext = await getRequestContext();
+    expenseRef = { id: expense.id, expenseNo: expense.expenseNo };
 
+    // Check/convert every file before storing any, so an unsupported file rejects
+    // the whole batch without leaving earlier files half-saved.
+    const preparedFiles: Array<{ fileName: string; prepared: PreparedExpenseAttachment }> = [];
     for (const file of files) {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const prepared = await prepareExpenseAttachment(bytes);
       if (!prepared) {
-        await deleteExpenseAttachmentObjects(uploadedUrls);
         return { error: `ไฟล์ "${sanitizeFileName(file.name)}" ไม่ใช่รูปภาพหรือ PDF ที่รองรับ` };
       }
+      preparedFiles.push({ fileName: sanitizeFileName(file.name), prepared });
+    }
 
+    for (const { fileName, prepared } of preparedFiles) {
       const url = await uploadExpenseAttachmentObject({ expenseId: expense.id, prepared });
-      uploadedUrls.push(url);
+      unsavedUrl = url;
 
-      const fileName = sanitizeFileName(file.name);
-      savedNames.push(fileName);
       await db.expenseAttachment.create({
         data: {
           expenseId: expense.id,
@@ -101,6 +112,8 @@ export async function uploadExpenseAttachments(
           uploadedById: session.user.id!,
         },
       });
+      unsavedUrl = null;
+      savedNames.push(fileName);
     }
 
     await safeWriteAuditLog({
@@ -112,13 +125,28 @@ export async function uploadExpenseAttachments(
       entityRef: expense.expenseNo,
       meta: { attachmentsAdded: savedNames },
     });
+    auditWritten = true;
 
     revalidatePath("/admin/expenses");
     revalidatePath(`/admin/expenses/${expense.id}`);
     return { success: true, uploaded: savedNames.length };
   } catch (err) {
     console.error("[uploadExpenseAttachments]", err);
-    await deleteExpenseAttachmentObjects(uploadedUrls);
+    if (unsavedUrl) await deleteExpenseAttachmentObjects([unsavedUrl]);
+    if (expenseRef && savedNames.length > 0 && !auditWritten) {
+      // Files saved before the failure are kept — record and show them.
+      await safeWriteAuditLog({
+        ...getAuditActorFromSession(session),
+        ...(requestContext ?? {}),
+        action: AuditAction.UPDATE,
+        entityType: "Expense",
+        entityId: expenseRef.id,
+        entityRef: expenseRef.expenseNo,
+        meta: { attachmentsAdded: savedNames, partialUpload: true },
+      });
+      revalidatePath("/admin/expenses");
+      revalidatePath(`/admin/expenses/${expenseRef.id}`);
+    }
     return { error: "อัปโหลดไฟล์แนบไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
   }
 }

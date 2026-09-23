@@ -10,6 +10,7 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { submitFormData } from "../submit-form-data";
 
 type PartsBrandRow = Pick<PartsBrand, "id" | "name" | "isActive" | "createdAt">;
 
@@ -29,12 +30,14 @@ const PartsBrandRowEditor = ({
   canCancel,
   isBusy,
   onToggle,
+  toggleError,
 }: {
   brand: PartsBrandRow;
   canUpdate: boolean;
   canCancel: boolean;
   isBusy: boolean;
   onToggle: (id: string, currentActive: boolean) => void;
+  toggleError?: string;
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string>("");
@@ -57,7 +60,7 @@ const PartsBrandRowEditor = ({
       <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={4} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
-          <form action={handleUpdate} className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <form onSubmit={(event) => submitFormData(event, handleUpdate)} className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <div className="flex-1">
               <input
                 type="text"
@@ -139,6 +142,7 @@ const PartsBrandRowEditor = ({
             <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
           ) : null}
         </AdminActionGroup>
+        {toggleError && <p role="alert" className="mt-1 text-xs text-red-500 dark:text-red-300">{toggleError}</p>}
       </td>
     </tr>
   );
@@ -149,6 +153,7 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
   const [error, setError] = useState<string>("");
   const [isPending, startTransition] = useTransition();
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<{ id: string; message: string } | null>(null);
 
   const handleCreate = (formData: FormData) => {
     setError("");
@@ -160,9 +165,11 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
   };
 
   const handleToggle = (id: string, currentActive: boolean) => {
+    setToggleError(null);
     setTogglingId(id);
     startTransition(async () => {
-      await togglePartsBrand(id, !currentActive);
+      const result = await togglePartsBrand(id, !currentActive);
+      if (result.error) setToggleError({ id, message: result.error });
       setTogglingId(null);
     });
   };
@@ -171,7 +178,7 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
     <div className="space-y-6">
       {canCreate && (
         <AdminSectionCard title="เพิ่มแบรนด์อะไหล่ใหม่">
-          <form ref={formRef} action={handleCreate}>
+          <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)}>
             <div className="flex gap-3">
               <div className="flex-1">
                 <input
@@ -217,6 +224,7 @@ const PartsBrandForm = ({ brands, canCreate, canUpdate, canCancel }: PartsBrandF
                     canCancel={canCancel}
                     isBusy={togglingId === brand.id || isPending}
                     onToggle={handleToggle}
+                    toggleError={toggleError?.id === brand.id ? toggleError.message : undefined}
                   />
                 ))}
               </tbody>

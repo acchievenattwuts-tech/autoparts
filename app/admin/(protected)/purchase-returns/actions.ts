@@ -12,6 +12,7 @@ import { db, dbTx } from "@/lib/db";
 import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
+import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -34,7 +35,7 @@ import {
   writeStockMovementLots,
   type LotSubRow,
 } from "@/lib/lot-control";
-import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
+import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import {
   getTransactionProductDetailRowsByIds,
@@ -54,6 +55,7 @@ import {
 } from "@/lib/document-payments";
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { getPurchaseUserErrorMessage, PurchaseUserError } from "../purchases/purchase-user-error";
 
 type PurchaseReturnProductOption = {
   id: string;
@@ -278,7 +280,7 @@ const returnItemSchema = z.object({
 });
 
 const returnSchema = z.object({
-  returnDate: z.string().min(1, "กรุณาระบุวันที่"),
+  returnDate: z.string().min(1, "กรุณาระบุวันที่").refine(isDateOnlyString, "กรุณาระบุวันที่ให้ถูกต้อง"),
   purchaseId: z.string().max(50).optional(),
   claimId: z.string().max(50).optional(),
   supplierId: z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
@@ -292,6 +294,28 @@ const returnSchema = z.object({
   items: z.array(returnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
 });
 
+// Payment total is checked inside the transaction because netAmount depends on the
+// line costs read there; a mismatch is still the user's to fix, not a system error.
+function assertRefundPaymentsMatchTotal(payments: DocumentPaymentRow[], netAmount: number): void {
+  try {
+    assertPaymentsMatchTotal(payments, netAmount);
+  } catch (error) {
+    throw new PurchaseUserError(
+      error instanceof Error ? error.message : "ยอดช่องทางรับเงินไม่ตรงกับยอดเอกสาร",
+    );
+  }
+}
+
+// lib/lot-control checks lot balances before deducting anything; surface that
+// shortage to the user. Any other error is rethrown unchanged.
+const LOT_SHORTAGE_MESSAGE = /^Lot .+ คงเหลือไม่พอสำหรับการตัดสต็อก$/;
+function rethrowLotShortageAsUserError(error: unknown): never {
+  if (error instanceof Error && LOT_SHORTAGE_MESSAGE.test(error.message)) {
+    throw new PurchaseUserError(error.message);
+  }
+  throw error;
+}
+
 async function resolvePurchaseReturnRefundMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   payments: DocumentPaymentRow[],
@@ -304,7 +328,7 @@ async function resolvePurchaseReturnRefundMethod(
     select: { type: true },
   });
   if (accounts.length !== accountIds.length) {
-    throw new Error("ไม่พบบัญชีรับเงิน");
+    throw new PurchaseUserError("ไม่พบบัญชีรับเงิน");
   }
 
   const allCash = accounts.every((account) => account.type === "CASH");
@@ -339,13 +363,13 @@ async function buildLineData(
   for (const item of validItems) {
     const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
     if (scale === undefined) {
-      throw new Error(`ไม่พบหน่วย ${item.unitName} ของสินค้า`);
+      throw new PurchaseUserError(`ไม่พบหน่วย ${item.unitName} ของสินค้า`);
     }
 
     const qtyInBase = item.qty * scale;
     const product = productMap.get(item.productId);
     if (!product) {
-      throw new Error("ไม่พบสินค้า");
+      throw new PurchaseUserError("ไม่พบสินค้า");
     }
 
     const isTracked = isInventoryTracked(product.inventoryTracking);
@@ -441,7 +465,7 @@ async function writePurchaseReturnLines(
   for (const { line, lineNo } of lineData) {
     if (writeStock && line.isLotControl) {
       const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
-      if (lotError) throw new Error(lotError);
+      if (lotError) throw new PurchaseUserError(lotError);
     }
 
     const returnItem = await tx.purchaseReturnItem.create({
@@ -488,7 +512,11 @@ async function writePurchaseReturnLines(
           expDate: lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
         }));
 
-        await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+        try {
+          await writePurchaseReturnLots(tx, returnItem.id, line.productId, lotsInBase);
+        } catch (error) {
+          rethrowLotShortageAsUserError(error);
+        }
 
         await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
       }
@@ -514,11 +542,11 @@ async function validatePurchaseReturnSourcePurchase(
   });
 
   if (!purchase || purchase.status !== "ACTIVE") {
-    throw new Error("ไม่พบใบซื้ออ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
+    throw new PurchaseUserError("ไม่พบใบซื้ออ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
   }
 
   if (purchase.supplierId !== supplierId) {
-    throw new Error(`ใบซื้อ ${purchase.purchaseNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
+    throw new PurchaseUserError(`ใบซื้อ ${purchase.purchaseNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
   }
 }
 
@@ -542,11 +570,11 @@ async function validatePurchaseReturnClaim(
   });
 
   if (!claim || claim.status === "CANCELLED") {
-    throw new Error("ไม่พบใบเคลมที่ใช้งานได้");
+    throw new PurchaseUserError("ไม่พบใบเคลมที่ใช้งานได้");
   }
 
   if (claim.supplierId && claim.supplierId !== supplierId) {
-    throw new Error(`ใบเคลม ${claim.claimNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
+    throw new PurchaseUserError(`ใบเคลม ${claim.claimNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
   }
 
   return {
@@ -701,97 +729,107 @@ export async function createPurchaseReturn(
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const docDate = parseDateOnlyToDate(returnDate);
-  const returnNo = await generatePurchaseReturnNo(docDate);
+  let returnNo = "";
   let createdPurchaseReturnId = "";
 
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
-      const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
+    // If another save takes the same returnNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the return.
+    await withDocNumberRetry({
+      uniqueField: "returnNo",
+      generate: () => generatePurchaseReturnNo(docDate),
+      run: async (nextReturnNo) => {
+        returnNo = nextReturnNo;
+        createdPurchaseReturnId = "";
+        await dbTx(async (tx) => {
+          await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+          const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
 
-      const lineData = await buildLineData(tx, validItems, vatType, vatRate);
-      const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
-      const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
-      if (isCashRefund) {
-        assertPaymentsMatchTotal(payments, netAmount);
-      }
-      const refundMethod = await resolvePurchaseReturnRefundMethod(tx, payments);
+          const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+          const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
+          const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
+          if (isCashRefund) {
+            assertRefundPaymentsMatchTotal(payments, netAmount);
+          }
+          const refundMethod = await resolvePurchaseReturnRefundMethod(tx, payments);
 
-      const purchaseReturn = await tx.purchaseReturn.create({
-        data: {
-          returnNo,
-          returnDate: docDate,
-          purchaseId: purchaseId || null,
-          claimId: linkedClaim?.id ?? null,
-          supplierId,
-          userId: session.user.id,
-          totalAmount: netAmount,
-          note: note?.trim() || null,
-          vatType,
-          vatRate,
-          subtotalAmount,
-          vatAmount,
-          type,
-          settlementType,
-          refundMethod,
-          cashBankAccountId: resolvedCashBankAccountId || null,
-          amountRemain:
-            settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT ? netAmount : 0,
-        },
-      });
-      createdPurchaseReturnId = purchaseReturn.id;
+          const purchaseReturn = await tx.purchaseReturn.create({
+            data: {
+              returnNo,
+              returnDate: docDate,
+              purchaseId: purchaseId || null,
+              claimId: linkedClaim?.id ?? null,
+              supplierId,
+              userId: session.user.id,
+              totalAmount: netAmount,
+              note: note?.trim() || null,
+              vatType,
+              vatRate,
+              subtotalAmount,
+              vatAmount,
+              type,
+              settlementType,
+              refundMethod,
+              cashBankAccountId: resolvedCashBankAccountId || null,
+              amountRemain:
+                settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT ? netAmount : 0,
+            },
+          });
+          createdPurchaseReturnId = purchaseReturn.id;
 
-      await writePurchaseReturnLines(
-        tx,
-        purchaseReturn.id,
-        returnNo,
-        docDate,
-        lineData.map((line, idx) => ({ line, lineNo: idx + 1 })),
-        type,
-        purchaseId,
-      );
+          await writePurchaseReturnLines(
+            tx,
+            purchaseReturn.id,
+            returnNo,
+            docDate,
+            lineData.map((line, idx) => ({ line, lineNo: idx + 1 })),
+            type,
+            purchaseId,
+          );
 
-      if (linkedClaim) {
-        const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
-        await writeClaimStockMovement(tx, {
-          claimId: linkedClaim.id,
-          productId: linkedClaim.productId,
-          movementType: ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE,
-          docNo: returnNo,
-          docDate,
-          qtyIn: 0,
-          qtyOut: 0,
-          unitCost: originalCost.unitCost,
-          lotNo: originalCost.lotNo,
-          purchaseReturnId: purchaseReturn.id,
-          detail: `ผูกใบลดหนี้ซื้อกับใบเคลม ${linkedClaim.claimNo}`,
-        });
-      }
+          if (linkedClaim) {
+            const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
+            await writeClaimStockMovement(tx, {
+              claimId: linkedClaim.id,
+              productId: linkedClaim.productId,
+              movementType: ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE,
+              docNo: returnNo,
+              docDate,
+              qtyIn: 0,
+              qtyOut: 0,
+              unitCost: originalCost.unitCost,
+              lotNo: originalCost.lotNo,
+              purchaseReturnId: purchaseReturn.id,
+              detail: `ผูกใบลดหนี้ซื้อกับใบเคลม ${linkedClaim.claimNo}`,
+            });
+          }
 
-      if (settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT) {
-        await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
-      }
+          if (settlementType === PurchaseReturnSettlementType.SUPPLIER_CREDIT) {
+            await recalculatePurchaseReturnAmountRemain(tx, purchaseReturn.id);
+          }
 
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.CN_PURCHASE,
-        purchaseReturn.id,
-        CashBankDirection.IN,
-        payments,
-      );
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.CN_PURCHASE,
-        purchaseReturn.id,
-        toCashBankEntries(payments, {
-          txnDate: docDate,
-          direction: CashBankDirection.IN,
-          referenceNo: returnNo,
-          note: note?.trim() || null,
-        }),
-      );
-    }, { timeout: 180_000 });
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.CN_PURCHASE,
+            purchaseReturn.id,
+            CashBankDirection.IN,
+            payments,
+          );
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.CN_PURCHASE,
+            purchaseReturn.id,
+            toCashBankEntries(payments, {
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              referenceNo: returnNo,
+              note: note?.trim() || null,
+            }),
+          );
+        }, { timeout: 180_000 });
+      },
+    });
 
     const afterSnapshot = createdPurchaseReturnId
       ? await getPurchaseReturnAuditSnapshot(createdPurchaseReturnId)
@@ -814,6 +852,8 @@ export async function createPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true, returnNo };
   } catch (error) {
+    const userMessage = getPurchaseUserErrorMessage(error);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1160,7 +1200,7 @@ export async function updatePurchaseReturn(
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
       if (isCashRefund) {
-        assertPaymentsMatchTotal(payments, netAmount);
+        assertRefundPaymentsMatchTotal(payments, netAmount);
       }
       const refundMethod = await resolvePurchaseReturnRefundMethod(tx, payments);
 
@@ -1279,6 +1319,8 @@ export async function updatePurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    const userMessage = getPurchaseUserErrorMessage(error);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.update" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1290,8 +1332,9 @@ export async function getPurchasesForSupplier(
   const session = await requirePurchaseReturnProductPermission();
   if (!session?.user?.id || !supplierId) return [];
 
+  // Only ACTIVE purchases can be referenced (createPurchaseReturn rejects cancelled ones).
   return db.purchase.findMany({
-    where: { supplierId },
+    where: { supplierId, status: "ACTIVE" },
     orderBy: { purchaseDate: "desc" },
     take: 200,
     select: { id: true, purchaseNo: true, purchaseDate: true },

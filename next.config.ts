@@ -100,13 +100,13 @@ const nextConfig: NextConfig = {
     // The shop logo is read off the filesystem by lib/og-logo.ts and drawn into
     // every satori card, so it must be traced into each OG route's lambda.
     // Files under public/ are CDN-served and not reliably present there.
-    "/opengraph-image": ["./lib/og-assets/logo.png"],
-    "/about/opengraph-image": ["./lib/og-assets/logo.png"],
-    "/faq/opengraph-image": ["./lib/og-assets/logo.png"],
+    "/opengraph-image": ["./lib/og-fonts/*.ttf", "./lib/og-assets/logo.png"],
+    "/about/opengraph-image": ["./lib/og-fonts/*.ttf", "./lib/og-assets/logo.png"],
+    "/faq/opengraph-image": ["./lib/og-fonts/*.ttf", "./lib/og-assets/logo.png"],
     "/knowledge/opengraph-image": ["./lib/og-assets/logo.png"],
     "/knowledge/*/opengraph-image": ["./lib/og-assets/logo.png"],
-    "/products/*/opengraph-image": ["./lib/og-assets/logo.png"],
-    "/products/*/*/opengraph-image": ["./lib/og-assets/logo.png"],
+    "/products/*/opengraph-image": ["./lib/og-fonts/*.ttf", "./lib/og-assets/logo.png"],
+    "/products/*/*/opengraph-image": ["./lib/og-fonts/*.ttf", "./lib/og-assets/logo.png"],
   },
 
   experimental: {

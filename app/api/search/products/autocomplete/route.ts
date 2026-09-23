@@ -27,6 +27,9 @@ const TAKE = 8;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 45;
 const RATE_LIMIT_SWEEP_INTERVAL_MS = 5 * 60_000;
+// Bot-path responses may be cached by the requesting client only, never by a
+// shared cache — see the bot branch in GET.
+const BOT_AUTOCOMPLETE_CACHE_CONTROL = "private, max-age=30";
 
 type LocalRateBucket = {
   count: number;
@@ -180,9 +183,13 @@ export const GET = async (request: Request): Promise<NextResponse> => {
         take: TAKE,
       });
       const items = botProducts.map(toAutocompleteItem);
+      // `private` (no s-maxage): this lightweight result differs from what a real
+      // browser gets for the SAME URL (different ranking and totalCount), and
+      // nothing varies the shared cache on User-Agent — a public entry written by
+      // a crawler would be served to customers for the next minute.
       return NextResponse.json(
         { items, totalCount: items.length },
-        { headers: { "Cache-Control": "public, max-age=30, s-maxage=60" } },
+        { headers: { "Cache-Control": BOT_AUTOCOMPLETE_CACHE_CONTROL } },
       );
     }
 

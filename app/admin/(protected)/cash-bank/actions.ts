@@ -10,6 +10,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db, dbTx } from "@/lib/db";
 import { generateCashBankAdjustmentNo, generateCashBankTransferNo } from "@/lib/doc-number";
+import { isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -22,6 +23,7 @@ import {
 import { requirePermission } from "@/lib/require-auth";
 import {
   clearCashBankSourceMovements,
+  isCashBankPostingError,
   recalculateCashBankAccount,
   replaceCashBankSourceMovements,
 } from "@/lib/cash-bank";
@@ -86,6 +88,32 @@ function revalidateCashBankViews(): void {
   revalidatePath("/admin/reports/receipts");
   revalidatePath("/admin/reports/summary");
   revalidatePath("/admin/reports/print");
+}
+
+/** A cash/bank account rule violation whose (Thai) message is meant for the user. */
+class CashBankAccountRuleError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CashBankAccountRuleError";
+  }
+}
+
+const PERMISSION_ERROR_MESSAGES = new Set(["UNAUTHORIZED", "FORBIDDEN"]);
+
+/**
+ * Maps an account create/update failure to a user-facing message. Only messages
+ * written for users pass through; Prisma/DB errors fall back to `fallback`.
+ */
+function getCashBankAccountErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof CashBankAccountRuleError || isCashBankPostingError(error)) return error.message;
+  if (isUniqueViolationOn(error, "code")) return "รหัสบัญชีนี้ถูกใช้แล้ว กรุณาใช้รหัสอื่น";
+  if (error instanceof Error && PERMISSION_ERROR_MESSAGES.has(error.message)) return "ไม่มีสิทธิ์เข้าถึง";
+  return fallback;
+}
+
+/** Shows a cash/bank posting rule message (e.g. date before opening date) instead of the generic text. */
+function getCashBankPostingErrorMessage(error: unknown, fallback: string): string {
+  return isCashBankPostingError(error) ? error.message : fallback;
 }
 
 function validateCashBankAccountInput(data: z.infer<typeof accountSchema>): string | null {
@@ -302,7 +330,7 @@ export async function createCashBankAccount(formData: FormData) {
     await dbTx(async (tx) => {
       const primaryValidationError = await validatePrimaryTransferAccountAvailability(tx, data);
       if (primaryValidationError) {
-        throw new Error(primaryValidationError);
+        throw new CashBankAccountRuleError(primaryValidationError);
       }
 
       const account = await tx.cashBankAccount.create({
@@ -342,10 +370,7 @@ export async function createCashBankAccount(formData: FormData) {
     return { success: true };
   } catch (error) {
     console.error("createCashBankAccount", error);
-    if (error instanceof Error && error.message) {
-      return { error: error.message };
-    }
-    return { error: "ไม่สามารถสร้างบัญชีเงินได้" };
+    return { error: getCashBankAccountErrorMessage(error, "ไม่สามารถสร้างบัญชีเงินได้") };
   }
 }
 
@@ -377,7 +402,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
     await dbTx(async (tx) => {
       const primaryValidationError = await validatePrimaryTransferAccountAvailability(tx, data, accountId);
       if (primaryValidationError) {
-        throw new Error(primaryValidationError);
+        throw new CashBankAccountRuleError(primaryValidationError);
       }
 
       await tx.cashBankAccount.update({
@@ -418,10 +443,7 @@ export async function updateCashBankAccount(accountId: string, formData: FormDat
     return { success: true };
   } catch (error) {
     console.error("updateCashBankAccount", error);
-    if (error instanceof Error && error.message) {
-      return { error: error.message };
-    }
-    return { error: "ไม่สามารถแก้ไขบัญชีเงินได้" };
+    return { error: getCashBankAccountErrorMessage(error, "ไม่สามารถแก้ไขบัญชีเงินได้") };
   }
 }
 
@@ -448,40 +470,44 @@ export async function createCashBankTransfer(formData: FormData) {
     }
     const docDate = parseDateOnlyToDate(parsed.data.transferDate);
 
-    const transferNo = await generateCashBankTransferNo(docDate);
+    // Regenerate the number and retry if a concurrent save took the same transferNo.
+    await withDocNumberRetry({
+      uniqueField: "transferNo",
+      generate: () => generateCashBankTransferNo(docDate),
+      run: (transferNo) => dbTx(async (tx) => {
+        createdTransferId = "";
+        const transfer = await tx.cashBankTransfer.create({
+          data: {
+            transferNo,
+            transferDate: docDate,
+            fromAccountId: parsed.data.fromAccountId,
+            toAccountId: parsed.data.toAccountId,
+            amount: parsed.data.amount,
+            note: parsed.data.note || null,
+            userId: session.user.id!,
+          },
+        });
+        createdTransferId = transfer.id;
 
-    await dbTx(async (tx) => {
-      const transfer = await tx.cashBankTransfer.create({
-        data: {
-          transferNo,
-          transferDate: docDate,
-          fromAccountId: parsed.data.fromAccountId,
-          toAccountId: parsed.data.toAccountId,
-          amount: parsed.data.amount,
-          note: parsed.data.note || null,
-          userId: session.user.id!,
-        },
-      });
-      createdTransferId = transfer.id;
-
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.TRANSFER, transfer.id, [
-        {
-          accountId: parsed.data.fromAccountId,
-          txnDate: docDate,
-          direction: CashBankDirection.OUT,
-          amount: parsed.data.amount,
-          referenceNo: transferNo,
-          note: parsed.data.note,
-        },
-        {
-          accountId: parsed.data.toAccountId,
-          txnDate: docDate,
-          direction: CashBankDirection.IN,
-          amount: parsed.data.amount,
-          referenceNo: transferNo,
-          note: parsed.data.note,
-        },
-      ]);
+        await replaceCashBankSourceMovements(tx, CashBankSourceType.TRANSFER, transfer.id, [
+          {
+            accountId: parsed.data.fromAccountId,
+            txnDate: docDate,
+            direction: CashBankDirection.OUT,
+            amount: parsed.data.amount,
+            referenceNo: transferNo,
+            note: parsed.data.note,
+          },
+          {
+            accountId: parsed.data.toAccountId,
+            txnDate: docDate,
+            direction: CashBankDirection.IN,
+            amount: parsed.data.amount,
+            referenceNo: transferNo,
+            note: parsed.data.note,
+          },
+        ]);
+      }),
     });
 
     const afterSnapshot = createdTransferId
@@ -503,7 +529,7 @@ export async function createCashBankTransfer(formData: FormData) {
     return { success: true };
   } catch (error) {
     console.error("createCashBankTransfer", error);
-    return { error: "ไม่สามารถบันทึกการโอนเงินได้" };
+    return { error: getCashBankPostingErrorMessage(error, "ไม่สามารถบันทึกการโอนเงินได้") };
   }
 }
 
@@ -588,33 +614,37 @@ export async function createCashBankAdjustment(formData: FormData) {
     }
     const docDate = parseDateOnlyToDate(parsed.data.adjustDate);
 
-    const adjustNo = await generateCashBankAdjustmentNo(docDate);
+    // Regenerate the number and retry if a concurrent save took the same adjustNo.
+    await withDocNumberRetry({
+      uniqueField: "adjustNo",
+      generate: () => generateCashBankAdjustmentNo(docDate),
+      run: (adjustNo) => dbTx(async (tx) => {
+        createdAdjustmentId = "";
+        const adjustment = await tx.cashBankAdjustment.create({
+          data: {
+            adjustNo,
+            adjustDate: docDate,
+            accountId: parsed.data.accountId,
+            direction: parsed.data.direction,
+            amount: parsed.data.amount,
+            reason: parsed.data.reason,
+            note: parsed.data.note || null,
+            userId: session.user.id!,
+          },
+        });
+        createdAdjustmentId = adjustment.id;
 
-    await dbTx(async (tx) => {
-      const adjustment = await tx.cashBankAdjustment.create({
-        data: {
-          adjustNo,
-          adjustDate: docDate,
-          accountId: parsed.data.accountId,
-          direction: parsed.data.direction,
-          amount: parsed.data.amount,
-          reason: parsed.data.reason,
-          note: parsed.data.note || null,
-          userId: session.user.id!,
-        },
-      });
-      createdAdjustmentId = adjustment.id;
-
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.ADJUSTMENT, adjustment.id, [
-        {
-          accountId: parsed.data.accountId,
-          txnDate: docDate,
-          direction: parsed.data.direction,
-          amount: parsed.data.amount,
-          referenceNo: adjustNo,
-          note: [parsed.data.reason, parsed.data.note].filter(Boolean).join(" | "),
-        },
-      ]);
+        await replaceCashBankSourceMovements(tx, CashBankSourceType.ADJUSTMENT, adjustment.id, [
+          {
+            accountId: parsed.data.accountId,
+            txnDate: docDate,
+            direction: parsed.data.direction,
+            amount: parsed.data.amount,
+            referenceNo: adjustNo,
+            note: [parsed.data.reason, parsed.data.note].filter(Boolean).join(" | "),
+          },
+        ]);
+      }),
     });
 
     const afterSnapshot = createdAdjustmentId
@@ -636,7 +666,7 @@ export async function createCashBankAdjustment(formData: FormData) {
     return { success: true };
   } catch (error) {
     console.error("createCashBankAdjustment", error);
-    return { error: "ไม่สามารถบันทึกการปรับยอดได้" };
+    return { error: getCashBankPostingErrorMessage(error, "ไม่สามารถบันทึกการปรับยอดได้") };
   }
 }
 
@@ -713,7 +743,7 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
     return { success: true };
   } catch (error) {
     console.error("updateCashBankAdjustment", error);
-    return { error: "ไม่สามารถแก้ไขการปรับยอดได้" };
+    return { error: getCashBankPostingErrorMessage(error, "ไม่สามารถแก้ไขการปรับยอดได้") };
   }
 }
 

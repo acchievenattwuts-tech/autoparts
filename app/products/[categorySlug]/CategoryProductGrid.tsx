@@ -49,12 +49,16 @@ const CategoryProductGrid = ({
   const [total, setTotal] = useState(initialTotal);
   const [loadedPage, setLoadedPage] = useState(initialPage);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // Set when a load-more attempt returned nothing (throttled, DB error, network
+  // error). Pauses auto-load — otherwise the observer would retry in a tight
+  // loop — and turns the control into a retry button.
+  const [loadFailed, setLoadFailed] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const latestRequestIdRef = useRef(0);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasMore = products.length < total && loadedPage < totalPages;
-  const canAutoLoad = hasMore && loadedPage < AUTO_LOAD_PAGE_LIMIT;
+  const canAutoLoad = hasMore && !loadFailed && loadedPage < AUTO_LOAD_PAGE_LIMIT;
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -66,6 +70,7 @@ const CategoryProductGrid = ({
       setTotal(initialTotal);
       setLoadedPage(initialPage);
       setIsLoadingMore(false);
+      setLoadFailed(false);
       if (scrollToTop) window.scrollTo({ top: 0, behavior: "auto" });
     };
 
@@ -92,6 +97,14 @@ const CategoryProductGrid = ({
       });
       if (latestRequestIdRef.current !== requestId) return;
 
+      // Nothing loaded: keep the known total and page so the count stays true
+      // and the customer can retry.
+      if (!result.ok) {
+        setLoadFailed(true);
+        return;
+      }
+      setLoadFailed(false);
+
       setProducts((current) => {
         const seen = new Set(current.map((product) => product.id));
         const appended = result.products.filter((product) => !seen.has(product.id));
@@ -99,6 +112,9 @@ const CategoryProductGrid = ({
       });
       setTotal(result.total);
       setLoadedPage(result.page);
+    } catch (error) {
+      console.error("[CategoryProductGrid] load more failed", error);
+      if (latestRequestIdRef.current === requestId) setLoadFailed(true);
     } finally {
       if (latestRequestIdRef.current === requestId) {
         setIsLoadingMore(false);
@@ -156,7 +172,12 @@ const CategoryProductGrid = ({
       </div>
 
       {hasMore && (
-        <div ref={loadMoreRef} className="mt-8 flex justify-center">
+        <div ref={loadMoreRef} className="mt-8 flex flex-col items-center gap-2">
+          {loadFailed && !isLoadingMore && (
+            <p role="status" className="text-sm text-slate-500">
+              โหลดสินค้าเพิ่มไม่สำเร็จ กรุณาลองอีกครั้ง
+            </p>
+          )}
           {canAutoLoad ? (
             <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-500 shadow-sm">
               <Loader2 className="h-4 w-4 animate-spin text-[#f97316]" />
@@ -175,7 +196,7 @@ const CategoryProductGrid = ({
                   <span>กำลังโหลด...</span>
                 </>
               ) : (
-                <span>ดูเพิ่มเติม</span>
+                <span>{loadFailed ? "ลองอีกครั้ง" : "ดูเพิ่มเติม"}</span>
               )}
             </button>
           )}

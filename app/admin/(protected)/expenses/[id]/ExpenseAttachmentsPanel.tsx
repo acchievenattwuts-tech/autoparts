@@ -7,7 +7,8 @@ import { useState, useTransition } from "react";
 
 import ExpenseAttachmentPicker, { formatAttachmentSize } from "@/components/shared/ExpenseAttachmentPicker";
 import { EXPENSE_ATTACHMENT_PDF_MIME_TYPE } from "@/lib/expense-attachment-constants";
-import { deleteExpenseAttachment, uploadExpenseAttachments } from "../attachment-actions";
+import { deleteExpenseAttachment } from "../attachment-actions";
+import { uploadExpenseAttachmentsSequentially } from "../upload-attachments-sequentially";
 
 export interface ExpenseAttachmentView {
   id: string;
@@ -38,17 +39,15 @@ const ExpenseAttachmentsPanel = ({ expenseId, attachments, canManage }: Props) =
     if (pendingFiles.length === 0) return;
     setError(null);
 
-    const formData = new FormData();
-    for (const file of pendingFiles) formData.append("files", file);
-
     startTransition(async () => {
-      const result = await uploadExpenseAttachments(expenseId, formData);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setPendingFiles([]);
-      router.refresh();
+      const { uploadedCount, error: uploadError } = await uploadExpenseAttachmentsSequentially(
+        expenseId,
+        pendingFiles,
+      );
+      // Keep only the files that did not make it, so a retry never duplicates one.
+      setPendingFiles(pendingFiles.slice(uploadedCount));
+      if (uploadedCount > 0) router.refresh();
+      if (uploadError) setError(uploadError);
     });
   };
 

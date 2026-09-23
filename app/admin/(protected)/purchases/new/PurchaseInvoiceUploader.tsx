@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { FileText, ScanLine, Sparkles, Upload, X } from "lucide-react";
 
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+// Type-only import: the SDK itself is loaded on demand in getBrowserSupabase() so the
+// purchase form bundle does not ship it until the user actually scans an invoice.
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import { searchPurchaseProducts } from "../actions";
@@ -33,12 +35,17 @@ const isPdf = (file: File) => file.type === "application/pdf";
 // Browser Supabase client (anon key) — used only to upload to short-lived signed
 // URLs. The signed token authorizes each upload, so no session/RLS is needed.
 let browserClient: SupabaseClient | null = null;
-function getBrowserSupabase(): SupabaseClient | null {
+async function getBrowserSupabase(): Promise<SupabaseClient | null> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return null;
   if (!browserClient) {
-    browserClient = createClient(url, anonKey, { auth: { persistSession: false } });
+    try {
+      const { createClient } = await import("@supabase/supabase-js");
+      browserClient = createClient(url, anonKey, { auth: { persistSession: false } });
+    } catch {
+      return null;
+    }
   }
   return browserClient;
 }
@@ -164,7 +171,7 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
           return;
         }
 
-        const supabase = getBrowserSupabase();
+        const supabase = await getBrowserSupabase();
         if (!supabase) {
           setError("ระบบจัดเก็บไฟล์ยังไม่พร้อมใช้งาน");
           return;

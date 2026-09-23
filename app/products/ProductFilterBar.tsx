@@ -22,6 +22,12 @@ interface Props {
   onApply: (draft: DraftFilters) => void;
   onClearAll: () => void;
   isPending?: boolean;
+  /**
+   * Bump to force the desktop draft back to `appliedFilters` (e.g. after a
+   * search result is applied or the page is re-navigated). Other re-renders of
+   * the parent leave an in-progress draft alone.
+   */
+  resetToken?: number;
 }
 
 const FILTER_ICON = (
@@ -29,6 +35,23 @@ const FILTER_ICON = (
     <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18M6 12h12M10 19h4" />
   </svg>
 );
+
+export type DesktopDraftSyncState = {
+  applied: AppliedFilters;
+  resetToken?: number;
+};
+
+/**
+ * True when the desktop draft must be reset to the applied filters: when the
+ * applied values differ from the ones the draft was last synced to, or the
+ * parent bumped `resetToken` — never merely because the parent handed over a
+ * new object with the same values.
+ */
+export const shouldResyncDesktopDraft = (
+  lastSynced: DesktopDraftSyncState,
+  next: DesktopDraftSyncState,
+): boolean =>
+  lastSynced.resetToken !== next.resetToken || !filtersEqual(lastSynced.applied, next.applied);
 
 const ProductFilterBar = ({
   carBrands,
@@ -38,14 +61,28 @@ const ProductFilterBar = ({
   onApply,
   onClearAll,
   isPending,
+  resetToken,
 }: Props) => {
   const [desktopDraft, setDesktopDraft] = useState<DraftFilters>(appliedFilters);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  // Sync desktop draft when applied filters change
-  useEffect(() => {
+  // Sync desktop draft only when the applied filter VALUES change. The parent
+  // passes `appliedFilters` as a fresh object literal on every render, so a
+  // reference-based sync wiped the customer's un-applied ticks whenever the
+  // results re-rendered for another reason (e.g. infinite-scroll loading more).
+  // `resetToken` still forces a sync on deliberate resets (a search result was
+  // applied, or the page was re-navigated) even when the values are unchanged.
+  // Adjusted during render (React's "storing information from previous renders"
+  // pattern) rather than in an effect, so the draft never paints stale for a frame.
+  const [lastSync, setLastSync] = useState<DesktopDraftSyncState>({
+    applied: appliedFilters,
+    resetToken,
+  });
+  const nextSync: DesktopDraftSyncState = { applied: appliedFilters, resetToken };
+  if (shouldResyncDesktopDraft(lastSync, nextSync)) {
+    setLastSync(nextSync);
     setDesktopDraft(appliedFilters);
-  }, [appliedFilters]);
+  }
 
   const isDesktopDirty = !filtersEqual(desktopDraft, appliedFilters);
 

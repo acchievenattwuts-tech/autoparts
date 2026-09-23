@@ -107,7 +107,14 @@ export async function updatePriceList(
 ): Promise<{ error?: string }> {
   const session = await requirePermission("price_lists.update").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
-  const parsed = z.object({ name: z.string().trim().min(1).max(100), sortOrder: z.number().int().min(0).max(9999) }).safeParse(input);
+  const parsed = z.object({
+    name: z.string().trim().min(1, "กรุณากรอกชื่อระดับราคา").max(100, "ชื่อระดับราคายาวได้ไม่เกิน 100 ตัวอักษร"),
+    sortOrder: z
+      .number({ error: "ลำดับต้องเป็นตัวเลข" })
+      .int("ลำดับต้องเป็นจำนวนเต็ม")
+      .min(0, "ลำดับต้องไม่ติดลบ")
+      .max(9999, "ลำดับต้องไม่เกิน 9999"),
+  }).safeParse(input);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   const current = await db.priceList.findUnique({ where: { id } });
   if (!current) return { error: "ไม่พบระดับราคา" };
@@ -150,6 +157,20 @@ const emptyPreview = (errors: string[], rowCount = 0): PriceImportPreview => ({
  *  save, so importing into them would be reverted without warning. */
 const LEGACY_IMPORT_BLOCKED_MESSAGE =
   "ระดับราคาขายส่ง / สมาชิก / ขายปลีก แก้ราคาได้จากหน้าสินค้าเท่านั้น ไม่รองรับการนำเข้า CSV";
+
+/** Upper bound on product ids per updateMany, well inside PostgreSQL's bind-parameter limit. */
+const PRICE_IMPORT_UPDATE_CHUNK_SIZE = 1_000;
+
+/** Groups the changed rows by their new amount, keeping file order inside each group. */
+const groupProductIdsByAmount = (targets: Array<{ productId: string; amount: number }>): Map<number, string[]> => {
+  const groups = new Map<number, string[]>();
+  for (const target of targets) {
+    const productIds = groups.get(target.amount);
+    if (productIds) productIds.push(target.productId);
+    else groups.set(target.amount, [target.productId]);
+  }
+  return groups;
+};
 
 async function buildPriceImportPreview(priceListId: string, csv: string): Promise<PriceImportPreview> {
   const parsed = parsePriceImportCsv(csv);
@@ -244,11 +265,20 @@ export async function applyPriceImport(priceListId: string, csv: string): Promis
           data: toCreate.map((target) => ({ productId: target.productId, priceListId, amount: target.amount })),
         });
       }
-      for (const target of toUpdate) {
-        await tx.productPrice.update({
-          where: { productId_priceListId: { productId: target.productId, priceListId } },
-          data: { amount: target.amount },
-        });
+      // Rows moving to the same amount share one updateMany, so a re-import pays
+      // one round trip per distinct new price instead of one per product. Each
+      // row still receives exactly its own CSV amount. update() used to throw
+      // (and roll the whole import back) on a row that vanished mid-import; the
+      // count check keeps that all-or-nothing behaviour.
+      for (const [amount, productIds] of groupProductIdsByAmount(toUpdate)) {
+        for (let start = 0; start < productIds.length; start += PRICE_IMPORT_UPDATE_CHUNK_SIZE) {
+          const chunk = productIds.slice(start, start + PRICE_IMPORT_UPDATE_CHUNK_SIZE);
+          const { count } = await tx.productPrice.updateMany({
+            where: { priceListId, productId: { in: chunk } },
+            data: { amount },
+          });
+          if (count !== chunk.length) throw new Error("PRICE_ROW_MISSING");
+        }
       }
       return {
         code: priceList.code,

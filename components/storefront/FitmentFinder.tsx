@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState, useTransition } from "react";
+import { useCallback, useId, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MessageCircleMore, RotateCcw, Search } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
@@ -69,6 +69,7 @@ const buildModelsByBrand = (
 const FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const categoryLabelId = useId();
 
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -187,7 +188,7 @@ const FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
           />
         </div>
         <div>
-          <label className="mb-1 block truncate text-xs font-medium text-[#4d6fba]">
+          <label id={categoryLabelId} className="mb-1 block truncate text-xs font-medium text-[#4d6fba]">
             หมวดอะไหล่{" "}
             <span className="hidden font-normal text-slate-400 sm:inline">(เลือกได้หลายหมวด)</span>
           </label>
@@ -196,6 +197,7 @@ const FitmentFinder = ({ brands, categories, lineUrl = "" }: Props) => {
             values={selectedCategories}
             onChange={setSelectedCategories}
             placeholder="เลือกหมวด"
+            ariaLabelledBy={categoryLabelId}
           />
         </div>
       </div>

@@ -12,6 +12,7 @@ import {
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { db, dbTx } from "@/lib/db";
 import { generateDeliveryCommissionRunNo, generateExpenseNo } from "@/lib/doc-number";
+import { isUniqueViolationOn } from "@/lib/doc-number-retry";
 import {
   AuditAction,
   CashBankDirection,
@@ -61,17 +62,6 @@ function roundMoney(value: number): number {
 
 function isPrismaKnownError(error: unknown): error is PrismaKnownError {
   return typeof error === "object" && error !== null && "code" in error;
-}
-
-function getPrismaErrorTargets(error: unknown): string[] {
-  if (!isPrismaKnownError(error)) return [];
-
-  const target = error.meta?.target;
-  if (Array.isArray(target)) {
-    return target.filter((value): value is string => typeof value === "string");
-  }
-
-  return typeof target === "string" ? [target] : [];
 }
 
 async function getRunAuditSnapshot(runId: string) {
@@ -314,14 +304,15 @@ export async function createDeliveryCommissionRun(formData: FormData): Promise<C
       }
 
       if (isPrismaKnownError(error) && error.code === "P2002") {
-        const targets = getPrismaErrorTargets(error);
-        if (targets.includes("activeSaleId")) {
+        // Prisma 7 driver adapters report the violated columns under
+        // meta.driverAdapterError, not meta.target — isUniqueViolationOn reads both.
+        if (isUniqueViolationOn(error, "activeSaleId")) {
           return {
             error: "มีบางบิลถูกทำจ่ายแล้วระหว่างดำเนินการ กรุณาโหลดรายการใหม่แล้วลองอีกครั้ง",
           };
         }
         if (
-          (targets.includes("runNo") || targets.includes("expenseNo")) &&
+          (isUniqueViolationOn(error, "runNo") || isUniqueViolationOn(error, "expenseNo")) &&
           attempt < MAX_DOCNO_RETRIES - 1
         ) {
           continue;

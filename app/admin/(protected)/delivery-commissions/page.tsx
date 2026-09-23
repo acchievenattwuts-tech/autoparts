@@ -13,6 +13,7 @@ import type { Prisma } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
 import { getSiteConfig } from "@/lib/site-config";
+import { getTransactionCustomers } from "@/lib/transaction-options";
 import {
   formatDateOnlyForInput,
   formatDateThai,
@@ -29,6 +30,8 @@ import PayoutPanel from "./PayoutPanel";
 type TabKey = "payouts" | "report";
 const REPORT_PAGE_SIZE = 50;
 const MAX_PAYOUT_SALES = 200;
+/** Report filter customer options — same first-N-by-name list as before. */
+const REPORT_CUSTOMER_OPTION_LIMIT = 1000;
 
 interface PageProps {
   searchParams: Promise<{
@@ -263,19 +266,18 @@ async function ReportTab({ params }: { params: Awaited<PageProps["searchParams"]
   const config = await getSiteConfig();
   const currentPercent = Number(config.deliveryCommissionPercent);
 
-  const [customers, staff] = await Promise.all([
-    db.customer.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, code: true, name: true },
-      take: 1000,
-    }),
+  const [activeCustomers, staff] = await Promise.all([
+    // Active customers sorted by name, served from the shared transaction-options
+    // cache (updateTag-invalidated on customer changes) instead of a DB read on
+    // every report page / filter change.
+    getTransactionCustomers(),
     db.user.findMany({
       orderBy: { name: "asc" },
       select: { id: true, name: true, email: true },
     }),
   ]);
 
+  const customers = activeCustomers.slice(0, REPORT_CUSTOMER_OPTION_LIMIT);
   const customerOptions: SelectOption[] = customers.map((c) => ({
     id: c.id,
     label: c.name,

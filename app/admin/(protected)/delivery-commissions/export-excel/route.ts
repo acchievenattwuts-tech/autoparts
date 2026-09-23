@@ -24,6 +24,7 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { getLatestDeliveryProofTimes } from "../latest-delivery-proofs";
 
 const MAX_EXPORT_ROWS = 10000;
 
@@ -136,17 +137,7 @@ export async function GET(request: Request) {
 
   const saleIds = sales.map((sale) => sale.id);
   const [latestProofs, activeCommissionItems] = await Promise.all([
-    saleIds.length === 0
-      ? Promise.resolve([])
-      : db.deliveryProof.findMany({
-          where: { saleId: { in: saleIds } },
-          orderBy: [{ saleId: "asc" }, { capturedAt: "desc" }],
-          distinct: ["saleId"],
-          select: {
-            saleId: true,
-            capturedAt: true,
-          },
-        }),
+    getLatestDeliveryProofTimes(db, saleIds),
     saleIds.length === 0
       ? Promise.resolve([])
       : db.deliveryCommissionItem.findMany({

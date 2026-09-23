@@ -1088,3 +1088,168 @@ test("coalescing: a payment slip is still ingested exactly once and relabelled",
     "the image row is relabelled as a payment slip",
   );
 });
+
+// ── G1 review fixes (#44 / #45 / #163) ──────────────────────────────────────
+
+function unsendEvent(id: string) {
+  // Non-message events carry no replyToken.
+  return {
+    type: "unsend",
+    webhookEventId: id,
+    source: { type: "user", userId: "u1" },
+    unsend: { messageId: "m-old" },
+  };
+}
+
+test("#44 coalescing: a token-less event landing last still replies with the burst's real token", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createCoalesceHarness();
+  const usedTokens: string[] = [];
+  const reply = dependencies.replyLineMessage;
+  dependencies.replyLineMessage = async (input) => {
+    usedTokens.push(input.replyToken);
+    return reply(input);
+  };
+
+  await processLineWebhookPayload(
+    { events: [textEvent("e1", "หม้อน้ำ vios"), unsendEvent("e2")] },
+    baseConfig,
+    dependencies,
+  );
+
+  // Before: the turn took only the (null) token of the unsend row while canReply
+  // stayed true → decided REPLY, sent nothing.
+  assert.equal(calls.replies.length, 1, "the customer gets an answer");
+  assert.deepEqual(usedTokens, ["reply-e1"]);
+  assert.equal(calls.pushes.length, 0, "free reply, not a paid push");
+});
+
+test("#44 coalescing: an earlier row's token is age-checked by its own arrival time", async () => {
+  const { recoverStalledCoalescedConversations } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness();
+  state.inbound.push(
+    {
+      id: "m1",
+      text: "หม้อน้ำ vios",
+      messageType: LineMessageType.TEXT,
+      replyToken: "rt-old",
+      lineEventId: "e1",
+      lineMessageId: "lm1",
+      intent: null,
+      createdAt: new Date(Date.now() - 60_000),
+    },
+    {
+      id: "m2",
+      text: null,
+      messageType: LineMessageType.UNKNOWN,
+      replyToken: null,
+      lineEventId: "e2",
+      lineMessageId: null,
+      intent: null,
+      createdAt: new Date(),
+    },
+  );
+  state.seq = 2;
+
+  await recoverStalledCoalescedConversations(
+    { ...baseConfig, receivedAt: new Date(), allowPushFallback: true },
+    dependencies,
+    { quietForMs: 0, take: 5 },
+  );
+
+  assert.equal(calls.replies.length, 0, "a 60s-old token is not used even though receivedAt is fresh");
+  assert.equal(calls.pushes.length, 1);
+});
+
+test("#45 pipeline failure: a delivered fallback is recorded so recovery does not resend it", async () => {
+  const { processLineWebhookPayload, recoverStalledCoalescedConversations } = await import(
+    "@/lib/line-webhook-processor"
+  );
+  const { calls, state, dependencies } = createCoalesceHarness();
+  const outbound: Array<{ text: string | null | undefined; deliveryStatus: unknown }> = [];
+  const append = dependencies.appendLineMessage;
+  dependencies.appendLineMessage = async (message) => {
+    if (message.direction === LineMessageDirection.OUTBOUND_AI) {
+      outbound.push({ text: message.text, deliveryStatus: message.deliveryStatus });
+    }
+    return append(message);
+  };
+  dependencies.storeLineAiSuggestion = async () => {
+    throw new Error("boom");
+  };
+  // Real stalled query: seq-based only (it does not look at unanswered rows).
+  dependencies.findStalledCoalescedConversationIds = async () =>
+    state.seq > state.processedSeq && !state.lockOwner ? ["conv-1"] : [];
+
+  await processLineWebhookPayload({ events: [textEvent("e1", "หม้อน้ำ vios")] }, baseConfig, dependencies);
+
+  assert.equal(calls.replies.length, 1, "fallback sent once");
+  assert.equal(outbound.length, 1, "fallback recorded as OUTBOUND_AI");
+  assert.equal(outbound[0].deliveryStatus, "SENT");
+
+  // Recovery cron minutes later: finds the conversation (seq not processed) but
+  // the burst is answered now → no pipeline re-run, no second fallback.
+  await recoverStalledCoalescedConversations(
+    { ...baseConfig, receivedAt: undefined, allowPushFallback: true },
+    dependencies,
+    { quietForMs: 0, take: 5 },
+  );
+  assert.equal(calls.replies.length, 1);
+  assert.equal(calls.pushes.length, 0, "no repeated fallback push");
+  assert.equal(state.processedSeq, state.seq, "processed marker advanced");
+});
+
+test("#45 pipeline failure: an undelivered fallback is NOT recorded (stays retryable)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { state, dependencies } = createCoalesceHarness();
+  let outboundCount = 0;
+  const append = dependencies.appendLineMessage;
+  dependencies.appendLineMessage = async (message) => {
+    if (message.direction === LineMessageDirection.OUTBOUND_AI) outboundCount += 1;
+    return append(message);
+  };
+  dependencies.storeLineAiSuggestion = async () => {
+    throw new Error("boom");
+  };
+  dependencies.replyLineMessage = async () => {
+    throw new Error("LINE down");
+  };
+
+  await processLineWebhookPayload({ events: [textEvent("e1", "หม้อน้ำ vios")] }, baseConfig, dependencies);
+
+  assert.equal(outboundCount, 0);
+  assert.equal(state.answeredCount, 0, "burst still unanswered → recovery may retry");
+});
+
+test("#163 coalesced ingest writes the per-event job COMPLETED in one insert", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { dependencies } = createCoalesceHarness();
+  const jobs: Array<{ status?: unknown; result?: unknown; finishedAt?: unknown; payload?: unknown }> = [];
+  const jobUpdates: unknown[] = [];
+  dependencies.storeLineAiJob = async (input) => {
+    jobs.push(input);
+    return { id: `job-${jobs.length}` } as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiJob"]>>;
+  };
+  dependencies.updateLineAiJob = async (_id, patch) => {
+    jobUpdates.push(patch);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["updateLineAiJob"]>>;
+  };
+
+  await processLineWebhookPayload(
+    { events: [textEvent("e1", "หม้อน้ำ vios"), textEvent("e2", "ปี 2010")] },
+    baseConfig,
+    dependencies,
+  );
+
+  const ingestJobs = jobs.filter((job) => !(job.payload as { coalesced?: boolean } | undefined)?.coalesced);
+  assert.equal(ingestJobs.length, 2);
+  for (const job of ingestJobs) {
+    assert.equal(job.status, "COMPLETED", "never PENDING, so the legacy cron can't pick it up");
+    assert.deepEqual(job.result, { action: "coalesced_ingest" });
+    assert.ok(job.finishedAt instanceof Date);
+  }
+  assert.ok(
+    !jobUpdates.some((patch) => (patch as { result?: { action?: string } }).result?.action === "coalesced_ingest"),
+    "no follow-up UPDATE round-trip",
+  );
+});

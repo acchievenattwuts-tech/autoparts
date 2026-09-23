@@ -112,39 +112,22 @@ const categoryAliasSchema = z.object({
   notes: z.string().trim().max(500).optional(),
 });
 
-const refreshCategorySearchCaches = async ({
-  categoryId,
-}: {
-  categoryId?: string;
-}) => {
-  updateTag("storefront:categories");
-  updateTag("storefront:products");
-  updateTag("storefront-product-filters");
+/**
+ * Cache refresh for CategoryAlias writes. Aliases are read only by LINE/Messenger
+ * matching (in-memory alias cache), storefront search intent (cached under
+ * PRODUCT_SEARCH_TAG) and — for MATCH aliases — the SearchKeyword autocomplete
+ * index. No storefront page or `storefront:*` cache reads them, so an alias edit
+ * leaves those untouched; Category create/update/toggle still refresh them via
+ * refreshCategoryStorefrontCaches().
+ */
+const refreshCategoryAliasSearchCaches = ({ affectsKeywordIndex }: { affectsKeywordIndex: boolean }) => {
   updateProductSearchCache();
-  triggerSearchKeywordRefresh();
-
-  revalidatePath("/");
-  revalidatePath("/products");
-  revalidatePath("/sitemap.xml");
-  revalidatePath("/products/[categorySlug]", "page");
-  revalidatePath("/products/[categorySlug]/[productSlug]", "page");
-  revalidatePath("/product/[productSlug]", "page");
-
-  if (!categoryId) {
-    return;
-  }
-
-  updateTag(`storefront-category:${categoryId}`);
-
-  const productIds = await db.product.findMany({
-    where: { categoryId },
-    select: { id: true },
-  });
-
-  productIds.forEach(({ id }) => {
-    updateTag(`storefront-product:${id}`);
-  });
+  if (affectsKeywordIndex) triggerSearchKeywordRefresh();
 };
+
+/** buildSearchKeywordRows() reads MATCH aliases only; SKIP_CATEGORY rows never reach the index. */
+const touchesKeywordIndex = (...kinds: Array<string | null | undefined>): boolean =>
+  kinds.some((kind) => kind === "MATCH");
 
 async function getCategoryAuditSnapshot(id: string) {
   return db.category.findUnique({
@@ -413,7 +396,7 @@ export const createCategoryAlias = async (
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
-    await refreshCategorySearchCaches({ categoryId });
+    refreshCategoryAliasSearchCaches({ affectsKeywordIndex: touchesKeywordIndex(kind) });
     return {};
   } catch {
     return { error: "ไม่สามารถเพิ่ม alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
@@ -475,7 +458,7 @@ export const updateCategoryAlias = async (
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
-    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
+    refreshCategoryAliasSearchCaches({ affectsKeywordIndex: touchesKeywordIndex(beforeSnapshot.kind, kind) });
     return {};
   } catch {
     return { error: "ไม่สามารถแก้ไข alias ได้ กรุณาตรวจสอบว่าคำนี้ซ้ำอยู่แล้วหรือไม่" };
@@ -519,7 +502,7 @@ export const toggleCategoryAlias = async (
     invalidateCategoryAliasCache();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
-    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
+    refreshCategoryAliasSearchCaches({ affectsKeywordIndex: touchesKeywordIndex(beforeSnapshot.kind) });
     return {};
   } catch {
     return { error: "ไม่สามารถเปลี่ยนสถานะ alias ได้" };
@@ -587,7 +570,8 @@ export const approveAiCategoryAlias = async (id: string): Promise<{ error?: stri
     triggerSearchKeywordRefresh();
     revalidatePath("/admin/master/categories");
     updateTag(ADMIN_MASTER_OPTION_TAGS.categories);
-    await refreshCategorySearchCaches({ categoryId: beforeSnapshot.categoryId ?? undefined });
+    // The keyword rebuild was already triggered above for the paired synonym.
+    refreshCategoryAliasSearchCaches({ affectsKeywordIndex: false });
     return {};
   } catch {
     return { error: "ไม่สามารถอนุมัติรายการนี้ได้" };

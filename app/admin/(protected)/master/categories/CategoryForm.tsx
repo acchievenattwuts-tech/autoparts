@@ -20,6 +20,7 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { submitFormData } from "../submit-form-data";
 
 type CategoryRow = Pick<
   Category,
@@ -238,6 +239,7 @@ const AliasManager = ({
   category: CategoryWithAliases;
   canUpdate: boolean;
 }) => {
+  const createAliasFormRef = useRef<HTMLFormElement>(null);
   const [error, setError] = useState<string>("");
   const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -247,6 +249,7 @@ const AliasManager = ({
     startTransition(async () => {
       const result = await createCategoryAlias(category.id, formData);
       if (result.error) setError(result.error);
+      else createAliasFormRef.current?.reset();
     });
   };
 
@@ -327,7 +330,7 @@ const AliasManager = ({
           return (
             <form
               key={editing.id}
-              action={(formData) => handleUpdateAlias(editing.id, formData)}
+              onSubmit={(event) => submitFormData(event, (formData) => handleUpdateAlias(editing.id, formData))}
               className="grid gap-2 rounded-lg border border-sky-200 bg-sky-50/60 p-2 md:grid-cols-[minmax(160px,1fr)_140px_130px_90px_minmax(160px,1fr)_auto_auto] dark:border-sky-400/20 dark:bg-sky-400/5"
             >
               <input
@@ -382,7 +385,7 @@ const AliasManager = ({
         })()}
 
       {canUpdate && !editingAliasId && (
-        <form action={handleCreateAlias} className="grid gap-2 md:grid-cols-[minmax(160px,1fr)_140px_130px_90px_minmax(160px,1fr)_auto]">
+        <form ref={createAliasFormRef} onSubmit={(event) => submitFormData(event, handleCreateAlias)} className="grid gap-2 md:grid-cols-[minmax(160px,1fr)_140px_130px_90px_minmax(160px,1fr)_auto]">
           <input
             type="text"
             name="alias"
@@ -449,8 +452,10 @@ const EditableRow = ({
   };
 
   const handleToggle = () => {
+    setError("");
     startTransition(async () => {
-      await toggleCategory(category.id, !category.isActive);
+      const result = await toggleCategory(category.id, !category.isActive);
+      if (result.error) setError(result.error);
     });
   };
 
@@ -459,7 +464,7 @@ const EditableRow = ({
       <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={5} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
-          <form action={handleUpdate} className="space-y-4">
+          <form onSubmit={(event) => submitFormData(event, handleUpdate)} className="space-y-4">
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(420px,1.2fr)_auto] xl:items-start">
               <div>
                 <input
@@ -554,7 +559,10 @@ const EditableRow = ({
         <AdminActionGroup align="end">
           {canUpdate && (
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setError("");
+                setIsEditing(true);
+              }}
               disabled={isPending}
               className="flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
             >
@@ -576,6 +584,7 @@ const EditableRow = ({
             <span className="text-xs text-gray-300 dark:text-slate-600">-</span>
           ) : null}
         </AdminActionGroup>
+        {error && <p role="alert" className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
       </td>
     </tr>
     <tr className="border-b border-gray-100 dark:border-white/10">
@@ -625,7 +634,7 @@ const CategoryForm = ({ categories, aliasCoverageGaps, canCreate, canUpdate, can
 
       {canCreate && (
         <AdminSectionCard title="เพิ่มหมวดหมู่ใหม่">
-          <form ref={formRef} action={handleCreate} className="space-y-4">
+          <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)} className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(460px,1.2fr)]">
               <div>
                 <input

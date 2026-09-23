@@ -13,8 +13,9 @@ import {
 import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, VatType } from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
+import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
-import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { clearCashBankSourceMovements, isCashBankPostingError, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/document-payments";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   parseWhtIssuedField,
   resolveCashAmount,
@@ -153,6 +154,7 @@ export async function createExpense(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const d = parsed.data;
+  if (!isDateOnlyString(d.expenseDate)) return { error: "วันที่ไม่ถูกต้อง" };
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate   = parseDateOnlyToDate(d.expenseDate);
@@ -180,79 +182,89 @@ export async function createExpense(
     return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
   const primaryAccountId = derivePrimaryAccountId(payments);
-  const expenseNo = await generateExpenseNo(docDate);
+  let expenseNo = "";
 
   try {
-    await dbTx(async (tx) => {
-      const expense = await tx.expense.create({
-        data: {
-          expenseNo,
-          expenseDate:    docDate,
-          userId:         session.user.id!,
-          supplierId:     d.supplierId,
-          cashBankAccountId: primaryAccountId,
-          totalAmount,
-          whtAmount,
-          vatType:        d.vatType,
-          vatRate:        d.vatRate,
-          subtotalAmount,
-          vatAmount,
-          netAmount,
-          note:           d.note,
-          items: {
-            create: d.items.map((it, idx) => ({
-              lineNo:        idx + 1,
-              expenseCodeId: it.expenseCodeId,
-              description:   it.description || null,
-              amount:        it.amount,
-            })),
-          },
-        },
-      });
-      createdExpenseId = expense.id;
-
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.EXPENSE,
-        expense.id,
-        CashBankDirection.OUT,
-        payments,
-      );
-
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.EXPENSE,
-        expense.id,
-        toCashBankEntries(payments, {
-          txnDate: docDate,
-          direction: CashBankDirection.OUT,
-          referenceNo: expenseNo,
-          note: d.note ?? null,
-        }),
-      );
-
-      await rebuildExpenseProfitFacts(tx, expense.id);
-
-      await persistWhtCertificate(tx, {
-        sourceType: "EXPENSE",
-        sourceId: expense.id,
-        sourceNo: expenseNo,
-        supplierId: d.supplierId,
-        payDate: docDate,
-        lines: wht
-          ? [
-              {
-                incomeTypeId: wht.incomeTypeId,
-                baseAmount: wht.baseAmount,
-                rate: wht.rate,
-                taxAmount: wht.taxAmount,
-                payCondition: wht.payCondition,
+    // Number generation now runs inside try, and is regenerated + retried if a
+    // concurrent save took the same expenseNo (the transaction rolls back fully).
+    await withDocNumberRetry({
+      uniqueField: "expenseNo",
+      generate: () => generateExpenseNo(docDate),
+      run: async (nextExpenseNo) => {
+        expenseNo = nextExpenseNo;
+        createdExpenseId = "";
+        await dbTx(async (tx) => {
+          const expense = await tx.expense.create({
+            data: {
+              expenseNo,
+              expenseDate:    docDate,
+              userId:         session.user.id!,
+              supplierId:     d.supplierId,
+              cashBankAccountId: primaryAccountId,
+              totalAmount,
+              whtAmount,
+              vatType:        d.vatType,
+              vatRate:        d.vatRate,
+              subtotalAmount,
+              vatAmount,
+              netAmount,
+              note:           d.note,
+              items: {
+                create: d.items.map((it, idx) => ({
+                  lineNo:        idx + 1,
+                  expenseCodeId: it.expenseCodeId,
+                  description:   it.description || null,
+                  amount:        it.amount,
+                })),
               },
-            ]
-          : [],
-        note: d.note ?? null,
-        userId: session.user.id!,
-      });
+            },
+          });
+          createdExpenseId = expense.id;
+
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.EXPENSE,
+            expense.id,
+            CashBankDirection.OUT,
+            payments,
+          );
+
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.EXPENSE,
+            expense.id,
+            toCashBankEntries(payments, {
+              txnDate: docDate,
+              direction: CashBankDirection.OUT,
+              referenceNo: expenseNo,
+              note: d.note ?? null,
+            }),
+          );
+
+          await rebuildExpenseProfitFacts(tx, expense.id);
+
+          await persistWhtCertificate(tx, {
+            sourceType: "EXPENSE",
+            sourceId: expense.id,
+            sourceNo: expenseNo,
+            supplierId: d.supplierId,
+            payDate: docDate,
+            lines: wht
+              ? [
+                  {
+                    incomeTypeId: wht.incomeTypeId,
+                    baseAmount: wht.baseAmount,
+                    rate: wht.rate,
+                    taxAmount: wht.taxAmount,
+                    payCondition: wht.payCondition,
+                  },
+                ]
+              : [],
+            note: d.note ?? null,
+            userId: session.user.id!,
+          });
+        });
+      },
     });
 
     const afterSnapshot = createdExpenseId
@@ -277,6 +289,7 @@ export async function createExpense(
     return { success: true, expenseNo, expenseId: createdExpenseId };
   } catch (err) {
     console.error("[createExpense]", err);
+    if (isCashBankPostingError(err)) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -395,6 +408,7 @@ export async function updateExpense(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const d = parsed.data;
+  if (!isDateOnlyString(d.expenseDate)) return { error: "วันที่ไม่ถูกต้อง" };
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate = parseDateOnlyToDate(d.expenseDate);
@@ -520,6 +534,7 @@ export async function updateExpense(
     return { success: true };
   } catch (err) {
     console.error("[updateExpense]", err);
+    if (isCashBankPostingError(err)) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

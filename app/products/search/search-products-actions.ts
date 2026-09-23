@@ -12,25 +12,43 @@ import { isLikelyBotUserAgent } from "@/lib/search-bot";
 import { getClientIp } from "@/lib/client-ip";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
+  STOREFRONT_SEARCH_MAX_ID_LENGTH,
+  STOREFRONT_SEARCH_MAX_LIST_ITEMS,
+  STOREFRONT_SEARCH_MAX_NAME_LENGTH,
+  STOREFRONT_SEARCH_MAX_PAGE,
+  STOREFRONT_SEARCH_MAX_PRICE,
+  STOREFRONT_SEARCH_MAX_QUERY_LENGTH,
+} from "@/lib/storefront-search-input-limits";
+import {
   EMPTY_SEARCH_RESULT,
   RATE_LIMITED_SEARCH_RESULT,
 } from "@/lib/storefront-search-result-states";
 
+// Ceilings shared with GET /products (which clamps instead of rejecting) — see
+// lib/storefront-search-input-limits.ts.
+const NAME = z.string().max(STOREFRONT_SEARCH_MAX_NAME_LENGTH);
+// A factory, not a shared instance, so each list field keeps its own default array.
+const nameList = () => z.array(NAME).max(STOREFRONT_SEARCH_MAX_LIST_ITEMS).default([]);
+const PRICE = z.number().min(0).max(STOREFRONT_SEARCH_MAX_PRICE).nullable().optional();
+
 const SearchInputSchema = z.object({
-  q: z.string().max(200).optional(),
-  category: z.string().max(200).optional(),
-  brand: z.string().max(200).optional(),
-  models: z.array(z.string().max(200)).max(50).default([]),
+  q: z.string().max(STOREFRONT_SEARCH_MAX_QUERY_LENGTH).optional(),
+  category: NAME.optional(),
+  brand: NAME.optional(),
+  models: nameList(),
   year: z.number().int().min(1900).max(2200).nullable().optional(),
-  page: z.number().int().min(1).max(500).default(1),
+  page: z.number().int().min(1).max(STOREFRONT_SEARCH_MAX_PAGE).default(1),
   // Multi-select filter UI v2
-  categories: z.array(z.string().max(200)).max(50).default([]),
-  partsBrands: z.array(z.string().max(64)).max(50).default([]),
-  carBrands: z.array(z.string().max(200)).max(50).default([]),
+  categories: nameList(),
+  partsBrands: z
+    .array(z.string().max(STOREFRONT_SEARCH_MAX_ID_LENGTH))
+    .max(STOREFRONT_SEARCH_MAX_LIST_ITEMS)
+    .default([]),
+  carBrands: nameList(),
   yearMin: z.number().int().min(1900).max(2200).nullable().optional(),
   yearMax: z.number().int().min(1900).max(2200).nullable().optional(),
-  priceMin: z.number().min(0).max(99_999_999).nullable().optional(),
-  priceMax: z.number().min(0).max(99_999_999).nullable().optional(),
+  priceMin: PRICE,
+  priceMax: PRICE,
 });
 
 export type SearchFilterInput = z.infer<typeof SearchInputSchema>;

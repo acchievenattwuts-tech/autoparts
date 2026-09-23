@@ -19,6 +19,7 @@ import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { dispatchOutOfStockAlerts } from "@/lib/notifications";
 import { generateSaleNo } from "@/lib/doc-number";
+import { isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   AuditAction,
   FulfillmentType,
@@ -603,264 +604,275 @@ export async function createSale(
     : paymentType === "CREDIT_SALE"
       ? "SAC"
       : "SA";
-  const saleNo  = await generateSaleNo(salePrefix, docDate);
+  let saleNo = "";
   let createdSaleId = "";
   const stockCrossedToZero: string[] = [];
 
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      await prepareSaleQuotationReference(tx, null, quotationId);
-      const quotationRevision = quotationId ? (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
-      const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
-        tx,
-        payments.map((row) => row.cashBankAccountId),
-      );
-      const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
-      const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
-      const customerPriceList = customerId
-        ? await tx.customer.findUnique({
-            where: { id: customerId },
-            select: {
-              customerType: {
+    // If another save takes the same saleNo first, regenerate it and retry the
+    // (fully rolled-back) transaction instead of failing the sale.
+    await withDocNumberRetry({
+      uniqueField: "saleNo",
+      generate: () => generateSaleNo(salePrefix, docDate),
+      run: async (nextSaleNo) => {
+        saleNo = nextSaleNo;
+        createdSaleId = "";
+        stockCrossedToZero.length = 0;
+        await dbTx(async (tx) => {
+          await prepareSaleQuotationReference(tx, null, quotationId);
+          const quotationRevision = quotationId ? (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
+          const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
+            tx,
+            payments.map((row) => row.cashBankAccountId),
+          );
+          const signerSnapshot = await getSaleSignerSnapshot(tx, session.user!.id, docDate);
+          const { productMap, unitMap } = await preloadSaleDependencies(tx, validItems);
+          const customerPriceList = customerId
+            ? await tx.customer.findUnique({
+                where: { id: customerId },
                 select: {
-                  isActive: true,
-                  priceList: { select: { id: true, code: true, isActive: true } },
+                  customerType: {
+                    select: {
+                      isActive: true,
+                      priceList: { select: { id: true, code: true, isActive: true } },
+                    },
+                  },
                 },
-              },
+              })
+            : null;
+          const activePriceList =
+            customerPriceList?.customerType?.isActive && customerPriceList.customerType.priceList?.isActive
+              ? customerPriceList.customerType.priceList
+              : null;
+          const productIds = [...new Set(validItems.map((item) => item.productId))];
+          const [normalPriceRows, promotionRows] = activePriceList
+            ? await Promise.all([
+                tx.productPrice.findMany({
+                  where: { priceListId: activePriceList.id, productId: { in: productIds } },
+                  select: { productId: true, amount: true },
+                }),
+                tx.pricePromotionItem.findMany({
+                  where: {
+                    productId: { in: productIds },
+                    promotion: {
+                      priceListId: activePriceList.id,
+                      status: "PUBLISHED",
+                      startDate: { lte: docDate },
+                      endDate: { gte: docDate },
+                    },
+                  },
+                  select: { productId: true, promotionId: true, promotionPrice: true },
+                }),
+              ])
+            : [[], []];
+          const normalPriceByProduct = new Map(normalPriceRows.map((row) => [row.productId, Number(row.amount)]));
+          const promotionByProduct = new Map<string, (typeof promotionRows)[number]>();
+          for (const promotion of promotionRows) {
+            if (promotionByProduct.has(promotion.productId)) throw new Error("OVERLAPPING_PUBLISHED_PRICE_PROMOTIONS");
+            promotionByProduct.set(promotion.productId, promotion);
+          }
+          // 1. Create Sale header
+          const sale = await tx.sale.create({
+            data: {
+              saleNo,
+              quotationId,
+              quotationRevision,
+              activeQuotationId: quotationId,
+              channel,
+              channelRefNo: channelRefNo ?? null,
+              customerId:       customerId       ?? null,
+              saleType,
+              paymentType,
+              fulfillmentType,
+              shippingAddress:  shippingAddress  ?? null,
+              shippingFee,
+              destLatitude:     destLatitude     ?? null,
+              destLongitude:    destLongitude    ?? null,
+              customerName:     customerName     ?? null,
+              customerPhone:    customerPhone    ?? null,
+              userId:           session.user!.id!,
+              signerName:       signerSnapshot.signerName,
+              signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+              signedAt:         signerSnapshot.signedAt,
+              totalAmount,
+              discount,
+              netAmount,
+              whtAmount,
+              vatType,
+              vatRate,
+              subtotalAmount,
+              vatAmount,
+              paymentMethod:   resolvedPaymentMethod,
+              cashBankAccountId: resolvedCashBankAccountId || null,
+              note:            note            ?? null,
+              saleDate:        docDate,
+              amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
+              shippingMethod,
+              shippingStatus:  ShippingStatus.PENDING,
+              creditTerm:      creditTerm      ?? null,
             },
-          })
-        : null;
-      const activePriceList =
-        customerPriceList?.customerType?.isActive && customerPriceList.customerType.priceList?.isActive
-          ? customerPriceList.customerType.priceList
-          : null;
-      const productIds = [...new Set(validItems.map((item) => item.productId))];
-      const [normalPriceRows, promotionRows] = activePriceList
-        ? await Promise.all([
-            tx.productPrice.findMany({
-              where: { priceListId: activePriceList.id, productId: { in: productIds } },
-              select: { productId: true, amount: true },
-            }),
-            tx.pricePromotionItem.findMany({
-              where: {
-                productId: { in: productIds },
-                promotion: {
-                  priceListId: activePriceList.id,
-                  status: "PUBLISHED",
-                  startDate: { lte: docDate },
-                  endDate: { gte: docDate },
-                },
+          });
+          createdSaleId = sale.id;
+          await auditSaleQuotationReference(tx, getAuditActorFromSession(session), sale.id, saleNo, null, quotationId);
+
+          // 2. Process each line item
+          for (const [itemIndex, item] of validItems.entries()) {
+            // Get unit scale
+            const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
+            const product = productMap.get(item.productId);
+            if (!product) throw new Error("ไม่พบสินค้า");
+            if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+
+            const scale      = unit.scale;
+            const qtyInBase  = item.qty * scale;
+
+            const isTracked = isInventoryTracked(product.inventoryTracking);
+            const costPerBase = resolveSaleUnitCost(product);
+
+            const itemTotal    = item.qty * item.salePrice;
+            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            const configuredAmount = normalPriceByProduct.get(item.productId);
+            const resolvedNormalPrice = activePriceList
+              ? resolveNormalPrice({
+                  priceListCode: activePriceList.code,
+                  configuredAmount,
+                  legacyPrices: {
+                    salePrice: Number(product.salePrice),
+                    retailPrice: Number(product.retailPrice),
+                    memberPrice: Number(product.memberPrice),
+                  },
+                })
+              : null;
+            const promotion = promotionByProduct.get(item.productId);
+            const matchesPromotion = promotion && Math.abs(item.salePrice - Number(promotion.promotionPrice)) <= 0.005;
+            const matchesNormal = resolvedNormalPrice && Math.abs(item.salePrice - resolvedNormalPrice.amount) <= 0.005;
+
+            // Create SaleItem
+            const saleItem = await tx.saleItem.create({
+              data: {
+                saleId:        sale.id,
+                lineNo:        itemIndex + 1,
+                productId:     item.productId,
+                quantity:      Math.round(qtyInBase),
+                salePrice:     item.salePrice,
+                unitListPrice: item.unitListPrice,
+                lineDiscount:  item.lineDiscount,
+                costPrice:     costPerBase,
+                totalAmount:   itemTotal,
+                subtotalAmount: itemSubtotal,
+                showQty:       item.qty,
+                showUnitName:  item.unitName,
+                showPricePerUnit: item.salePrice,
+                unitScale:     scale,
+                warrantyDays:  item.warrantyDays,
+                supplierId:    item.supplierId || null,
+                supplierName:  item.supplierName || null,
+                moreDetail:    item.moreDetail || null,
+                priceListId: activePriceList?.id ?? null,
+                pricePromotionId: matchesPromotion ? promotion.promotionId : null,
+                priceSource: matchesPromotion
+                  ? SalePriceSource.PROMOTION
+                  : matchesNormal
+                    ? SalePriceSource.NORMAL_PRICE
+                    : SalePriceSource.MANUAL,
               },
-              select: { productId: true, promotionId: true, promotionPrice: true },
+            });
+
+            // Auto-create Warranty rows - one per display-unit qty (N warranties for N pieces sold)
+            // Write StockCard (outgoing)
+            const stockCardId = isTracked ? await writeStockCard(tx, {
+              productId:   item.productId,
+              docNo:       saleNo,
+              docDate,
+              source:      "SALE",
+              qtyIn:       0,
+              qtyOut:      qtyInBase,
+              priceIn:     0,
+              detail:      `ขาย ${item.qty} ${item.unitName}`,
+              referenceId: saleItem.id,
+            }, stockCrossedToZero) : null;
+
+            // Lot Control - only if product has isLotControl=true
+            if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
+                const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
+                if (lotErr) throw new Error(lotErr);
+
+                const lotsInBase = item.lotItems.map((lot) => ({
+                  lotNo:        lot.lotNo.trim(),
+                  qtyInBase:    lot.qty * scale,
+                  unitCostBase: costPerBase,
+                  mfgDate:      null as Date | null,
+                  expDate:      null as Date | null,
+                }));
+
+                await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
+                await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
+
+                await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
+            }
+
+            await createWarrantySnapshots(tx, {
+              saleId: sale.id,
+              saleItemId: saleItem.id,
+              productId: item.productId,
+              warrantyDays: item.warrantyDays,
+              docDate,
+              itemQty: item.qty,
+              lotItems: item.lotItems as LotSubRow[],
+            });
+          }
+
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.SALE,
+            sale.id,
+            CashBankDirection.IN,
+            payments,
+          );
+
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.SALE,
+            sale.id,
+            toCashBankEntries(payments, {
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              referenceNo: saleNo,
+              note: note ?? null,
             }),
-          ])
-        : [[], []];
-      const normalPriceByProduct = new Map(normalPriceRows.map((row) => [row.productId, Number(row.amount)]));
-      const promotionByProduct = new Map<string, (typeof promotionRows)[number]>();
-      for (const promotion of promotionRows) {
-        if (promotionByProduct.has(promotion.productId)) throw new Error("OVERLAPPING_PUBLISHED_PRICE_PROMOTIONS");
-        promotionByProduct.set(promotion.productId, promotion);
-      }
-      // 1. Create Sale header
-      const sale = await tx.sale.create({
-        data: {
-          saleNo,
-          quotationId,
-          quotationRevision,
-          activeQuotationId: quotationId,
-          channel,
-          channelRefNo: channelRefNo ?? null,
-          customerId:       customerId       ?? null,
-          saleType,
-          paymentType,
-          fulfillmentType,
-          shippingAddress:  shippingAddress  ?? null,
-          shippingFee,
-          destLatitude:     destLatitude     ?? null,
-          destLongitude:    destLongitude    ?? null,
-          customerName:     customerName     ?? null,
-          customerPhone:    customerPhone    ?? null,
-          userId:           session.user!.id!,
-          signerName:       signerSnapshot.signerName,
-          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
-          signedAt:         signerSnapshot.signedAt,
-          totalAmount,
-          discount,
-          netAmount,
-          whtAmount,
-          vatType,
-          vatRate,
-          subtotalAmount,
-          vatAmount,
-          paymentMethod:   resolvedPaymentMethod,
-          cashBankAccountId: resolvedCashBankAccountId || null,
-          note:            note            ?? null,
-          saleDate:        docDate,
-          amountRemain:    new Prisma.Decimal(paymentType === "CREDIT_SALE" ? netAmount : 0),
-          shippingMethod,
-          shippingStatus:  ShippingStatus.PENDING,
-          creditTerm:      creditTerm      ?? null,
-        },
-      });
-      createdSaleId = sale.id;
-      await auditSaleQuotationReference(tx, getAuditActorFromSession(session), sale.id, saleNo, null, quotationId);
+          );
 
-      // 2. Process each line item
-      for (const [itemIndex, item] of validItems.entries()) {
-        // Get unit scale
-        const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
-        const product = productMap.get(item.productId);
-        if (!product) throw new Error("ไม่พบสินค้า");
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+          await rebuildSaleProfitFacts(tx, sale.id);
 
-        const scale      = unit.scale;
-        const qtyInBase  = item.qty * scale;
+          await persistWhtReceived(tx, {
+            docType: "SALE",
+            docId: sale.id,
+            wht,
+            customerId: customerId ?? null,
+            customerNameFallback: customerName ?? null,
+            payDate: docDate,
+            userId: session.user!.id!,
+          });
 
-        const isTracked = isInventoryTracked(product.inventoryTracking);
-        const costPerBase = resolveSaleUnitCost(product);
-
-        const itemTotal    = item.qty * item.salePrice;
-        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
-        const configuredAmount = normalPriceByProduct.get(item.productId);
-        const resolvedNormalPrice = activePriceList
-          ? resolveNormalPrice({
-              priceListCode: activePriceList.code,
-              configuredAmount,
-              legacyPrices: {
-                salePrice: Number(product.salePrice),
-                retailPrice: Number(product.retailPrice),
-                memberPrice: Number(product.memberPrice),
+          if (
+            saveAsCustomerDefault === "1" &&
+            customerId &&
+            fulfillmentType === FulfillmentType.DELIVERY &&
+            destLatitude !== undefined &&
+            destLongitude !== undefined
+          ) {
+            await tx.customer.update({
+              where: { id: customerId },
+              data: {
+                defaultLatitude:  destLatitude,
+                defaultLongitude: destLongitude,
               },
-            })
-          : null;
-        const promotion = promotionByProduct.get(item.productId);
-        const matchesPromotion = promotion && Math.abs(item.salePrice - Number(promotion.promotionPrice)) <= 0.005;
-        const matchesNormal = resolvedNormalPrice && Math.abs(item.salePrice - resolvedNormalPrice.amount) <= 0.005;
-
-        // Create SaleItem
-        const saleItem = await tx.saleItem.create({
-          data: {
-            saleId:        sale.id,
-            lineNo:        itemIndex + 1,
-            productId:     item.productId,
-            quantity:      Math.round(qtyInBase),
-            salePrice:     item.salePrice,
-            unitListPrice: item.unitListPrice,
-            lineDiscount:  item.lineDiscount,
-            costPrice:     costPerBase,
-            totalAmount:   itemTotal,
-            subtotalAmount: itemSubtotal,
-            showQty:       item.qty,
-            showUnitName:  item.unitName,
-            showPricePerUnit: item.salePrice,
-            unitScale:     scale,
-            warrantyDays:  item.warrantyDays,
-            supplierId:    item.supplierId || null,
-            supplierName:  item.supplierName || null,
-            moreDetail:    item.moreDetail || null,
-            priceListId: activePriceList?.id ?? null,
-            pricePromotionId: matchesPromotion ? promotion.promotionId : null,
-            priceSource: matchesPromotion
-              ? SalePriceSource.PROMOTION
-              : matchesNormal
-                ? SalePriceSource.NORMAL_PRICE
-                : SalePriceSource.MANUAL,
-          },
-        });
-
-        // Auto-create Warranty rows - one per display-unit qty (N warranties for N pieces sold)
-        // Write StockCard (outgoing)
-        const stockCardId = isTracked ? await writeStockCard(tx, {
-          productId:   item.productId,
-          docNo:       saleNo,
-          docDate,
-          source:      "SALE",
-          qtyIn:       0,
-          qtyOut:      qtyInBase,
-          priceIn:     0,
-          detail:      `ขาย ${item.qty} ${item.unitName}`,
-          referenceId: saleItem.id,
-        }, stockCrossedToZero) : null;
-
-        // Lot Control - only if product has isLotControl=true
-        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
-            if (lotErr) throw new Error(lotErr);
-
-            const lotsInBase = item.lotItems.map((lot) => ({
-              lotNo:        lot.lotNo.trim(),
-              qtyInBase:    lot.qty * scale,
-              unitCostBase: costPerBase,
-              mfgDate:      null as Date | null,
-              expDate:      null as Date | null,
-            }));
-
-            await assertLotBalanceAvailable(tx, item.productId, lotsInBase);
-            await writeSaleLots(tx, saleItem.id, item.productId, lotsInBase);
-
-            await writeStockMovementLots(tx, stockCardId, lotsInBase, "out");
-        }
-
-        await createWarrantySnapshots(tx, {
-          saleId: sale.id,
-          saleItemId: saleItem.id,
-          productId: item.productId,
-          warrantyDays: item.warrantyDays,
-          docDate,
-          itemQty: item.qty,
-          lotItems: item.lotItems as LotSubRow[],
-        });
-      }
-
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.SALE,
-        sale.id,
-        CashBankDirection.IN,
-        payments,
-      );
-
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.SALE,
-        sale.id,
-        toCashBankEntries(payments, {
-          txnDate: docDate,
-          direction: CashBankDirection.IN,
-          referenceNo: saleNo,
-          note: note ?? null,
-        }),
-      );
-
-      await rebuildSaleProfitFacts(tx, sale.id);
-
-      await persistWhtReceived(tx, {
-        docType: "SALE",
-        docId: sale.id,
-        wht,
-        customerId: customerId ?? null,
-        customerNameFallback: customerName ?? null,
-        payDate: docDate,
-        userId: session.user!.id!,
-      });
-
-      if (
-        saveAsCustomerDefault === "1" &&
-        customerId &&
-        fulfillmentType === FulfillmentType.DELIVERY &&
-        destLatitude !== undefined &&
-        destLongitude !== undefined
-      ) {
-        await tx.customer.update({
-          where: { id: customerId },
-          data: {
-            defaultLatitude:  destLatitude,
-            defaultLongitude: destLongitude,
-          },
-        });
-      }
-    }, { timeout: 180_000 });
+            });
+          }
+        }, { timeout: 180_000 });
+      },
+    });
 
     // Customer default lat/long feeds the cached transaction dropdown options.
     if (
@@ -911,9 +923,17 @@ export async function createSale(
     }
 
     // Real-time out-of-stock alert — AFTER commit, never blocks the sale.
-    await dispatchOutOfStockAlerts(stockCrossedToZero).catch((err) =>
-      console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
-    );
+    // Sent from after() so the bell/Telegram round-trips do not delay the response;
+    // the alert timestamp is still taken here, at commit time.
+    const outOfStockProductIds = [...stockCrossedToZero];
+    const outOfStockAlertAt = new Date();
+    if (outOfStockProductIds.length > 0) {
+      after(() =>
+        dispatchOutOfStockAlerts(outOfStockProductIds, outOfStockAlertAt).catch((err) =>
+          console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
+        ),
+      );
+    }
 
     // ล้างแคชแบบ deferred ด้วย after() — callback ถูกรัน "หลัง" response ถูกส่ง
     // ออกไปแล้ว ทำให้ Server Action ไม่แนบ RSC payload ของหน้าปัจจุบันกลับมา
@@ -934,7 +954,9 @@ export async function createSale(
     if (
       isManualMarketplaceChannel(channel) &&
       err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
+      err.code === "P2002" &&
+      // A saleNo collision that survived the retries is not a duplicate order ref.
+      !isUniqueViolationOn(err, "saleNo")
     ) {
       return { error: `${getMarketplaceChannelConfig(channel).orderRefLabel}นี้ถูกบันทึกแล้ว` };
     }
@@ -966,8 +988,13 @@ export async function cancelSale(
     include: {
       items:       { orderBy: { lineNo: "asc" }, select: { id: true, productId: true } },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
-      receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
+      receipts:    {
+        where:   { receipt: { status: "ACTIVE" } },
+        include: { receipt: { select: { receiptNo: true, status: true } } },
+      },
       warranties:  {
+        // Only warranties that still have a non-cancelled claim matter for the reference check.
+        where: { claims: { some: { status: { not: "CANCELLED" } } } },
         select: {
           id: true,
           claims: {
@@ -1108,8 +1135,13 @@ export async function updateSale(
         },
       },
       creditNotes: { where: { status: "ACTIVE" }, select: { cnNo: true } },
-      receipts:    { include: { receipt: { select: { receiptNo: true, status: true } } } },
+      receipts:    {
+        where:   { receipt: { status: "ACTIVE" } },
+        include: { receipt: { select: { receiptNo: true, status: true } } },
+      },
       warranties:  {
+        // Only warranties that still have a non-cancelled claim matter for the reference check.
+        where: { claims: { some: { status: { not: "CANCELLED" } } } },
         select: {
           id: true,
           claims: {

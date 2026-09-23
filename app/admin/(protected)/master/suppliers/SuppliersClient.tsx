@@ -9,6 +9,7 @@ import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { submitFormData } from "../submit-form-data";
 
 // Mirrors the `select` in page.tsx, not the full Prisma model, so the columns
 // that cross to the client stay an explicit decision.
@@ -66,7 +67,7 @@ const SupplierFormRow = ({
   submitLabel: string;
   isPending: boolean;
 }) => (
-  <form action={onSubmit}>
+  <form onSubmit={(event) => submitFormData(event, onSubmit)}>
     <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
       <div>
         <label className={labelClassName}>
@@ -186,10 +187,12 @@ const EditableRow = ({
   const handleToggle = () => {
     const action = supplier.isActive ? "ยกเลิก" : "เปิดใช้งาน";
     if (!confirm(`ต้องการ${action}ผู้จำหน่าย "${supplier.name}" ใช่หรือไม่?`)) return;
+    setError("");
     setIsToggling(true);
     startTransition(async () => {
       try {
-        await toggleSupplier(supplier.id, !supplier.isActive);
+        const result = await toggleSupplier(supplier.id, !supplier.isActive);
+        if (result.error) setError(result.error);
       } finally {
         setIsToggling(false);
       }
@@ -252,7 +255,10 @@ const EditableRow = ({
         <AdminActionGroup align="end">
           {canUpdate && (
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setError("");
+                setIsEditing(true);
+              }}
               disabled={isPending}
               className="flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
             >
@@ -272,6 +278,7 @@ const EditableRow = ({
             </button>
           )}
         </AdminActionGroup>
+        {error && <p role="alert" className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
       </td>
     </tr>
   );
@@ -305,10 +312,10 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
               <p className="text-sm text-red-600 dark:text-red-300">{error}</p>
             </div>
           )}
-          <form key={createFormVersion} ref={formRef} action={handleCreate}>
+          <form key={createFormVersion} ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)}>
             <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">
+                <label className={labelClassName}>
                   ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -320,7 +327,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">ชื่อผู้ติดต่อ</label>
+                <label className={labelClassName}>ชื่อผู้ติดต่อ</label>
                 <input
                   type="text"
                   name="contactName"
@@ -329,7 +336,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">เบอร์โทรศัพท์</label>
+                <label className={labelClassName}>เบอร์โทรศัพท์</label>
                 <input
                   type="tel"
                   name="phone"
@@ -338,7 +345,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">ที่อยู่</label>
+                <label className={labelClassName}>ที่อยู่</label>
                 <input
                   type="text"
                   name="address"
@@ -347,7 +354,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">เลขผู้เสียภาษี</label>
+                <label className={labelClassName}>เลขผู้เสียภาษี</label>
                 <TaxIdInput
                   name="taxId"
                   placeholder="13 หลัก"
@@ -355,7 +362,7 @@ const SuppliersClient = ({ suppliers, canCreate, canUpdate, canCancel }: Supplie
                 />
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">เครดิตเทอม (วัน)</label>
+                <label className={labelClassName}>เครดิตเทอม (วัน)</label>
                 <input
                   type="number"
                   name="creditTerm"

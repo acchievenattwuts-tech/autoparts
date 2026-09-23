@@ -40,7 +40,7 @@ export default async function LiffOrderDetailPage({
       />
     );
   }
-  const [order, activeReceipt] = await Promise.all([
+  const [order, receiptRows] = await Promise.all([
     db.sale.findFirst({
       where: {
         id,
@@ -82,59 +82,47 @@ export default async function LiffOrderDetailPage({
         },
       },
     }),
-    // Query only active receipt for receiptHref (lazy load full history in PaymentHistory)
-    db.receiptItem.findFirst({
+    // Active receipts of this bill, newest first. Only depends on the route id
+    // and the customer, so it runs alongside the sale query; it also supplies
+    // the receipt link (newest receipt, like the receipt page's own default).
+    db.receipt.findMany({
       where: {
-        sale: {
-          id,
-          customerId: customer.id,
-          status: "ACTIVE",
+        status: "ACTIVE",
+        items: {
+          some: {
+            sale: {
+              id,
+              customerId: customer.id,
+              status: "ACTIVE",
+            },
+          },
         },
-        receipt: { status: "ACTIVE" },
       },
       select: {
-        receipt: { select: { id: true } },
+        id: true,
+        receiptNo: true,
+        receiptDate: true,
+        paymentMethod: true,
+        status: true,
+        cancelNote: true,
+        items: {
+          orderBy: { lineNo: "asc" },
+          where: { saleId: id },
+          select: {
+            id: true,
+            paidAmount: true,
+          },
+        },
       },
+      orderBy: { receiptDate: "desc" },
+      take: 10,
     }),
   ]);
 
   if (!order) notFound();
 
-  const paymentReceiptRows =
-    order.paymentType === "CREDIT_SALE"
-      ? await db.receipt.findMany({
-          where: {
-            status: "ACTIVE",
-            items: {
-              some: {
-                sale: {
-                  id: order.id,
-                  customerId: customer.id,
-                  status: "ACTIVE",
-                },
-              },
-            },
-          },
-          select: {
-            id: true,
-            receiptNo: true,
-            receiptDate: true,
-            paymentMethod: true,
-            status: true,
-            cancelNote: true,
-            items: {
-              orderBy: { lineNo: "asc" },
-              where: { saleId: order.id },
-              select: {
-                id: true,
-                paidAmount: true,
-              },
-            },
-          },
-          orderBy: { receiptDate: "desc" },
-          take: 10,
-        })
-      : [];
+  const paymentReceiptRows = order.paymentType === "CREDIT_SALE" ? receiptRows : [];
+  const latestReceiptId = paymentReceiptRows[0]?.id ?? null;
   const paymentHistoryReceipts = paymentReceiptRows.flatMap((receipt) =>
     receipt.items.map((item) => ({
       id: item.id,
@@ -172,7 +160,7 @@ export default async function LiffOrderDetailPage({
 
   const remain = Number(order.amountRemain ?? 0);
   const receiptHref = `/liff/orders/${order.id}/receipt${
-    order.paymentType === "CREDIT_SALE" ? `?receiptId=${activeReceipt?.receipt.id ?? ""}` : ""
+    order.paymentType === "CREDIT_SALE" ? `?receiptId=${latestReceiptId ?? ""}` : ""
   }`;
 
   return (
@@ -230,7 +218,7 @@ export default async function LiffOrderDetailPage({
                   <span>ดู/บันทึกใบแจ้งหนี้ / ใบส่งของ</span>
                   <FileText size={16} />
                 </Link>
-                {activeReceipt ? (
+                {latestReceiptId ? (
                   <Link
                     href={receiptHref}
                     className="flex items-center justify-between rounded-2xl border border-blue-100 bg-white px-4 py-3 text-sm font-bold text-slate-800 shadow-sm transition hover:border-blue-300 hover:text-blue-800 active:scale-[0.99] dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-600 dark:hover:text-sky-300"

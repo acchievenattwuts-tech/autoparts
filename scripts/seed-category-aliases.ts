@@ -156,7 +156,8 @@ const categoryAliasSeeds: CategoryAliasSeed[] = [
     ],
   },
   {
-    categoryIncludes: "Blower Motor",
+    // Parenthesised so it cannot also match "(Blower Motor Resistor)".
+    categoryIncludes: "(Blower Motor)",
     aliases: [
       { alias: "โบเวอร์", priority: 240 },
       { alias: "พัดลมแอร์", priority: 220 },
@@ -285,19 +286,36 @@ const main = async () => {
   let skipped = 0;
 
   for (const seed of categoryAliasSeeds) {
-    const category = await db.category.findFirst({
+    const matches = await db.category.findMany({
       where: {
         isActive: true,
         name: { contains: seed.categoryIncludes, mode: "insensitive" },
       },
+      orderBy: { name: "asc" },
+      take: 2,
       select: { id: true, name: true },
     });
+    const category = matches[0];
 
     if (!category) {
       skipped += seed.aliases.length;
       console.warn(`Skip aliases for missing category: ${seed.categoryIncludes}`);
       continue;
     }
+
+    // An ambiguous match would upsert (and move) aliases onto an arbitrary
+    // category, so refuse rather than guess.
+    if (matches.length > 1) {
+      skipped += seed.aliases.length;
+      console.warn(
+        `Skip aliases for ambiguous category "${seed.categoryIncludes}": ${matches
+          .map((match) => match.name)
+          .join(" | ")}`,
+      );
+      continue;
+    }
+
+    console.log(`"${seed.categoryIncludes}" -> ${category.name}`);
 
     for (const aliasSeed of seed.aliases) {
       const kind = aliasSeed.kind ?? "MATCH";

@@ -27,6 +27,14 @@ import { headers } from "next/headers";
 import { isDatabaseConnectionExhaustionError } from "@/lib/db-errors";
 import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
 import { shouldNoIndexProductsListing } from "@/lib/storefront-products-indexing";
+import {
+  STOREFRONT_SEARCH_MAX_ID_LENGTH,
+  STOREFRONT_SEARCH_MAX_QUERY_LENGTH,
+  clampSearchList,
+  clampSearchPage,
+  clampSearchPrice,
+  clampSearchText,
+} from "@/lib/storefront-search-input-limits";
 
 type QueryValue = string | string[] | undefined;
 
@@ -56,17 +64,20 @@ const parseYearParam = (value?: string): number | null => {
   return n;
 };
 
+// Capped at the same ceiling the search Server Action enforces: an unbounded
+// ?page= flowed straight into OFFSET / Prisma `skip` (a huge value can exceed
+// Prisma's Int range and 500) and minted a cache entry per page number.
 const parsePage = (value?: string) => {
   const parsed = Number.parseInt(value ?? "1", 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
-  return parsed;
+  return clampSearchPage(parsed);
 };
 
 const parsePriceParam = (value?: string): number | null => {
   if (!value) return null;
   const n = Number.parseFloat(value);
   if (!Number.isFinite(n) || n < 0) return null;
-  return n;
+  return clampSearchPrice(n);
 };
 
 const normalizeQueryValues = (value: QueryValue): string[] => {
@@ -189,9 +200,9 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 const ProductsPage = async ({ searchParams }: Props) => {
   const {
-    q,
-    category,
-    brand,
+    q: qParam,
+    category: categoryParam,
+    brand: brandParam,
     model,
     year,
     page,
@@ -203,12 +214,21 @@ const ProductsPage = async ({ searchParams }: Props) => {
     priceMin: priceMinParam,
     priceMax: priceMaxParam,
   } = await searchParams;
-  const models = normalizeQueryValues(model);
+  // GET /products reaches the same search engine as the search Server Action, so
+  // its raw params are clamped to the action's ceilings (lib/storefront-search-
+  // input-limits.ts). Values the storefront UI produces are never affected.
+  const q = clampSearchText(qParam, STOREFRONT_SEARCH_MAX_QUERY_LENGTH);
+  const category = clampSearchText(categoryParam);
+  const brand = clampSearchText(brandParam);
+  const models = clampSearchList(normalizeQueryValues(model));
   const explicitYear = parseYearParam(year);
   const currentPage = parsePage(page);
-  const categories = normalizeQueryValues(categoriesParam);
-  const partsBrands = normalizeQueryValues(partsBrandParam);
-  const carBrands = normalizeQueryValues(carBrandParam);
+  const categories = clampSearchList(normalizeQueryValues(categoriesParam));
+  const partsBrands = clampSearchList(
+    normalizeQueryValues(partsBrandParam),
+    STOREFRONT_SEARCH_MAX_ID_LENGTH,
+  );
+  const carBrands = clampSearchList(normalizeQueryValues(carBrandParam));
   // ปีรถ: กรอกด้านเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts) — แปลงตั้งแต่ตอน
   // อ่าน param เพื่อให้ชิปตัวกรองที่ลูกค้าเห็นตรงกับช่วงที่ใช้ค้นจริง
   const { yearMin, yearMax } = resolveCarYearRangeFilter(

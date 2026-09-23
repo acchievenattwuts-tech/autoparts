@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import HoverPrefetchLink from "@/app/admin/(protected)/cash-bank/HoverPrefetchLink";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -289,7 +289,7 @@ const PayoutPanel = ({
                   <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{formatDateThai(row.saleDate)}</td>
                     <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
-                      <Link href={`/admin/sales/${row.id}`} className="hover:underline">{row.saleNo}</Link>
+                      <HoverPrefetchLink href={`/admin/sales/${row.id}`} className="hover:underline">{row.saleNo}</HoverPrefetchLink>
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-slate-200">{row.customerName || "-"}</td>
                     <td className="px-4 py-3 text-right text-gray-700 dark:text-slate-200">฿{money(row.netAmount)}</td>
@@ -336,16 +336,16 @@ const PayoutPanel = ({
                   >
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{run.payDate}</td>
                     <td className="px-4 py-3 font-mono text-[#1e3a5f] dark:text-sky-300">
-                      <Link href={`/admin/delivery-commissions/${run.id}`} className="hover:underline">
+                      <HoverPrefetchLink href={`/admin/delivery-commissions/${run.id}`} className="hover:underline">
                         {run.runNo}
-                      </Link>
+                      </HoverPrefetchLink>
                     </td>
                     <td className="px-4 py-3 text-gray-700 dark:text-slate-200">{run.deliveryStaffName}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
                       {run.expenseId && run.expenseNo ? (
-                        <Link href={`/admin/expenses/${run.expenseId}`} className="font-mono text-[#1e3a5f] hover:underline dark:text-sky-300">
+                        <HoverPrefetchLink href={`/admin/expenses/${run.expenseId}`} className="font-mono text-[#1e3a5f] hover:underline dark:text-sky-300">
                           {run.expenseNo}
-                        </Link>
+                        </HoverPrefetchLink>
                       ) : (
                         "-"
                       )}

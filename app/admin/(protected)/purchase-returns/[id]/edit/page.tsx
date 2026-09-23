@@ -72,7 +72,10 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const initialPurchases = ret.supplierId
     ? await db.purchase.findMany({
-        where:   { supplierId: ret.supplierId },
+        // Only ACTIVE purchases can be referenced; keep the one this return already uses.
+        where:   ret.purchaseId
+          ? { supplierId: ret.supplierId, OR: [{ status: "ACTIVE" }, { id: ret.purchaseId }] }
+          : { supplierId: ret.supplierId, status: "ACTIVE" },
         orderBy: { purchaseDate: "desc" },
         take:    200,
         select:  { id: true, purchaseNo: true, purchaseDate: true },

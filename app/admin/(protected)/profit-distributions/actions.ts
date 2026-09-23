@@ -12,6 +12,7 @@ import {
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { db, dbTx } from "@/lib/db";
 import { generateProfitDistributionNo } from "@/lib/doc-number";
+import { isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   AuditAction,
   CashBankDirection,
@@ -98,16 +99,6 @@ type ActionResult = {
   distributionId?: string;
   distributionNo?: string;
 };
-
-function isUniqueConstraintError(error: unknown, target: string): boolean {
-  if (typeof error !== "object" || error === null || !("code" in error)) return false;
-  if ((error as { code: string }).code !== "P2002") return false;
-
-  const meta = (error as { meta?: { target?: string[] | string } }).meta;
-  const rawTarget = meta?.target;
-  const targets = Array.isArray(rawTarget) ? rawTarget : rawTarget ? [rawTarget] : [];
-  return targets.some((value) => value.includes(target));
-}
 
 function parseNumber(value: FormDataEntryValue | null): number {
   if (typeof value !== "string") return Number.NaN;
@@ -288,12 +279,17 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
   if (missingPartner) return { error: "มีผู้ร่วมทุนที่ถูกปิดใช้งานอยู่ในรายการ" };
 
   try {
-    const created = await dbTx(async (tx) => {
-      let distributionNo = "";
+    // A distributionNo taken by a concurrent save makes Postgres abort the whole
+    // transaction, so a retry must rerun the transaction with a fresh number —
+    // retrying inside the aborted transaction could never succeed.
+    const created = await withDocNumberRetry({
+      uniqueField: "distributionNo",
+      maxAttempts: MAX_DOCNO_RETRIES,
+      generate: () => generateProfitDistributionNo(),
+      run: (distributionNo) => dbTx(async (tx) => {
       let distributionId = "";
 
-      for (let attempt = 0; attempt < MAX_DOCNO_RETRIES; attempt += 1) {
-        distributionNo = await generateProfitDistributionNo();
+      {
         try {
           const row = await tx.profitDistribution.create({
             data: {
@@ -322,17 +318,13 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
             select: { id: true },
           });
           distributionId = row.id;
-          break;
         } catch (error) {
-          if (isUniqueConstraintError(error, "activePeriodKey")) {
+          if (isUniqueViolationOn(error, "activePeriodKey")) {
             throw new Error("PERIOD_TAKEN");
           }
-          if (!isUniqueConstraintError(error, "distributionNo")) throw error;
-          if (attempt === MAX_DOCNO_RETRIES - 1) throw error;
+          throw error;
         }
       }
-
-      if (!distributionId) throw new Error("DOC_NO_EXHAUSTED");
 
       await tx.profitDistributionItem.createMany({
         data: input.items.map((item, index) => {
@@ -398,6 +390,7 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
       );
 
       return { distributionId, distributionNo };
+    }),
     });
 
     const afterSnapshot = await getDistributionAuditSnapshot(created.distributionId);

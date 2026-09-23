@@ -1,9 +1,26 @@
 "use client";
 
-import { Fragment, useState, useTransition, type TransitionStartFunction } from "react";
+import { Fragment, useMemo, useState, useTransition, type TransitionStartFunction } from "react";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
+import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { cancelPricePromotion, createPricePromotionDraft, publishPricePromotion, updatePricePromotionDraft } from "./actions";
+import {
+  ACTION_MESSAGE_BOX_CLASS,
+  ACTION_MESSAGE_INLINE_CLASS,
+  PRICING_LABEL_CLASS,
+  actionMessageRole,
+  toActionMessage,
+  type ActionMessage,
+} from "../action-message";
+import {
+  PROMOTION_STATUS_PRESENTATION,
+  getPromotionCancelConfirmMessage,
+  getPromotionDraftSelectionError,
+  type PromotionStatus,
+} from "./promotion-presentation";
 
-type Option = { id: string; label: string };
+type Option = SelectOption;
 type PromotionRow = {
   id: string;
   name: string;
@@ -12,12 +29,24 @@ type PromotionRow = {
   startDate: string;
   endDate: string;
   dateRange: string;
-  status: "DRAFT" | "PUBLISHED" | "CANCELLED";
+  status: PromotionStatus;
   note: string | null;
   itemCount: number;
   items: Array<{ productId: string; label: string; normalReferencePrice: number; promotionPrice: number }>;
 };
 type ItemRow = { key: number; productId: string; promotionPrice: number };
+type RowMessage = ActionMessage & { id: string };
+
+const MessageBox = ({ message }: { message: ActionMessage | null }) =>
+  message ? <p role={actionMessageRole(message)} className={ACTION_MESSAGE_BOX_CLASS[message.type]}>{message.text}</p> : null;
+
+/** Column captions above the product rows (the rows themselves stay compact). */
+const ItemHeader = () => (
+  <div className="hidden gap-2 md:grid md:grid-cols-[1fr_180px_auto]">
+    <span className={PRICING_LABEL_CLASS}>สินค้า</span>
+    <span className={PRICING_LABEL_CLASS}>ราคาโปรโมชั่น</span>
+  </div>
+);
 
 const fieldClass = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-slate-100";
 
@@ -33,7 +62,10 @@ export default function PromotionManager({
   today: string;
 }) {
   const [items, setItems] = useState<ItemRow[]>([{ key: 1, productId: "", promotionPrice: 0 }]);
-  const [message, setMessage] = useState("");
+  const [priceListId, setPriceListId] = useState("");
+  const [formMessage, setFormMessage] = useState<ActionMessage | null>(null);
+  const [rowMessage, setRowMessage] = useState<RowMessage | null>(null);
+  const [rowAction, setRowAction] = useState<{ id: string; kind: "publish" | "cancel" } | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -44,6 +76,12 @@ export default function PromotionManager({
         onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
+          const selectionError = getPromotionDraftSelectionError(String(form.get("priceListId") ?? ""), items);
+          if (selectionError) {
+            setFormMessage({ type: "error", text: selectionError });
+            return;
+          }
+          setFormMessage(null);
           startTransition(async () => {
             const result = await createPricePromotionDraft({
               name: form.get("name"),
@@ -53,33 +91,41 @@ export default function PromotionManager({
               note: form.get("note"),
               items: items.map(({ productId, promotionPrice }) => ({ productId, promotionPrice })),
             });
-            setMessage(result.error ?? "สร้าง draft โปรโมชั่นแล้ว");
+            setFormMessage(toActionMessage(result.error, "สร้าง draft โปรโมชั่นแล้ว"));
             if (!result.error) setItems([{ key: Date.now(), productId: "", promotionPrice: 0 }]);
           });
         }}
       >
         <h2 className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">สร้าง scheduled price override</h2>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <input name="name" required placeholder="ชื่อโปรโมชั่น" className={fieldClass} />
-          <select name="priceListId" required defaultValue="" className={fieldClass}>
-            <option value="">เลือกระดับราคา</option>
-            {priceLists.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-          </select>
-          <input name="startDate" type="date" required defaultValue={today} className={fieldClass} />
-          <input name="endDate" type="date" required defaultValue={today} className={fieldClass} />
+          <div>
+            <label htmlFor="promotion-create-name" className={PRICING_LABEL_CLASS}>ชื่อโปรโมชั่น</label>
+            <input id="promotion-create-name" name="name" required placeholder="ชื่อโปรโมชั่น" className={`${fieldClass} w-full`} />
+          </div>
+          <div>
+            <span className={PRICING_LABEL_CLASS}>ระดับราคา</span>
+            <SearchableSelect options={priceLists} value={priceListId} onChange={setPriceListId} placeholder="เลือกระดับราคา" />
+            <input type="hidden" name="priceListId" value={priceListId} />
+          </div>
+          <div>
+            <label htmlFor="promotion-create-start" className={PRICING_LABEL_CLASS}>วันเริ่ม</label>
+            <input id="promotion-create-start" name="startDate" type="date" required defaultValue={today} className={`${fieldClass} w-full`} />
+          </div>
+          <div>
+            <label htmlFor="promotion-create-end" className={PRICING_LABEL_CLASS}>วันสิ้นสุด</label>
+            <input id="promotion-create-end" name="endDate" type="date" required defaultValue={today} className={`${fieldClass} w-full`} />
+          </div>
         </div>
         <div className="space-y-2">
+          <ItemHeader />
           {items.map((item, index) => (
             <div key={item.key} className="grid gap-2 md:grid-cols-[1fr_180px_auto]">
-              <select
-                required
+              <SearchableSelect
+                options={products}
                 value={item.productId}
-                onChange={(event) => setItems((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, productId: event.target.value } : row))}
-                className={fieldClass}
-              >
-                <option value="">เลือกสินค้า</option>
-                {products.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
-              </select>
+                onChange={(productId) => setItems((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, productId } : row))}
+                placeholder="เลือกสินค้า"
+              />
               <input
                 type="number"
                 min={0}
@@ -94,8 +140,8 @@ export default function PromotionManager({
           ))}
           <button type="button" onClick={() => setItems((rows) => [...rows, { key: Date.now(), productId: "", promotionPrice: 0 }])} className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-white/15 dark:text-slate-200">+ เพิ่มสินค้า</button>
         </div>
-        <textarea name="note" maxLength={1000} placeholder="หมายเหตุ" className={`${fieldClass} min-h-20 w-full`} />
-        {message ? <p className="text-sm text-slate-600 dark:text-slate-300">{message}</p> : null}
+        <textarea name="note" maxLength={1000} placeholder="หมายเหตุ" aria-label="หมายเหตุ" className={`${fieldClass} min-h-20 w-full`} />
+        <MessageBox message={formMessage} />
         <button disabled={pending} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">{pending ? "กำลังบันทึก..." : "บันทึก Draft"}</button>
       </form>
 
@@ -104,24 +150,40 @@ export default function PromotionManager({
           <thead className="bg-slate-50 text-left text-slate-600 dark:bg-white/5 dark:text-slate-300"><tr><th className="p-3">โปรโมชั่น</th><th className="p-3">ระดับราคา</th><th className="p-3">ช่วงวันที่</th><th className="p-3">สินค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr></thead>
           <tbody>{promotions.map((promotion) => (
             <Fragment key={promotion.id}>
-            <tr className="border-t border-slate-100 dark:border-white/10">
+            <tr className={`border-t border-slate-100 dark:border-white/10 ${getAdminDocumentRowClass(promotion.status === "CANCELLED")}`}>
               <td className="p-3 font-medium text-slate-900 dark:text-slate-100">{promotion.name}</td>
               <td className="p-3 text-slate-600 dark:text-slate-300">{promotion.priceListName}</td>
               <td className="p-3 text-slate-600 dark:text-slate-300">{promotion.dateRange}</td>
               <td className="p-3 tabular-nums">{promotion.itemCount}</td>
-              <td className="p-3">{promotion.status}</td>
+              <td className="p-3"><AdminStatusBadge tone={PROMOTION_STATUS_PRESENTATION[promotion.status].tone}>{PROMOTION_STATUS_PRESENTATION[promotion.status].label}</AdminStatusBadge></td>
               <td className="p-3 text-right"><div className="flex justify-end gap-2">
                 <button type="button" onClick={() => setExpandedId((current) => current === promotion.id ? null : promotion.id)} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 dark:border-white/15 dark:text-slate-200">{expandedId === promotion.id ? "ปิด" : "รายละเอียด"}</button>
-                {promotion.status === "DRAFT" ? <button disabled={pending} onClick={() => startTransition(async () => {
-                  let result = await publishPricePromotion(promotion.id);
-                  if (result.belowCostProducts?.length && window.confirm(`สินค้าต่ำกว่าทุน: ${result.belowCostProducts.join(", ")}\nยืนยันเผยแพร่หรือไม่?`)) result = await publishPricePromotion(promotion.id, true);
-                  setMessage(result.error ?? "เผยแพร่โปรโมชั่นแล้ว");
-                })} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white">เผยแพร่</button> : null}
-                {promotion.status !== "CANCELLED" ? <button disabled={pending} onClick={() => startTransition(async () => setMessage((await cancelPricePromotion(promotion.id)).error ?? "ยกเลิกโปรโมชั่นแล้ว"))} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs text-rose-700 dark:border-rose-400/40 dark:text-rose-300">ยกเลิก</button> : null}
-              </div></td>
+                {promotion.status === "DRAFT" ? <button disabled={pending} onClick={() => {
+                  setRowMessage(null);
+                  setRowAction({ id: promotion.id, kind: "publish" });
+                  startTransition(async () => {
+                    let result = await publishPricePromotion(promotion.id);
+                    if (result.belowCostProducts?.length && window.confirm(`สินค้าต่ำกว่าทุน: ${result.belowCostProducts.join(", ")}\nยืนยันเผยแพร่หรือไม่?`)) result = await publishPricePromotion(promotion.id, true);
+                    setRowMessage({ id: promotion.id, ...toActionMessage(result.error, "เผยแพร่โปรโมชั่นแล้ว") });
+                    setRowAction(null);
+                  });
+                }} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60">{rowAction?.id === promotion.id && rowAction.kind === "publish" ? "กำลังเผยแพร่..." : "เผยแพร่"}</button> : null}
+                {promotion.status !== "CANCELLED" ? <button disabled={pending} onClick={() => {
+                  if (!window.confirm(getPromotionCancelConfirmMessage(promotion.name, promotion.status))) return;
+                  setRowMessage(null);
+                  setRowAction({ id: promotion.id, kind: "cancel" });
+                  startTransition(async () => {
+                    const result = await cancelPricePromotion(promotion.id);
+                    setRowMessage({ id: promotion.id, ...toActionMessage(result.error, "ยกเลิกโปรโมชั่นแล้ว") });
+                    setRowAction(null);
+                  });
+                }} className="rounded-lg border border-rose-300 px-3 py-1.5 text-xs text-rose-700 disabled:opacity-60 dark:border-rose-400/40 dark:text-rose-300">{rowAction?.id === promotion.id && rowAction.kind === "cancel" ? "กำลังยกเลิก..." : "ยกเลิก"}</button> : null}
+              </div>
+              {rowMessage?.id === promotion.id ? <p role={actionMessageRole(rowMessage)} className={ACTION_MESSAGE_INLINE_CLASS[rowMessage.type]}>{rowMessage.text}</p> : null}
+              </td>
             </tr>
             {expandedId === promotion.id ? <tr className="border-t border-slate-100 dark:border-white/10"><td colSpan={6} className="p-4">
-              <PromotionDetail promotion={promotion} priceLists={priceLists} products={products} pending={pending} run={startTransition} setMessage={setMessage} />
+              <PromotionDetail promotion={promotion} priceLists={priceLists} products={products} pending={pending} run={startTransition} />
             </td></tr> : null}
             </Fragment>
           ))}</tbody>
@@ -131,15 +193,25 @@ export default function PromotionManager({
   );
 }
 
-function PromotionDetail({ promotion, priceLists, products, pending, run, setMessage }: {
+function PromotionDetail({ promotion, priceLists, products, pending, run }: {
   promotion: PromotionRow;
   priceLists: Option[];
   products: Option[];
   pending: boolean;
   run: TransitionStartFunction;
-  setMessage: (message: string) => void;
 }) {
   const [draftItems, setDraftItems] = useState<ItemRow[]>(promotion.items.map((item, index) => ({ key: index + 1, productId: item.productId, promotionPrice: item.promotionPrice })));
+  const [priceListId, setPriceListId] = useState(promotion.priceListId);
+  const [message, setMessage] = useState<ActionMessage | null>(null);
+  // A draft can hold a product that has since been deactivated (the picker lists
+  // active products only); keep it selectable so its row still shows its name.
+  const productOptions = useMemo(() => {
+    const known = new Set(products.map((option) => option.id));
+    const missing = promotion.items
+      .filter((item) => !known.has(item.productId))
+      .map((item): Option => ({ id: item.productId, label: item.label }));
+    return missing.length > 0 ? [...products, ...missing] : products;
+  }, [products, promotion.items]);
   if (promotion.status !== "DRAFT") {
     return <div className="space-y-3">
       {promotion.note ? <p className="text-slate-600 dark:text-slate-300">หมายเหตุ: {promotion.note}</p> : null}
@@ -149,24 +221,48 @@ function PromotionDetail({ promotion, priceLists, products, pending, run, setMes
   return <form className="space-y-3" onSubmit={(event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    run(async () => setMessage((await updatePricePromotionDraft(promotion.id, {
-      name: form.get("name"), priceListId: form.get("priceListId"), startDate: form.get("startDate"), endDate: form.get("endDate"), note: form.get("note"),
-      items: draftItems.map(({ productId, promotionPrice }) => ({ productId, promotionPrice })),
-    })).error ?? "แก้ไข Draft แล้ว"));
+    const selectionError = getPromotionDraftSelectionError(String(form.get("priceListId") ?? ""), draftItems);
+    if (selectionError) {
+      setMessage({ type: "error", text: selectionError });
+      return;
+    }
+    setMessage(null);
+    run(async () => {
+      const result = await updatePricePromotionDraft(promotion.id, {
+        name: form.get("name"), priceListId: form.get("priceListId"), startDate: form.get("startDate"), endDate: form.get("endDate"), note: form.get("note"),
+        items: draftItems.map(({ productId, promotionPrice }) => ({ productId, promotionPrice })),
+      });
+      setMessage(toActionMessage(result.error, "แก้ไข Draft แล้ว"));
+    });
   }}>
     <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-      <input name="name" required defaultValue={promotion.name} className={fieldClass} />
-      <select name="priceListId" required defaultValue={promotion.priceListId} className={fieldClass}>{priceLists.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
-      <input name="startDate" type="date" required defaultValue={promotion.startDate} className={fieldClass} />
-      <input name="endDate" type="date" required defaultValue={promotion.endDate} className={fieldClass} />
+      <div>
+        <label htmlFor={`promotion-${promotion.id}-name`} className={PRICING_LABEL_CLASS}>ชื่อโปรโมชั่น</label>
+        <input id={`promotion-${promotion.id}-name`} name="name" required defaultValue={promotion.name} className={`${fieldClass} w-full`} />
+      </div>
+      <div>
+        <span className={PRICING_LABEL_CLASS}>ระดับราคา</span>
+        <SearchableSelect options={priceLists} value={priceListId} onChange={setPriceListId} placeholder="เลือกระดับราคา" />
+        <input type="hidden" name="priceListId" value={priceListId} />
+      </div>
+      <div>
+        <label htmlFor={`promotion-${promotion.id}-start`} className={PRICING_LABEL_CLASS}>วันเริ่ม</label>
+        <input id={`promotion-${promotion.id}-start`} name="startDate" type="date" required defaultValue={promotion.startDate} className={`${fieldClass} w-full`} />
+      </div>
+      <div>
+        <label htmlFor={`promotion-${promotion.id}-end`} className={PRICING_LABEL_CLASS}>วันสิ้นสุด</label>
+        <input id={`promotion-${promotion.id}-end`} name="endDate" type="date" required defaultValue={promotion.endDate} className={`${fieldClass} w-full`} />
+      </div>
     </div>
+    <ItemHeader />
     {draftItems.map((item, index) => <div key={item.key} className="grid gap-2 md:grid-cols-[1fr_180px_auto]">
-      <select required value={item.productId} onChange={(event) => setDraftItems((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, productId: event.target.value } : row))} className={fieldClass}><option value="">เลือกสินค้า</option>{products.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+      <SearchableSelect options={productOptions} value={item.productId} onChange={(productId) => setDraftItems((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, productId } : row))} placeholder="เลือกสินค้า" />
       <input type="number" min={0} step={0.01} value={item.promotionPrice} onChange={(event) => setDraftItems((rows) => rows.map((row, rowIndex) => rowIndex === index ? { ...row, promotionPrice: Number(event.target.value) } : row))} className={fieldClass} aria-label="ราคาโปรโมชั่น" />
       <button type="button" disabled={draftItems.length === 1} onClick={() => setDraftItems((rows) => rows.filter((_, rowIndex) => rowIndex !== index))} className="rounded-lg border border-rose-300 px-3 py-2 text-sm text-rose-700 disabled:opacity-40 dark:border-rose-400/40 dark:text-rose-300">ลบ</button>
     </div>)}
     <button type="button" onClick={() => setDraftItems((rows) => [...rows, { key: Date.now(), productId: "", promotionPrice: 0 }])} className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-white/15">+ เพิ่มสินค้า</button>
-    <textarea name="note" maxLength={1000} defaultValue={promotion.note ?? ""} className={`${fieldClass} min-h-20 w-full`} />
+    <textarea name="note" maxLength={1000} defaultValue={promotion.note ?? ""} placeholder="หมายเหตุ" aria-label="หมายเหตุ" className={`${fieldClass} min-h-20 w-full`} />
+    <MessageBox message={message} />
     <button disabled={pending} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">บันทึกการแก้ไข Draft</button>
   </form>;
 }

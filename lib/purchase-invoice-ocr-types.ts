@@ -40,6 +40,45 @@ export const PURCHASE_OCR_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 export const isAcceptedPurchaseOcrMime = (mime: string): boolean =>
   mime.startsWith("image/") || mime === "application/pdf";
 
+const PURCHASE_OCR_MIME_MAX_LENGTH = 100;
+
+const requestedOcrMimeSchema = z
+  .string()
+  .max(PURCHASE_OCR_MIME_MAX_LENGTH)
+  .refine(isAcceptedPurchaseOcrMime);
+const requestedOcrSizeSchema = z.number().int().positive().max(PURCHASE_OCR_MAX_FILE_BYTES);
+
+/**
+ * Server-side validation of the client-declared upload list (the values come from
+ * the browser, so types are not trusted). Returns the Thai error to show, or null
+ * when the request is acceptable.
+ */
+export const validatePurchaseOcrUploadRequest = (files: unknown): string | null => {
+  if (!Array.isArray(files) || files.length === 0) {
+    return "กรุณาแนบไฟล์อย่างน้อย 1 ไฟล์";
+  }
+  if (files.length > PURCHASE_OCR_MAX_FILES) {
+    return `แนบไฟล์ได้ไม่เกิน ${PURCHASE_OCR_MAX_FILES} ไฟล์ต่อครั้ง`;
+  }
+
+  let total = 0;
+  for (const file of files as unknown[]) {
+    const entry = (typeof file === "object" && file !== null ? file : {}) as Record<string, unknown>;
+    if (!requestedOcrMimeSchema.safeParse(entry.mimeType).success) {
+      return "รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น";
+    }
+    const size = requestedOcrSizeSchema.safeParse(entry.size);
+    if (!size.success) {
+      return "ขนาดไฟล์ต้องไม่เกิน 15MB ต่อไฟล์";
+    }
+    total += size.data;
+  }
+  if (total > PURCHASE_OCR_MAX_TOTAL_BYTES) {
+    return "ขนาดไฟล์รวมต้องไม่เกิน 20MB";
+  }
+  return null;
+};
+
 export const EMPTY_PURCHASE_OCR_RESULT: PurchaseOcrResult = {
   supplierName: null,
   referenceNo: null,

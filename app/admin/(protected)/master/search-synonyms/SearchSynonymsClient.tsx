@@ -8,6 +8,7 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminTableSection from "@/components/shared/AdminTableSection";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 import { formatDateThai } from "@/lib/th-date";
+import { submitFormData } from "../submit-form-data";
 import {
   createSearchSynonym,
   toggleSearchSynonym,
@@ -148,8 +149,10 @@ const EditableRow = ({
   };
 
   const handleToggle = () => {
+    setError("");
     startTransition(async () => {
-      await toggleSearchSynonym(row.id, !row.isActive);
+      const result = await toggleSearchSynonym(row.id, !row.isActive);
+      if (result.error) setError(result.error);
     });
   };
 
@@ -158,7 +161,7 @@ const EditableRow = ({
       <tr className="border-b border-gray-100 bg-blue-50 dark:border-white/10 dark:bg-sky-500/10">
         <td colSpan={5} className="px-4 py-4">
           {error && <p className="mb-2 text-xs text-red-500 dark:text-red-300">{error}</p>}
-          <form action={handleUpdate} className="space-y-3">
+          <form onSubmit={(event) => submitFormData(event, handleUpdate)} className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_120px]">
               <div>
                 <label className={labelCls}>คำหลัก *</label>
@@ -251,7 +254,10 @@ const EditableRow = ({
         <AdminActionGroup align="end">
           {canUpdate && (
             <button
-              onClick={() => setIsEditing(true)}
+              onClick={() => {
+                setError("");
+                setIsEditing(true);
+              }}
               disabled={isPending}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#1e3a5f] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-[#163055] disabled:opacity-60"
             >
@@ -273,6 +279,7 @@ const EditableRow = ({
             </button>
           )}
         </AdminActionGroup>
+        {error && <p role="alert" className="mt-1 text-xs text-red-500 dark:text-red-300">{error}</p>}
       </td>
     </tr>
   );
@@ -302,7 +309,7 @@ const SearchSynonymsClient = ({ synonyms, canCreate, canUpdate, canCancel }: Pro
     <div className="space-y-6">
       {canCreate && (
         <AdminSectionCard title="เพิ่มคำพ้องใหม่">
-          <form ref={formRef} action={handleCreate} className="space-y-3" key={resetKey}>
+          <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)} className="space-y-3" key={resetKey}>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_120px]">
               <div>
                 <label className={labelCls}>คำหลัก *</label>

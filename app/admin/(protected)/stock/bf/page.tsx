@@ -16,7 +16,9 @@ const BfPage = async () => {
   const canCancel = hasPermissionAccess(role, permissions, "stock.bf.cancel");
 
   const [products, bfDocs] = await Promise.all([
-    db.product.findMany({
+    // BfForm renders nothing without create permission, so skip loading every
+    // product (+ units) for view-only users.
+    canCreate ? db.product.findMany({
       where: { isActive: true, inventoryTracking: INVENTORY_TRACKING_TRACKED },
       orderBy: { code: "asc" },
       select: {
@@ -32,7 +34,7 @@ const BfPage = async () => {
           orderBy: { isBase: "desc" },
         },
       },
-    }),
+    }) : Promise.resolve([]),
     db.balanceForward.findMany({
       orderBy: [{ docDate: "desc" }, { createdAt: "desc" }],
       take: 100,

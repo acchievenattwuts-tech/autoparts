@@ -12,6 +12,7 @@ import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { generateReceiptNo } from "@/lib/doc-number";
+import { isDatabaseLayerError, withDocNumberRetry } from "@/lib/doc-number-retry";
 import { AuditAction, DocumentPaymentDocType, PaymentMethod, Prisma } from "@/lib/generated/prisma";
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain, recalculateCustomerAdvanceAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
@@ -373,7 +374,7 @@ export async function createReceipt(
 
   try {
     const docDate   = parseDateOnlyToDate(parsed.receiptDate);
-    const receiptNo = await generateReceiptNo(docDate);
+    let receiptNo = "";
     let createdReceiptId = "";
 
     // Sale items add to total; CN items are credits that reduce the total
@@ -405,76 +406,86 @@ export async function createReceipt(
     const affectedIds = collectAffectedReceiptIds(parsed.items);
     const requestContext = await getRequestContext();
 
-    await dbTx(async (tx) => {
-      await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
-      const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "");
-      const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
-      if (validationError) throw new Error(validationError);
+    // If another save takes the same receiptNo first, regenerate it and retry the
+    // (fully rolled-back) transaction instead of failing the receipt.
+    await withDocNumberRetry({
+      uniqueField: "receiptNo",
+      generate: () => generateReceiptNo(docDate),
+      run: async (nextReceiptNo) => {
+        receiptNo = nextReceiptNo;
+        createdReceiptId = "";
+        await dbTx(async (tx) => {
+          await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
+          const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "");
+          const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
+          if (validationError) throw new Error(validationError);
 
-      const signerSnapshot = await getReceiptSignerSnapshot(tx, session.user!.id, docDate);
-      const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, cashAmount);
+          const signerSnapshot = await getReceiptSignerSnapshot(tx, session.user!.id, docDate);
+          const resolvedPaymentMethod = await resolveReceiptPaymentMethod(tx, payments, cashAmount);
 
-      const receipt = await tx.receipt.create({
-        data: {
-          receiptNo,
-          receiptDate:   docDate,
-          customerId:    parsed.customerId || null,
-          customerName:  parsed.customerName || null,
-          userId:        session.user!.id,
-          signerName: signerSnapshot.signerName,
-          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
-          signedAt: signerSnapshot.signedAt,
-          totalAmount,
-          whtAmount,
-          paymentMethod: resolvedPaymentMethod,
-          cashBankAccountId: primaryAccountId,
-          note:          parsed.note || null,
-        },
-      });
-      createdReceiptId = receipt.id;
+          const receipt = await tx.receipt.create({
+            data: {
+              receiptNo,
+              receiptDate:   docDate,
+              customerId:    parsed.customerId || null,
+              customerName:  parsed.customerName || null,
+              userId:        session.user!.id,
+              signerName: signerSnapshot.signerName,
+              signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+              signedAt: signerSnapshot.signedAt,
+              totalAmount,
+              whtAmount,
+              paymentMethod: resolvedPaymentMethod,
+              cashBankAccountId: primaryAccountId,
+              note:          parsed.note || null,
+            },
+          });
+          createdReceiptId = receipt.id;
 
-      await tx.receiptItem.createMany({
-        data: parsed.items.map((item, idx) => ({
-          receiptId:  receipt.id,
-          lineNo:     idx + 1,
-          saleId:     item.saleId ?? null,
-          cnId:       item.cnId ?? null,
-          customerAdvanceId: item.customerAdvanceId ?? null,
-          paidAmount: item.paidAmount,
-        })),
-      });
+          await tx.receiptItem.createMany({
+            data: parsed.items.map((item, idx) => ({
+              receiptId:  receipt.id,
+              lineNo:     idx + 1,
+              saleId:     item.saleId ?? null,
+              cnId:       item.cnId ?? null,
+              customerAdvanceId: item.customerAdvanceId ?? null,
+              paidAmount: item.paidAmount,
+            })),
+          });
 
-      await recalculateAffectedReceiptDocuments(tx, affectedIds);
+          await recalculateAffectedReceiptDocuments(tx, affectedIds);
 
-      await persistWhtReceived(tx, {
-        docType: "RECEIPT",
-        docId: receipt.id,
-        wht: parsed.wht,
-        customerId: parsed.customerId || null,
-        customerNameFallback: parsed.customerName || null,
-        payDate: docDate,
-        userId: session.user!.id,
-      });
+          await persistWhtReceived(tx, {
+            docType: "RECEIPT",
+            docId: receipt.id,
+            wht: parsed.wht,
+            customerId: parsed.customerId || null,
+            customerNameFallback: parsed.customerName || null,
+            payDate: docDate,
+            userId: session.user!.id,
+          });
 
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.RECEIPT,
-        receipt.id,
-        CashBankDirection.IN,
-        payments,
-      );
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.RECEIPT,
+            receipt.id,
+            CashBankDirection.IN,
+            payments,
+          );
 
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.RECEIPT,
-        receipt.id,
-        toCashBankEntries(payments, {
-          txnDate: docDate,
-          direction: CashBankDirection.IN,
-          referenceNo: receiptNo,
-          note: parsed.note || null,
-        }),
-      );
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.RECEIPT,
+            receipt.id,
+            toCashBankEntries(payments, {
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              referenceNo: receiptNo,
+              note: parsed.note || null,
+            }),
+          );
+        });
+      },
     });
 
     const afterSnapshot = createdReceiptId
@@ -504,7 +515,10 @@ export async function createReceipt(
     await reportCriticalError(err, { scope: "receipts.create" });
     return {
       success: false,
-      error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้",
+      // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+      error: err instanceof Error && !isDatabaseLayerError(err)
+        ? err.message
+        : "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้",
     };
   }
 }
@@ -759,7 +773,10 @@ export async function updateReceipt(
   } catch (err) {
     await reportCriticalError(err, { scope: "receipts.update" });
     return {
-      error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
+      // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+      error: err instanceof Error && !isDatabaseLayerError(err)
+        ? err.message
+        : "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง",
     };
   }
 }

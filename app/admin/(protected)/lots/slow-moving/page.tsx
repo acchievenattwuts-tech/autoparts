@@ -9,6 +9,9 @@ interface PageProps {
   searchParams: Promise<{ days?: string }>;
 }
 
+// Lots with stock scanned per page view (ordered by productId, lotNo).
+const SLOW_MOVING_SCAN_LIMIT = 500;
+
 const DAYS_OPTIONS = [
   { value: "30", label: "30 วัน" },
   { value: "60", label: "60 วัน" },
@@ -38,8 +41,9 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
       },
     },
     orderBy: [{ productId: "asc" }, { lotNo: "asc" }],
-    take: 500,
+    take: SLOW_MOVING_SCAN_LIMIT,
   });
+  const isScanTruncated = balances.length >= SLOW_MOVING_SCAN_LIMIT;
 
   if (balances.length === 0) {
     return (
@@ -51,10 +55,16 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
   }
 
   const lotNos = [...new Set(balances.map((balance) => balance.lotNo))];
+  const balanceProductIds = [...new Set(balances.map((balance) => balance.productId))];
+  // productId narrows the scan: lot numbers such as LOT-001 repeat across
+  // products, and only (productId, lotNo) pairs present in `balances` are read.
   const saleLots = await db.saleItemLot.findMany({
     where: {
       lotNo: { in: lotNos },
-      saleItem: { sale: { status: { not: "CANCELLED" } } },
+      saleItem: {
+        productId: { in: balanceProductIds },
+        sale: { status: { not: "CANCELLED" } },
+      },
     },
     select: {
       lotNo: true,
@@ -126,6 +136,9 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
       <p className="text-sm text-muted-foreground">
         Lot ที่ไม่มีความเคลื่อนไหว (ขายออก) เกิน {dayNum} วัน:{" "}
         <span className="font-semibold text-foreground">{rows.length} รายการ</span>
+        {isScanTruncated
+          ? ` (ตรวจสอบเฉพาะ ${SLOW_MOVING_SCAN_LIMIT} lot แรกที่มีสต็อก เรียงตามรหัสสินค้า)`
+          : ""}
       </p>
 
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">

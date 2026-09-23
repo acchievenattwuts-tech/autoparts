@@ -13,6 +13,7 @@ import {
 import AdminSectionCard from "@/components/shared/AdminSectionCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import { submitFormData } from "../submit-form-data";
 
 // Mirrors the `select` in page.tsx rather than the full Prisma models, so
 // widening the query is the only way to widen what crosses to the client —
@@ -56,7 +57,7 @@ const AddModelForm = ({ brandId }: { brandId: string }) => {
   };
 
   return (
-    <form ref={formRef} action={handleCreate} className="mt-3 flex gap-2">
+    <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)} className="mt-3 flex gap-2">
       <input type="hidden" name="carBrandId" value={brandId} />
       <div className="flex-1">
         <input
@@ -98,7 +99,7 @@ const AddAliasForm = ({ brandId }: { brandId: string }) => {
   };
 
   return (
-    <form ref={formRef} action={handleCreate} className="mt-3 flex gap-2">
+    <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreate)} className="mt-3 flex gap-2">
       <div className="flex-1">
         <input
           type="text"
@@ -137,11 +138,14 @@ const BrandAccordion = ({
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
   const [togglingBrand, setTogglingBrand] = useState(false);
   const [togglingAliasId, setTogglingAliasId] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState("");
 
   const handleToggleAlias = (aliasId: string, currentActive: boolean) => {
+    setToggleError("");
     setTogglingAliasId(aliasId);
     startTransition(async () => {
-      await toggleCarBrandAlias(aliasId, !currentActive);
+      const result = await toggleCarBrandAlias(aliasId, !currentActive);
+      if (result.error) setToggleError(result.error);
       setTogglingAliasId(null);
     });
   };
@@ -149,17 +153,21 @@ const BrandAccordion = ({
   const handleToggleBrand = () => {
     const action = brand.isActive ? "ยกเลิก" : "เปิดใช้งาน";
     if (!confirm(`ต้องการ${action}ยี่ห้อ "${brand.name}" ใช่หรือไม่?`)) return;
+    setToggleError("");
     setTogglingBrand(true);
     startTransition(async () => {
-      await toggleCarBrand(brand.id, !brand.isActive);
+      const result = await toggleCarBrand(brand.id, !brand.isActive);
+      if (result.error) setToggleError(result.error);
       setTogglingBrand(false);
     });
   };
 
   const handleToggleModel = (modelId: string, currentActive: boolean) => {
+    setToggleError("");
     setTogglingModelId(modelId);
     startTransition(async () => {
-      await toggleCarModel(modelId, !currentActive);
+      const result = await toggleCarModel(modelId, !currentActive);
+      if (result.error) setToggleError(result.error);
       setTogglingModelId(null);
     });
   };
@@ -193,6 +201,11 @@ const BrandAccordion = ({
           </button>
         )}
       </div>
+      {toggleError && (
+        <p role="alert" className="border-t border-red-100 bg-red-50 px-5 py-2 text-xs text-red-600 dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-300">
+          {toggleError}
+        </p>
+      )}
 
       {isOpen && (
         <div className="bg-white px-5 py-4 dark:bg-slate-950/80">
@@ -295,7 +308,7 @@ const CarBrandsClient = ({ carBrands, canCreate, canCancel, canUpdate }: CarBran
     <div className="space-y-6">
       {canCreate && (
         <AdminSectionCard title="เพิ่มยี่ห้อรถใหม่">
-          <form ref={formRef} action={handleCreateBrand}>
+          <form ref={formRef} onSubmit={(event) => submitFormData(event, handleCreateBrand)}>
             <div className="flex gap-3">
               <div className="flex-1">
                 <input

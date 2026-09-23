@@ -10,10 +10,10 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateAdjNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getLotAvailability,
   writeAdjustmentLots,
@@ -24,12 +24,23 @@ import {
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
+const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
+
+// Lot MFG/EXP: empty (not specified) or a real YYYY-MM-DD date-only value.
+const optionalDateOnlySchema = z
+  .string()
+  .refine((value) => value === "" || isDateOnlyString(value), INVALID_DATE_MESSAGE)
+  .default("");
+
+// Errors whose Thai message is safe and useful to show the user as-is.
+class AdjustmentUserError extends Error {}
+
 const lotSubRowSchema = z.object({
   lotNo: z.string().min(1).max(100),
   qty: z.coerce.number().positive(),
   unitCost: z.coerce.number().min(0),
-  mfgDate: z.string().default(""),
-  expDate: z.string().default(""),
+  mfgDate: optionalDateOnlySchema,
+  expDate: optionalDateOnlySchema,
 });
 
 const adjustItemSchema = z.object({
@@ -43,7 +54,7 @@ const adjustItemSchema = z.object({
 });
 
 const adjustSchema = z.object({
-  adjustDate: z.string().min(1),
+  adjustDate: z.string().min(1).refine(isDateOnlyString, INVALID_DATE_MESSAGE),
   note: z.string().max(500).optional(),
   items: z.array(adjustItemSchema).min(1, "ต้องมีรายการอย่างน้อย 1 รายการ").max(50),
 });
@@ -195,15 +206,23 @@ export async function createAdjustment(
 
   const { adjustDate, note, items: validItems } = parsed.data;
   const docDate = parseDateOnlyToDate(adjustDate);
-  const adjustNo = await generateAdjNo(docDate);
+  let adjustNo = "";
 
   try {
     await dbTx(async (tx) => {
+      // Allocated inside the transaction under a per-month lock so concurrent
+      // saves wait for each other instead of colliding on the same number.
+      adjustNo = await generateAdjNo(docDate, tx);
       const { unitScaleMap, productMap } = await preloadAdjustmentMaps(tx, validItems);
       for (const item of validItems) {
         const product = productMap.get(item.productId);
         if (product && !isInventoryTracked(product.inventoryTracking)) {
           throw new Error("สินค้าไม่คำนวณสต็อกไม่สามารถใช้เอกสารปรับสต็อกได้");
+        }
+        // An unknown unit used to fall back to scale 1 silently, recording
+        // e.g. 5 boxes as 5 pieces. Reject it instead.
+        if (!unitScaleMap.has(`${item.productId}::${item.unitName}`)) {
+          throw new AdjustmentUserError("ไม่พบหน่วยนับที่เลือก");
         }
       }
 
@@ -293,6 +312,7 @@ export async function createAdjustment(
     return { success: true, adjustNo };
   } catch (error) {
     console.error("[createAdjustment]", error);
+    if (error instanceof AdjustmentUserError) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -357,21 +377,26 @@ export async function cancelAdjustment(
   try {
     const beforeSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
     await dbTx(async (tx) => {
-      await reverseAdjustmentLotBalance(tx, adjustment.id, affectedProductIds);
-      await tx.stockCard.deleteMany({ where: { docNo: adjustment.adjustNo } });
-
-      for (const productId of affectedProductIds) {
-        await recalculateStockCard(tx, productId);
-      }
-
-      await tx.adjustment.update({
-        where: { id: adjustmentId },
+      // Claim the document first: the conditional update row-locks it, so a
+      // concurrent cancel of the same document waits, then matches 0 rows and
+      // stops here — LotBalance is never reversed twice.
+      const claimed = await tx.adjustment.updateMany({
+        where: { id: adjustmentId, status: { not: "CANCELLED" } },
         data: {
           status: "CANCELLED",
           cancelledAt: new Date(),
           cancelNote,
         },
       });
+      if (claimed.count === 0) {
+        throw new AdjustmentUserError("เอกสารถูกยกเลิกไปแล้ว");
+      }
+
+      await reverseAdjustmentLotBalance(tx, adjustment.id, affectedProductIds);
+      await tx.stockCard.deleteMany({ where: { docNo: adjustment.adjustNo } });
+
+      // Same MAVG engine as looping recalculateStockCard(), in fewer round-trips.
+      await recalculateStockCardMany(tx, affectedProductIds);
     });
 
     const afterSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
@@ -394,6 +419,7 @@ export async function cancelAdjustment(
     return { success: true };
   } catch (error) {
     console.error("[cancelAdjustment]", error);
+    if (error instanceof AdjustmentUserError) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

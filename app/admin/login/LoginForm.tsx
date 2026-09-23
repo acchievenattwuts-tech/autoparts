@@ -2,12 +2,14 @@
 
 import Image from "next/image";
 import { useState, useEffect, useCallback } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, type SignInResponse } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff, LogIn } from "lucide-react";
 import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { classifySignInResult } from "./sign-in-result";
 
 const MAX_ATTEMPTS = 5;
+const CONNECTION_ERROR_MESSAGE = "เชื่อมต่อไม่ได้ กรุณาลองใหม่";
 const LOCKOUT_MS = 5 * 60 * 1000; // 5 minutes
 const STORAGE_KEY = "admin_login_lockout";
 const REDIRECT_KEY = "admin_login_redirect";
@@ -148,15 +150,25 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
     setError("");
     setLoading(true);
 
-    const result = await signIn("credentials", {
-      username,
-      password,
-      redirect: false,
-    });
+    // signIn rejects on a network drop or a non-JSON (e.g. 502) response, and
+    // resolves undefined when the auth providers cannot be loaded. Neither is a
+    // successful login, and neither is a wrong password.
+    let result: SignInResponse | undefined;
+    try {
+      result = await signIn("credentials", {
+        username,
+        password,
+        redirect: false,
+      });
+    } catch {
+      setError(CONNECTION_ERROR_MESSAGE);
+      return;
+    } finally {
+      setLoading(false);
+    }
 
-    setLoading(false);
-
-    if (result?.error) {
+    const outcome = classifySignInResult(result);
+    if (outcome === "invalid-credentials") {
       const attempts = recordFailedAttempt();
       const remaining = MAX_ATTEMPTS - attempts;
       if (remaining <= 0) {
@@ -164,6 +176,8 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
       } else {
         setError(`ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง (เหลืออีก ${remaining} ครั้ง)`);
       }
+    } else if (outcome === "unavailable") {
+      setError(CONNECTION_ERROR_MESSAGE);
     } else {
       clearLockout();
       router.push(redirectTo);

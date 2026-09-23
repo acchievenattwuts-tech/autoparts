@@ -20,26 +20,17 @@ const brandSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อแบรนด์").max(100),
 });
 
-const refreshPartsBrandSearchCaches = async (brandId?: string) => {
+// Every per-product storefront cache (lib/storefront-product.ts) is tagged with
+// "storefront:products" as well as `storefront-product:<id>`, so the broad tag
+// below already expires them; loading the brand's product ids to re-tag each one
+// added a query and N tag writes without invalidating anything more.
+const refreshPartsBrandSearchCaches = async () => {
   updateTag("storefront:products");
   updateTag("storefront-product-filters");
   revalidatePath("/products");
   revalidatePath("/sitemap.xml");
   updateProductSearchCache();
   triggerSearchKeywordRefresh();
-
-  if (!brandId) {
-    return;
-  }
-
-  const productIds = await db.product.findMany({
-    where: { brandId },
-    select: { id: true },
-  });
-
-  productIds.forEach(({ id }) => {
-    updateTag(`storefront-product:${id}`);
-  });
 };
 
 async function getPartsBrandAuditSnapshot(id: string) {
@@ -128,7 +119,7 @@ export const updatePartsBrand = async (
 
     revalidatePath("/admin/master/parts-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
-    await refreshPartsBrandSearchCaches(id);
+    await refreshPartsBrandSearchCaches();
     invalidateTransactionProductOptions();
     return {};
   } catch {
@@ -168,7 +159,7 @@ export const togglePartsBrand = async (id: string, isActive: boolean): Promise<{
 
     revalidatePath("/admin/master/parts-brands");
     updateTag(ADMIN_MASTER_OPTION_TAGS.partsBrands);
-    await refreshPartsBrandSearchCaches(id);
+    await refreshPartsBrandSearchCaches();
     return {};
   } catch {
     return { error: "เกิดข้อผิดพลาด" };

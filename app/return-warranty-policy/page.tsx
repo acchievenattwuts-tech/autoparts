@@ -14,10 +14,16 @@ import { getPublicPolicyEntry } from "@/lib/knowledge-public";
 import { getLegacyPolicySeedEntry } from "@/lib/knowledge-cms-seed";
 import type { KnowledgeSection } from "@/lib/knowledge-cms-types";
 
-const SHOP_PHONE = "065-751-7873";
-const SHOP_LINE_ID = "@sriwanparts";
-const SHOP_ADDRESS = "118/7 หมู่ 12 ต.บางม่วง อ.เมือง จ.นครสวรรค์ 60000";
-const SHOP_MAP_URL = "https://maps.app.goo.gl/3ZaXDsG7uWLKvTSE8";
+// Fallbacks only: the contact box reads the admin-editable site config (like the
+// Footer on this same page and /about) and uses these only when a field is
+// empty — e.g. the default config served while the database is unreachable.
+const FALLBACK_SHOP_PHONE = "065-751-7873";
+const FALLBACK_SHOP_LINE_ID = "@sriwanparts";
+const FALLBACK_SHOP_ADDRESS = "118/7 หมู่ 12 ต.บางม่วง อ.เมือง จ.นครสวรรค์ 60000";
+const FALLBACK_SHOP_MAP_URL = "https://maps.app.goo.gl/3ZaXDsG7uWLKvTSE8";
+
+const configValueOr = (value: string | null | undefined, fallback: string): string =>
+  value?.trim() || fallback;
 
 async function getPolicy() {
   const active = await getPublicPolicyEntry();
@@ -89,6 +95,10 @@ function PolicySection({ section, index }: { section: KnowledgeSection; index: n
 
 export default async function ReturnWarrantyPolicyPage() {
   const [config, policy] = await Promise.all([getPublicSiteConfig(), getPolicy()]);
+  const shopPhone = configValueOr(config.shopPhone, FALLBACK_SHOP_PHONE);
+  const shopLineId = configValueOr(config.shopLineId, FALLBACK_SHOP_LINE_ID);
+  const shopAddress = configValueOr(config.shopAddress, FALLBACK_SHOP_ADDRESS);
+  const shopMapUrl = configValueOr(config.shopGoogleMapUrl, FALLBACK_SHOP_MAP_URL);
   return (
     <>
       <StorefrontHeader shopName={config.shopName} shopSlogan={config.shopSlogan} shopLogoUrl={config.shopLogoUrl} lineUrl={config.shopLineUrl} shopPhone={config.shopPhone} />
@@ -116,13 +126,13 @@ export default async function ReturnWarrantyPolicyPage() {
               <div className="rounded-[32px] border border-slate-200 bg-white p-7 shadow-sm lg:sticky lg:top-24">
                 <h2 className="font-kanit text-2xl font-semibold text-[#10213d]">ช่องทางติดต่อ / แจ้งเคลม</h2>
                 <div className="mt-5 space-y-4 text-sm leading-7 text-slate-600">
-                  <div className="flex gap-3"><Phone className="mt-1 h-4 w-4 text-[#f97316]" /><a href={`tel:${SHOP_PHONE.replace(/-/g, "")}`}>{SHOP_PHONE}</a></div>
-                  <div className="flex gap-3"><MessagesSquare className="mt-1 h-4 w-4 text-[#f97316]" /><span>LINE: {SHOP_LINE_ID}</span></div>
-                  <div className="flex gap-3"><MapPin className="mt-1 h-4 w-4 text-[#f97316]" /><span>{SHOP_ADDRESS}</span></div>
+                  <div className="flex gap-3"><Phone className="mt-1 h-4 w-4 text-[#f97316]" /><a href={`tel:${shopPhone.replace(/[^\d+]/g, "")}`}>{shopPhone}</a></div>
+                  <div className="flex gap-3"><MessagesSquare className="mt-1 h-4 w-4 text-[#f97316]" /><span>LINE: {shopLineId}</span></div>
+                  <div className="flex gap-3"><MapPin className="mt-1 h-4 w-4 text-[#f97316]" /><span className="whitespace-pre-line">{shopAddress}</span></div>
                 </div>
                 <div className="mt-6 flex flex-col gap-3">
                   <a href={config.shopLineUrl} target="_blank" rel="noopener noreferrer" className={STOREFRONT_LINE_PRIMARY_BUTTON_CLASS}>คุยผ่าน LINE OA</a>
-                  <a href={SHOP_MAP_URL} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-5 py-3 font-semibold text-[#10213d]">เปิด Google Maps <ExternalLink className="h-4 w-4" /></a>
+                  <a href={shopMapUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-2 rounded-full border border-slate-200 px-5 py-3 font-semibold text-[#10213d]">เปิด Google Maps <ExternalLink className="h-4 w-4" /></a>
                   <Link href="/products" className="inline-flex items-center justify-center rounded-full border border-slate-200 px-5 py-3 font-semibold text-[#10213d]">ไปหน้าค้นหาสินค้า</Link>
                 </div>
               </div>

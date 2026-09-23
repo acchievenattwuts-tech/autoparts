@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
+import HoverPrefetchLink from "../HoverPrefetchLink";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
@@ -197,9 +198,9 @@ export default async function CashBankLedgerPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-3 py-2">
                       {row.sourceHref ? (
-                        <Link href={row.sourceHref} className="text-sm font-medium text-[#1e3a5f] hover:underline dark:text-sky-300">
+                        <HoverPrefetchLink href={row.sourceHref} className="text-sm font-medium text-[#1e3a5f] hover:underline dark:text-sky-300">
                           เปิดเอกสาร
-                        </Link>
+                        </HoverPrefetchLink>
                       ) : (
                         <span className="text-gray-400 dark:text-slate-500">-</span>
                       )}

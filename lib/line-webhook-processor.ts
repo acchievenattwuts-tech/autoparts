@@ -3893,6 +3893,7 @@ export async function processLineAiReply(
     // error or block the job-failed bookkeeping below.
     const FALLBACK_TEXT = "ขอส่งต่อให้แอดมินช่วยดูแลต่อนะคะ เดี๋ยวติดต่อกลับโดยเร็วที่สุดค่ะ 🙏";
 
+    let fallbackDeliveryMode: LineDeliveryMode | null = null;
     if (config.channelAccessToken) {
       try {
         if (canUseReplyToken(config, input.canReply) && input.replyToken) {
@@ -3901,12 +3902,14 @@ export async function processLineAiReply(
             replyToken: input.replyToken,
             messages: [textMessage(FALLBACK_TEXT)],
           });
+          fallbackDeliveryMode = LineDeliveryMode.REPLY;
         } else if (config.allowPushFallback) {
           await dependencies.pushLineMessages({
             channelAccessToken: config.channelAccessToken,
             recipientIds: [input.lineUserId],
             messages: [textMessage(FALLBACK_TEXT)],
           });
+          fallbackDeliveryMode = LineDeliveryMode.PUSH;
         }
       } catch (sendError) {
         console.warn(
@@ -3914,6 +3917,35 @@ export async function processLineAiReply(
           describeError(sendError),
         );
       }
+    }
+
+    // Record a delivered fallback as the outbound reply. Without this row the
+    // burst still looked "unanswered", so the coalescing recovery cron re-ran the
+    // whole pipeline every minute and — on a deterministic failure — pushed the
+    // same fallback + admin alert again (3-4× within the 5-minute window). Only
+    // when it was actually delivered: an undelivered fallback must stay
+    // retryable. Best-effort — never masks the original error.
+    if (fallbackDeliveryMode) {
+      await dependencies
+        .appendLineMessage({
+          conversationId: input.conversation.id,
+          lineUserId: input.lineUserId,
+          direction: LineMessageDirection.OUTBOUND_AI,
+          messageType: input.messageType,
+          // Optional-chained: a malformed worker payload must not throw here and
+          // mask the original pipeline error.
+          intent: input.route?.intent ?? null,
+          text: FALLBACK_TEXT,
+          deliveryMode: fallbackDeliveryMode,
+          deliveryStatus: LineDeliveryStatus.SENT,
+          sentAt: new Date(),
+        })
+        .catch((recordError: unknown) => {
+          console.warn(
+            "[line-webhook-processor] fallback outbound record failed:",
+            describeError(recordError),
+          );
+        });
     }
 
     const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
@@ -3957,6 +3989,11 @@ async function ingestLineEvent(
     /** Coalesced mode: skip the (slow) vision call here and let the owner loop
      *  classify while it builds the merged turn. See the call site for why. */
     deferImageClassification?: boolean;
+    /** Coalesced mode: the per-event job is bookkeeping only (the owner runs one
+     *  merged job per turn), so write it already COMPLETED in the same insert.
+     *  A separate PENDING→COMPLETED update cost a round-trip and, if it failed,
+     *  left a PENDING job the cron worker would answer again legacy-style. */
+    completeJobOnIngest?: boolean;
   },
 ): Promise<{
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
@@ -4120,7 +4157,13 @@ async function ingestLineEvent(
           ? LineAiJobType.PAYMENT_SLIP_OCR
           : LineAiJobType.IMAGE_ANALYSIS
         : LineAiJobType.TEXT_REPLY,
-    status: LineAiJobStatus.PENDING,
+    ...(options?.completeJobOnIngest
+      ? {
+          status: LineAiJobStatus.COMPLETED,
+          result: { action: "coalesced_ingest" },
+          finishedAt: new Date(),
+        }
+      : { status: LineAiJobStatus.PENDING }),
     payload: {
       lineEventId: event.lineEventId,
       lineUserId,
@@ -4244,6 +4287,13 @@ const DEFAULT_COALESCE_LEASE_MS = 60_000;
 // answer before the data is ready.
 const OWNER_LOOP_FINAL_PASS_AFTER_MS = 28_000;
 
+/** The earlier of two optional instants (undefined when both are absent). */
+function earlierDate(a: Date | undefined, b: Date | null): Date | undefined {
+  if (!b) return a;
+  if (!a) return b;
+  return b.getTime() < a.getTime() ? b : a;
+}
+
 function realSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -4317,25 +4367,19 @@ async function processCoalescedEvents(
       // deferImageClassification: persist + bump seq FIRST, classify later in the
       // owner loop. Keeps a slow vision call from hiding an image from its own
       // burst (see the comment in ingestLineEvent).
-      const { conversation, inboundMessage, aiJob } = await ingestLineEvent(
+      // The per-event job created during ingest is NOT the unit of work in
+      // coalesced mode — the owner processes one merged job for the whole turn.
+      // completeJobOnIngest writes it already COMPLETED (never PENDING), so the
+      // cron failsafe (which reprocesses stale PENDING jobs one-by-one,
+      // legacy-style) can never resurrect it into a duplicate reply. Crash
+      // recovery is handled by the conversation-level seq failsafe.
+      const { conversation, inboundMessage } = await ingestLineEvent(
         event,
         config,
         dependencies,
         imageSearchEnabled,
-        { deferImageClassification: true },
+        { deferImageClassification: true, completeJobOnIngest: true },
       );
-      // The per-event PENDING job created during ingest is NOT the unit of work in
-      // coalesced mode — the owner processes one merged job for the whole turn.
-      // Close it immediately so the cron failsafe (which reprocesses stale PENDING
-      // jobs one-by-one, legacy-style) can never resurrect it into a duplicate
-      // reply. Crash recovery is handled by the conversation-level seq failsafe.
-      await dependencies
-        .updateLineAiJob(aiJob.id, {
-          status: LineAiJobStatus.COMPLETED,
-          result: { action: "coalesced_ingest" },
-          finishedAt: new Date(),
-        })
-        .catch(() => undefined);
       await bumpSeq(conversation.id);
       // Typing dots are fired inside ingestLineEvent (before the image vision
       // call), so they're already showing by the time we get here.
@@ -4576,7 +4620,10 @@ async function runConversationOwnerLoop(args: {
       },
       {
         ...config,
-        receivedAt: config.receivedAt ?? turn.receivedAt ?? undefined,
+        receivedAt: earlierDate(
+          config.receivedAt ?? turn.receivedAt ?? undefined,
+          turn.replyTokenReceivedAt,
+        ),
       },
       dependencies,
     );
@@ -4721,6 +4768,10 @@ async function buildMergedTurnInput(args: {
   textSegments: string[];
   imageClassification: LineImageClassification | null;
   replyToken: string | null;
+  /** Set only when the token came from an earlier row than `latest`: that
+   *  row's arrival time, so the reply-token age check measures the token
+   *  actually being used. */
+  replyTokenReceivedAt: Date | null;
   lineEventId: string | null;
   receivedAt: Date | null;
 }> {
@@ -4728,6 +4779,13 @@ async function buildMergedTurnInput(args: {
   const classify = dependencies.classifyLineImage ?? classifyLineImage;
 
   const latest = messages[messages.length - 1];
+  // Reply with the newest token in the burst. A non-message event (unsend,
+  // unfollow…) is stored without one; when it landed last, taking only
+  // `latest.replyToken` left the turn token-less while canReply stayed true, so
+  // the reply was decided as REPLY yet never sent (and logged SENT).
+  const tokenRow = latest.replyToken
+    ? latest
+    : ([...messages].reverse().find((message) => Boolean(message.replyToken)) ?? null);
   const mergedText =
     messages
       .map((message) => message.text?.trim() ?? "")
@@ -4859,7 +4917,8 @@ async function buildMergedTurnInput(args: {
     text: mergedText,
     textSegments,
     imageClassification,
-    replyToken: latest.replyToken ?? null,
+    replyToken: tokenRow?.replyToken ?? null,
+    replyTokenReceivedAt: tokenRow && tokenRow !== latest ? (tokenRow.createdAt ?? null) : null,
     lineEventId: latest.lineEventId ?? null,
     receivedAt: latest.createdAt ?? null,
   };

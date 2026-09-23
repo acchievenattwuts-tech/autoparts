@@ -20,7 +20,15 @@ interface Props {
   disabled?: boolean;
   /** ข้อความหัวข้อในกล่อง dropdown */
   searchPlaceholder?: string;
+  /** id ของปุ่มเปิดรายการ */
+  id?: string;
+  /** ชื่อสำหรับ screen reader เมื่อไม่มี label ที่มองเห็น */
+  ariaLabel?: string;
+  /** id ของ label ที่มองเห็นอยู่ เพื่อผูกเป็นชื่อของช่องนี้ (label htmlFor ใช้กับ div ไม่ได้) */
+  ariaLabelledBy?: string;
 }
+
+const OPEN_KEYS = new Set(["Enter", " ", "ArrowDown"]);
 
 const MAX_RESULTS = 200;
 
@@ -36,6 +44,9 @@ const MultiSelectFilter = ({
   placeholder = "ทั้งหมด",
   disabled = false,
   searchPlaceholder = "พิมพ์เพื่อค้นหา...",
+  id,
+  ariaLabel,
+  ariaLabelledBy,
 }: Props) => {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -43,6 +54,7 @@ const MultiSelectFilter = ({
   const adminTheme = useOptionalAdminTheme();
   const dropdownId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -88,6 +100,32 @@ const MultiSelectFilter = ({
     onChange([]);
     setQuery("");
     setOpen(false);
+  };
+
+  const closeAndRefocus = () => {
+    setOpen(false);
+    setQuery("");
+    triggerRef.current?.focus();
+  };
+
+  // Keyboard parity with the mouse: the trigger is focusable and opens on
+  // Enter / Space / ArrowDown. Keys pressed on the inner clear button are left
+  // to that button.
+  const handleTriggerKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (OPEN_KEYS.has(event.key)) {
+      event.preventDefault();
+      if (!open) handleOpen();
+    } else if (event.key === "Escape" && open) {
+      event.preventDefault();
+      closeAndRefocus();
+    }
+  };
+
+  const handleDropdownKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeAndRefocus();
   };
 
   useEffect(() => {
@@ -164,6 +202,7 @@ const MultiSelectFilter = ({
           ref={dropdownRef}
           style={{ top: coords.top, left: coords.left, width: coords.width }}
           className={dropdownClassName}
+          onKeyDown={handleDropdownKeyDown}
         >
           <div className={dropdownSearchWrapClassName}>
             <input
@@ -217,13 +256,21 @@ const MultiSelectFilter = ({
   return (
     <div ref={containerRef} className="relative">
       <div
+        ref={triggerRef}
+        id={id}
         role="combobox"
         aria-controls={dropdownId}
         aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-disabled={disabled || undefined}
+        aria-label={ariaLabel}
+        aria-labelledby={ariaLabelledBy}
+        tabIndex={disabled ? -1 : 0}
         onClick={handleOpen}
-        className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${triggerClassName} ${
-          disabled ? "cursor-not-allowed opacity-70" : ""
-        }`}
+        onKeyDown={handleTriggerKeyDown}
+        className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${
+          isDark ? "focus-visible:ring-sky-400/40" : "focus-visible:ring-[#1e3a5f]/30"
+        } ${triggerClassName} ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
       >
         {hasValues ? (
           <>
@@ -231,14 +278,21 @@ const MultiSelectFilter = ({
               {triggerLabel}
             </span>
             {!disabled && (
-              <X
-                size={14}
-                className={`ml-1 shrink-0 ${
-                  isDark ? "text-slate-500 hover:text-slate-300" : "text-gray-400 hover:text-gray-600"
-                }`}
+              // A real button so the clear action is reachable by keyboard and
+              // announced by screen readers; unstyled so it looks exactly like
+              // the bare icon it replaces.
+              <button
+                type="button"
                 onClick={handleClear}
                 aria-label="ล้างรายการที่เลือก"
-              />
+                className={`ml-1 inline-flex shrink-0 cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 ${
+                  isDark
+                    ? "text-slate-500 hover:text-slate-300 focus-visible:ring-sky-400/40"
+                    : "text-gray-400 hover:text-gray-600 focus-visible:ring-[#1e3a5f]/30"
+                }`}
+              >
+                <X size={14} aria-hidden="true" />
+              </button>
             )}
           </>
         ) : (

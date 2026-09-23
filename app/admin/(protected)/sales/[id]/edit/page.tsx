@@ -61,7 +61,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     : null;
   if (marketplaceConfig && !canManageMarketplace) redirect(`/admin/sales/${id}`);
 
-  const [salePayments, saleWht, whtIncomeTypes] = await Promise.all([
+  const [salePayments, saleWht, whtIncomeTypes, mutationBlock] = await Promise.all([
     db.documentPayment.findMany({
       where: { docType: "SALE", docId: id },
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
@@ -79,9 +79,9 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       },
     }),
     getWhtReceivedIncomeTypeOptions(),
+    checkDocumentMutation("Sale", id, "update"),
   ]);
 
-  const mutationBlock = await checkDocumentMutation("Sale", id, "update");
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
@@ -99,32 +99,34 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
   );
   const productLotExpMap: Record<string, string> = {};
   const productLotMetaMap: Record<string, { expDate: string; mfgDate: string; unitCost: number }> = {};
-  if (lotKeys.length > 0) {
-    const productLots = await db.productLot.findMany({
-      where: { OR: lotKeys },
-      select: { productId: true, lotNo: true, expDate: true, mfgDate: true, unitCost: true },
-    });
-    for (const pl of productLots) {
-      productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? formatDateOnlyForInput(pl.expDate) : "";
-      productLotMetaMap[`${pl.productId}:${pl.lotNo}`] = {
-        expDate: pl.expDate ? formatDateOnlyForInput(pl.expDate) : "",
-        mfgDate: pl.mfgDate ? formatDateOnlyForInput(pl.mfgDate) : "",
-        unitCost: Number(pl.unitCost),
-      };
-    }
+  // ProductLot and LotBalance are independent reads — fetch them together.
+  const [productLots, lotBalanceRows] = await Promise.all([
+    lotKeys.length > 0
+      ? db.productLot.findMany({
+          where: { OR: lotKeys },
+          select: { productId: true, lotNo: true, expDate: true, mfgDate: true, unitCost: true },
+        })
+      : Promise.resolve([]),
+    saleProductIds.length
+      ? db.lotBalance.findMany({
+          where: {
+            OR: [
+              { productId: { in: saleProductIds }, qtyOnHand: { gt: 0 } },
+              ...(lotKeys.length > 0 ? lotKeys : []),
+            ],
+          },
+          select: { productId: true, lotNo: true, qtyOnHand: true },
+        })
+      : Promise.resolve([]),
+  ]);
+  for (const pl of productLots) {
+    productLotExpMap[`${pl.productId}:${pl.lotNo}`] = pl.expDate ? formatDateOnlyForInput(pl.expDate) : "";
+    productLotMetaMap[`${pl.productId}:${pl.lotNo}`] = {
+      expDate: pl.expDate ? formatDateOnlyForInput(pl.expDate) : "",
+      mfgDate: pl.mfgDate ? formatDateOnlyForInput(pl.mfgDate) : "",
+      unitCost: Number(pl.unitCost),
+    };
   }
-
-  const lotBalanceRows = saleProductIds.length
-    ? await db.lotBalance.findMany({
-        where: {
-          OR: [
-            { productId: { in: saleProductIds }, qtyOnHand: { gt: 0 } },
-            ...(lotKeys.length > 0 ? lotKeys : []),
-          ],
-        },
-        select: { productId: true, lotNo: true, qtyOnHand: true },
-      })
-    : [];
 
   const initialItems = sale.items.map((item) => {
     const baseUnit = item.product.units.find((u) => u.isBase) ?? item.product.units[0];

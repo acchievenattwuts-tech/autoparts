@@ -136,7 +136,9 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   // fans out — gets its own pooled connection, so they run in parallel instead of
   // being serialized onto a single pinned client (which both emitted the pg
   // "client.query() while already executing" warning and slowed the page).
-  const [sale, siteContents, primaryTransferAccount, salePayments] = await Promise.all([
+  // The activity timeline only needs the id, so it is loaded alongside the sale
+  // instead of after it (it returns an empty list when the sale does not exist).
+  const [sale, siteContents, primaryTransferAccount, salePayments, activityEvents] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -209,6 +211,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
         cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
       },
     }),
+    getDocumentActivityTimeline("Sale", id),
   ]);
 
   if (!sale) notFound();
@@ -224,7 +227,6 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   const customerDisplayPhone = marketplaceConfig
     ? sale.customerPhone ?? sale.customer?.phone ?? "-"
     : sale.customer?.phone ?? sale.customerPhone ?? "-";
-  const activityEvents = await getDocumentActivityTimeline("Sale", sale.id);
   const cfg = mapSiteConfig(siteContents);
 
   const dueDate = addThailandDays(sale.saleDate, sale.creditTerm ?? 0);

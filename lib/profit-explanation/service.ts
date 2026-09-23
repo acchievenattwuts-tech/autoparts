@@ -10,8 +10,12 @@ const TH_MUTATION_ACTION_RE = /(ปรับราคา|แก้ไข|อน�
 const TH_COMPLETED_MARKER_RE = /(ให้แล้ว|แล้ว|เรียบร้อย|สำเร็จ)/;
 const EN_MUTATION_CLAIM_RE = /\b(i|we|system|ai)\b.{0,40}\b(changed|updated|deleted|approved|posted|reconciled|created)\b/i;
 
+// Identity set of results built by fallbackResult(), so callers can tell a
+// rejected/unparseable AI answer apart from a real one without string matching.
+const fallbackResults = new WeakSet<ProfitExplanationResult>();
+
 function fallbackResult(reason: string): ProfitExplanationResult {
-  return {
+  const result: ProfitExplanationResult = {
     summary: "ไม่สามารถสรุปคำอธิบายกำไรจาก AI ได้อย่างปลอดภัยในรอบนี้",
     confidence: "low",
     facts: [],
@@ -20,6 +24,8 @@ function fallbackResult(reason: string): ProfitExplanationResult {
     recommendedChecks: [],
     limitations: [reason],
   };
+  fallbackResults.add(result);
+  return result;
 }
 
 function stripJsonFence(text: string): string {
@@ -183,6 +189,8 @@ export function parseProfitExplanationResult(
 export async function generateProfitExplanation(evidence: ProfitExplanationEvidence): Promise<{
   result: ProfitExplanationResult;
   keyRef: string | null;
+  /** Why the AI answer was replaced by the fallback result; null when it was used as-is. */
+  rejectionReason: string | null;
 }> {
   const { systemInstruction, prompt } = buildProfitExplanationPrompt(evidence);
   try {
@@ -196,14 +204,17 @@ export async function generateProfitExplanation(evidence: ProfitExplanationEvide
       timeoutMs: 15_000,
     });
 
+    const result = parseProfitExplanationResult(response.text, evidence);
     return {
-      result: parseProfitExplanationResult(response.text, evidence),
+      result,
       keyRef: response.keyRef,
+      rejectionReason: fallbackResults.has(result) ? (result.limitations[0] ?? "AI_RESPONSE_REJECTED") : null,
     };
   } catch (error) {
     return {
       result: fallbackResult(error instanceof Error ? error.message : "AI unavailable"),
       keyRef: null,
+      rejectionReason: null,
     };
   }
 }

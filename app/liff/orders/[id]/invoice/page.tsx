@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import { PRINT_COPY_LABEL_LIFF } from "@/app/admin/_components/print/shared";
@@ -151,18 +152,22 @@ export default async function LiffOrderInvoicePage({
   });
   if (!tokenAccess && liffCustomer) {
     const requestContext = await getRequestContext();
-    void safeWriteAuditLog({
-      ...requestContext,
-      action: AuditAction.CUSTOMER_VIEW_INVOICE_PDF,
-      entityType: "Sale",
-      entityId: sale.id,
-      entityRef: sale.saleNo,
-      meta: {
-        customerId,
-        lineLinkedAt: liffCustomer.lineLinkedAt,
-        source: "LIFF",
-      },
-    });
+    // after(): on serverless the response can finish before a detached
+    // promise does; after() keeps the function alive until the audit is written.
+    after(() =>
+      safeWriteAuditLog({
+        ...requestContext,
+        action: AuditAction.CUSTOMER_VIEW_INVOICE_PDF,
+        entityType: "Sale",
+        entityId: sale.id,
+        entityRef: sale.saleNo,
+        meta: {
+          customerId,
+          lineLinkedAt: liffCustomer.lineLinkedAt,
+          source: "LIFF",
+        },
+      }),
+    );
   }
 
   return (

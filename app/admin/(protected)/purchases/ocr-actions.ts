@@ -11,7 +11,7 @@ import {
   isAcceptedPurchaseOcrMime,
   PURCHASE_OCR_MAX_FILES,
   PURCHASE_OCR_MAX_FILE_BYTES,
-  PURCHASE_OCR_MAX_TOTAL_BYTES,
+  validatePurchaseOcrUploadRequest,
   type PurchaseOcrExtraction,
   type PurchaseOcrLine,
   type PurchaseOcrLineMatch,
@@ -266,26 +266,9 @@ export async function requestPurchaseOcrUpload(
   if (!session) return { error: "ไม่มีสิทธิ์ใช้งาน" };
 
   try {
-    if (!Array.isArray(files) || files.length === 0) {
-      return { error: "กรุณาแนบไฟล์อย่างน้อย 1 ไฟล์" };
-    }
-    if (files.length > PURCHASE_OCR_MAX_FILES) {
-      return { error: `แนบไฟล์ได้ไม่เกิน ${PURCHASE_OCR_MAX_FILES} ไฟล์ต่อครั้ง` };
-    }
-
-    let total = 0;
-    for (const file of files) {
-      if (!isAcceptedPurchaseOcrMime(file.mimeType)) {
-        return { error: "รองรับเฉพาะไฟล์รูปภาพหรือ PDF เท่านั้น" };
-      }
-      if (file.size <= 0 || file.size > PURCHASE_OCR_MAX_FILE_BYTES) {
-        return { error: "ขนาดไฟล์ต้องไม่เกิน 15MB ต่อไฟล์" };
-      }
-      total += file.size;
-    }
-    if (total > PURCHASE_OCR_MAX_TOTAL_BYTES) {
-      return { error: "ขนาดไฟล์รวมต้องไม่เกิน 20MB" };
-    }
+    // Types/sizes come from the browser — validate them (Zod) before issuing tickets.
+    const validationError = validatePurchaseOcrUploadRequest(files);
+    if (validationError) return { error: validationError };
 
     const tickets = await createPurchaseOcrUploadTickets(files.map((file) => file.mimeType));
     if (!tickets) return { error: "ระบบจัดเก็บไฟล์ยังไม่พร้อมใช้งาน" };

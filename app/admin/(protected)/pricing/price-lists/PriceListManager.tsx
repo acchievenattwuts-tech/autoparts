@@ -3,6 +3,17 @@
 import { useRef, useState, useTransition } from "react";
 import { applyPriceImport, createPriceList, previewPriceImport, setPriceListActive, updatePriceList } from "./actions";
 import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
+import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
+import {
+  ACTION_MESSAGE_BOX_CLASS,
+  ACTION_MESSAGE_INLINE_CLASS,
+  PRICING_LABEL_CLASS,
+  actionMessageRole,
+  toActionMessage,
+  type ActionMessage,
+} from "../action-message";
+import { PRICE_LIST_NAME_MAX_LENGTH, PRICE_LIST_SORT_ORDER_MAX, parsePriceListEditInput } from "./price-list-edit";
 
 type Row = {
   id: string;
@@ -19,10 +30,69 @@ type Row = {
 const inputClass = "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-white/15 dark:bg-slate-950 dark:text-slate-100";
 
 type ImportPreview = Awaited<ReturnType<typeof previewPriceImport>>;
+type RowMessage = ActionMessage & { id: string };
+
+const MessageBox = ({ message, className = "" }: { message: ActionMessage | null; className?: string }) =>
+  message ? <p role={actionMessageRole(message)} className={`${ACTION_MESSAGE_BOX_CLASS[message.type]} ${className}`}>{message.text}</p> : null;
+
+/** Inline editor that replaces the two chained window.prompt() boxes. */
+const PriceListRowEditor = ({
+  row,
+  pending,
+  serverError,
+  onSave,
+  onCancel,
+}: {
+  row: Row;
+  pending: boolean;
+  serverError?: string;
+  onSave: (input: { name: string; sortOrder: number }) => void;
+  onCancel: () => void;
+}) => {
+  const [error, setError] = useState("");
+  const shownError = error || serverError;
+  return (
+    <tr className="border-t border-slate-100 bg-sky-50/60 dark:border-white/10 dark:bg-sky-500/10">
+      <td colSpan={6} className="p-3">
+        <form
+          className="grid gap-3 md:grid-cols-[2fr_140px_auto] md:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const parsed = parsePriceListEditInput(String(form.get("name") ?? ""), String(form.get("sortOrder") ?? ""));
+            if ("error" in parsed) {
+              setError(parsed.error);
+              return;
+            }
+            setError("");
+            onSave(parsed.value);
+          }}
+        >
+          <div>
+            <label htmlFor={`price-list-name-${row.id}`} className={PRICING_LABEL_CLASS}>ชื่อระดับราคา ({row.code})</label>
+            <input id={`price-list-name-${row.id}`} name="name" required maxLength={PRICE_LIST_NAME_MAX_LENGTH} defaultValue={row.name} className={`${inputClass} w-full`} />
+          </div>
+          <div>
+            <label htmlFor={`price-list-order-${row.id}`} className={PRICING_LABEL_CLASS}>ลำดับ</label>
+            <input id={`price-list-order-${row.id}`} name="sortOrder" type="number" required min={0} max={PRICE_LIST_SORT_ORDER_MAX} step={1} defaultValue={row.sortOrder} className={`${inputClass} w-full`} />
+          </div>
+          <div className="flex gap-2">
+            <button disabled={pending} className="rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-sky-600">{pending ? "กำลังบันทึก..." : "บันทึก"}</button>
+            <button type="button" disabled={pending} onClick={onCancel} className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-700 disabled:opacity-60 dark:border-white/15 dark:text-slate-200">ยกเลิก</button>
+          </div>
+          {shownError ? <p role="alert" className={`${ACTION_MESSAGE_INLINE_CLASS.error} md:col-span-3`}>{shownError}</p> : null}
+        </form>
+      </td>
+    </tr>
+  );
+};
 
 export default function PriceListManager({ rows, totalProducts }: { rows: Row[]; totalProducts: number }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [message, setMessage] = useState("");
+  const [createMessage, setCreateMessage] = useState<ActionMessage | null>(null);
+  const [importMessage, setImportMessage] = useState<ActionMessage | null>(null);
+  const [rowMessage, setRowMessage] = useState<RowMessage | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [importPriceListId, setImportPriceListId] = useState("");
   const [importCsv, setImportCsv] = useState("");
   const [importFileName, setImportFileName] = useState("");
@@ -32,23 +102,42 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
     <div className="space-y-5">
       <form
         ref={formRef}
-        className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_2fr_1fr_100px_auto] dark:border-white/10 dark:bg-slate-900/60"
-        action={(formData) => startTransition(async () => {
-          const result = await createPriceList(formData);
-          setMessage(result.error ?? "เพิ่มระดับราคาแล้ว");
-          if (!result.error) formRef.current?.reset();
-        })}
+        className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 md:grid-cols-[1fr_2fr_1fr_100px_auto] md:items-end dark:border-white/10 dark:bg-slate-900/60"
+        onSubmit={(event) => {
+          // onSubmit (not action=) so a rejected create keeps what was typed;
+          // React resets an action= form even when the action returns an error.
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          setCreateMessage(null);
+          startTransition(async () => {
+            const result = await createPriceList(formData);
+            setCreateMessage(toActionMessage(result.error, "เพิ่มระดับราคาแล้ว"));
+            if (!result.error) formRef.current?.reset();
+          });
+        }}
       >
-        <input name="code" required placeholder="รหัส เช่น TIKTOK" className={inputClass} />
-        <input name="name" required placeholder="ชื่อระดับราคา" className={inputClass} />
-        <select name="channel" defaultValue="" className={inputClass}>
-          <option value="">ไม่ผูกช่องทาง</option>
-          <option value="SHOPEE">Shopee</option>
-          <option value="LAZADA">Lazada</option>
-        </select>
-        <input name="sortOrder" type="number" min={0} defaultValue={100} className={inputClass} />
+        <div>
+          <label htmlFor="price-list-create-code" className={PRICING_LABEL_CLASS}>รหัส</label>
+          <input id="price-list-create-code" name="code" required placeholder="เช่น TIKTOK" className={`${inputClass} w-full`} />
+        </div>
+        <div>
+          <label htmlFor="price-list-create-name" className={PRICING_LABEL_CLASS}>ชื่อระดับราคา</label>
+          <input id="price-list-create-name" name="name" required placeholder="ชื่อระดับราคา" className={`${inputClass} w-full`} />
+        </div>
+        <div>
+          <label htmlFor="price-list-create-channel" className={PRICING_LABEL_CLASS}>ช่องทาง</label>
+          <select id="price-list-create-channel" name="channel" defaultValue="" className={`${inputClass} w-full`}>
+            <option value="">ไม่ผูกช่องทาง</option>
+            <option value="SHOPEE">Shopee</option>
+            <option value="LAZADA">Lazada</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="price-list-create-order" className={PRICING_LABEL_CLASS}>ลำดับ</label>
+          <input id="price-list-create-order" name="sortOrder" type="number" min={0} max={PRICE_LIST_SORT_ORDER_MAX} step={1} defaultValue={100} className={`${inputClass} w-full`} />
+        </div>
         <button disabled={pending} className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">เพิ่ม</button>
-        {message ? <p className="text-sm text-slate-600 md:col-span-5 dark:text-slate-300">{message}</p> : null}
+        <MessageBox message={createMessage} className="md:col-span-5" />
       </form>
 
       <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-slate-900/60">
@@ -96,9 +185,10 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
               disabled={pending}
               onClick={() => {
                 if (!window.confirm(`ยืนยันนำเข้า ${importPreview.rowCount.toLocaleString("th-TH")} รายการหรือไม่?`)) return;
+                setImportMessage(null);
                 startTransition(async () => {
                   const result = await applyPriceImport(importPriceListId, importCsv);
-                  setMessage(result.error ?? `นำเข้าสำเร็จ ${result.updatedCount?.toLocaleString("th-TH")} รายการ`);
+                  setImportMessage(toActionMessage(result.error, `นำเข้าสำเร็จ ${result.updatedCount?.toLocaleString("th-TH")} รายการ`));
                   if (!result.error) setImportPreview(null);
                 });
               }}
@@ -106,6 +196,7 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
             >ยืนยันนำเข้า</button> : null}
           </div>
         ) : null}
+        <MessageBox message={importMessage} />
       </section>
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-slate-900/60">
@@ -114,33 +205,52 @@ export default function PriceListManager({ rows, totalProducts }: { rows: Row[];
             <tr><th className="p-3">ระดับราคา</th><th className="p-3">ช่องทาง</th><th className="p-3">ครอบคลุมสินค้า</th><th className="p-3">ประเภทลูกค้า</th><th className="p-3">สถานะ</th><th className="p-3 text-right">จัดการ</th></tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-100 dark:border-white/10">
+            {rows.map((row) => editingId === row.id ? (
+              <PriceListRowEditor
+                key={row.id}
+                row={row}
+                pending={pending}
+                serverError={rowMessage?.id === row.id && rowMessage.type === "error" ? rowMessage.text : undefined}
+                onCancel={() => {
+                  setRowMessage(null);
+                  setEditingId(null);
+                }}
+                onSave={(input) => {
+                  setRowMessage(null);
+                  startTransition(async () => {
+                    const result = await updatePriceList(row.id, input);
+                    setRowMessage({ id: row.id, ...toActionMessage(result.error, "แก้ไขแล้ว") });
+                    if (!result.error) setEditingId(null);
+                  });
+                }}
+              />
+            ) : (
+              <tr key={row.id} className={`border-t border-slate-100 dark:border-white/10 ${getAdminMasterRowClass(row.isActive)}`}>
                 <td className="p-3"><span className="font-medium text-slate-900 dark:text-slate-100">{row.name}</span><span className="ml-2 text-xs text-slate-400">{row.code}</span></td>
                 <td className="p-3 text-slate-600 dark:text-slate-300">{row.channel ?? "—"}</td>
                 <td className="p-3 tabular-nums text-slate-600 dark:text-slate-300">{row.productCount}/{totalProducts}</td>
                 <td className="p-3 tabular-nums text-slate-600 dark:text-slate-300">{row.customerTypeCount}</td>
-                <td className="p-3">{row.isActive ? "ใช้งาน" : "ปิดใช้งาน"}</td>
+                <td className="p-3"><AdminStatusBadge tone={getAdminActiveBadgeTone(row.isActive)}>{row.isActive ? "ใช้งาน" : "ปิดใช้งาน"}</AdminStatusBadge></td>
                 <td className="p-3 text-right">
                   <div className="flex justify-end gap-2"><button
                     disabled={pending}
                     onClick={() => {
-                      const name = window.prompt("ชื่อระดับราคา", row.name)?.trim();
-                      if (!name) return;
-                      const orderText = window.prompt("ลำดับ", String(row.sortOrder));
-                      if (orderText === null) return;
-                      const sortOrder = Number(orderText);
-                      startTransition(async () => setMessage((await updatePriceList(row.id, { name, sortOrder })).error ?? "แก้ไขแล้ว"));
+                      setRowMessage(null);
+                      setEditingId(row.id);
                     }}
                     className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-40 dark:border-white/15 dark:text-slate-200"
                   >แก้ไข</button><button
                     disabled={pending || (row.isSystem && row.isActive)}
-                    onClick={() => startTransition(async () => {
-                      const result = await setPriceListActive(row.id, !row.isActive);
-                      setMessage(result.error ?? (row.isActive ? "ปิดใช้งานแล้ว" : "เปิดใช้งานแล้ว"));
-                    })}
+                    onClick={() => {
+                      setRowMessage(null);
+                      startTransition(async () => {
+                        const result = await setPriceListActive(row.id, !row.isActive);
+                        setRowMessage({ id: row.id, ...toActionMessage(result.error, row.isActive ? "ปิดใช้งานแล้ว" : "เปิดใช้งานแล้ว") });
+                      });
+                    }}
                     className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-700 disabled:opacity-40 dark:border-white/15 dark:text-slate-200"
                   >{row.isActive ? "ปิด" : "เปิด"}</button></div>
+                  {rowMessage?.id === row.id ? <p role={actionMessageRole(rowMessage)} className={ACTION_MESSAGE_INLINE_CLASS[rowMessage.type]}>{rowMessage.text}</p> : null}
                 </td>
               </tr>
             ))}

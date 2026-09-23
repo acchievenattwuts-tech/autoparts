@@ -14,6 +14,17 @@ interface Props {
   lineUrl: string;
 }
 
+/** Append `next` to `current`, skipping any product already shown. */
+export const appendUniqueById = <T extends { id: string }>(current: T[], next: T[]): T[] => {
+  const seen = new Set(current.map((product) => product.id));
+  const appended = next.filter((product) => {
+    if (seen.has(product.id)) return false;
+    seen.add(product.id);
+    return true;
+  });
+  return appended.length > 0 ? [...current, ...appended] : current;
+};
+
 const RelatedProductsSection = ({
   initialProducts,
   initialHasMore,
@@ -23,17 +34,36 @@ const RelatedProductsSection = ({
 }: Props) => {
   const [products, setProducts] = useState<RelatedProduct[]>(initialProducts);
   const [hasMore, setHasMore] = useState(initialHasMore);
+  const [loadFailed, setLoadFailed] = useState(false);
+  // Rows consumed from the server so far. Tracked apart from products.length so
+  // a page that only repeated already-shown products still advances the offset.
+  const [nextSkip, setNextSkip] = useState(initialProducts.length);
   const [isPending, startTransition] = useTransition();
 
   const handleLoadMore = () => {
     startTransition(async () => {
-      const result = await loadMoreRelatedProducts({
-        categoryId,
-        currentProductId,
-        skip: products.length,
-      });
-      setProducts((prev) => [...prev, ...result.products]);
-      setHasMore(result.hasMore);
+      try {
+        const result = await loadMoreRelatedProducts({
+          categoryId,
+          currentProductId,
+          skip: nextSkip,
+        });
+        // Throttled or failed: keep the list and the button so the customer can
+        // retry, rather than treating it as the end of the category.
+        if (result.failed) {
+          setLoadFailed(true);
+          return;
+        }
+        setLoadFailed(false);
+        // The first batch is cached while later pages are live, so a product can
+        // shift across the page boundary — never render the same card twice.
+        setProducts((prev) => appendUniqueById(prev, result.products));
+        setNextSkip((skip) => skip + result.products.length);
+        setHasMore(result.hasMore);
+      } catch (error) {
+        console.error("[RelatedProductsSection] load more failed", error);
+        setLoadFailed(true);
+      }
     });
   };
 
@@ -54,7 +84,12 @@ const RelatedProductsSection = ({
           ))}
         </div>
         {hasMore && (
-          <div className="mt-5 flex justify-center">
+          <div className="mt-5 flex flex-col items-center gap-2">
+            {loadFailed && !isPending && (
+              <p role="status" className="text-sm text-slate-500">
+                โหลดสินค้าเพิ่มไม่สำเร็จ กรุณาลองอีกครั้ง
+              </p>
+            )}
             <button
               onClick={handleLoadMore}
               disabled={isPending}

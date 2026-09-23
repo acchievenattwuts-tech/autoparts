@@ -5,6 +5,14 @@ import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai, getThailandDateKey, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
 import Pagination from "@/components/shared/Pagination";
+import {
+  chunkLotKeys,
+  classifyLotExpiry,
+  groupLotKeysByProduct,
+  lotKeyOf,
+  pageSlice,
+  type LotKey,
+} from "../lot-report-query";
 
 const LOT_PAGE_SIZE = 50;
 
@@ -42,62 +50,103 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
   const qTrim = q.trim();
   const shouldShowData = ready === "1";
 
-  const balances = shouldShowData
-    ? await db.lotBalance.findMany({
-        where: {
-          qtyOnHand: { gt: 0 },
-          ...(qTrim
-            ? {
-                product: {
-                  OR: [
-                    { name: { contains: qTrim, mode: "insensitive" } },
-                    { code: { contains: qTrim, mode: "insensitive" } },
-                  ],
-                },
-              }
-            : {}),
-        },
-        include: {
+  const balanceWhere = {
+    qtyOnHand: { gt: 0 },
+    ...(qTrim
+      ? {
           product: {
-            select: {
-              name: true,
-              code: true,
-              reportUnitName: true,
-              units: { select: { name: true, scale: true, isBase: true } },
-            },
+            OR: [
+              { name: { contains: qTrim, mode: "insensitive" as const } },
+              { code: { contains: qTrim, mode: "insensitive" as const } },
+            ],
           },
-        },
-        orderBy: [{ productId: "asc" }, { lotNo: "asc" }],
-        take: 300,
-      })
-    : [];
+        }
+      : {}),
+  };
+  const balanceOrderBy = [{ productId: "asc" as const }, { lotNo: "asc" as const }];
+  const today = parseDateOnlyToDate(getThailandDateKey());
 
-  const keys = balances.map((balance) => ({ productId: balance.productId, lotNo: balance.lotNo }));
-  const productLots =
-    keys.length > 0
-      ? await db.productLot.findMany({
-          where: { OR: keys },
-          select: { productId: true, lotNo: true, expDate: true, mfgDate: true },
-        })
-      : [];
+  // The status filter is resolved over EVERY lot with stock (narrow key/expiry
+  // columns only) before paging, so it is never limited to the first N lots.
+  // Only the rows of the requested page load product/unit details.
+  let totalRows = 0;
+  let pageKeys: LotKey[] = [];
+  if (shouldShowData && status === "all") {
+    // A non-numeric ?page= yields NaN; keep the old behaviour (empty page)
+    // instead of passing NaN to Prisma's skip.
+    [totalRows, pageKeys] = await Promise.all([
+      db.lotBalance.count({ where: balanceWhere }),
+      Number.isFinite(page)
+        ? db.lotBalance.findMany({
+            where: balanceWhere,
+            select: { productId: true, lotNo: true },
+            orderBy: balanceOrderBy,
+            skip: (page - 1) * LOT_PAGE_SIZE,
+            take: LOT_PAGE_SIZE,
+          })
+        : Promise.resolve([]),
+    ]);
+  } else if (shouldShowData) {
+    const allKeys = await db.lotBalance.findMany({
+      where: balanceWhere,
+      select: { productId: true, lotNo: true },
+      orderBy: balanceOrderBy,
+    });
+    const expDateByKey = new Map<string, Date | null>();
+    for (const keyChunk of chunkLotKeys(allKeys)) {
+      const chunkLots = await db.productLot.findMany({
+        where: { OR: groupLotKeysByProduct(keyChunk) },
+        select: { productId: true, lotNo: true, expDate: true },
+      });
+      for (const productLot of chunkLots) {
+        expDateByKey.set(lotKeyOf(productLot), productLot.expDate);
+      }
+    }
+    const matchingKeys = allKeys.filter((key) => {
+      const expDate = expDateByKey.get(lotKeyOf(key)) ?? null;
+      return classifyLotExpiry(expDate ? startOfThailandDay(expDate) : null, today).status === status;
+    });
+    totalRows = matchingKeys.length;
+    pageKeys = pageSlice(matchingKeys, page, LOT_PAGE_SIZE);
+  }
+
+  const pageKeyFilters = groupLotKeysByProduct(pageKeys);
+  const [pageBalances, productLots] =
+    pageKeyFilters.length > 0
+      ? await Promise.all([
+          db.lotBalance.findMany({
+            where: { OR: pageKeyFilters, qtyOnHand: { gt: 0 } },
+            include: {
+              product: {
+                select: {
+                  name: true,
+                  code: true,
+                  reportUnitName: true,
+                  units: { select: { name: true, scale: true, isBase: true } },
+                },
+              },
+            },
+          }),
+          db.productLot.findMany({
+            where: { OR: pageKeyFilters },
+            select: { productId: true, lotNo: true, expDate: true, mfgDate: true },
+          }),
+        ])
+      : [[], []];
+  const balanceMap = new Map(pageBalances.map((balance) => [lotKeyOf(balance), balance]));
+  const balances = pageKeys.flatMap((key) => {
+    const balance = balanceMap.get(lotKeyOf(key));
+    return balance ? [balance] : [];
+  });
   const productLotMap = new Map(
     productLots.map((productLot) => [`${productLot.productId}:${productLot.lotNo}`, productLot]),
   );
 
-  const today = parseDateOnlyToDate(getThailandDateKey());
-  type RowStatus = "ok" | "expiring" | "expired" | "no-exp";
-
-  const rows = balances.map((balance) => {
+  const pagedRows = balances.map((balance) => {
     const productLot = productLotMap.get(`${balance.productId}:${balance.lotNo}`);
     const expDate = productLot?.expDate ?? null;
     const mfgDate = productLot?.mfgDate ?? null;
-    const daysUntil = expDate
-      ? Math.ceil((startOfThailandDay(expDate).getTime() - today.getTime()) / 86_400_000)
-      : null;
-    let rowStatus: RowStatus = "no-exp";
-    if (daysUntil !== null) {
-      rowStatus = daysUntil < 0 ? "expired" : daysUntil <= 30 ? "expiring" : "ok";
-    }
+    const { daysUntil } = classifyLotExpiry(expDate ? startOfThailandDay(expDate) : null, today);
     const reportUnit = resolveReportUnit({
       reportUnitName: balance.product.reportUnitName,
       units: balance.product.units,
@@ -108,17 +157,12 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
       expDate,
       mfgDate,
       daysUntil,
-      rowStatus,
       unitName: reportUnit.unitName,
       qtyOnHand: toReportUnitQty(Number(balance.qtyOnHand), reportUnit.scale),
     };
   });
 
-  const filtered =
-    status === "all" ? rows : rows.filter((row) => row.rowStatus === (status as RowStatus));
-
-  const totalPages = Math.ceil(filtered.length / LOT_PAGE_SIZE);
-  const pagedRows = filtered.slice((page - 1) * LOT_PAGE_SIZE, page * LOT_PAGE_SIZE);
+  const totalPages = Math.ceil(totalRows / LOT_PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -157,7 +201,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
 
       <p className="text-sm text-muted-foreground">
         {shouldShowData
-          ? `พบ ${filtered.length} รายการ${filtered.length >= 300 ? " (จำกัด 300 รายการ)" : ""}`
+          ? `พบ ${totalRows} รายการ`
           : "กรอกชื่อหรือรหัสสินค้า หรือเลือกสถานะก่อน แล้วกดกรองเพื่อแสดงข้อมูล"}
       </p>
 
@@ -183,7 +227,7 @@ export default async function LotBalancePage({ searchParams }: PageProps) {
                 </td>
               </tr>
             )}
-            {shouldShowData && filtered.length === 0 && (
+            {shouldShowData && totalRows === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   ไม่พบข้อมูล

@@ -14,15 +14,26 @@ import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
-import { parseDateOnlyToDate } from "@/lib/th-date";
+import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+
+const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
+
+// Lot MFG/EXP: empty (not specified) or a real YYYY-MM-DD date-only value.
+const optionalDateOnlySchema = z
+  .string()
+  .refine((value) => value === "" || isDateOnlyString(value), INVALID_DATE_MESSAGE)
+  .default("");
+
+// Errors whose Thai message is safe and useful to show the user as-is.
+class BalanceForwardUserError extends Error {}
 
 const lotSubRowSchema = z.object({
   lotNo:    z.string().min(1).max(100),
   qty:      z.coerce.number().positive(),
   unitCost: z.coerce.number().min(0),
-  mfgDate:  z.string().default(""),
-  expDate:  z.string().default(""),
+  mfgDate:  optionalDateOnlySchema,
+  expDate:  optionalDateOnlySchema,
 });
 
 const bfSchema = z.object({
@@ -30,7 +41,7 @@ const bfSchema = z.object({
   unitName:         z.string().min(1).max(20),
   qty:              z.coerce.number().positive("จำนวนต้องมากกว่า 0"),
   costPerBaseUnit:  z.coerce.number().min(0, "ราคาต้นทุนต้องไม่ติดลบ"),
-  docDate:          z.string().min(1),
+  docDate:          z.string().min(1).refine(isDateOnlyString, INVALID_DATE_MESSAGE),
   note:             z.string().max(500).optional(),
   lotItems:         z.array(lotSubRowSchema).default([]),
 });
@@ -143,7 +154,7 @@ export async function createBF(
   const scale     = Number(unit.scale);
   const qtyInBase = qty * scale;
   const parsedDocDate = parseDateOnlyToDate(docDate);
-  const docNo     = await generateBFNo(parsedDocDate);
+  let docNo = "";
 
   // Validate lot rows if product uses lot control
   const product = await db.product.findUnique({
@@ -161,6 +172,10 @@ export async function createBF(
 
   try {
     await dbTx(async (tx) => {
+      // Allocated inside the transaction under a per-month lock so concurrent
+      // saves wait for each other instead of colliding on the same number.
+      docNo = await generateBFNo(parsedDocDate, tx);
+
       // Create BalanceForward header
       const bf = await tx.balanceForward.create({
         data: {
@@ -257,6 +272,21 @@ export async function cancelBF(
   try {
     const beforeSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
     await dbTx(async (tx) => {
+      // Mark BalanceForward as CANCELLED first, conditionally: the update
+      // row-locks the document, so a concurrent cancel of the same BF waits,
+      // then matches 0 rows and stops — Lot balances are never reversed twice.
+      const claimed = await tx.balanceForward.updateMany({
+        where: { id: bfId, status: { not: "CANCELLED" } },
+        data: {
+          status:      "CANCELLED",
+          cancelledAt: new Date(),
+          cancelNote,
+        },
+      });
+      if (claimed.count === 0) {
+        throw new BalanceForwardUserError("เอกสารถูกยกเลิกไปแล้ว");
+      }
+
       // Reverse Lot balances (bf.id is used as purchaseItemId in writePurchaseLots)
       await reversePurchaseLotBalance(tx, bf.id, bf.productId);
 
@@ -265,16 +295,6 @@ export async function cancelBF(
 
       // Re-calculate MAVG for this product
       await recalculateStockCard(tx, bf.productId);
-
-      // Mark BalanceForward as CANCELLED
-      await tx.balanceForward.update({
-        where: { id: bfId },
-        data: {
-          status:      "CANCELLED",
-          cancelledAt: new Date(),
-          cancelNote,
-        },
-      });
     });
     const afterSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
     if (beforeSnapshot && afterSnapshot) {
@@ -295,6 +315,7 @@ export async function cancelBF(
     return { success: true };
   } catch (err) {
     console.error("[cancelBF]", err);
+    if (err instanceof BalanceForwardUserError) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

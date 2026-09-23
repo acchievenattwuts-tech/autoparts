@@ -18,6 +18,12 @@ import { resolveStorefrontSearchQuery } from "@/lib/storefront-search-query-bus"
 
 const AUTO_LOAD_PAGE_LIMIT = 5;
 
+// Card photo `sizes` for this grid (grid-cols-2 md:3 lg:2 xl:3, next to an
+// 18rem filter sidebar from lg): ~half the viewport on phones, ~a third on
+// tablets, ~a third beside the sidebar at lg, ~a quarter at xl and above.
+const SEARCH_RESULTS_CARD_IMAGE_SIZES =
+  "(max-width: 767px) 50vw, (max-width: 1023px) 34vw, (max-width: 1279px) 35vw, 25vw";
+
 type CarBrand = {
   id: string;
   name: string;
@@ -478,6 +484,10 @@ const SearchResults = ({
           onApply={handleApplyFilters}
           onClearAll={handleClearAll}
           isPending={isPending}
+          // animKey bumps exactly when results are replaced (filter applied,
+          // external navigation, bfcache restore) — the moments the desktop
+          // draft should snap back. Load-more and pending toggles do not bump it.
+          resetToken={animKey}
         />
       </aside>
 
@@ -627,6 +637,7 @@ const SearchResults = ({
                         product={product}
                         lineUrl={lineUrl}
                         prefetchDetail={false}
+                        imageSizes={SEARCH_RESULTS_CARD_IMAGE_SIZES}
                       />
                     </div>
                   ))}

@@ -15,6 +15,7 @@ import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { enqueueStorefrontStockInvalidation } from "@/lib/storefront-sync-queue";
 import { generatePurchaseNo } from "@/lib/doc-number";
+import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -25,7 +26,7 @@ import {
 } from "@/lib/generated/prisma";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
-import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
+import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import {
   getTransactionProductDetailRowsByIds,
@@ -45,6 +46,8 @@ import {
 } from "@/lib/document-payments";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { refreshProductPurchaseLastFields } from "@/lib/product-purchase-last";
+import { getPurchaseUserErrorMessage, PurchaseUserError } from "./purchase-user-error";
+import { reversePurchaseLotBalancesBatch } from "./purchase-lot-reversal";
 
 const serializePurchaseProductOption = (product: TransactionProductDetailRow) => ({
   id: product.id,
@@ -96,7 +99,7 @@ const purchaseItemSchema = z.object({
 
 const purchaseSchema = z.object({
   supplierId:   z.string().min(1, "กรุณาเลือกผู้จำหน่าย").max(50),
-  purchaseDate: z.string().min(1),
+  purchaseDate: z.string().min(1).refine(isDateOnlyString, "กรุณาระบุวันที่ซื้อให้ถูกต้อง"),
   purchaseType: z.nativeEnum(PurchaseType).default(PurchaseType.CASH_PURCHASE),
   cashBankAccountId: z.string().optional(),
   discount:     z.coerce.number().min(0).default(0),
@@ -277,7 +280,7 @@ async function resolvePurchasePaymentMethod(
   }
 
   if (payments.length === 0) {
-    throw new Error("ไม่พบบัญชีจ่ายเงิน");
+    throw new PurchaseUserError("ไม่พบบัญชีจ่ายเงิน");
   }
 
   const accountIds = [...new Set(payments.map((row) => row.cashBankAccountId))];
@@ -286,7 +289,7 @@ async function resolvePurchasePaymentMethod(
     select: { type: true },
   });
   if (accounts.length !== accountIds.length) {
-    throw new Error("ไม่พบบัญชีจ่ายเงิน");
+    throw new PurchaseUserError("ไม่พบบัญชีจ่ายเงิน");
   }
 
   // Mixed channels: label as transfer unless every channel is cash.
@@ -557,144 +560,154 @@ export async function createPurchase(
 
   const paymentStatus = derivePurchasePaymentStatus(purchaseType);
   const purchasePrefix = purchaseType === PurchaseType.CREDIT_PURCHASE ? "RRC" : "RR";
-  const purchaseNo = await generatePurchaseNo(purchasePrefix, parseDateOnlyToDate(purchaseDate));
+  let purchaseNo = "";
   let createdPurchaseId = "";
 
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
-        tx,
-        purchaseType,
-        payments,
-      );
-      const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
+    // If another save takes the same purchaseNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the purchase.
+    await withDocNumberRetry({
+      uniqueField: "purchaseNo",
+      generate: () => generatePurchaseNo(purchasePrefix, parseDateOnlyToDate(purchaseDate)),
+      run: async (nextPurchaseNo) => {
+        purchaseNo = nextPurchaseNo;
+        createdPurchaseId = "";
+        await dbTx(async (tx) => {
+          const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
+            tx,
+            purchaseType,
+            payments,
+          );
+          const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
 
-      // 1. Create Purchase header
-      const purchase = await tx.purchase.create({
-        data: {
-          purchaseNo,
-          supplierId:    supplierId || null,
-          userId:        session.user!.id!,
-          totalAmount:   totalAmount,
-          discount:      discount,
-          shippingFee,
-          netAmount:     netAmount,
-          purchaseType,
-          amountRemain:  new Prisma.Decimal(
-            purchaseType === PurchaseType.CASH_PURCHASE ? 0 : netAmount,
-          ),
-          note,
-          vatType,
-          vatRate,
-          subtotalAmount,
-          vatAmount,
-          referenceNo:   referenceNo ?? null,
-          purchaseDate:  parseDateOnlyToDate(purchaseDate),
-          paymentMethod: resolvedPaymentMethod,
-          paymentStatus,
-          cashBankAccountId: resolvedCashBankAccountId || null,
-          creditTerm: resolvedCreditTerm,
-        },
-      });
-      createdPurchaseId = purchase.id;
+          // 1. Create Purchase header
+          const purchase = await tx.purchase.create({
+            data: {
+              purchaseNo,
+              supplierId:    supplierId || null,
+              userId:        session.user!.id!,
+              totalAmount:   totalAmount,
+              discount:      discount,
+              shippingFee,
+              netAmount:     netAmount,
+              purchaseType,
+              amountRemain:  new Prisma.Decimal(
+                purchaseType === PurchaseType.CASH_PURCHASE ? 0 : netAmount,
+              ),
+              note,
+              vatType,
+              vatRate,
+              subtotalAmount,
+              vatAmount,
+              referenceNo:   referenceNo ?? null,
+              purchaseDate:  parseDateOnlyToDate(purchaseDate),
+              paymentMethod: resolvedPaymentMethod,
+              paymentStatus,
+              cashBankAccountId: resolvedCashBankAccountId || null,
+              creditTerm: resolvedCreditTerm,
+            },
+          });
+          createdPurchaseId = purchase.id;
 
-      // 2. Process each line item
-      for (const [itemIndex, item] of validItems.entries()) {
-        // Get unit scale
-        const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
-        const product = productMap.get(item.productId);
-        if (!product) throw new Error("ไม่พบสินค้า");
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+          // 2. Process each line item
+          for (const [itemIndex, item] of validItems.entries()) {
+            // Get unit scale
+            const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
+            const product = productMap.get(item.productId);
+            if (!product) throw new PurchaseUserError("ไม่พบสินค้า");
+            if (!unit) throw new PurchaseUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
-        const scale       = unit.scale;
-        const qtyInBase   = item.qty * scale;
-        const costPerBase = item.costPrice / scale;  // convert to base unit cost
-        const allocatedLandedForLine = landedAllocations.get(itemIndex) ?? 0;
-        const landedCostPerSelectedUnit = item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
-        const isTracked   = isInventoryTracked(product.inventoryTracking);
+            const scale       = unit.scale;
+            const qtyInBase   = item.qty * scale;
+            const costPerBase = item.costPrice / scale;  // convert to base unit cost
+            const allocatedLandedForLine = landedAllocations.get(itemIndex) ?? 0;
+            const landedCostPerSelectedUnit = item.qty > 0 ? allocatedLandedForLine / item.qty : 0;
+            const isTracked   = isInventoryTracked(product.inventoryTracking);
 
-        const itemTotal    = item.qty * item.costPrice;
-        const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            const itemTotal    = item.qty * item.costPrice;
+            const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
-        // Create PurchaseItem
-        const purchaseItem = await tx.purchaseItem.create({
-          data: {
-            purchaseId:    purchase.id,
-            lineNo:        itemIndex + 1,
-            productId:     item.productId,
-            supplierId:    supplierId || null,
-            quantity:      Math.round(qtyInBase),
-            costPrice:     costPerBase,
-            totalAmount:   itemTotal,
-            subtotalAmount: itemSubtotal,
-            landedCost:    landedCostPerSelectedUnit,
-            showQty:       item.qty,
-            showUnitName:  item.unitName,
-            showPricePerUnit: item.costPrice,
-            unitScale:     scale,
-            moreDetail:    item.moreDetail || null,
-          },
+            // Create PurchaseItem
+            const purchaseItem = await tx.purchaseItem.create({
+              data: {
+                purchaseId:    purchase.id,
+                lineNo:        itemIndex + 1,
+                productId:     item.productId,
+                supplierId:    supplierId || null,
+                quantity:      Math.round(qtyInBase),
+                costPrice:     costPerBase,
+                totalAmount:   itemTotal,
+                subtotalAmount: itemSubtotal,
+                landedCost:    landedCostPerSelectedUnit,
+                showQty:       item.qty,
+                showUnitName:  item.unitName,
+                showPricePerUnit: item.costPrice,
+                unitScale:     scale,
+                moreDetail:    item.moreDetail || null,
+              },
+            });
+
+            // 3. Write StockCard with MAVG
+            const stockCardId = isTracked ? await writeStockCard(tx, {
+              productId:   item.productId,
+              docNo:       purchaseNo,
+              docDate:     parseDateOnlyToDate(purchaseDate),
+              source:      "PURCHASE",
+              qtyIn:       qtyInBase,
+              qtyOut:      0,
+              priceIn:     costPerBase,
+              landedCost:  allocatedLandedForLine,
+              detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
+              referenceId: purchaseItem.id,
+            }) : null;
+
+            // 4. Lot Control - only if product has isLotControl=true
+            if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
+                // Validate lot rows (server-side)
+                const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
+                if (lotErr) throw new PurchaseUserError(lotErr);
+
+                // Convert lot rows to base unit
+                const lotsInBase = item.lotItems.map((lot) => ({
+                  lotNo:        lot.lotNo.trim(),
+                  qtyInBase:    lot.qty * scale,
+                  unitCostBase: lot.unitCost / scale,
+                  mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+                  expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
+                }));
+
+                await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
+                await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
+            }
+          }
+
+          await refreshProductPurchaseLastFields(
+            tx,
+            validItems.map((item) => item.productId),
+          );
+
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.PURCHASE,
+            purchase.id,
+            CashBankDirection.OUT,
+            payments,
+          );
+
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.PURCHASE,
+            purchase.id,
+            toCashBankEntries(payments, {
+              txnDate: parseDateOnlyToDate(purchaseDate),
+              direction: CashBankDirection.OUT,
+              referenceNo: purchaseNo,
+              note: note ?? null,
+            }),
+          );
         });
-
-        // 3. Write StockCard with MAVG
-        const stockCardId = isTracked ? await writeStockCard(tx, {
-          productId:   item.productId,
-          docNo:       purchaseNo,
-          docDate:     parseDateOnlyToDate(purchaseDate),
-          source:      "PURCHASE",
-          qtyIn:       qtyInBase,
-          qtyOut:      0,
-          priceIn:     costPerBase,
-          landedCost:  allocatedLandedForLine,
-          detail:      `ซื้อเข้า ${item.qty} ${item.unitName}`,
-          referenceId: purchaseItem.id,
-        }) : null;
-
-        // 4. Lot Control - only if product has isLotControl=true
-        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-            // Validate lot rows (server-side)
-            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
-            if (lotErr) throw new Error(lotErr);
-
-            // Convert lot rows to base unit
-            const lotsInBase = item.lotItems.map((lot) => ({
-              lotNo:        lot.lotNo.trim(),
-              qtyInBase:    lot.qty * scale,
-              unitCostBase: lot.unitCost / scale,
-              mfgDate:      lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
-              expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
-            }));
-
-            await writePurchaseLots(tx, purchaseItem.id, item.productId, lotsInBase);
-            await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
-        }
-      }
-
-      await refreshProductPurchaseLastFields(
-        tx,
-        validItems.map((item) => item.productId),
-      );
-
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.PURCHASE,
-        purchase.id,
-        CashBankDirection.OUT,
-        payments,
-      );
-
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.PURCHASE,
-        purchase.id,
-        toCashBankEntries(payments, {
-          txnDate: parseDateOnlyToDate(purchaseDate),
-          direction: CashBankDirection.OUT,
-          referenceNo: purchaseNo,
-          note: note ?? null,
-        }),
-      );
+      },
     });
 
     const afterSnapshot = createdPurchaseId
@@ -722,6 +735,8 @@ export async function createPurchase(
     });
     return { success: true, purchaseId: createdPurchaseId, purchaseNo };
   } catch (err) {
+    const userMessage = getPurchaseUserErrorMessage(err);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(err, { scope: "purchases.create" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -782,10 +797,9 @@ export async function cancelPurchase(
     await dbTx(async (tx) => {
       await clearCashBankSourceMovements(tx, CashBankSourceType.PURCHASE, purchaseId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.PURCHASE, purchaseId);
-      // Reverse Lot balances before deleting StockCard rows
-      for (const item of purchase.items) {
-        await reversePurchaseLotBalance(tx, item.id, item.productId);
-      }
+      // Reverse Lot balances before deleting StockCard rows — batched; same result
+      // as reversePurchaseLotBalance() per line (see purchase-lot-reversal.ts).
+      await reversePurchaseLotBalancesBatch(tx, purchase.items);
       await tx.stockCard.deleteMany({ where: { docNo: purchase.purchaseNo } });
       await recalculateStockCardMany(tx, affectedProductIds);
       await tx.purchase.update({
@@ -1101,37 +1115,9 @@ export async function updatePurchase(
         // all their lot rows, aggregate the decrement per (product, lot), then a
         // single clamped UPDATE. GREATEST(balance - Σqty, 0) equals the per-row
         // decrement-then-clamp sequence because qty decrements are monotonic.
-        if (oldItems.length > 0) {
-          const productByItemId = new Map(oldItems.map((i) => [i.id, i.productId]));
-          const oldLots = await tx.purchaseItemLot.findMany({
-            where: { purchaseItemId: { in: oldItems.map((i) => i.id) } },
-            select: { purchaseItemId: true, lotNo: true, qty: true },
-          });
-          const decByProductLot = new Map<string, { productId: string; lotNo: string; dec: Prisma.Decimal }>();
-          for (const lot of oldLots) {
-            const productId = productByItemId.get(lot.purchaseItemId);
-            if (!productId) continue;
-            const key = `${productId}\u0000${lot.lotNo}`;
-            const existingDec = decByProductLot.get(key);
-            if (existingDec) existingDec.dec = existingDec.dec.add(lot.qty);
-            else decByProductLot.set(key, { productId, lotNo: lot.lotNo, dec: new Prisma.Decimal(lot.qty) });
-          }
-          if (decByProductLot.size > 0) {
-            const values = Prisma.join(
-              [...decByProductLot.values()].map((d) => Prisma.sql`(
-                ${d.productId},
-                ${d.lotNo},
-                ${d.dec.toString()}::numeric
-              )`),
-            );
-            await tx.$executeRaw`
-              UPDATE "LotBalance" AS lb
-              SET "qtyOnHand" = GREATEST(lb."qtyOnHand" - d."dec", 0)
-              FROM (VALUES ${values}) AS d("productId","lotNo","dec")
-              WHERE lb."productId" = d."productId" AND lb."lotNo" = d."lotNo"
-            `;
-          }
-        }
+        // (Implementation moved verbatim to reversePurchaseLotBalancesBatch so
+        // cancelPurchase can share it.)
+        await reversePurchaseLotBalancesBatch(tx, oldItems);
         await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
         await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
       }
@@ -1343,8 +1329,8 @@ export async function updatePurchase(
       for (const { item, itemIndex } of itemsToCreate) {
         const unit = unitMap.get(getPurchaseUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
-        if (!product) throw new Error("ไม่พบสินค้า");
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+        if (!product) throw new PurchaseUserError("ไม่พบสินค้า");
+        if (!unit) throw new PurchaseUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
         const scale = unit.scale;
         const qtyInBase = item.qty * scale;
@@ -1454,7 +1440,7 @@ export async function updatePurchase(
               p.item.qty,
               product?.requireExpiryDate ?? false,
             );
-            if (lotErr) throw new Error(lotErr);
+            if (lotErr) throw new PurchaseUserError(lotErr);
 
             const purchaseItemId = itemIdByLineNo.get(p.lineNo);
             const stockCardId = purchaseItemId ? stockCardIdByItemId.get(purchaseItemId) : undefined;
@@ -1526,6 +1512,8 @@ export async function updatePurchase(
     });
     return { success: true };
   } catch (err) {
+    const userMessage = getPurchaseUserErrorMessage(err);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(err, { scope: "purchases.update" });
     if (err instanceof Error && /lock timeout|deadlock/i.test(err.message)) {
       return { error: "มีการบันทึกใบนี้ซ้อนกันอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง" };

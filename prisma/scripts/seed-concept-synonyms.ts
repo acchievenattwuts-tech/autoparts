@@ -145,7 +145,11 @@ async function main() {
           after: { synonyms },
           meta: { source: "seed-concept-synonyms", added },
         });
-        for (const member of members) valueToRow.set(normalizeSearchText(member), { ...target, synonyms });
+        // Mutate the shared row object: every key loaded from the DB (term and
+        // synonyms outside this cluster) points at it, so a later cluster that
+        // finds the row through one of those keys must see the merged list too.
+        target.synonyms = synonyms;
+        for (const member of members) valueToRow.set(normalizeSearchText(member), target);
       }
       updated += 1;
     } else {

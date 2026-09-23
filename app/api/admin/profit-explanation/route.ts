@@ -1,7 +1,11 @@
 export const dynamic = "force-dynamic";
 
 import { ProfitExplanationStatus } from "@/lib/generated/prisma";
-import { getProfitDashboardData, type ProfitRevenueBasis } from "@/lib/profit-dashboard";
+import {
+  getProfitDashboardData,
+  resolveProfitDashboardFilters,
+  type ProfitRevenueBasis,
+} from "@/lib/profit-dashboard";
 import { buildProfitExplanationEvidence } from "@/lib/profit-explanation/evidence";
 import {
   createProfitExplanationHistory,
@@ -31,6 +35,17 @@ function parseFilters(input: Record<string, unknown> | URLSearchParams): {
   };
 }
 
+const MAX_ERROR_MESSAGE_LENGTH = 500;
+
+/** Housekeeping only: a failed prune must not fail reading or creating history. */
+async function pruneExpiredHistoryBestEffort(): Promise<void> {
+  try {
+    await pruneExpiredProfitExplanationHistory();
+  } catch (error) {
+    console.error("[profit-explanation] pruning expired history failed", error);
+  }
+}
+
 function statusForError(error: unknown): number {
   if (error instanceof Error && error.message === "UNAUTHORIZED") return 401;
   if (error instanceof Error && error.message === "FORBIDDEN") return 403;
@@ -40,12 +55,15 @@ function statusForError(error: unknown): number {
 export async function GET(request: Request): Promise<Response> {
   try {
     await requirePermission("dashboard.view");
-    await pruneExpiredProfitExplanationHistory();
+    await pruneExpiredHistoryBestEffort();
 
+    // Only the normalized filters are needed to find history rows; this is the
+    // same resolver getProfitDashboardData() applies, without computing the
+    // whole dashboard.
     const url = new URL(request.url);
-    const data = await getProfitDashboardData(parseFilters(url.searchParams));
+    const filters = resolveProfitDashboardFilters(parseFilters(url.searchParams));
     const items = await listRecentProfitExplanationHistory({
-      filters: data.filters,
+      filters,
       take: 5,
     });
 
@@ -63,15 +81,19 @@ export async function POST(request: Request): Promise<Response> {
     const evidence = buildProfitExplanationEvidence(data);
     const generated = await generateProfitExplanation(evidence);
 
-    await pruneExpiredProfitExplanationHistory();
+    await pruneExpiredHistoryBestEffort();
+    // SUCCESS only when the AI answer was actually used; an answer that failed
+    // parsing/validation (fallback shown instead) is recorded as FAILED.
+    const succeeded = Boolean(generated.keyRef) && generated.rejectionReason === null;
     const history = await createProfitExplanationHistory({
       filters: data.filters,
       requestedById: session.user.id,
       evidence,
       result: generated.result,
       keyRef: generated.keyRef,
-      status: generated.keyRef ? ProfitExplanationStatus.SUCCESS : ProfitExplanationStatus.FAILED,
-      errorCode: generated.keyRef ? null : "AI_UNAVAILABLE_OR_FALLBACK",
+      status: succeeded ? ProfitExplanationStatus.SUCCESS : ProfitExplanationStatus.FAILED,
+      errorCode: !generated.keyRef ? "AI_UNAVAILABLE_OR_FALLBACK" : succeeded ? null : "AI_RESPONSE_REJECTED",
+      errorMessage: generated.rejectionReason?.slice(0, MAX_ERROR_MESSAGE_LENGTH) ?? null,
     });
 
     return Response.json({

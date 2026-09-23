@@ -15,6 +15,11 @@ import AdminTableSection from "@/components/shared/AdminTableSection";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
+import {
+  getPurchasePaymentDisplayStatus,
+  PURCHASE_PAYMENT_STATUS_LABEL,
+  PURCHASE_PAYMENT_STATUS_TONE,
+} from "./purchase-payment-status";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import {
@@ -126,6 +131,7 @@ const PurchasesPage = async ({
               <th className="px-4 py-3 text-left font-medium">ประเภทการซื้อ</th>
               <th className="px-4 py-3 text-right font-medium">จำนวนรายการ</th>
               <th className="px-4 py-3 text-right font-medium">ยอดสุทธิ</th>
+              <th className="px-4 py-3 text-left font-medium">สถานะชำระ</th>
               <th className="px-4 py-3 text-left font-medium">สถานะ</th>
               <th className="px-4 py-3" />
             </tr>
@@ -133,38 +139,52 @@ const PurchasesPage = async ({
           <tbody>
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
+                <td colSpan={10} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500">
                   {q ? `ไม่พบรายการที่ตรงกับ "${q}"` : "ยังไม่มีใบซื้อ"}
                 </td>
               </tr>
             ) : (
-              purchases.map((p, idx) => (
-                <tr key={p.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${getAdminDocumentRowClass(p.status === "CANCELLED")}`}>
-                  <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
-                  <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{p.purchaseNo}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(p.purchaseDate)}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.supplier?.name ?? "-"}</td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}{p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}</td>
-                  <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{p.items.length} รายการ</td>
-                  <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
-                  <td className="px-4 py-3">
-                    {p.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <AdminActionGroup align="end">
-                      <NavLink href={`/admin/purchases/${p.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200" hideSpinner>
-                        <Eye size={14} /> ดู
-                      </NavLink>
-                      {p.status === "ACTIVE" ? (
-                        <>
-                          {canUpdate ? <NavLink href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
-                          {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
-                        </>
-                      ) : null}
-                    </AdminActionGroup>
-                  </td>
-                </tr>
-              ))
+              purchases.map((p, idx) => {
+                const paymentStatus = getPurchasePaymentDisplayStatus(
+                  p.purchaseType,
+                  Number(p.netAmount),
+                  Number(p.amountRemain),
+                );
+                return (
+                  <tr key={p.id} className={`border-t border-slate-100 transition-colors dark:border-white/5 ${getAdminDocumentRowClass(p.status === "CANCELLED")}`}>
+                    <td className="px-4 py-3 text-center text-xs tabular-nums text-slate-400 dark:text-slate-500">{(pageNum - 1) * PAGE_SIZE + idx + 1}</td>
+                    <td className="px-4 py-3 font-mono font-medium text-[#1e3a5f] dark:text-sky-200">{p.purchaseNo}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(p.purchaseDate)}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.supplier?.name ?? "-"}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}{p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}</td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{p.items.length} รายการ</td>
+                    <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
+                    <td className="px-4 py-3">
+                      {p.status === "CANCELLED" ? (
+                        <span className="text-slate-400 dark:text-slate-500">-</span>
+                      ) : (
+                        <AdminStatusBadge tone={PURCHASE_PAYMENT_STATUS_TONE[paymentStatus]}>{PURCHASE_PAYMENT_STATUS_LABEL[paymentStatus]}</AdminStatusBadge>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <AdminActionGroup align="end">
+                        <NavLink href={`/admin/purchases/${p.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200" hideSpinner>
+                          <Eye size={14} /> ดู
+                        </NavLink>
+                        {p.status === "ACTIVE" ? (
+                          <>
+                            {canUpdate ? <NavLink href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
+                            {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
+                          </>
+                        ) : null}
+                      </AdminActionGroup>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

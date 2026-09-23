@@ -1,5 +1,5 @@
-import { ImageResponse } from "next/og";
 import OgImageTemplate from "@/components/seo/OgImageTemplate";
+import { renderOgCard } from "@/lib/og-render";
 
 export const alt = "เกี่ยวกับร้านศรีวรรณ อะไหล่แอร์";
 export const size = {
@@ -8,8 +8,9 @@ export const size = {
 };
 export const contentType = "image/png";
 
-export default function OpenGraphImage() {
-  return new ImageResponse(
+// Bundled Thai fonts + containment via the shared OG renderer (lib/og-render.tsx).
+export default function OpenGraphImage(): Promise<Response> {
+  return renderOgCard(
     (
       <OgImageTemplate
         eyebrow="เกี่ยวกับร้าน"
@@ -18,6 +19,6 @@ export default function OpenGraphImage() {
         meta="About"
       />
     ),
-    size,
+    "opengraph-image:about",
   );
 }
