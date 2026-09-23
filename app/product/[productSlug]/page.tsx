@@ -386,7 +386,7 @@ const ProductDetailPage = async ({ params }: Props) => {
               </ol>
             </nav>
             <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm">
-              <div className="grid lg:min-h-[600px] lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,1fr)]">
+              <div className="grid grid-cols-1 lg:min-h-[600px] lg:grid-cols-[minmax(0,0.88fr)_minmax(420px,1fr)]">
                 <div className="group relative overflow-hidden bg-gradient-to-br from-white via-slate-50 to-orange-50/40 lg:border-r lg:border-slate-200">
                   <div className="absolute left-5 top-5 z-10 flex flex-wrap gap-2">
                     <span className="rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-[#10213d] shadow-sm">
@@ -421,7 +421,7 @@ const ProductDetailPage = async ({ params }: Props) => {
                     </span>
                   </div>
 
-                  <h1 className="mt-3 font-kanit text-2xl font-bold leading-tight tracking-tight text-[#10213d] sm:text-3xl lg:text-4xl">
+                  <h1 className="mt-3 font-kanit text-2xl font-bold leading-tight tracking-tight text-[#10213d] [overflow-wrap:anywhere] sm:text-3xl lg:text-4xl">
                     {product.name}
                   </h1>
 
