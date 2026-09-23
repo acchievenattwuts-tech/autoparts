@@ -856,6 +856,17 @@
 - [x] ตรวจครบ: targeted tests 4/4 ผ่าน · `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / 262 warnings เดิม, typecheck ผ่าน, tests 969 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
 - [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรองทั้ง `dashboard-aggregates` และ `profit-dashboard-*`; เปรียบเทียบ timeout rate และ p95/p99 duration ก่อน-หลัง โดยผลข้อมูลต้องเท่าเดิมและ navigation ต้องไม่ช้าลงอย่างสังเกตได้
 
+## Log noise — `Connection terminated due to connection timeout` ตอน revalidate บทความความรู้ (2026-09-23)
+- บริบท: Vercel log 20/09 23:58 GMT+7 — `POST /products/category-...` ตอบ **HTTP 200** แต่ background revalidate key `public-knowledge-articles-v1` ([lib/knowledge-public.ts](lib/knowledge-public.ts)) ล้มด้วย `Connection terminated due to connection timeout` (cause: `Connection terminated unexpectedly`) · timeline เห็น error ประปรายหลายจุด 20–22 ก.ย.
+- **สาเหตุ**: ข้อความมาจาก `pg-pool` ตอนเปิด connection ใหม่ไป Supavisor ไม่ทันใน `connectionTimeoutMillis` — query ยังไม่ถึง Postgres และ `TRANSIENT_DB_ERROR_PATTERN` match อยู่แล้ว แต่ read ของ knowledge ทุกจุด **ไม่ได้เรียก `withDbRetry`** (log มี `prisma:error` บรรทัดเดียว = ไม่มี retry)
+- [x] ครอบ `withDbRetry` ให้ `listActiveKnowledgeEntries` / `getActiveKnowledgeBySlug` / `getActiveKnowledgeByKey` ใน [lib/knowledge-cms-repository.ts](lib/knowledge-cms-repository.ts) และ `getCachedProductSupportArticles` ใน [lib/knowledge-public.ts](lib/knowledge-public.ts) — read-only ล้วน (`findMany`/`findFirst`) retry ปลอดภัย · ผู้เรียกทั้งหมดอยู่ใน `knowledge-public.ts` (หน้า storefront/sitemap) ไม่กระทบ admin/RAG
+- [x] test ใหม่ [lib/__tests__/knowledge-cms-repository-retry.test.ts](lib/__tests__/knowledge-cms-repository-retry.test.ts) + เพิ่ม assertion ใน `knowledge-public-summary.test.ts` — ยืนยันแล้วว่า **ล้มบนโค้ดเดิม** และผ่านหลังแก้
+- [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, query, cache config หรือ business logic — ผลลัพธ์เหมือนเดิม ต่างแค่ revalidate สำเร็จบ่อยขึ้น
+- [x] `npm run verify` ผ่าน (lint / typecheck / tests 998 ผ่าน 0 ล้ม)
+- [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง `public-knowledge-articles` + `Connection terminated` ควรลดลงชัดเจน
+- [ ] ข้อสงสัยค้าง: error เกิดห่างจาก request start แค่ ~1s แต่ timeout ตั้ง 20s — ยืนยันค่า `DB_CONNECTION_TIMEOUT_MS` ใน Vercel (อาจเป็น instance ถูก freeze ระหว่าง connect แล้ว timer ยิงทันทีตอน thaw)
+- [ ] แยกเรื่อง (ไม่ใช่งานโค้ด): log เดียวกันยังเตือน `MESSENGER_APP_SECRET is not set` — Messenger webhook ยังตอบ 401 ทุกข้อความ (ค้างจากรอบ 2026-08-24)
+
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
 - **ข้อสรุปที่เจ้าของยืนยัน** (ตัดขอบเขตงานลงมาก): ตัดแถวช่องล่างสุดทั้งแถว (ในรูปคือช่องรหัสไปรษณีย์ 5 หลัก) · **ไม่มี** เลขที่ใบขาย / วันที่ / ขนส่ง / เลขพัสดุ / ยอด COD (ร้านไม่ได้ส่งแบบ COD) · ไม่ต้องมีช่อง "กล่องที่" · ใบ Shopee / Lazada ไม่ต้องพิมพ์ · ไม่ต้องลง Audit Log (เป็นการอ่านอย่างเดียว เหมือนหน้าพิมพ์เดิมทุกหน้า)

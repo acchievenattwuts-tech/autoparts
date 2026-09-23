@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import { knowledgeArticles, type KnowledgeArticle } from "@/lib/knowledge-content";
 import { PUBLIC_KNOWLEDGE_CACHE_TAG } from "@/lib/knowledge-cache";
 import { storefrontFaqItems } from "@/lib/storefront-content";
@@ -33,7 +33,7 @@ const fallbackProductSupportArticles = knowledgeArticles.filter((article) =>
 
 const getCachedProductSupportArticles = unstable_cache(
   async (): Promise<PublicKnowledgeArticleSummary[]> => {
-    const sources = await db.knowledgeSource.findMany({
+    const sources = await withDbRetry(() => db.knowledgeSource.findMany({
       where: {
         type: "ARTICLE",
         isArchived: false,
@@ -51,7 +51,7 @@ const getCachedProductSupportArticles = unstable_cache(
           },
         },
       },
-    });
+    }));
 
     return sources.flatMap((source) => {
       if (!source.slug || !source.activeRevision) return [];

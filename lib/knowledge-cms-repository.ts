@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import { parseKnowledgeContent, type KnowledgeContent } from "@/lib/knowledge-cms-types";
 import type { KnowledgeRevisionStatus, KnowledgeSourceType } from "@/lib/generated/prisma";
 
@@ -89,28 +89,32 @@ const activeSelect = {
   },
 } as const;
 
+// Public storefront reads (articles, FAQ, policy) run inside background ISR
+// revalidations, where a transient Supavisor connect failure used to fail the
+// whole revalidation on the first attempt. All three are read-only, so they go
+// through withDbRetry.
 export const listActiveKnowledgeEntries = cache(async (type?: KnowledgeSourceType): Promise<ActiveKnowledgeEntry[]> => {
-  const rows = await db.knowledgeSource.findMany({
+  const rows = await withDbRetry(() => db.knowledgeSource.findMany({
     where: { isArchived: false, activeRevisionId: { not: null }, ...(type ? { type } : {}) },
     select: activeSelect,
     orderBy: [{ type: "asc" }, { updatedAt: "desc" }],
-  });
+  }));
   return rows.map(toEntry).filter((item): item is ActiveKnowledgeEntry => Boolean(item));
 });
 
 export const getActiveKnowledgeBySlug = cache(async (slug: string): Promise<ActiveKnowledgeEntry | null> => {
-  const row = await db.knowledgeSource.findFirst({
+  const row = await withDbRetry(() => db.knowledgeSource.findFirst({
     where: { slug, isArchived: false, activeRevisionId: { not: null } },
     select: activeSelect,
-  });
+  }));
   return row ? toEntry(row) : null;
 });
 
 export const getActiveKnowledgeByKey = cache(async (sourceKey: string): Promise<ActiveKnowledgeEntry | null> => {
-  const row = await db.knowledgeSource.findFirst({
+  const row = await withDbRetry(() => db.knowledgeSource.findFirst({
     where: { sourceKey, isArchived: false, activeRevisionId: { not: null } },
     select: activeSelect,
-  });
+  }));
   return row ? toEntry(row) : null;
 });
 

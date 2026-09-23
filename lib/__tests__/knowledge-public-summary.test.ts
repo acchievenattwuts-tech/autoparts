@@ -11,6 +11,8 @@ test(
   async (): Promise<void> => {
     let receivedQuery: unknown;
     let receivedCacheOptions: unknown;
+    let insideRetry = false;
+    let readInsideRetry = false;
     const rows = [{
       slug: "how-to-check-oem-part-number-before-ordering",
       activeRevision: {
@@ -26,9 +28,18 @@ test(
           knowledgeSource: {
             findMany: async (query: unknown): Promise<typeof rows> => {
               receivedQuery = query;
+              readInsideRetry = insideRetry;
               return rows;
             },
           },
+        },
+        withDbRetry: async <T>(fn: () => Promise<T>): Promise<T> => {
+          insideRetry = true;
+          try {
+            return await fn();
+          } finally {
+            insideRetry = false;
+          }
         },
       },
     });
@@ -77,6 +88,7 @@ test(
         },
       },
     });
+    assert.equal(readInsideRetry, true, "support-article read must go through withDbRetry");
     assert.deepEqual(receivedCacheOptions, {
       revalidate: 3_600,
       tags: [PUBLIC_KNOWLEDGE_CACHE_TAG],

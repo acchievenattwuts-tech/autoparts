@@ -45,6 +45,7 @@ test(
             findMany: async (): Promise<never[]> => [],
           },
         },
+        withDbRetry: async <T>(fn: () => Promise<T>): Promise<T> => fn(),
       },
     });
     await mock.module("@/lib/knowledge-cms-repository", {
