@@ -19,6 +19,7 @@ import {
   CNRefundMethod,
   CNSettlementType,
   CreditNoteType,
+  DocStatus,
   MarketplaceReturnStockDisposition,
   Prisma,
   SaleChannel,
@@ -49,7 +50,10 @@ import { rebuildCreditNoteProfitFacts, rebuildExpenseProfitFacts } from "@/lib/p
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { notifyMarketplaceReturnRecorded } from "@/lib/notifications";
-import { isMarketplaceReturnQuantityAvailable } from "@/lib/marketplace/returns";
+import {
+  resolveReferencedReturnSaleItemIds,
+  resolveReturnUnitCost,
+} from "@/lib/credit-note-return";
 
 type CreditNoteProductOption = {
   id: string;
@@ -214,17 +218,22 @@ const marketplaceCarrierExpenseSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
-function getMarketplaceReturnCreateError(error: unknown): string | null {
+function getCreditNoteReturnError(error: unknown): string | null {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+    return "มีการบันทึกคืนสินค้าใบขายนี้พร้อมกัน กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่";
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     return "เลขอ้างอิงเคสคืน Marketplace นี้ถูกบันทึกแล้ว กรุณาตรวจสอบรายการเดิม";
   }
   if (!(error instanceof Error)) return null;
   const messages: Record<string, string> = {
-    MARKETPLACE_RETURN_DUPLICATE_SALE_LINE: "สินค้าในใบขายบรรทัดเดียวกันถูกเลือกซ้ำ",
-    MARKETPLACE_RETURN_INVALID_SALE_LINE: "มีสินค้าบางรายการไม่ตรงกับใบขายต้นทาง",
-    MARKETPLACE_RETURN_UNIT_NOT_FOUND: "ไม่พบหน่วยนับของสินค้าที่คืน",
-    MARKETPLACE_RETURN_QTY_EXCEEDED: "จำนวนคืนสะสมเกินจำนวนที่ขายหรือเคยทำคืนไว้แล้ว",
-    MARKETPLACE_RETURN_DISPOSITION_NOTE_REQUIRED: "กรุณาระบุเหตุผลของสินค้าที่ไม่รับเข้าสต๊อก",
+    CREDIT_NOTE_RETURN_SALE_LINE_REQUIRED: "รายการคืนทุกบรรทัดต้องอ้างอิงรายการสินค้าในใบขายต้นทาง",
+    CREDIT_NOTE_RETURN_INVALID_SALE_LINE: "มีสินค้าบางรายการไม่ตรงกับใบขายต้นทาง",
+    CREDIT_NOTE_RETURN_AMBIGUOUS_SALE_LINE: "ใบขายมีสินค้ารหัสเดียวกันหลายบรรทัด กรุณาเลือกใบขายใหม่เพื่อระบุบรรทัดสินค้าให้ชัดเจน",
+    CREDIT_NOTE_RETURN_AMBIGUOUS_HISTORY: "พบประวัติคืนสินค้าเดิมที่ยังระบุบรรทัดใบขายไม่ได้ กรุณาตรวจสอบเอกสารเดิมก่อนทำคืนเพิ่ม",
+    CREDIT_NOTE_RETURN_UNIT_NOT_FOUND: "ไม่พบหน่วยนับของสินค้าที่คืน",
+    CREDIT_NOTE_RETURN_QTY_EXCEEDED: "จำนวนคืนสะสมเกินจำนวนที่ขายหรือเคยทำคืนไว้แล้ว",
+    CREDIT_NOTE_RETURN_DISPOSITION_NOTE_REQUIRED: "กรุณาระบุเหตุผลของสินค้าที่ไม่รับเข้าสต๊อก",
     MARKETPLACE_RETURN_EXPENSE_ACCOUNT_NOT_FOUND: "ไม่พบบัญชีที่ใช้จ่ายค่าขนส่งตีกลับ",
     MARKETPLACE_RETURN_EXPENSE_SUPPLIER_NOT_FOUND: "ไม่พบผู้รับเงินหรือขนส่งที่เลือก",
   };
@@ -245,6 +254,8 @@ type CreditNoteSigLot = {
 
 function buildCreditNoteItemSignature(payload: {
   productId: string | null;
+  saleItemId: string | null;
+  stockDisposition: MarketplaceReturnStockDisposition;
   qtyInBase: number;
   salePrice: number;
   lots:      CreditNoteSigLot[];
@@ -257,10 +268,87 @@ function buildCreditNoteItemSignature(payload: {
     .join("//");
   return [
     payload.productId ?? "",
+    payload.saleItemId ?? "",
+    payload.stockDisposition,
     round4(payload.qtyInBase),
     round2(payload.salePrice),
     lotsSig,
   ].join("||");
+}
+
+type CreditNoteTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * ตรวจและ resolve รายการคืนที่อ้างอิงใบขาย ใช้ร่วมกันทั้งหน้าร้านและ Marketplace
+ * โดยนับ CN ACTIVE ทุกใบ และรองรับข้อมูลเก่าที่ไม่มี saleItemId เฉพาะกรณีจับคู่สินค้าได้แน่นอน
+ */
+async function validateReferencedReturnItems(
+  tx: CreditNoteTx,
+  saleId: string,
+  items: z.infer<typeof cnItemSchema>[],
+  excludeCreditNoteId?: string,
+): Promise<Map<number, string>> {
+  const saleItems = await tx.saleItem.findMany({
+    where: { saleId },
+    select: { id: true, productId: true, quantity: true },
+  });
+  const creditNoteWhere = {
+    saleId,
+    status: DocStatus.ACTIVE,
+    type: CreditNoteType.RETURN,
+    ...(excludeCreditNoteId ? { id: { not: excludeCreditNoteId } } : {}),
+  };
+  const [linkedReturns, legacyReturns, unitRows] = await Promise.all([
+    tx.creditNoteItem.groupBy({
+      by: ["saleItemId"],
+      where: {
+        saleItemId: { in: saleItems.map((item) => item.id) },
+        creditNote: creditNoteWhere,
+      },
+      _sum: { qty: true },
+    }),
+    tx.creditNoteItem.groupBy({
+      by: ["productId"],
+      where: {
+        saleItemId: null,
+        productId: { in: [...new Set(items.map((item) => item.productId))] },
+        creditNote: creditNoteWhere,
+      },
+      _sum: { qty: true },
+    }),
+    tx.productUnit.findMany({
+      where: { OR: items.map((item) => ({ productId: item.productId, name: item.unitName })) },
+      select: { productId: true, name: true, scale: true },
+    }),
+  ]);
+  const linkedReturnMap = new Map(
+    linkedReturns.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
+  );
+  const legacyReturnMap = new Map(
+    legacyReturns.map((row) => [row.productId as string, Number(row._sum.qty ?? 0)]),
+  );
+  const unitScaleMap = new Map(
+    unitRows.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
+  );
+  const resolvedIds = resolveReferencedReturnSaleItemIds({
+    saleLines: saleItems.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      soldBaseQty: Number(item.quantity),
+    })),
+    requests: items.map((item) => {
+      const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
+      if (!scale) throw new Error("CREDIT_NOTE_RETURN_UNIT_NOT_FOUND");
+      return {
+        saleItemId: item.saleItemId,
+        productId: item.productId,
+        requestedBaseQty: item.qty * scale,
+      };
+    }),
+    linkedReturnedBySaleItemId: linkedReturnMap,
+    legacyReturnedByProductId: legacyReturnMap,
+  });
+  return new Map(resolvedIds.map((saleItemId, index) => [index, saleItemId]));
 }
 
 async function resolveCreditNoteRefundMethod(
@@ -316,35 +404,35 @@ async function validateCreditNoteSourceSale(
 }
 
 /**
- * Build a productId → original per-base cost map from the source Sale's
- * SaleItem rows. Used when a Credit Note references a Sale so the returned
- * stock comes back at the cost recorded at sale time, not at current MAVG.
- * Falls back to current MAVG (via writeStockCard neutral override) when a
- * productId is missing from the source sale.
+ * Build exact SaleItem and weighted product fallback cost maps from the source
+ * Sale. New referenced returns use the exact source line; the product fallback
+ * preserves safe behavior for standalone and legacy rows without saleItemId.
  */
 async function buildSaleReferenceCostMap(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   saleId: string | undefined,
-): Promise<Map<string, number>> {
-  const map = new Map<string, number>();
-  if (!saleId) return map;
+): Promise<{ bySaleItemId: Map<string, number>; byProductId: Map<string, number> }> {
+  const bySaleItemId = new Map<string, number>();
+  const byProductId = new Map<string, number>();
+  if (!saleId) return { bySaleItemId, byProductId };
 
   const sale = await tx.sale.findUnique({
     where: { id: saleId },
     select: {
       items: {
         orderBy: { lineNo: "asc" },
-        select: { productId: true, quantity: true, costPrice: true },
+        select: { id: true, productId: true, quantity: true, costPrice: true },
       },
     },
   });
-  if (!sale || sale.items.length === 0) return map;
+  if (!sale || sale.items.length === 0) return { bySaleItemId, byProductId };
 
   // Aggregate by productId (weighted across multiple SaleItems with same productId)
   const totals = new Map<string, { qty: number; cost: number }>();
   for (const item of sale.items) {
     const qty = Number(item.quantity);
     if (qty <= 0) continue;
+    bySaleItemId.set(item.id, Number(item.costPrice));
     const lineCost = Number(item.costPrice) * qty;
     const acc = totals.get(item.productId) ?? { qty: 0, cost: 0 };
     acc.qty += qty;
@@ -352,9 +440,9 @@ async function buildSaleReferenceCostMap(
     totals.set(item.productId, acc);
   }
   for (const [productId, { qty, cost }] of totals) {
-    if (qty > 0) map.set(productId, cost / qty);
+    if (qty > 0) byProductId.set(productId, cost / qty);
   }
-  return map;
+  return { bySaleItemId, byProductId };
 }
 
 async function getCreditNoteAuditSnapshot(creditNoteId: string) {
@@ -523,6 +611,16 @@ export async function createCreditNote(
       return { error: "รายการคืนทุกบรรทัดต้องอ้างอิงรายการสินค้าในใบขายต้นทาง" };
     }
   }
+  if (
+    type === CreditNoteType.RETURN &&
+    validItems.some(
+      (item) =>
+        item.stockDisposition !== MarketplaceReturnStockDisposition.RESTOCK &&
+        !item.stockDispositionNote,
+    )
+  ) {
+    return { error: "กรุณาระบุเหตุผลของสินค้าที่ไม่รับเข้าสต๊อก" };
+  }
   if (carrierExpense.amount > 0) {
     if (!isMarketplaceReturn) return { error: "ค่าขนส่งตีกลับใช้ได้เฉพาะรายการคืน Marketplace" };
     const expenseSession = await requirePermission("expenses.create").catch(() => null);
@@ -576,64 +674,13 @@ export async function createCreditNote(
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
-      if (sourceChannel && isManualMarketplaceChannel(sourceChannel)) {
-        const saleItems = await tx.saleItem.findMany({
-          where: { saleId: saleId as string },
-          select: { id: true, productId: true, quantity: true },
-        });
-        const saleItemMap = new Map(saleItems.map((item) => [item.id, item]));
-        const saleItemIds = validItems.map((item) => item.saleItemId as string);
-        if (new Set(saleItemIds).size !== saleItemIds.length) {
-          throw new Error("MARKETPLACE_RETURN_DUPLICATE_SALE_LINE");
-        }
-        const returned = await tx.creditNoteItem.groupBy({
-          by: ["saleItemId"],
-          where: {
-            saleItemId: { in: saleItemIds },
-            creditNote: { status: "ACTIVE" },
-          },
-          _sum: { qty: true },
-        });
-        const returnedMap = new Map(
-          returned.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
-        );
-        const unitRows = await tx.productUnit.findMany({
-          where: {
-            OR: validItems.map((item) => ({ productId: item.productId, name: item.unitName })),
-          },
-          select: { productId: true, name: true, scale: true },
-        });
-        const unitScaleMap = new Map(
-          unitRows.map((unit) => [`${unit.productId}::${unit.name}`, Number(unit.scale)]),
-        );
-        for (const item of validItems) {
-          const saleItem = saleItemMap.get(item.saleItemId as string);
-          if (!saleItem || saleItem.productId !== item.productId) {
-            throw new Error("MARKETPLACE_RETURN_INVALID_SALE_LINE");
-          }
-          const scale = unitScaleMap.get(`${item.productId}::${item.unitName}`);
-          if (!scale) throw new Error("MARKETPLACE_RETURN_UNIT_NOT_FOUND");
-          const requestedBaseQty = item.qty * scale;
-          if (
-            !isMarketplaceReturnQuantityAvailable(
-              Number(saleItem.quantity),
-              returnedMap.get(saleItem.id) ?? 0,
-              requestedBaseQty,
-            )
-          ) {
-            throw new Error("MARKETPLACE_RETURN_QTY_EXCEEDED");
-          }
-          if (
-            item.stockDisposition !== MarketplaceReturnStockDisposition.RESTOCK &&
-            !item.stockDispositionNote
-          ) {
-            throw new Error("MARKETPLACE_RETURN_DISPOSITION_NOTE_REQUIRED");
-          }
-        }
-      }
-      const referenceCostMap = type === CreditNoteType.RETURN
+      const resolvedSaleItemIds =
+        type === CreditNoteType.RETURN && saleId
+          ? await validateReferencedReturnItems(tx, saleId, validItems)
+          : new Map<number, string>();
+      const referenceCostMaps = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
-        : new Map<string, number>();
+        : { bySaleItemId: new Map<string, number>(), byProductId: new Map<string, number>() };
 
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(tx, payments);
       // Create CreditNote header
@@ -695,9 +742,16 @@ export async function createCreditNote(
             creditNoteId:  cn.id,
             lineNo:        itemIndex + 1,
             productId:     item.productId,
-            saleItemId:    item.saleItemId ?? null,
-            stockDisposition: item.stockDisposition,
-            stockDispositionNote: item.stockDispositionNote || null,
+            saleItemId:
+              type === CreditNoteType.RETURN
+                ? resolvedSaleItemIds.get(itemIndex) ?? null
+                : null,
+            stockDisposition:
+              type === CreditNoteType.RETURN
+                ? item.stockDisposition
+                : MarketplaceReturnStockDisposition.RESTOCK,
+            stockDispositionNote:
+              type === CreditNoteType.RETURN ? item.stockDispositionNote || null : null,
             qty:           qtyInBase,
             unitPrice:     item.salePrice,
             amount:        itemTotal,
@@ -716,7 +770,12 @@ export async function createCreditNote(
           isTracked &&
           item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
         ) {
-          const referenceCost = referenceCostMap.get(item.productId);
+          const referenceCost = resolveReturnUnitCost({
+            saleItemId: resolvedSaleItemIds.get(itemIndex),
+            productId: item.productId,
+            saleItemCostById: referenceCostMaps.bySaleItemId,
+            productCostById: referenceCostMaps.byProductId,
+          });
           const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
@@ -877,7 +936,10 @@ export async function createCreditNote(
           },
         });
       }
-    }, { timeout: 180_000 });
+    }, {
+      timeout: 180_000,
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
 
     const afterSnapshot = createdCreditNoteId
       ? await getCreditNoteAuditSnapshot(createdCreditNoteId)
@@ -925,8 +987,8 @@ export async function createCreditNote(
     return { success: true, cnNo };
   } catch (err) {
     await reportCriticalError(err, { scope: "credit_notes.create" });
-    const marketplaceError = getMarketplaceReturnCreateError(err);
-    if (marketplaceError) return { error: marketplaceError };
+    const returnError = getCreditNoteReturnError(err);
+    if (returnError) return { error: returnError };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1063,6 +1125,9 @@ export async function updateCreditNote(
         select: {
           id:        true,
           productId: true,
+          saleItemId: true,
+          stockDisposition: true,
+          stockDispositionNote: true,
           qty:       true,
           unitPrice: true,
           lotItems: {
@@ -1119,6 +1184,17 @@ export async function updateCreditNote(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const { cnDate, customerId, customerName, saleId, type, settlementType, note, vatType, vatRate, items: validItems } = parsed.data;
+
+  if (
+    type === CreditNoteType.RETURN &&
+    validItems.some(
+      (item) =>
+        item.stockDisposition !== MarketplaceReturnStockDisposition.RESTOCK &&
+        !item.stockDispositionNote,
+    )
+  ) {
+    return { error: "กรุณาระบุเหตุผลของสินค้าที่ไม่รับเข้าสต๊อก" };
+  }
 
   const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType, vatRate);
@@ -1180,6 +1256,7 @@ export async function updateCreditNote(
   type ExistingCNSig = {
     existingItemId: string;
     productId:      string | null;
+    stockDisposition: MarketplaceReturnStockDisposition;
     signature:      string;
   };
   type NewCNSig = {
@@ -1192,8 +1269,11 @@ export async function updateCreditNote(
     ? existing.items.map((item) => ({
         existingItemId: item.id,
         productId:      item.productId,
+        stockDisposition: item.stockDisposition,
         signature: buildCreditNoteItemSignature({
           productId: item.productId,
+          saleItemId: item.saleItemId,
+          stockDisposition: item.stockDisposition,
           qtyInBase: Number(item.qty),
           salePrice: Number(item.unitPrice),
           lots: item.lotItems.map((l) => ({
@@ -1214,6 +1294,11 @@ export async function updateCreditNote(
           productId: item.productId,
           signature: buildCreditNoteItemSignature({
             productId: item.productId,
+            saleItemId: type === CreditNoteType.RETURN ? item.saleItemId ?? null : null,
+            stockDisposition:
+              type === CreditNoteType.RETURN
+                ? item.stockDisposition
+                : MarketplaceReturnStockDisposition.RESTOCK,
             qtyInBase: item.qty * scale,
             salePrice: item.salePrice,
             lots: (item.lotItems ?? []).map((l) => ({
@@ -1258,9 +1343,13 @@ export async function updateCreditNote(
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
-      const referenceCostMap = type === CreditNoteType.RETURN
+      const resolvedSaleItemIds =
+        type === CreditNoteType.RETURN && saleId
+          ? await validateReferencedReturnItems(tx, saleId, validItems, id)
+          : new Map<number, string>();
+      const referenceCostMaps = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
-        : new Map<string, number>();
+        : { bySaleItemId: new Map<string, number>(), byProductId: new Map<string, number>() };
 
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(tx, payments);
 
@@ -1270,7 +1359,10 @@ export async function updateCreditNote(
       if (useDifferential) {
         if (oldHadStock && removedExistingItems.length > 0) {
           for (const removed of removedExistingItems) {
-            if (removed.productId) {
+            if (
+              removed.productId &&
+              removed.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
+            ) {
               await reverseCreditNoteLotBalance(tx, removed.existingItemId, removed.productId);
             }
             await tx.stockCard.deleteMany({
@@ -1294,7 +1386,10 @@ export async function updateCreditNote(
       } else {
         if (oldHadStock && oldProductIds.length > 0) {
           for (const item of existing.items) {
-            if (item.productId) {
+            if (
+              item.productId &&
+              item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK
+            ) {
               await reverseCreditNoteLotBalance(tx, item.id, item.productId);
             }
           }
@@ -1350,6 +1445,16 @@ export async function updateCreditNote(
               showPricePerUnit: item.salePrice,
               unitScale: displayScale,
               moreDetail: item.moreDetail || null,
+              saleItemId:
+                type === CreditNoteType.RETURN
+                  ? resolvedSaleItemIds.get(newIdx) ?? null
+                  : null,
+              stockDisposition:
+                type === CreditNoteType.RETURN
+                  ? item.stockDisposition
+                  : MarketplaceReturnStockDisposition.RESTOCK,
+              stockDispositionNote:
+                type === CreditNoteType.RETURN ? item.stockDispositionNote || null : null,
               ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
             },
           });
@@ -1379,7 +1484,11 @@ export async function updateCreditNote(
         if (!product) throw new Error("Missing product");
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const isLotControl = isTracked && product.isLotControl;
-        if (type === CreditNoteType.RETURN && isLotControl) {
+        if (
+          type === CreditNoteType.RETURN &&
+          item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK &&
+          isLotControl
+        ) {
           const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
           if (lotErr) throw new Error(lotErr);
         }
@@ -1389,8 +1498,16 @@ export async function updateCreditNote(
             creditNoteId:   id,
             lineNo:         newIdx + 1,
             productId:      item.productId,
-            stockDisposition: item.stockDisposition,
-            stockDispositionNote: item.stockDispositionNote || null,
+            saleItemId:
+              type === CreditNoteType.RETURN
+                ? resolvedSaleItemIds.get(newIdx) ?? null
+                : null,
+            stockDisposition:
+              type === CreditNoteType.RETURN
+                ? item.stockDisposition
+                : MarketplaceReturnStockDisposition.RESTOCK,
+            stockDispositionNote:
+              type === CreditNoteType.RETURN ? item.stockDispositionNote || null : null,
             qty:            qtyInBase,
             unitPrice:      item.salePrice,
             amount:         itemTotal,
@@ -1403,8 +1520,17 @@ export async function updateCreditNote(
           },
         });
 
-        if (type === CreditNoteType.RETURN && isTracked) {
-          const referenceCost = referenceCostMap.get(item.productId);
+        if (
+          type === CreditNoteType.RETURN &&
+          item.stockDisposition === MarketplaceReturnStockDisposition.RESTOCK &&
+          isTracked
+        ) {
+          const referenceCost = resolveReturnUnitCost({
+            saleItemId: resolvedSaleItemIds.get(newIdx),
+            productId: item.productId,
+            saleItemCostById: referenceCostMaps.bySaleItemId,
+            productCostById: referenceCostMaps.byProductId,
+          });
           const usesReferenceCost = referenceCost !== undefined && referenceCost > 0;
           const stockCardId = await writeStockCard(tx, {
             productId:   item.productId,
@@ -1464,7 +1590,10 @@ export async function updateCreditNote(
       );
 
       await rebuildCreditNoteProfitFacts(tx, id);
-    }, { timeout: 180_000 });
+    }, {
+      timeout: 180_000,
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
 
     const afterSnapshot = await getCreditNoteAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
@@ -1489,6 +1618,8 @@ export async function updateCreditNote(
     return { success: true };
   } catch (err) {
     await reportCriticalError(err, { scope: "credit_notes.update" });
+    const returnError = getCreditNoteReturnError(err);
+    if (returnError) return { error: returnError };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -1516,6 +1647,7 @@ export type SaleDetailResult = {
   customerName: string | null;
   vatType: string;
   vatRate: number;
+  returnWarning: string | null;
   items: {
     saleItemId: string;
     productId: string;
@@ -1528,7 +1660,10 @@ export type SaleDetailResult = {
   products: CreditNoteProductOption[];
 } | null;
 
-export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
+export async function getSaleDetail(
+  saleId: string,
+  excludeCreditNoteId?: string,
+): Promise<SaleDetailResult> {
   const session = await requireCreditNoteProductPermission();
   if (!session?.user?.id || !saleId) return null;
   const sale = await db.sale.findUnique({
@@ -1571,16 +1706,51 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
   });
   if (!sale) return null;
 
-  const returnedRows = await db.creditNoteItem.groupBy({
-    by: ["saleItemId"],
-    where: {
-      saleItemId: { in: sale.items.map((item) => item.id) },
-      creditNote: { status: "ACTIVE" },
-    },
-    _sum: { qty: true },
-  });
+  const [returnedRows, legacyReturnedRows] = await Promise.all([
+    db.creditNoteItem.groupBy({
+      by: ["saleItemId"],
+      where: {
+        saleItemId: { in: sale.items.map((item) => item.id) },
+        creditNote: {
+          status: "ACTIVE",
+          type: CreditNoteType.RETURN,
+          ...(excludeCreditNoteId ? { id: { not: excludeCreditNoteId } } : {}),
+        },
+      },
+      _sum: { qty: true },
+    }),
+    db.creditNoteItem.groupBy({
+      by: ["productId"],
+      where: {
+        saleItemId: null,
+        productId: { in: sale.items.map((item) => item.productId) },
+        creditNote: {
+          saleId,
+          status: "ACTIVE",
+          type: CreditNoteType.RETURN,
+          ...(excludeCreditNoteId ? { id: { not: excludeCreditNoteId } } : {}),
+        },
+      },
+      _sum: { qty: true },
+    }),
+  ]);
   const returnedBySaleItemId = new Map(
     returnedRows.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
+  );
+  const legacyReturnedByProductId = new Map(
+    legacyReturnedRows.map((row) => [row.productId as string, Number(row._sum.qty ?? 0)]),
+  );
+  const saleLineCountByProductId = new Map<string, number>();
+  for (const item of sale.items) {
+    saleLineCountByProductId.set(
+      item.productId,
+      (saleLineCountByProductId.get(item.productId) ?? 0) + 1,
+    );
+  }
+  const ambiguousLegacyProductIds = new Set(
+    [...legacyReturnedByProductId.entries()]
+      .filter(([productId, qty]) => qty > 0 && (saleLineCountByProductId.get(productId) ?? 0) > 1)
+      .map(([productId]) => productId),
   );
 
   const productMap = new Map<string, CreditNoteProductOption>();
@@ -1589,9 +1759,14 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
     const unit     = item.product.units.find((u) => u.name === unitName);
     const scale    = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
     productMap.set(item.productId, serializeCreditNoteProductOption(item.product));
+    if (ambiguousLegacyProductIds.has(item.productId)) return [];
+    const legacyReturned =
+      (saleLineCountByProductId.get(item.productId) ?? 0) === 1
+        ? legacyReturnedByProductId.get(item.productId) ?? 0
+        : 0;
     const remainingBaseQty = Math.max(
       0,
-      Number(item.quantity) - (returnedBySaleItemId.get(item.id) ?? 0),
+      Number(item.quantity) - (returnedBySaleItemId.get(item.id) ?? 0) - legacyReturned,
     );
     if (remainingBaseQty <= 0.0001) return [];
     return [{
@@ -1609,6 +1784,10 @@ export async function getSaleDetail(saleId: string): Promise<SaleDetailResult> {
     customerName: sale.customerName,
     vatType:      sale.vatType,
     vatRate:      Number(sale.vatRate),
+    returnWarning:
+      ambiguousLegacyProductIds.size > 0
+        ? "มีประวัติคืนสินค้าเดิมของสินค้าบางรายการที่ระบุบรรทัดใบขายไม่ได้ ระบบซ่อนรายการนั้นไว้เพื่อป้องกันคืนเกิน กรุณาตรวจสอบเอกสารเดิม"
+        : null,
     items,
     products: [...productMap.values()],
   };

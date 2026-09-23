@@ -87,11 +87,14 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
           ? Number(item.showPricePerUnit)
           : Number(item.unitPrice);
       return {
+        saleItemId: item.saleItemId ?? undefined,
         productId: item.productId ?? "",
         unitName: displayUnitName,
         qty:       displayQty,
         salePrice: displaySalePrice,
         moreDetail: item.moreDetail ?? "",
+        stockDisposition: item.stockDisposition,
+        stockDispositionNote: item.stockDispositionNote ?? "",
         lotItems: item.lotItems.map((lot) => ({
           lotNo: lot.isReturnLot ? lot.lotNo.replace(/^RET-/, "") : lot.lotNo,
           qty: Number(lot.qty) / scale,

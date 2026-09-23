@@ -158,11 +158,14 @@ export default async function MarketplaceReturnPage({
   ]);
 
   if (!saleDetail || saleDetail.items.length === 0) {
+    const message =
+      saleDetail?.returnWarning ??
+      `ใบขาย ${selectedSale.saleNo} คืนสินค้าครบทุกบรรทัดแล้ว จึงไม่มีรายการเหลือให้ทำคืนซ้ำ`;
     return (
       <div className="space-y-6">
         {backLink}
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-100">
-          ใบขาย {selectedSale.saleNo} คืนสินค้าครบทุกบรรทัดแล้ว จึงไม่มีรายการเหลือให้ทำคืนซ้ำ
+          {message}
         </div>
       </div>
     );
@@ -195,6 +198,7 @@ export default async function MarketplaceReturnPage({
           products: saleDetail.products,
           vatType: saleDetail.vatType,
           vatRate: saleDetail.vatRate,
+          returnWarning: saleDetail.returnWarning,
           canCreateCarrierExpense: Boolean(expensePermission?.user?.id),
           suppliers: suppliers.map((supplier) => ({
             id: supplier.id,

@@ -8,7 +8,10 @@ import {
   SaleChannel,
 } from "@/lib/generated/prisma";
 import { calcItemSubtotal } from "@/lib/vat";
-import { returnDispositionReversesStockCost } from "@/lib/marketplace/returns";
+import {
+  resolveReturnUnitCost,
+  returnDispositionReversesStockCost,
+} from "@/lib/credit-note-return";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -384,6 +387,7 @@ export async function rebuildCreditNoteProfitFacts(
           items: {
             orderBy: { lineNo: "asc" },
             select: {
+              id: true,
               productId: true,
               quantity: true,
               costPrice: true,
@@ -396,6 +400,7 @@ export async function rebuildCreditNoteProfitFacts(
         orderBy: { lineNo: "asc" },
         select: {
           id: true,
+          saleItemId: true,
           productId: true,
           qty: true,
           amount: true,
@@ -439,6 +444,9 @@ export async function rebuildCreditNoteProfitFacts(
       costPrice: Number(item.costPrice),
     })),
   );
+  const saleItemCostMap = new Map(
+    (creditNote.sale?.items ?? []).map((item) => [item.id, Number(item.costPrice)]),
+  );
   const customerName = creditNote.customer?.name ?? creditNote.customerName ?? null;
 
   const rows: FactProfitRowInput[] = creditNote.items.map((item, index) => {
@@ -452,7 +460,13 @@ export async function rebuildCreditNoteProfitFacts(
       returnDispositionReversesStockCost(item.stockDisposition);
     const resolvedCost =
       reversesStockCost
-        ? saleCostMap.get(item.productId ?? "") ?? roundMoney(Number(item.product?.avgCost ?? 0))
+        ? resolveReturnUnitCost({
+            saleItemId: item.saleItemId,
+            productId: item.productId,
+            saleItemCostById: saleItemCostMap,
+            productCostById: saleCostMap,
+            fallbackCost: roundMoney(Number(item.product?.avgCost ?? 0)),
+          }) ?? 0
         : 0;
     const costAmount =
       reversesStockCost

@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
 import {
+  resolveReturnUnitCost,
+  returnDispositionReversesStockCost,
+} from "@/lib/credit-note-return";
+import {
   ClaimType,
   CNRefundMethod,
   Prisma,
@@ -655,6 +659,7 @@ export async function getReportsData(filters: ParsedReportFilters,
               items: {
                 orderBy: { lineNo: "asc" },
                 select: {
+                  id: true,
                   productId: true,
                   quantity: true,
                   costPrice: true,
@@ -665,9 +670,11 @@ export async function getReportsData(filters: ParsedReportFilters,
           items: {
             orderBy: { lineNo: "asc" },
             select: {
+              saleItemId: true,
               productId: true,
               qty: true,
               amount: true,
+              stockDisposition: true,
               product: {
                 select: {
                   avgCost: true,
@@ -1036,6 +1043,9 @@ export async function getReportsData(filters: ParsedReportFilters,
         costPrice: toNumber(saleItem.costPrice),
       })),
     );
+    const saleItemCostMap = new Map(
+      (creditNote.sale?.items ?? []).map((item) => [item.id, toNumber(item.costPrice)]),
+    );
 
     return {
       id: creditNote.id,
@@ -1050,8 +1060,14 @@ export async function getReportsData(filters: ParsedReportFilters,
       accountName: creditNote.cashBankAccount?.name ?? "-",
       note: creditNote.note ?? "",
       cogsReversal: creditNote.items.reduce((sum, item) => {
-        const resolvedCost =
-          saleCostMap.get(item.productId ?? "") ?? toNumber(item.product?.avgCost);
+        if (!returnDispositionReversesStockCost(item.stockDisposition)) return sum;
+        const resolvedCost = resolveReturnUnitCost({
+          saleItemId: item.saleItemId,
+          productId: item.productId,
+          saleItemCostById: saleItemCostMap,
+          productCostById: saleCostMap,
+          fallbackCost: toNumber(item.product?.avgCost),
+        }) ?? 0;
         return sum + toNumber(item.qty) * resolvedCost;
       }, 0),
     };

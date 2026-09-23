@@ -274,7 +274,10 @@ const TX_IDLE_IN_TX_TIMEOUT_MS = 30_000;
 
 type TxFn<T> = Parameters<typeof db.$transaction>[0] & ((tx: Parameters<Parameters<typeof db.$transaction>[0]>[0]) => Promise<T>);
 
-export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T> {
+export function dbTx<T>(
+  fn: TxFn<T>,
+  options?: { timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
+): Promise<T> {
   return db.$transaction(
     async (tx) => {
       // SET LOCAL is scoped to this transaction; on the Supabase transaction
@@ -287,7 +290,10 @@ export function dbTx<T>(fn: TxFn<T>, options?: { timeout?: number }): Promise<T>
       `;
       return fn(tx);
     },
-    { timeout: options?.timeout ?? TX_TIMEOUT },
+    {
+      timeout: options?.timeout ?? TX_TIMEOUT,
+      isolationLevel: options?.isolationLevel,
+    },
   ) as Promise<T>;
 }
 

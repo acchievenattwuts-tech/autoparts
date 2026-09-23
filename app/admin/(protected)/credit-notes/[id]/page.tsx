@@ -231,7 +231,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
                         Lot: {item.lotItems.map((lot) => `${lot.lotNo}${lot.isReturnLot ? " [RET]" : ""} (${(Number(lot.qty) / displayScale).toLocaleString("th-TH")} ${displayUnitName})`).join(", ")}
                       </div>
                     )}
-                    {cn.channel && isManualMarketplaceChannel(cn.channel) ? (
+                    {cn.type === CreditNoteType.RETURN ? (
                       <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                         {stockDispositionLabel[item.stockDisposition]}
                         {item.stockDispositionNote ? ` — ${item.stockDispositionNote}` : ""}

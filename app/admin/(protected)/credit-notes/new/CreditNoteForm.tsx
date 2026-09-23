@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createCreditNote, updateCreditNote, getSalesForCustomer, getSaleDetail, searchCreditNoteProducts } from "../actions";
-import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
+import { Plus, Trash2, CheckCircle, CopyPlus, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -28,6 +28,7 @@ export type MarketplaceReturnPreset = {
   products: ProductOption[];
   vatType: string;
   vatRate: number;
+  returnWarning?: string | null;
   canCreateCarrierExpense: boolean;
   suppliers: { id: string; name: string; code: string }[];
 };
@@ -152,6 +153,9 @@ const CreditNoteForm = ({
   const [filteredSales, setFilteredSales] = useState<SaleOption[]>(initialSales ?? []);
   const [loadingSales, setLoadingSales] = useState(false);
   const [saleId, setSaleId] = useState(initialData?.saleId ?? marketplacePreset?.saleId ?? "");
+  const [saleReturnWarning, setSaleReturnWarning] = useState<string | null>(
+    marketplacePreset?.returnWarning ?? null,
+  );
   const [items, setItems] = useState<LineItem[]>(
     initialData?.items ?? marketplacePreset?.items ?? [emptyItem()],
   );
@@ -184,12 +188,14 @@ const CreditNoteForm = ({
   const [carrierExpenseNote, setCarrierExpenseNote] = useState("");
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
+  const isReferencedReturn = cnType === "RETURN" && Boolean(saleId);
 
   const handleCustomerChange = async (id: string) => {
     setCustomerId(id);
     const customer = customerMap.get(id);
     setCustomerName(customer?.name ?? "");
     setSaleId("");
+    setSaleReturnWarning(null);
     setItems([emptyItem()]);
     if (!id) {
       setFilteredSales([]);
@@ -203,9 +209,17 @@ const CreditNoteForm = ({
 
   const handleSaleChange = async (id: string) => {
     setSaleId(id);
-    if (!id) return;
-    const detail = await getSaleDetail(id);
-    if (!detail) return;
+    setSaleReturnWarning(null);
+    if (!id) {
+      setItems([emptyItem()]);
+      return;
+    }
+    const detail = await getSaleDetail(id, initialData?.id);
+    if (!detail) {
+      setItems([]);
+      setSaleReturnWarning("ไม่พบรายละเอียดใบขาย กรุณาเลือกใบขายใหม่");
+      return;
+    }
     setProductOptions((prev) => {
       const next = new Map(prev.map((product) => [product.id, product]));
       detail.products.forEach((product) => {
@@ -215,11 +229,30 @@ const CreditNoteForm = ({
     });
     setVatType(detail.vatType);
     setVatRate(detail.vatRate);
+    setSaleReturnWarning(detail.returnWarning);
     setItems(detail.items.map((item) => ({ ...item, lotItems: [] })));
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
+  const splitReturnItem = (itemIndex: number) => {
+    setItems((prev) => {
+      const source = prev[itemIndex];
+      if (!source?.saleItemId || source.qty <= 0.0001) return prev;
+      const splitQty = Math.round((source.qty >= 2 ? 1 : source.qty / 2) * 10000) / 10000;
+      const remainingQty = Math.round((source.qty - splitQty) * 10000) / 10000;
+      if (splitQty <= 0 || remainingQty <= 0) return prev;
+      const original = { ...source, qty: remainingQty, lotItems: [] };
+      const split: LineItem = {
+        ...source,
+        qty: splitQty,
+        stockDisposition: "DAMAGED_NO_RESTOCK",
+        stockDispositionNote: "",
+        lotItems: [],
+      };
+      return [...prev.slice(0, itemIndex), original, split, ...prev.slice(itemIndex + 1)];
+    });
+  };
 
   const rememberProduct = (product: ProductOption) => {
     setProductOptions((prev) => {
@@ -238,6 +271,7 @@ const CreditNoteForm = ({
           ? item
           : {
               ...item,
+              saleItemId: undefined,
               productId: "",
               unitName: "",
               salePrice: 0,
@@ -255,6 +289,7 @@ const CreditNoteForm = ({
           ? item
           : {
               ...item,
+              saleItemId: undefined,
               productId: product.id,
               unitName: product.saleUnitName ?? "",
               salePrice: product.salePrice ?? 0,
@@ -349,6 +384,14 @@ const CreditNoteForm = ({
       setError("กรุณาเลือกลูกค้า");
       return;
     }
+    if (items.length === 0) {
+      setError(
+        saleId
+          ? "ใบขายนี้ไม่มีรายการคงเหลือที่ทำคืนได้"
+          : "กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ",
+      );
+      return;
+    }
     for (const item of items) {
       if (!item.productId) {
         setError("กรุณาเลือกสินค้าทุกรายการ");
@@ -375,7 +418,7 @@ const CreditNoteForm = ({
         }
       }
       if (
-        marketplacePreset &&
+        cnType === "RETURN" &&
         item.stockDisposition !== "RESTOCK" &&
         !item.stockDispositionNote?.trim()
       ) {
@@ -554,6 +597,11 @@ const CreditNoteForm = ({
           </div>
           )}
           <input type="hidden" name="saleId" value={saleId} />
+          {saleReturnWarning ? (
+            <div className="md:col-span-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+              {saleReturnWarning}
+            </div>
+          ) : null}
           {marketplacePreset ? <input type="hidden" name="settlementType" value="CASH_REFUND" /> : (
           <div>
             <label className={labelCls}>การชำระ CN</label>
@@ -661,7 +709,12 @@ const CreditNoteForm = ({
         {cnType === "RETURN" ? (
           <div className="mt-4 flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 dark:bg-blue-500/10 dark:border-blue-400/20 dark:text-blue-300">
             <Info size={16} className="mt-0.5 shrink-0" />
-            <span>รับคืนสินค้าเข้าสต็อก และถ้าเป็นสินค้า Lot Control ต้องระบุ Lot ของสินค้าที่รับคืนด้วย</span>
+            <span>
+              เลือกผลของสินค้าแต่ละรายการได้ว่าจะรับเข้าสต๊อก คืนเงินอย่างเดียว หรือเป็นสินค้าเสียหาย
+              {isReferencedReturn
+                ? " ระบบจะตรวจจำนวนคืนสะสมกับใบขายต้นทางให้"
+                : " หากไม่อ้างอิงใบขาย ระบบจะไม่สามารถตรวจจำนวนคืนเกินยอดขายได้"}
+            </span>
           </div>
         ) : (
           <div className="mt-4 flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-700 dark:bg-yellow-500/10 dark:border-yellow-400/20 dark:text-yellow-300">
@@ -712,9 +765,9 @@ const CreditNoteForm = ({
                           }}
                           onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
                           selectedProduct={productMap.get(item.productId) ?? null}
-                          disabled={Boolean(marketplacePreset)}
+                          disabled={Boolean(marketplacePreset) || isReferencedReturn}
                         />
-                        {marketplacePreset ? (
+                        {cnType === "RETURN" ? (
                           <div className="mt-2 grid gap-2 md:grid-cols-2">
                             <select
                               value={item.stockDisposition ?? "RESTOCK"}
@@ -794,6 +847,17 @@ const CreditNoteForm = ({
                         {(item.qty * item.salePrice).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
                       </td>
                       <td className="py-2 px-2">
+                        <div className="flex items-center gap-2">
+                        {isReferencedReturn && item.saleItemId ? (
+                          <button
+                            type="button"
+                            onClick={() => splitReturnItem(i)}
+                            className="text-sky-500 transition-colors hover:text-sky-700 dark:text-sky-300 dark:hover:text-sky-100"
+                            title="แยกจำนวนบางส่วนเป็นผลการรับคืนอีกแบบ"
+                          >
+                            <CopyPlus size={15} />
+                          </button>
+                        ) : null}
                         {items.length > 1 && (
                           <button
                             type="button"
@@ -803,6 +867,7 @@ const CreditNoteForm = ({
                             <Trash2 size={15} />
                           </button>
                         )}
+                        </div>
                       </td>
                     </tr>
                     {showLots && (
@@ -1034,7 +1099,7 @@ const CreditNoteForm = ({
       )}
 
       <div className="flex justify-end items-center gap-3">
-        {!marketplacePreset ? <button
+        {!marketplacePreset && !isReferencedReturn ? <button
           type="button"
           onClick={addItem}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 hover:border-[#1e3a5f] bg-white text-gray-700 hover:text-[#1e3a5f] text-sm font-semibold rounded-lg transition-colors dark:border-white/20 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-sky-300"
