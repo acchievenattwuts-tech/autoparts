@@ -16,6 +16,7 @@ const fullEnv = (): EnvSnapshot => ({
   DOC_VERIFY_SECRET: "secret",
   LINE_MESSAGING_API_CHANNEL_SECRET: "secret",
   MESSENGER_APP_SECRET: "secret",
+  BLOB_SLIPS_READ_WRITE_TOKEN: "secret",
 });
 
 test("a fully configured environment reports nothing", () => {
@@ -91,4 +92,15 @@ test("several missing secrets are all reported, not just the first", () => {
   delete env.DOC_VERIFY_SECRET;
   delete env.MESSENGER_APP_SECRET;
   assert.equal(checkEnv(env).warnings.length, 3);
+});
+
+// Expense attachments and delivery proofs (PII) upload only to the private
+// store; without its token those uploads fail, so the gap must be visible at boot.
+test("a missing private Blob store token warns (never fatal)", () => {
+  const env = fullEnv();
+  delete env.BLOB_SLIPS_READ_WRITE_TOKEN;
+  const { errors, warnings } = checkEnv(env);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(warnings.map((w) => w.key), ["BLOB_SLIPS_READ_WRITE_TOKEN"]);
+  assert.match(warnings[0]?.consequence ?? "", /private Blob store/);
 });

@@ -11,7 +11,7 @@ import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
-import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { resolveDeliveryProofImageSource } from "@/lib/private-file-ref";
 
 import SharedSalesDeliveryPrintDocument from "@/app/admin/_components/SharedSalesDeliveryPrintDocument";
 import ParcelLabelPrintLink from "@/app/admin/_components/print/ParcelLabelPrintLink";
@@ -610,8 +610,8 @@ ${PRINT_COPY_VISIBILITY_CSS}
             ) : (
               <div className="space-y-4">
                 {sale.deliveryProofs.map((proof) => {
-                  const signatureImageSrc = toPublicStorageCdnPath(proof.signatureImageUrl) ?? proof.signatureImageUrl ?? "";
-                  const deliveryPhotoSrc = toPublicStorageCdnPath(proof.deliveryPhotoUrl) ?? proof.deliveryPhotoUrl ?? "";
+                  const signatureImage = resolveDeliveryProofImageSource(proof.id, "signature", proof.signatureImageUrl);
+                  const deliveryPhoto = resolveDeliveryProofImageSource(proof.id, "photo", proof.deliveryPhotoUrl);
 
                   return (
                   <article
@@ -630,16 +630,17 @@ ${PRINT_COPY_VISIBILITY_CSS}
                     </div>
 
                     <div className="grid gap-4 md:grid-cols-2">
-                      {proof.signatureImageUrl ? (
+                      {signatureImage ? (
                         <div>
                           <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">ลายเซ็นผู้รับ</p>
                           <div className="rounded-2xl border border-gray-200 bg-white p-3">
                             <Image
-                              src={signatureImageSrc}
+                              src={signatureImage.src}
                               alt="ลายเซ็นผู้รับ"
                               width={640}
                               height={256}
                               loading="lazy"
+                              unoptimized={signatureImage.isPrivate}
                               className="h-32 w-full object-contain"
                               sizes="(max-width: 768px) 100vw, 50vw"
                             />
@@ -647,21 +648,22 @@ ${PRINT_COPY_VISIBILITY_CSS}
                         </div>
                       ) : null}
 
-                      {proof.deliveryPhotoUrl ? (
+                      {deliveryPhoto ? (
                         <div>
                           <p className="mb-2 text-xs font-medium text-gray-500 dark:text-slate-400">รูปหลักฐานการส่ง</p>
                           <a
-                            href={deliveryPhotoSrc}
+                            href={deliveryPhoto.src}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="block overflow-hidden rounded-2xl border border-gray-200 bg-white"
                           >
                             <Image
-                              src={deliveryPhotoSrc}
+                              src={deliveryPhoto.src}
                               alt="รูปหลักฐานการส่ง"
                               width={1200}
                               height={900}
                               loading="lazy"
+                              unoptimized={deliveryPhoto.isPrivate}
                               className="max-h-64 w-full object-cover"
                               sizes="(max-width: 768px) 100vw, 50vw"
                             />

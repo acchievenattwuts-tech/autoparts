@@ -10,6 +10,7 @@ import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { resolveExpenseAttachmentViewSource } from "@/lib/private-file-ref";
 import ExpenseAttachmentsPanel, { type ExpenseAttachmentView } from "./ExpenseAttachmentsPanel";
 
 const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
@@ -66,15 +67,19 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   if (!expense) notFound();
   const activityEvents = await getDocumentActivityTimeline("Expense", expense.id);
 
-  const attachments: ExpenseAttachmentView[] = expense.attachments.map((attachment) => ({
-    id: attachment.id,
-    url: attachment.url,
-    fileName: attachment.fileName,
-    contentType: attachment.contentType,
-    fileSize: attachment.fileSize,
-    createdAtLabel: formatDateTimeThai(attachment.createdAt),
-    uploadedByName: attachment.uploadedBy?.name ?? "-",
-  }));
+  const attachments: ExpenseAttachmentView[] = expense.attachments.map((attachment) => {
+    const viewSource = resolveExpenseAttachmentViewSource(attachment);
+    return {
+      id: attachment.id,
+      url: viewSource.src,
+      isPrivate: viewSource.isPrivate,
+      fileName: attachment.fileName,
+      contentType: attachment.contentType,
+      fileSize: attachment.fileSize,
+      createdAtLabel: formatDateTimeThai(attachment.createdAt),
+      uploadedByName: attachment.uploadedBy?.name ?? "-",
+    };
+  });
 
   const vatLabel: Record<string, string> = {
     NO_VAT:        "ไม่มี VAT",

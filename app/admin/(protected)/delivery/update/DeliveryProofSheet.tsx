@@ -20,7 +20,7 @@ import {
   saveDeliveryProof,
   type DeliveryProofDetail,
 } from "../../sales/actions";
-import { toPublicStorageCdnPath } from "@/lib/product-image-url";
+import { resolveDeliveryProofImageSource } from "@/lib/private-file-ref";
 import { formatDateThai } from "@/lib/th-date";
 
 export type DeliveryProofSheetSale = {
@@ -125,8 +125,14 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
   const [isLoadingProof, setIsLoadingProof] = useState(false);
   const [isPending, startTransition] = useTransition();
   const isOpen = Boolean(selectedSale);
-  const latestSignatureSrc = toPublicStorageCdnPath(latestProof?.signatureImageUrl) ?? latestProof?.signatureImageUrl ?? "";
-  const latestDeliveryPhotoSrc = toPublicStorageCdnPath(latestProof?.deliveryPhotoUrl) ?? latestProof?.deliveryPhotoUrl ?? "";
+  // Private images stream from a session-checked same-origin route; the native
+  // <img> below sends the admin's cookies with it.
+  const latestSignatureSrc = latestProof
+    ? resolveDeliveryProofImageSource(latestProof.id, "signature", latestProof.signatureImageUrl)?.src ?? ""
+    : "";
+  const latestDeliveryPhotoSrc = latestProof
+    ? resolveDeliveryProofImageSource(latestProof.id, "photo", latestProof.deliveryPhotoUrl)?.src ?? ""
+    : "";
 
   useEffect(() => {
     if (!selectedSale) {

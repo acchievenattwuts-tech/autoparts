@@ -2,7 +2,8 @@
 
 import { prepareSaleQuotationReference, auditSaleQuotationReference, QuotationError } from "@/lib/sales-quotation";
 import { createDocumentMutationGuard, buildMutationBlockMessage, type GuardDb } from "@/lib/document-mutation-guard";
-import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
+import { deleteDeliveryProofObjects, uploadDeliveryProofObject } from "@/lib/delivery-proof-storage";
+import { DELIVERY_PROOF_ROOT } from "@/lib/private-file-ref";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
@@ -1841,7 +1842,7 @@ const uploadDeliveryProofImage = async ({
 
   const ext = DELIVERY_PROOF_EXTENSIONS[contentType];
   const safeSaleId = saleId.replace(/[^a-zA-Z0-9_-]/g, "");
-  const filePath = `delivery-proofs/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
+  const filePath = `${DELIVERY_PROOF_ROOT}/${safeSaleId}/${Date.now()}-${kind}-${crypto.randomUUID()}.${ext}`;
   const buffer = new Uint8Array(await file.arrayBuffer());
   const detectedType = sniffImageMimeType(buffer);
   if (!detectedType || !(detectedType in DELIVERY_PROOF_EXTENSIONS)) {
@@ -1849,8 +1850,9 @@ const uploadDeliveryProofImage = async ({
   }
 
   try {
-    // Backend (Supabase vs Vercel Blob) is selected by the IMAGE_STORAGE_PRODUCTS flag.
-    const url = await uploadProductsBucketObject({
+    // PII: stored in the PRIVATE Blob store; `url` is the object pathname, viewed
+    // only through /api/admin/delivery-proofs/[id]/[kind].
+    const url = await uploadDeliveryProofObject({
       objectPath: filePath,
       body: buffer,
       contentType: detectedType,
@@ -1945,6 +1947,9 @@ export async function saveDeliveryProof(
     return { error: "กรุณาระบุหลักฐานอย่างน้อยหนึ่งรายการก่อนบันทึก" };
   }
 
+  // Images uploaded but not yet saved on a DeliveryProof row — removed if the
+  // save fails so no orphaned PII is left in the store.
+  let unsavedProofPaths: string[] = [];
   try {
     const sale = await db.sale.findUnique({
       where: { id: parsed.data.saleId },
@@ -1981,6 +1986,13 @@ export async function saveDeliveryProof(
           })
         : Promise.resolve(emptyUpload),
     ]);
+    unsavedProofPaths = [signatureUpload.url, photoUpload.url].filter(
+      (path): path is string => Boolean(path),
+    );
+    if (signatureUpload.error || photoUpload.error) {
+      await deleteDeliveryProofObjects(unsavedProofPaths);
+      unsavedProofPaths = [];
+    }
     if (signatureUpload.error) return { error: signatureUpload.error };
     if (photoUpload.error) return { error: photoUpload.error };
 
@@ -2003,6 +2015,7 @@ export async function saveDeliveryProof(
         capturedAt: true,
       },
     });
+    unsavedProofPaths = [];
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -2029,6 +2042,7 @@ export async function saveDeliveryProof(
     return { success: true };
   } catch (err) {
     console.error("[saveDeliveryProof]", err);
+    await deleteDeliveryProofObjects(unsavedProofPaths);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

@@ -12,7 +12,10 @@ import { uploadExpenseAttachmentsSequentially } from "../upload-attachments-sequ
 
 export interface ExpenseAttachmentView {
   id: string;
+  /** View URL: the session-checked route for private files, or a legacy public URL. */
   url: string;
+  /** True for the auth-protected route — next/image cannot optimize it (no cookies). */
+  isPrivate: boolean;
   fileName: string;
   contentType: string;
   fileSize: number;
@@ -103,6 +106,7 @@ const ExpenseAttachmentsPanel = ({ expenseId, attachments, canManage }: Props) =
                     width={THUMBNAIL_SIZE}
                     height={THUMBNAIL_SIZE}
                     sizes="56px"
+                    unoptimized={attachment.isPrivate}
                     className="h-14 w-14 shrink-0 rounded-md border border-gray-100 object-cover dark:border-white/10"
                   />
                 )}
