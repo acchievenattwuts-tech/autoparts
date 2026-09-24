@@ -17,6 +17,7 @@ import { AuditAction, DocumentPaymentDocType, PaymentMethod, Prisma } from "@/li
 import { recalculateSaleAmountRemain, recalculateCNAmountRemain, recalculateCustomerAdvanceAmountRemain } from "@/lib/amount-remain";
 import { CashBankDirection, CashBankSourceType } from "@/lib/generated/prisma";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { isUserFacingDocumentError } from "@/lib/document-user-error";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -269,6 +270,15 @@ class ReceiptNotActiveError extends Error {
     super(message);
     this.name = "ReceiptNotActiveError";
   }
+}
+
+/**
+ * User-fixable conditions a receipt flow can hit: the receipt is no longer ACTIVE,
+ * or a shared helper rejected the cash/bank posting or withholding-tax record.
+ * Their Thai message is returned as-is, without reportCriticalError.
+ */
+function isReceiptUserError(err: unknown): err is Error {
+  return err instanceof ReceiptNotActiveError || isUserFacingDocumentError(err);
 }
 
 /**
@@ -602,6 +612,7 @@ export async function createReceipt(
 
     return { success: true, receiptNo, receiptId: createdReceiptId };
   } catch (err) {
+    if (isReceiptUserError(err)) return { success: false, error: err.message };
     await reportCriticalError(err, { scope: "receipts.create" });
     return {
       success: false,
@@ -855,7 +866,7 @@ export async function updateReceipt(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (err) {
-    if (err instanceof ReceiptNotActiveError) return { error: err.message };
+    if (isReceiptUserError(err)) return { error: err.message };
     await reportCriticalError(err, { scope: "receipts.update" });
     return {
       // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.

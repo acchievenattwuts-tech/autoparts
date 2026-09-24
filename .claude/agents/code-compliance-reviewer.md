@@ -83,7 +83,7 @@ When reviewing code or decisions, systematically check against ALL applicable ru
 - All `DateTime` fields must use `@db.Timestamptz(3)`
 - Price/cost Decimal: `@db.Decimal(10,2)`
 - Quantity Decimal: `@db.Decimal(12,4)`
-- Use `prisma db push` only — not `migrate dev`
+- Schema changes ship as additive SQL in `prisma/migrations/<date>_<name>/migration.sql` — never `prisma db push` or `migrate dev` (`.rules` §6)
 - Never edit files under `lib/generated/prisma/`
 
 **Performance**

@@ -16,6 +16,8 @@
     "codex:skill:install:all": "node scripts/install-codex-skill.mjs --all",
     "postinstall": "prisma generate && node scripts/setup-git-hooks.mjs",
     "check:mojibake": "node scripts/check-mojibake.mjs",
+    "check:schema-drift": "tsx scripts/check-schema-drift.ts",
+    "backup:blob-restore": "tsx scripts/backup-blob-restore.ts",
     "seed": "npx tsx --env-file=.env.local prisma/seed.ts",
     "seed:car-model-generation-aliases": "tsx --env-file=.env.local scripts/seed-car-model-generation-aliases.ts",
     "seed:expansion-valve-block-synonyms": "tsx --env-file=.env.local scripts/seed-expansion-valve-block-synonyms.ts",

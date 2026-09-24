@@ -7,7 +7,7 @@ name: Weekly Backup
 #
 # Artifacts land on Google Drive via rclone — a different provider from both
 # Supabase (database) and Vercel Blob (public images + the PRIVATE store holding
-# payment slips, expense attachments and delivery proofs), which is the whole
+# payment slips, expense attachments, delivery proofs and WHT certificates), which is the whole
 # point of a backup. See docs/backup-automation-runbook.md for setup and restore.
 
 on:
@@ -182,7 +182,7 @@ jobs:
           # Absent on the very first private run — that is not an error, it just means a full sync.
           rclone copy "$RCLONE_REMOTE/state-private/blob-index.json" "$WORK_DIR/private/state/" || true
 
-      # The PRIVATE store (LINE payment slips, expense attachments, delivery proofs)
+      # The PRIVATE store (LINE payment slips, expense attachments, delivery proofs, WHT certificates)
       # needs its own token. A missing token must not cost the database and public
       # image backup, so warn and skip; the report and Telegram then say that the
       # private files were NOT backed up.
@@ -193,7 +193,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${BLOB_READ_WRITE_TOKEN:-}" ]; then
-            echo "::warning::BLOB_SLIPS_READ_WRITE_TOKEN is not configured — private files (payment slips, expense attachments, delivery proofs) were NOT backed up."
+            echo "::warning::BLOB_SLIPS_READ_WRITE_TOKEN is not configured — private files (payment slips, expense attachments, delivery proofs, WHT certificates) were NOT backed up."
             echo "PRIVATE_BLOB_STATUS=skipped" >> "$GITHUB_ENV"
             exit 0
           fi
@@ -225,7 +225,7 @@ jobs:
             echo "blob summary:"
             cat "$WORK_DIR/blob-summary.json"
             echo
-            echo "private blob summary (payment slips, expense attachments, delivery proofs):"
+            echo "private blob summary (payment slips, expense attachments, delivery proofs, WHT certificates):"
             if [ "${PRIVATE_BLOB_STATUS:-}" = "synced" ]; then
               cat "$WORK_DIR/private/blob-summary.json"
               echo

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  indexPublishedPromotionsByProduct,
   isPromotionBelowCost,
+  PricePromotionOverlapError,
   promotionRangesOverlapInclusive,
   resolveScheduledPrice,
   shouldWarnPromotionDiscountStacking,
@@ -77,4 +79,33 @@ test("below-cost and discount-stacking warnings are deterministic", () => {
   assert.equal(isPromotionBelowCost(100, 100), false);
   assert.equal(shouldWarnPromotionDiscountStacking({ promotionApplied: true, lineDiscount: 0, billDiscount: 1 }), true);
   assert.equal(shouldWarnPromotionDiscountStacking({ promotionApplied: false, lineDiscount: 10, billDiscount: 10 }), false);
+});
+
+test("published promotion rows index by product and name every overlapping product once", () => {
+  const row = (productId: string, promotionId: string, code: string, name: string) => ({
+    productId,
+    promotionId,
+    product: { code, name },
+  });
+  const indexed = indexPublishedPromotionsByProduct([
+    row("prod-1", "promo-1", "P0001", "ไส้กรอง"),
+    row("prod-2", "promo-1", "P0002", "ผ้าเบรก"),
+  ]);
+  assert.equal(indexed.get("prod-2")?.promotionId, "promo-1");
+
+  assert.throws(
+    () =>
+      indexPublishedPromotionsByProduct([
+        row("prod-1", "promo-1", "P0001", "ไส้กรอง"),
+        row("prod-1", "promo-2", "P0001", "ไส้กรอง"),
+        row("prod-1", "promo-3", "P0001", "ไส้กรอง"),
+        row("prod-2", "promo-1", "P0002", "ผ้าเบรก"),
+        row("prod-3", "promo-1", "P0003", "หัวเทียน"),
+        row("prod-3", "promo-2", "P0003", "หัวเทียน"),
+      ]),
+    (error: unknown) =>
+      error instanceof PricePromotionOverlapError &&
+      error.message ===
+        "มีโปรโมชั่นราคาที่เผยแพร่ซ้อนกันสำหรับสินค้า P0001 ไส้กรอง, P0003 หัวเทียน กรุณาตรวจสอบหน้าโปรโมชั่นราคา",
+  );
 });

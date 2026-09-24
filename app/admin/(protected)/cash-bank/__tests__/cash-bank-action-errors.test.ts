@@ -96,6 +96,7 @@ const postingTx = (overrides: Partial<FakeTx> = {}): FakeTx => ({
     findFirst: async () => null,
   },
   $executeRaw: async () => 0,
+  $queryRaw: async () => [],
   ...overrides,
 });
 
@@ -262,4 +263,69 @@ test("a manually created adjustment still updates normally", async () => {
   assert.deepEqual(result, { success: true });
   assert.equal(updated, true);
   assert.deepEqual(guardCalls, [["CashBankAdjustment", "adj-1", "update"]]);
+});
+
+// Lock order: the transfer/adjustment row is locked before the account rows that
+// clear/replace lock, matching every other document flow (document first, accounts last).
+const lockOrderTx = (log: string[], overrides: Partial<FakeTx> = {}): FakeTx =>
+  postingTx({
+    $queryRaw: async (query: unknown) => {
+      const sql = (query as Prisma.Sql).sql;
+      const table = /FROM "(\w+)"/.exec(sql)?.[1] ?? "?";
+      log.push(`lock:${table}:${/FOR NO KEY UPDATE/.test(sql) ? "NO_KEY" : "UPDATE"}`);
+      return [];
+    },
+    cashBankMovement: {
+      findMany: async () => [{ accountId: "acc-to", txnDate: OPENING_DATE }, { accountId: "acc-from", txnDate: OPENING_DATE }],
+      deleteMany: async () => ({ count: 2 }),
+      createMany: async () => ({ count: 1 }),
+      findFirst: async () => null,
+    },
+    ...overrides,
+  });
+
+test("transfer cancel locks the transfer row before the accounts", async () => {
+  const log: string[] = [];
+  fakeTx = lockOrderTx(log, {
+    cashBankTransfer: {
+      findUnique: async () => ({ id: "tr-1", status: "ACTIVE" }),
+      update: async () => ({ id: "tr-1" }),
+    },
+  });
+  const form = new FormData();
+  form.set("cancelNote", "ผิดบัญชี");
+  const result = await actions.cancelCashBankTransfer("tr-1", form);
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(log, ["lock:CashBankTransfer:UPDATE", "lock:CashBankAccount:NO_KEY"]);
+});
+
+test("adjustment cancel locks the adjustment row before the account", async () => {
+  const log: string[] = [];
+  fakeTx = lockOrderTx(log, {
+    cashBankAdjustment: {
+      findUnique: async () => ({ id: "adj-1", status: "ACTIVE" }),
+      update: async () => ({ id: "adj-1" }),
+    },
+  });
+  const form = new FormData();
+  form.set("cancelNote", "ผิดยอด");
+  const result = await actions.cancelCashBankAdjustment("adj-1", form);
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(log, ["lock:CashBankAdjustment:UPDATE", "lock:CashBankAccount:NO_KEY"]);
+});
+
+test("adjustment update locks the adjustment row before re-checking status and posting", async () => {
+  const log: string[] = [];
+  fakeTx = lockOrderTx(log, {
+    cashBankAdjustment: {
+      findUnique: async () => {
+        log.push("adjustment.findUnique");
+        return { id: "adj-1", status: "ACTIVE", adjustNo: "CA26090001" };
+      },
+      update: async () => ({ id: "adj-1" }),
+    },
+  });
+  const result = await actions.updateCashBankAdjustment("adj-1", adjustmentForm());
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(log, ["lock:CashBankAdjustment:UPDATE", "adjustment.findUnique", "lock:CashBankAccount:NO_KEY"]);
 });

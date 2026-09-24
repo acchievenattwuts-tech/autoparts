@@ -6,6 +6,7 @@ import {
   isPrivateObjectPathUnderRoot,
   resolveDeliveryProofImageSource,
   resolveExpenseAttachmentViewSource,
+  resolveWhtAttachmentViewSource,
 } from "@/lib/private-file-ref";
 
 // Expense attachments and delivery proofs (PII) moved to the private Blob store.
@@ -58,4 +59,20 @@ test("delivery proofs: missing -> null, legacy unchanged, private -> kind route"
     src: "/api/admin/delivery-proofs/p1/photo",
     isPrivate: true,
   });
+});
+
+// WHT certificate (50 ทวิ) attachments carry tax IDs and follow the same split.
+test("WHT attachments: legacy URL renders as-is, private goes through the auth route", () => {
+  const legacy = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
+  assert.deepEqual(resolveWhtAttachmentViewSource({ id: "att1", url: legacy }), {
+    src: legacy,
+    isPrivate: false,
+  });
+  assert.deepEqual(resolveWhtAttachmentViewSource({ id: "att1", url: "wht-attachments/wht1/1-a.pdf" }), {
+    src: "/api/admin/wht-attachments/att1",
+    isPrivate: true,
+  });
+  assert.equal(isPrivateObjectPathUnderRoot("wht-attachments/wht1/1-a.pdf", "wht-attachments"), true);
+  assert.equal(isPrivateObjectPathUnderRoot("expense-attachments/exp1/a.webp", "wht-attachments"), false);
+  assert.equal(isPrivateObjectPathUnderRoot("wht-attachments/../2026/09/24/slip1.webp", "wht-attachments"), false);
 });

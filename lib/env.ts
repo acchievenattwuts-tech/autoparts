@@ -57,7 +57,7 @@ const WARN_IF_MISSING: ReadonlyArray<{ key: string; consequence: string }> = [
   {
     key: "BLOB_SLIPS_READ_WRITE_TOKEN",
     consequence:
-      "the private Blob store is unreachable — LINE payment slips are not saved, and expense attachment / delivery-proof uploads fail (they never fall back to the public store)",
+      "the private Blob store is unreachable — LINE payment slips are not saved, and expense attachment / delivery-proof / WHT certificate uploads fail (they never fall back to the public store)",
   },
 ];
 

@@ -3,7 +3,8 @@ import { createRequire } from "node:module";
 import test, { before, beforeEach, mock } from "node:test";
 import { pathToFileURL } from "node:url";
 
-// Expense attachments and delivery-proof images are PII: new uploads must land
+// Expense attachments, delivery-proof images and WHT certificate attachments are
+// PII: new uploads must land
 // in the PRIVATE Blob store (access "private" + BLOB_SLIPS_READ_WRITE_TOKEN), the
 // DB must receive the object pathname, and a missing token must fail rather than
 // silently fall back to the public store. Deletion must hit the store the value
@@ -17,8 +18,10 @@ let delCalls: DelCall[] = [];
 
 type ExpenseStorage = typeof import("@/lib/expense-attachment-storage");
 type DeliveryStorage = typeof import("@/lib/delivery-proof-storage");
+type WhtStorage = typeof import("@/lib/wht-attachment-storage");
 let expenseStorage: ExpenseStorage;
 let deliveryStorage: DeliveryStorage;
+let whtStorage: WhtStorage;
 
 const PRIVATE_TOKEN = "vercel_blob_rw_private_test";
 const LEGACY_EXPENSE_URL = "https://abc.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
@@ -42,6 +45,7 @@ before(async () => {
   });
   expenseStorage = await import("@/lib/expense-attachment-storage");
   deliveryStorage = await import("@/lib/delivery-proof-storage");
+  whtStorage = await import("@/lib/wht-attachment-storage");
 });
 
 beforeEach(() => {
@@ -115,5 +119,45 @@ test("delivery-proof cleanup deletes private objects only and leaves legacy URLs
 
   assert.deepEqual(delCalls, [
     { target: ["delivery-proofs/sale1/1-photo-u.jpg"], options: { token: PRIVATE_TOKEN } },
+  ]);
+});
+
+// WHT certificate (50 ทวิ) attachments carry tax IDs — same private-store contract.
+const LEGACY_WHT_URL = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
+
+test("a new WHT attachment is put privately with the private token and stores the pathname", async () => {
+  const stored = await whtStorage.uploadWhtAttachmentObject({ whtReceivedId: "wht1", prepared });
+
+  assert.equal(putCalls.length, 1);
+  const call = putCalls[0]!;
+  assert.equal(call.options.access, "private");
+  assert.equal(call.options.token, PRIVATE_TOKEN);
+  assert.equal(call.options.contentType, "image/webp");
+  assert.match(call.pathname, /^wht-attachments\/wht1\/\d+-[0-9a-f-]+\.webp$/);
+  assert.equal(stored, call.pathname);
+  assert.equal(stored.startsWith("https://"), false);
+});
+
+test("without the private token a WHT upload throws and nothing reaches the public store", async () => {
+  delete process.env.BLOB_SLIPS_READ_WRITE_TOKEN;
+
+  await assert.rejects(whtStorage.uploadWhtAttachmentObject({ whtReceivedId: "wht1", prepared }));
+  assert.deepEqual(putCalls, []);
+});
+
+test("WHT attachment deletion routes each value to its store and never leaves its root", async () => {
+  await whtStorage.deleteWhtAttachmentObjects([
+    "wht-attachments/wht1/2-b.pdf",
+    LEGACY_WHT_URL,
+    "wht-attachments/../2026/09/24/slip1.webp", // climbs out of the root
+    "expense-attachments/exp1/a.webp", // another module's private object
+    "2026/09/24/slip1.webp", // a payment slip path
+    "https://abc.public.blob.vercel-storage.com/products/p1/a.webp", // another public root
+    "https://evil.example.com/wht-attachments/x.webp", // not our Blob host
+  ]);
+
+  assert.deepEqual(delCalls, [
+    { target: ["wht-attachments/wht1/2-b.pdf"], options: { token: PRIVATE_TOKEN } },
+    { target: [LEGACY_WHT_URL], options: undefined },
   ]);
 });

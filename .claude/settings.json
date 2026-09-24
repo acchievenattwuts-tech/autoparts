@@ -26,6 +26,15 @@
             "command": "node .claude/hooks/protect-paths.mjs"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/block-prisma-db-push.mjs"
+          }
+        ]
       }
     ]
   }

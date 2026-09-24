@@ -13,10 +13,12 @@ let authMode: AuthMode = "ok";
 let requestedPermissions: string[][] = [];
 let expenseRows: Record<string, { url: string; fileName: string }> = {};
 let proofRows: Record<string, { signatureImageUrl: string | null; deliveryPhotoUrl: string | null }> = {};
+let whtRows: Record<string, { url: string; fileName: string }> = {};
 let blobGets: Array<{ pathname: string; options: Record<string, unknown> }> = [];
 
 const PRIVATE_TOKEN = "vercel_blob_rw_private_test";
 const EXPENSE_LEGACY_URL = "https://abc.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
+const WHT_LEGACY_URL = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
 
 const checkAuth = (permissions: string[]) => {
   requestedPermissions.push(permissions);
@@ -30,6 +32,7 @@ type RouteModule = {
 };
 let expenseRoute: RouteModule;
 let proofRoute: RouteModule;
+let whtRoute: RouteModule;
 
 before(async () => {
   mock.method(console, "error", () => undefined);
@@ -47,6 +50,9 @@ before(async () => {
         },
         deliveryProof: {
           findUnique: async ({ where }: { where: { id: string } }) => proofRows[where.id] ?? null,
+        },
+        whtReceivedAttachment: {
+          findUnique: async ({ where }: { where: { id: string } }) => whtRows[where.id] ?? null,
         },
       },
     },
@@ -73,6 +79,7 @@ before(async () => {
   });
   expenseRoute = (await import("../expense-attachments/[id]/route")) as unknown as RouteModule;
   proofRoute = (await import("../delivery-proofs/[id]/[kind]/route")) as unknown as RouteModule;
+  whtRoute = (await import("../wht-attachments/[id]/route")) as unknown as RouteModule;
 });
 
 beforeEach(() => {
@@ -96,6 +103,12 @@ beforeEach(() => {
       signatureImageUrl: null,
       deliveryPhotoUrl: "https://abc.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
     },
+  };
+  whtRows = {
+    whtprivate: { url: "wht-attachments/wht1/2-b.pdf", fileName: "50ทวิ.pdf" },
+    whtlegacy: { url: WHT_LEGACY_URL, fileName: "old.webp" },
+    whtmissing: { url: "wht-attachments/wht1/missing.webp", fileName: "gone.webp" },
+    whtforeign: { url: "expense-attachments/exp1/2-b.webp", fileName: "other.webp" },
   };
 });
 
@@ -183,4 +196,46 @@ test("delivery proof route: a legacy public URL redirects to itself", async () =
     response.headers.get("location"),
     "https://abc.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
   );
+});
+
+const callWht = (id: string) => whtRoute.GET({} as never, { params: Promise.resolve({ id }) });
+
+test("WHT attachment route: 401 without a session, 403 without wht.view", async () => {
+  authMode = "unauthorized";
+  assert.equal((await callWht("whtprivate")).status, 401);
+  authMode = "forbidden";
+  assert.equal((await callWht("whtprivate")).status, 403);
+  assert.deepEqual(requestedPermissions, [["wht.view"], ["wht.view"]]);
+  assert.deepEqual(blobGets, []);
+});
+
+test("WHT attachment route: 404 for unknown, malformed or out-of-root values", async () => {
+  assert.equal((await callWht("nosuchid")).status, 404);
+  assert.equal((await callWht("../etc")).status, 404);
+  assert.equal((await callWht("whtmissing")).status, 404);
+  assert.equal((await callWht("whtforeign")).status, 404);
+  assert.deepEqual(blobGets.map((g) => g.pathname), ["wht-attachments/wht1/missing.webp"]);
+});
+
+test("WHT attachment route: streams a private file with a private, short cache", async () => {
+  const response = await callWht("whtprivate");
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), "bytes:wht-attachments/wht1/2-b.pdf");
+  assert.equal(response.headers.get("content-type"), "application/pdf");
+  assert.equal(response.headers.get("cache-control"), "private, max-age=300");
+  assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(
+    response.headers.get("content-disposition"),
+    "inline; filename*=UTF-8''50%E0%B8%97%E0%B8%A7%E0%B8%B4.pdf",
+  );
+  assert.deepEqual(blobGets, [
+    { pathname: "wht-attachments/wht1/2-b.pdf", options: { access: "private", token: PRIVATE_TOKEN } },
+  ]);
+});
+
+test("WHT attachment route: a legacy public URL redirects to itself", async () => {
+  const response = await callWht("whtlegacy");
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), WHT_LEGACY_URL);
+  assert.deepEqual(blobGets, []);
 });

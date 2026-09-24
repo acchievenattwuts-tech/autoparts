@@ -97,7 +97,8 @@ Security headers in `next.config.ts`:
 
 ## 6. Prisma & schema
 
-- Use **`prisma db push`**, not `migrate dev` — the Supabase transaction pooler has no shadow database.
+- **Schema changes are applied as narrow additive SQL** in `prisma/migrations/<YYYYMMDD>_<name>/migration.sql`, run with `prisma db execute --file` — `ADD COLUMN` / `CREATE TABLE … IF NOT EXISTS`, and `CREATE INDEX CONCURRENTLY IF NOT EXISTS` for indexes, each index statement run separately outside a transaction. Then `npx prisma generate`, and verify with **`npx tsx scripts/check-schema-drift.ts`** (read-only `prisma migrate diff` against the configured database; ignores the known search drift below, exits 1 on anything else).
+- **Never `prisma db push`** (nor `npm run db:push*`) and never `migrate dev`. The database intentionally holds five search indexes and the generated column `product_search_documents.trgm_text` created by `prisma/scripts/setup-search-v2.ts` / `setup-knowledge-rag.ts` outside `schema.prisma`; a push drops them. `migrate dev` needs a shadow database the Supabase pooler lacks. `prisma.config.ts` refuses `db push` against production (`lib/prisma-db-push-guard.ts`), and the `.claude/hooks/block-prisma-db-push.mjs` hook blocks it from agent shells.
 - **All `DateTime` fields use `@db.Timestamptz(3)`** unless the user approves a narrower PostgreSQL type for that specific field. Never a bare `DateTime` or `timestamp without time zone`; storage must preserve the instant semantics used by `lib/th-date.ts`.
 - Price and cost decimals: `@db.Decimal(10,2)`.
 - Quantity decimals: `@db.Decimal(12,4)`, to support fractional units.

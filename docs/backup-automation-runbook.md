@@ -80,6 +80,7 @@ autoparts-backup/
     YYYY/MM/DD/<id>.webp              ← สลิปโอนเงิน LINE (อยู่ที่ root ของ private store)
     expense-attachments/...           ← เอกสารแนบค่าใช้จ่าย
     delivery-proofs/...               ← หลักฐานการส่งของ
+    wht-attachments/...               ← ไฟล์แนบหนังสือรับรอง 50 ทวิ (ไฟล์ใหม่ตั้งแต่ 2026-09-25)
   state/
     blob-index.json                   ← ตัวจำว่าไฟล์ public ไหนสำรองไปแล้ว (etag)
   state-private/
@@ -295,41 +296,93 @@ pg_restore --dbname $newDbUrl --no-owner --no-acl --data-only --table=Product .\
 pg_restore --list .\postgres-2026-08-17.dump
 ```
 
-### กู้คืนไฟล์รูป
+### กู้คืนไฟล์ Blob ด้วย `scripts/backup-blob-restore.ts` (เพิ่ม 2026-09-24)
 
-ไฟล์ใน `blob-mirror/` เก็บด้วย pathname เดิมของ Vercel Blob เป๊ะ ๆ การกู้คืนคืออัปโหลดกลับเข้า Blob store ด้วย pathname เดิม แล้ว URL เดิมจะกลับมาใช้ได้
+ไฟล์ใน `blob-mirror/` และ `blob-mirror-private/` เก็บด้วย pathname เดิมของ Vercel Blob เป๊ะ ๆ การกู้คืนคืออัปโหลดกลับเข้า
+Blob store **ชนิดเดียวกัน** ด้วย pathname เดิม สคริปต์นี้ทำให้ โดยมีกติกาดังนี้
 
-กู้ทั้งหมด:
+- **ค่าเริ่มต้นคือ dry run** — แค่ `list` store ปลายทาง (อ่านอย่างเดียว) แล้วพิมพ์ว่าไฟล์ไหนจะอัปโหลด ไฟล์ไหนมีอยู่แล้วจะข้าม พร้อมยอดรวม จะเขียนจริงก็ต่อเมื่อใส่ `--apply`
+- อัปโหลดด้วย `put(pathname, body, { access, addRandomSuffix: false, allowOverwrite: false, token })` — ไฟล์ที่มีอยู่แล้วใน store **ไม่ถูกทับ** เว้นแต่ใส่ `--overwrite`
+- `--store public` ใช้ `BLOB_READ_WRITE_TOKEN` + `access: "public"` · `--store private` ใช้ `BLOB_SLIPS_READ_WRITE_TOKEN` + `access: "private"`
+- `--manifest <ไฟล์>` = กู้เฉพาะ pathname ที่อยู่ใน manifest (แนะนำ) · `--prefix <p>` = กู้เฉพาะ pathname ที่ขึ้นต้นด้วย `p`
+- ข้าม `backups/` เสมอ, อัปโหลดทีละไฟล์ (retry 3 ครั้ง หน่วง 1 วิ / 2 วิ), สรุปผลท้ายรัน, exit code ไม่เป็น 0 เมื่อมีไฟล์อัปโหลดไม่สำเร็จ, ไฟล์ใน manifest หาไม่เจอใน `--source`, หรือ pathname ไม่ปลอดภัย
+- **ปฏิเสธทันทีก่อนเขียนอะไร** เมื่อ: token public กับ private เป็นค่าเดียวกัน (เช็กแบบเดียวกับ workflow) · manifest เป็นของ store อีกชนิด (`source` หรือ URL) · store ของ token เสิร์ฟ URL คนละชนิดกับ `--store` · `--source` เป็นโฟลเดอร์ `autoparts-backup` ทั้งก้อน (เจอ `blob-mirror`, `db`, `state` ฯลฯ ข้างใน) · `--store public` แต่ชื่อโฟลเดอร์ `--source` มีคำว่า `private` · ใส่ flag ที่ไม่รู้จัก (กันพิมพ์ผิดแล้วได้ความหมายอื่น)
+
+> **ใช้ `--manifest` เสมอถ้าทำได้** — `blob-mirror*/` บน Drive เก็บสะสมไม่เคยลบ จึงมีไฟล์ที่ production ลบทิ้งไปแล้วโดยตั้งใจ
+> (เช่นสลิปที่แอดมินปฏิเสธ) ถ้ากู้ทั้งโฟลเดอร์โดยไม่ใส่ manifest ไฟล์พวกนั้นจะกลับมาด้วย manifest ล่าสุดคือสภาพ store ณ วันนั้นพอดี
+> manifest มีอายุ 60 วันตาม retention ส่วน mirror อยู่ตลอด
+
+`tsx` ไม่โหลด `.env.local` เอง ให้ตั้ง token ใน PowerShell session นั้นเอง (หรือใช้ `npx tsx --env-file=.env.local ...` ซึ่งจะชี้ไปที่ store **production** ตามค่าใน `.env.local`)
+ตั้งไว้ทั้งสองตัวจะดีที่สุด สคริปต์จะได้เช็กว่าไม่ซ้ำกัน และล้างทิ้งทันทีเมื่อเสร็จ
+
+#### กู้คืนรูปสาธารณะ (public store)
 
 ```powershell
-rclone copy gdrive:autoparts-backup/blob-mirror D:\restore\blob-mirror
-npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror
+# 1. ดึง mirror และ manifest ล่าสุดของ public store ลงเครื่อง (copy เท่านั้น ห้าม sync)
+rclone copy gdrive:autoparts-backup/blob-mirror D:\restore\blob-mirror --transfers 2 --checkers 2 --tpslimit 4
+rclone lsf gdrive:autoparts-backup/db --include "blob-manifest-*.json"
+rclone copy gdrive:autoparts-backup/db/blob-manifest-2026-09-21.json D:\restore\
+
+# 2. ตั้ง token ของ store ปลายทาง
+$env:BLOB_READ_WRITE_TOKEN = "<token ของ public store ปลายทาง>"
+$env:BLOB_SLIPS_READ_WRITE_TOKEN = "<token ของ private store>"   # ใส่ไว้ให้สคริปต์เช็กว่าไม่ซ้ำกัน
+
+# 3. dry run — อ่านรายการ "would upload" / "already in target store" และบรรทัด WARNING ให้ครบ
+npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror --store public `
+  --manifest D:\restore\blob-manifest-2026-09-21.json
+
+# 4. ถ้าผล dry run ถูกต้อง รันคำสั่งเดิม + --apply
+npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror --store public `
+  --manifest D:\restore\blob-manifest-2026-09-21.json --apply
+
+# 5. ล้าง token ออกจาก session
+Remove-Item Env:BLOB_READ_WRITE_TOKEN, Env:BLOB_SLIPS_READ_WRITE_TOKEN
 ```
 
-กู้ไฟล์เดียว — หา pathname จาก `blob-manifest-<วันที่>.json` แล้วดึงเฉพาะไฟล์นั้น:
+**เรื่อง URL ของ public store** — ฐานข้อมูลเก็บรูปสาธารณะ/รูป legacy เป็น **URL เต็ม** เช่น
+`https://<store-id>.public.blob.vercel-storage.com/products/AB123/main.webp` โดย hostname คือ id ของ store
+
+- กู้กลับเข้า **store เดิม** → URL เหมือนเดิมทุกตัว DB ใช้ต่อได้ทันที
+- กู้เข้า **store ใหม่** → ไฟล์ได้ hostname ใหม่ URL ใน DB จะยังเสียจนกว่าจะเขียน URL ใน DB ใหม่ทั้งหมด (**สคริปต์นี้ไม่ทำ** เป็นงานแยกที่ต้องวางแผนก่อน)
+  สคริปต์จะขึ้น `⚠️ WARNING: the manifest's URLs point at a DIFFERENT store` เมื่อ host ใน manifest ไม่ตรงกับ store ปลายทาง (ต้องใส่ `--manifest` ถึงจะเช็กได้)
+
+กู้ไฟล์เดียวหรือโฟลเดอร์เดียว — ใช้ `--prefix` กับ pathname (ยังคงเป็น dry run จนกว่าจะใส่ `--apply`):
 
 ```powershell
-rclone copy "gdrive:autoparts-backup/blob-mirror/products/AB123/main.webp" D:\restore\
+npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror --store public --prefix products/AB123/
 ```
 
-> สคริปต์ `backup-blob-restore.ts` ยังไม่ได้เขียน — ตอนนี้ถ้าต้องกู้ไฟล์จำนวนมากให้แจ้งก่อน จะเขียนให้ตอนนั้น เพราะการอัปโหลดทับ Blob store เป็นงานที่ต้องคุมมือ ไม่ควรมีสคริปต์พร้อมยิงวางทิ้งไว้
+#### กู้คืนไฟล์ส่วนตัว (private store)
 
-### กู้คืนไฟล์ส่วนตัว (private store)
+ไฟล์ใน `blob-mirror-private/` ต้องกลับเข้า **private store เท่านั้น** ที่ pathname เดิมเป๊ะ ๆ เพราะฐานข้อมูลเก็บ pathname (ไม่ใช่ URL)
+— เช่น `PaymentSlip.imageUrl` = `2026/09/01/<id>.webp`, `expense-attachments/...`, `delivery-proofs/...` จึงกู้เข้า private store ใหม่ได้โดย DB ไม่ต้องแก้ (แค่เปลี่ยน `BLOB_SLIPS_READ_WRITE_TOKEN` ใน Vercel)
 
-ไฟล์ใน `blob-mirror-private/` ต้องกลับเข้า **private store เท่านั้น** ด้วย token `BLOB_SLIPS_READ_WRITE_TOKEN`
-ที่ pathname เดิมเป๊ะ ๆ เพราะฐานข้อมูลเก็บ pathname (ไม่ใช่ URL) — เช่น `PaymentSlip.imageUrl` = `2026/09/01/<id>.webp`
+```powershell
+# 1. ดึง mirror และ manifest ล่าสุดของ private store (ไฟล์ PII — เก็บในเครื่องที่ปลอดภัย แล้วลบทิ้งเมื่อเสร็จ)
+rclone copy gdrive:autoparts-backup/blob-mirror-private D:\restore\blob-mirror-private --transfers 2 --checkers 2 --tpslimit 4
+rclone lsf gdrive:autoparts-backup/db-private --include "blob-manifest-private-*.json"
+rclone copy gdrive:autoparts-backup/db-private/blob-manifest-private-2026-09-21.json D:\restore\
 
-```ts
-await put(pathname, body, {
-  access: "private",
-  addRandomSuffix: false,
-  token: process.env.BLOB_SLIPS_READ_WRITE_TOKEN,
-});
+# 2. ตั้ง token
+$env:BLOB_SLIPS_READ_WRITE_TOKEN = "<token ของ private store ปลายทาง>"
+$env:BLOB_READ_WRITE_TOKEN = "<token ของ public store>"   # ใส่ไว้ให้สคริปต์เช็กว่าไม่ซ้ำกัน
+
+# 3. dry run
+npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror-private --store private `
+  --manifest D:\restore\blob-manifest-private-2026-09-21.json
+
+# 4. apply
+npx tsx scripts/backup-blob-restore.ts --source D:\restore\blob-mirror-private --store private `
+  --manifest D:\restore\blob-manifest-private-2026-09-21.json --apply
+
+# 5. ล้าง token และลบไฟล์ PII ในเครื่อง
+Remove-Item Env:BLOB_READ_WRITE_TOKEN, Env:BLOB_SLIPS_READ_WRITE_TOKEN
+Remove-Item -Recurse D:\restore\blob-mirror-private
 ```
 
-- ห้ามใช้ `BLOB_READ_WRITE_TOKEN` หรือ `access: "public"` — ไฟล์ PII จะหลุดไปอยู่ใน public store ที่เปิดด้วย URL ได้
-- ห้ามปล่อย `addRandomSuffix` เป็นค่า default — pathname จะเปลี่ยนแล้วแอปหาไฟล์ไม่เจอ
-- หา pathname ได้จาก `db-private/blob-manifest-private-<วันที่>.json` หรือจาก path ของไฟล์ใน `blob-mirror-private/`
+- ห้ามกู้ `blob-mirror-private/` ด้วย `--store public` — ไฟล์ PII จะเปิดได้ด้วย URL สคริปต์ปฏิเสธทั้งจากชื่อโฟลเดอร์, `source` ของ manifest และชนิด URL ของ store ปลายทาง
+- ห้ามอัปโหลดเองด้วย `addRandomSuffix` ค่า default — pathname จะเปลี่ยนแล้วแอปหาไฟล์ไม่เจอ (สคริปต์ส่ง `addRandomSuffix: false` และถือว่าล้มเหลวถ้า pathname ที่ได้กลับมาไม่ตรง)
+- manifest ปัจจุบันไม่ได้บันทึก `contentType` สคริปต์จึงปล่อยให้ `@vercel/blob` เดาจากนามสกุลไฟล์ (`.webp`, `.jpg`, `.pdf` ฯลฯ) ถ้า manifest ในอนาคตมี `contentType` จะใช้ค่านั้นแทน
 
 ## Troubleshooting
 

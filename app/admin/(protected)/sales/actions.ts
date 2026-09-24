@@ -62,7 +62,8 @@ import {
   type TransactionProductDetailRow,
 } from "@/lib/transaction-product-search";
 import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
-import { clearCashBankSourceMovements, isCashBankPostingError, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { isUserFacingDocumentError } from "@/lib/document-user-error";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -81,9 +82,10 @@ import {
   validateWhtAgainstTotal,
   type WhtReceivedInput,
 } from "@/lib/wht";
-import { cancelWhtReceivedForDocument, persistWhtReceived, WhtReceivedUserError } from "@/lib/wht-received";
+import { cancelWhtReceivedForDocument, persistWhtReceived } from "@/lib/wht-received";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
+import { indexPublishedPromotionsByProduct, PricePromotionOverlapError } from "@/lib/pricing/price-promotion";
 import {
   assertLotBalanceAvailable,
   createWarrantySnapshots,
@@ -414,14 +416,15 @@ async function getSaleSignerSnapshot(
 
 /**
  * User-fixable conditions raised by the shared helpers the sale transaction runs
- * (cash/bank posting rules, withholding-tax record, receiving account lookup).
+ * (cash/bank posting rules, withholding-tax record, receiving account lookup,
+ * overlapping published price promotions).
  * Their Thai message is returned as-is, without reportCriticalError.
  */
 function isSaleHelperUserError(err: unknown): err is Error {
   return (
-    isCashBankPostingError(err) ||
-    err instanceof WhtReceivedUserError ||
-    err instanceof SaleCoreUserError
+    isUserFacingDocumentError(err) ||
+    err instanceof SaleCoreUserError ||
+    err instanceof PricePromotionOverlapError
   );
 }
 
@@ -688,16 +691,17 @@ export async function createSale(
                       endDate: { gte: docDate },
                     },
                   },
-                  select: { productId: true, promotionId: true, promotionPrice: true },
+                  select: {
+                    productId: true,
+                    promotionId: true,
+                    promotionPrice: true,
+                    product: { select: { code: true, name: true } },
+                  },
                 }),
               ])
             : [[], []];
           const normalPriceByProduct = new Map(normalPriceRows.map((row) => [row.productId, Number(row.amount)]));
-          const promotionByProduct = new Map<string, (typeof promotionRows)[number]>();
-          for (const promotion of promotionRows) {
-            if (promotionByProduct.has(promotion.productId)) throw new Error("OVERLAPPING_PUBLISHED_PRICE_PROMOTIONS");
-            promotionByProduct.set(promotion.productId, promotion);
-          }
+          const promotionByProduct = indexPublishedPromotionsByProduct(promotionRows);
           // 1. Create Sale header
           const sale = await tx.sale.create({
             data: {
@@ -1862,7 +1866,7 @@ export async function updateSale(
     ) {
       return { error: err.message };
     }
-    console.error("[updateSale]", err);
+    await reportCriticalError(err, { scope: "sales.update", entityId: id, userId: session.user.id });
     if (
       marketplaceConfig &&
       err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1968,7 +1972,7 @@ const uploadDeliveryProofImage = async ({
     });
     return { url };
   } catch (error) {
-    await reportCriticalError(error, { scope: "sales.update" });
+    await reportCriticalError(error, { scope: "sales.delivery_proof_upload" });
     return { error: "อัปโหลดรูปหลักฐานไม่สำเร็จ กรุณาลองใหม่อีกครั้ง" };
   }
 };

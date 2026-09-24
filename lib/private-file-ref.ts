@@ -2,14 +2,14 @@ import { toPublicStorageCdnPath } from "@/lib/product-image-url";
 
 /**
  * Stored references for PII evidence files (expense attachments, delivery-proof
- * signatures/photos). Client-safe: no `@vercel/blob` import.
+ * signatures/photos, WHT certificate attachments). Client-safe: no `@vercel/blob` import.
  *
  * Two shapes live in the same DB columns:
  *  - legacy rows hold a full public URL (`https://…public.blob.vercel-storage.com/…`)
  *    from before these files moved to the private store — rendered as before;
  *  - new rows hold a private-store object pathname (`expense-attachments/<id>/…`,
- *    `delivery-proofs/<saleId>/…`) that is only viewable through a
- *    session-checked `/api/admin/...` route.
+ *    `delivery-proofs/<saleId>/…`, `wht-attachments/<whtReceivedId>/…`) that
+ *    is only viewable through a session-checked `/api/admin/...` route.
  */
 
 export const DELIVERY_PROOF_ROOT = "delivery-proofs";
@@ -45,6 +45,9 @@ export const buildExpenseAttachmentViewRoute = (attachmentId: string): string =>
 export const buildDeliveryProofImageRoute = (proofId: string, kind: DeliveryProofImageKind): string =>
   `/api/admin/delivery-proofs/${encodeURIComponent(proofId)}/${kind}`;
 
+export const buildWhtAttachmentViewRoute = (attachmentId: string): string =>
+  `/api/admin/wht-attachments/${encodeURIComponent(attachmentId)}`;
+
 /** View source for an expense attachment (legacy URLs are rendered unchanged). */
 export const resolveExpenseAttachmentViewSource = (attachment: {
   id: string;
@@ -53,6 +56,15 @@ export const resolveExpenseAttachmentViewSource = (attachment: {
   isLegacyPublicFileUrl(attachment.url)
     ? { src: attachment.url, isPrivate: false }
     : { src: buildExpenseAttachmentViewRoute(attachment.id), isPrivate: true };
+
+/** View source for a WHT certificate (50 ทวิ) attachment (legacy URLs are rendered unchanged). */
+export const resolveWhtAttachmentViewSource = (attachment: {
+  id: string;
+  url: string;
+}): StoredFileViewSource =>
+  isLegacyPublicFileUrl(attachment.url)
+    ? { src: attachment.url, isPrivate: false }
+    : { src: buildWhtAttachmentViewRoute(attachment.id), isPrivate: true };
 
 /**
  * View source for a delivery-proof image, or null when the proof has none.

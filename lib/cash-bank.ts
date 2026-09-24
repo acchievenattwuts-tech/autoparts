@@ -50,6 +50,49 @@ function uniqueIds(values: string[]): string[] {
   return [...new Set(values.filter((value) => value.trim().length > 0))];
 }
 
+// Account ids already locked by each open transaction, so repeated posting calls
+// inside one transaction do not re-issue the lock. Keyed by the tx client object,
+// which lives exactly as long as its transaction.
+const lockedCashBankAccountIdsByTx = new WeakMap<TxClient, Set<string>>();
+
+/**
+ * Serializes every writer of an account's running balance. Must run before reading
+ * or rewriting that account's movements; locks are held until the transaction ends.
+ *
+ * Accounts are locked in one statement in id order (deadlock-safe among themselves)
+ * and always after the caller's document-row locks.
+ *
+ * FOR NO KEY UPDATE, not FOR UPDATE: posting flows insert rows that reference the
+ * account (Sale, DocumentPayment, CashBankTransfer, CashBankMovement…) before they
+ * post, and each such FK insert holds FOR KEY SHARE on the account row. FOR UPDATE
+ * conflicts with FOR KEY SHARE, so two concurrent postings to one account would each
+ * wait for the other's FK lock (deadlock). FOR NO KEY UPDATE still conflicts with
+ * itself, which is all the running-balance rewrite needs.
+ */
+export async function lockCashBankAccountsForPosting(
+  tx: TxClient,
+  accountIds: string[],
+): Promise<void> {
+  let lockedIds = lockedCashBankAccountIdsByTx.get(tx);
+  if (!lockedIds) {
+    lockedIds = new Set<string>();
+    lockedCashBankAccountIdsByTx.set(tx, lockedIds);
+  }
+  const alreadyLocked = lockedIds;
+  const pendingIds = uniqueIds(accountIds)
+    .filter((accountId) => !alreadyLocked.has(accountId))
+    .sort();
+  if (pendingIds.length === 0) return;
+
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id FROM "CashBankAccount"
+    WHERE id IN (${Prisma.join(pendingIds)})
+    ORDER BY id
+    FOR NO KEY UPDATE
+  `);
+  for (const accountId of pendingIds) alreadyLocked.add(accountId);
+}
+
 async function updateCashBankRunningBalances(
   tx: TxClient,
   accountId: string,
@@ -144,6 +187,7 @@ export async function recalculateCashBankAccount(
   tx: TxClient,
   accountId: string,
 ): Promise<void> {
+  await lockCashBankAccountsForPosting(tx, [accountId]);
   const account = await tx.cashBankAccount.findUnique({
     where: { id: accountId },
     select: { openingBalance: true },
@@ -194,6 +238,13 @@ export async function replaceCashBankSourceMovements(
   });
 
   const nextEntries = entries.filter((entry) => entry.amount > 0);
+  // The source's own rows are guarded by the caller's document lock; lock every
+  // account they touch (old and new, e.g. a document moved between accounts)
+  // before validating, deleting, inserting, or rebalancing.
+  await lockCashBankAccountsForPosting(tx, [
+    ...oldMovements.map((movement) => movement.accountId),
+    ...nextEntries.map((entry) => entry.accountId),
+  ]);
   await assertCashBankAccountsCanPost(tx, nextEntries);
 
   await tx.cashBankMovement.deleteMany({
@@ -248,6 +299,7 @@ export async function clearCashBankSourceMovements(
 
   if (oldMovements.length === 0) return;
 
+  await lockCashBankAccountsForPosting(tx, oldMovements.map((movement) => movement.accountId));
   await tx.cashBankMovement.deleteMany({
     where: { sourceType, sourceId },
   });

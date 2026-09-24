@@ -19,6 +19,7 @@ import {
   CashBankDirection,
   CashBankSourceType,
   CashBankTransferStatus,
+  Prisma,
 } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -550,6 +551,8 @@ export async function cancelCashBankTransfer(transferId: string, formData: FormD
 
     const beforeSnapshot = await getCashBankTransferAuditSnapshot(transferId);
     await dbTx(async (tx) => {
+      // Document row first, then (inside clearCashBankSourceMovements) the accounts.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "CashBankTransfer" WHERE id = ${transferId} FOR UPDATE`);
       const transfer = await tx.cashBankTransfer.findUnique({
         where: { id: transferId },
         select: { id: true, status: true },
@@ -701,6 +704,8 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
     const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
 
     await dbTx(async (tx) => {
+      // Document row first, then (inside replaceCashBankSourceMovements) the accounts.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "CashBankAdjustment" WHERE id = ${adjustmentId} FOR UPDATE`);
       const existing = await tx.cashBankAdjustment.findUnique({
         where: { id: adjustmentId },
         select: { id: true, status: true, adjustNo: true },
@@ -773,6 +778,8 @@ export async function cancelCashBankAdjustment(adjustmentId: string, formData: F
 
     const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
     await dbTx(async (tx) => {
+      // Document row first, then (inside clearCashBankSourceMovements) the accounts.
+      await tx.$queryRaw(Prisma.sql`SELECT id FROM "CashBankAdjustment" WHERE id = ${adjustmentId} FOR UPDATE`);
       const adjustment = await tx.cashBankAdjustment.findUnique({
         where: { id: adjustmentId },
         select: { id: true, status: true },

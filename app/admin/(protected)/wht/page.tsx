@@ -20,6 +20,7 @@ import {
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 import { toThaiTaxYear } from "@/lib/wht";
+import { resolveWhtAttachmentViewSource } from "@/lib/private-file-ref";
 import WhtCertificateCell from "./WhtCertificateCell";
 import WhtAttachmentCell from "./WhtAttachmentCell";
 
@@ -340,7 +341,11 @@ const WhtReceivedPage = async ({ searchParams }: WhtPageProps) => {
                     <td className="px-4 py-3">
                       <WhtAttachmentCell
                         whtReceivedId={row.id}
-                        attachments={row.attachments}
+                        attachments={row.attachments.map((attachment) => ({
+                          id: attachment.id,
+                          url: resolveWhtAttachmentViewSource(attachment).src,
+                          fileName: attachment.fileName,
+                        }))}
                         canEdit={canUpdate && row.status === "ACTIVE"}
                       />
                     </td>

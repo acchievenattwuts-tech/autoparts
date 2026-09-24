@@ -454,7 +454,7 @@ test("updateSale returns the sale-status message when the sale was cancelled mea
   assert.equal(consoleErrors, 0);
 });
 
-test("updateSale still hides unexpected errors behind the generic message", { skip: moduleMocksUnavailable }, async () => {
+test("updateSale still hides unexpected errors behind the generic message and reports them", { skip: moduleMocksUnavailable }, async () => {
   const { updateSale } = await import("../actions");
   txOverrides.sale = {
     findUnique: async () => {
@@ -468,5 +468,7 @@ test("updateSale still hides unexpected errors behind the generic message", { sk
   });
 
   assert.deepEqual(result, { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" });
-  assert.equal(consoleErrors, 1);
+  // reportCriticalError (mocked here) is now the log + alert path, as in createSale / cancelSale.
+  assert.equal((criticalReports[0] as Error | undefined)?.message, "connection reset");
+  assert.equal(consoleErrors, 0);
 });

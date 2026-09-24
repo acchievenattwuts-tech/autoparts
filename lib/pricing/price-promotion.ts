@@ -61,6 +61,45 @@ export function resolveScheduledPrice(input: {
   };
 }
 
+/**
+ * More than one PUBLISHED promotion covers the same product on the sale date.
+ * Publishing normally blocks this, so the user fixes it on the price-promotion
+ * page; the message is written for users and is returned as-is.
+ */
+export class PricePromotionOverlapError extends Error {
+  constructor(productLabels: readonly string[]) {
+    super(
+      `มีโปรโมชั่นราคาที่เผยแพร่ซ้อนกันสำหรับสินค้า ${productLabels.join(", ")} กรุณาตรวจสอบหน้าโปรโมชั่นราคา`,
+    );
+    this.name = "PricePromotionOverlapError";
+  }
+}
+
+export type PublishedPromotionRow = {
+  productId: string;
+  product: { code: string; name: string };
+};
+
+/**
+ * Index the PUBLISHED promotion rows active on the sale date by product.
+ * Throws PricePromotionOverlapError naming every product with more than one row.
+ */
+export function indexPublishedPromotionsByProduct<T extends PublishedPromotionRow>(
+  rows: readonly T[],
+): Map<string, T> {
+  const byProduct = new Map<string, T>();
+  const overlappingLabels = new Map<string, string>();
+  for (const row of rows) {
+    if (byProduct.has(row.productId)) {
+      overlappingLabels.set(row.productId, `${row.product.code} ${row.product.name}`);
+      continue;
+    }
+    byProduct.set(row.productId, row);
+  }
+  if (overlappingLabels.size > 0) throw new PricePromotionOverlapError([...overlappingLabels.values()]);
+  return byProduct;
+}
+
 export const isPromotionBelowCost = (promotionPrice: number, costPrice: number): boolean =>
   promotionPrice < costPrice;
 

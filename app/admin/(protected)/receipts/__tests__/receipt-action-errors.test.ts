@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test, { before, beforeEach, mock } from "node:test";
 
 import { Prisma } from "@/lib/generated/prisma";
-// Loaded before the module mock below, so this is the real class.
+// Loaded before the module mocks below, so these are the real classes / guard.
+import { CashBankPostingError, isCashBankPostingError } from "@/lib/cash-bank";
 import { WhtReceivedUserError } from "@/lib/wht-received";
 
 // createReceipt / updateReceipt: Thai business-rule messages still reach the user,
@@ -23,6 +24,7 @@ let receiptStatusInTx: string | null = "ACTIVE";
 let writeLog: string[] = [];
 let reportedErrors = 0;
 let whtPersistError: Error | null = null;
+let cashBankReplaceError: Error | null = null;
 
 const recordLockQuery = async (query: unknown) => {
   const { sql, values } = query as { sql: string; values: unknown[] };
@@ -97,8 +99,10 @@ before(async () => {
         writeLog.push("cashBank.clear");
       },
       replaceCashBankSourceMovements: async () => {
+        if (cashBankReplaceError) throw cashBankReplaceError;
         writeLog.push("cashBank.replace");
       },
+      isCashBankPostingError,
     },
   });
   await mock.module("@/lib/wht-received", {
@@ -111,6 +115,7 @@ before(async () => {
         writeLog.push("wht.persist");
       },
       whtReceivedSnapshotSelect: { id: true },
+      WhtReceivedUserError,
     },
   });
   await mock.module("@/lib/ar-settlement", {
@@ -190,6 +195,7 @@ beforeEach(() => {
   writeLog = [];
   reportedErrors = 0;
   whtPersistError = null;
+  cashBankReplaceError = null;
   fakeTx = baseTx(async () => ({ id: "rec-1" }));
 });
 
@@ -223,27 +229,51 @@ test("Prisma error text is replaced by the generic message", async () => {
   assert.deepEqual(result, { success: false, error: "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้" });
 });
 
-// The typed withholding-tax user error (shared with the sale flow) keeps the receipt
-// behavior unchanged: same Thai message, and still reported as before.
-test("createReceipt / updateReceipt return the withholding-tax message exactly as before", async () => {
+// Typed user errors from the helpers shared with the sale flow (withholding-tax record,
+// cash/bank posting rules) return their Thai message and raise no critical alert.
+const singleLineReceipt = () => ({
+  id: "rec1",
+  receiptNo: "REC26090001",
+  status: "ACTIVE",
+  signerName: "Staff",
+  signerSignatureUrl: null,
+  signedAt: null,
+  user: { name: "Staff", signatureUrl: null },
+  items: [{ saleId: "sale-1", cnId: null, customerAdvanceId: null }],
+});
+
+test("createReceipt / updateReceipt return the withholding-tax message without a critical alert", async () => {
   const message =
     "เอกสารนี้มีไฟล์แนบหนังสือรับรอง 50 ทวิ อยู่ กรุณาลบไฟล์แนบก่อนจึงจะเอายอดภาษีหัก ณ ที่จ่ายออกได้";
   whtPersistError = new WhtReceivedUserError(message);
 
   assert.deepEqual(await actions.createReceipt(receiptForm()), { success: false, error: message });
+
+  existingReceipt = singleLineReceipt();
+  assert.deepEqual(await actions.updateReceipt("rec1", receiptForm()), { error: message });
+  assert.equal(reportedErrors, 0);
+});
+
+test("createReceipt / updateReceipt return the cash/bank posting message without a critical alert", async () => {
+  const message = "บัญชีเงินสด/ธนาคาร CASH-1 - เงินสด ถูกปิดใช้งานแล้ว";
+  cashBankReplaceError = new CashBankPostingError(message);
+
+  assert.deepEqual(await actions.createReceipt(receiptForm()), { success: false, error: message });
+
+  existingReceipt = singleLineReceipt();
+  assert.deepEqual(await actions.updateReceipt("rec1", receiptForm()), { error: message });
+  assert.equal(reportedErrors, 0);
+  assert.equal(writeLog.includes("cashBank.replace"), false);
+});
+
+test("createReceipt / updateReceipt still report unexpected errors", async () => {
+  cashBankReplaceError = new Error("connection reset");
+
+  assert.deepEqual(await actions.createReceipt(receiptForm()), { success: false, error: "connection reset" });
   assert.equal(reportedErrors, 1);
 
-  existingReceipt = {
-    id: "rec1",
-    receiptNo: "REC26090001",
-    status: "ACTIVE",
-    signerName: "Staff",
-    signerSignatureUrl: null,
-    signedAt: null,
-    user: { name: "Staff", signatureUrl: null },
-    items: [{ saleId: "sale-1", cnId: null, customerAdvanceId: null }],
-  };
-  assert.deepEqual(await actions.updateReceipt("rec1", receiptForm()), { error: message });
+  existingReceipt = singleLineReceipt();
+  assert.deepEqual(await actions.updateReceipt("rec1", receiptForm()), { error: "connection reset" });
   assert.equal(reportedErrors, 2);
 });
 

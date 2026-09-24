@@ -2,9 +2,27 @@
 // npm install --save-dev prisma dotenv
 import { config as loadEnv } from "dotenv";
 import { defineConfig } from "prisma/config";
+import { DESTRUCTIVE_DB_OVERRIDE_ENV } from "./lib/destructive-db-script-guard";
+import { checkPrismaDbPush, PROD_DB_PUSH_OVERRIDE_ENV } from "./lib/prisma-db-push-guard";
 
 loadEnv({ path: ".env.local" });
 loadEnv();
+
+// Migrations should prefer a direct connection to avoid PgBouncer issues.
+const datasourceUrl = process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"];
+
+// Prisma loads this file for every CLI command. Refuse `prisma db push` against
+// production: it would drop the search indexes and trgm_text that live outside
+// schema.prisma (.rules §6). Every other command is untouched.
+const dbPushGuard = checkPrismaDbPush({
+  cliArgs: process.argv.slice(2),
+  configUrl: datasourceUrl,
+  prodOverride: process.env[PROD_DB_PUSH_OVERRIDE_ENV],
+  targetOverride: process.env[DESTRUCTIVE_DB_OVERRIDE_ENV],
+});
+if (dbPushGuard.blocked) {
+  throw new Error(dbPushGuard.message);
+}
 
 export default defineConfig({
   schema: "prisma/schema.prisma",
@@ -12,7 +30,6 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // Migrations should prefer a direct connection to avoid PgBouncer issues.
-    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"]!,
+    url: datasourceUrl!,
   },
 });

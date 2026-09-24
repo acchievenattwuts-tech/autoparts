@@ -7,6 +7,7 @@ import { deleteWhtAttachment, uploadWhtAttachments } from "./attachment-actions"
 
 export interface WhtAttachmentItem {
   id: string;
+  /** View URL: the session-checked route for private files, or a legacy public URL. */
   url: string;
   fileName: string;
 }

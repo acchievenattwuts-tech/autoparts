@@ -3,8 +3,9 @@ import test, { before, beforeEach, mock } from "node:test";
 
 // createSale / updateSale: user-fixable conditions raised by the shared helpers the
 // sale transaction runs (lib/cash-bank, lib/wht-received, lib/sale-core) and the
-// createSale product/unit lookups return their Thai message — not the generic
-// error — and raise no critical alert. The helpers run for real against a fake tx.
+// createSale product/unit lookups and overlapping price promotions return their Thai
+// message — not the generic error — and raise no critical alert, while unexpected
+// errors are still reported. The helpers run for real against a fake tx.
 
 const moduleMocksUnavailable =
   typeof (mock as { module?: unknown }).module !== "function" &&
@@ -47,6 +48,7 @@ let dbOverrides: ModelOverrides = {};
 let txOverrides: ModelOverrides = {};
 const txCalls: string[] = [];
 const criticalReports: unknown[] = [];
+const criticalContexts: unknown[] = [];
 
 before(async () => {
   if (moduleMocksUnavailable) return;
@@ -79,8 +81,9 @@ before(async () => {
   await mock.module("@/lib/error-reporting", {
     namedExports: {
       ...realErrorReporting,
-      reportCriticalError: async (error: unknown) => {
+      reportCriticalError: async (error: unknown, context: unknown) => {
         criticalReports.push(error);
+        criticalContexts.push(context);
       },
     },
   });
@@ -219,6 +222,7 @@ const products = {
 beforeEach(() => {
   txCalls.length = 0;
   criticalReports.length = 0;
+  criticalContexts.length = 0;
   dbOverrides = {
     sale: { findUnique: async () => existingSale },
     productUnit: units,
@@ -306,6 +310,32 @@ test("createSale still hides unexpected errors behind the generic message and re
   assert.equal((criticalReports[0] as Error | undefined)?.message, "connection reset");
 });
 
+test("createSale names the products with overlapping published price promotions", { skip: moduleMocksUnavailable }, async () => {
+  txOverrides.customer = {
+    findUnique: async () => ({
+      customerType: { isActive: true, priceList: { id: "pl-1", code: "RETAIL", isActive: true } },
+    }),
+  };
+  const promotionRow = (promotionId: string) => ({
+    productId: "prod-1",
+    promotionId,
+    promotionPrice: 90,
+    product: { code: "P0001", name: "ไส้กรอง" },
+  });
+  txOverrides.pricePromotionItem = {
+    findMany: async () => [promotionRow("promo-1"), promotionRow("promo-2")],
+  };
+  const { createSale } = await import("../actions");
+
+  const result = await createSale(saleForm());
+
+  assert.deepEqual(result, {
+    error: "มีโปรโมชั่นราคาที่เผยแพร่ซ้อนกันสำหรับสินค้า P0001 ไส้กรอง กรุณาตรวจสอบหน้าโปรโมชั่นราคา",
+  });
+  assert.deepEqual(criticalReports, []);
+  assert.equal(txCalls.includes("sale.create"), false);
+});
+
 // ── updateSale ──────────────────────────────────────────────────────────────
 
 test("updateSale returns the cash/bank posting message for a date before the opening balance", { skip: moduleMocksUnavailable }, async () => {
@@ -355,4 +385,29 @@ test("updateSale returns the withholding-tax income-type message", { skip: modul
 
   assert.deepEqual(result, { error: "ประเภทเงินได้ที่เลือกใช้กับภาษีที่ถูกหักไม่ได้" });
   assert.equal(consoleErrors, 0);
+});
+
+test("updateSale reports unexpected errors as critical, with the sale and user ids", { skip: moduleMocksUnavailable }, async () => {
+  txOverrides.cashBankAccount = {
+    findMany: async () => {
+      throw new Error("connection reset");
+    },
+  };
+  const { updateSale } = await import("../actions");
+
+  const result = await updateSale("sale1", saleForm());
+
+  assert.deepEqual(result, { error: GENERIC_ERROR });
+  assert.equal((criticalReports[0] as Error | undefined)?.message, "connection reset");
+  assert.deepEqual(criticalContexts, [{ scope: "sales.update", entityId: "sale1", userId: "user-1" }]);
+});
+
+test("updateSale raises no critical alert for a typed user error", { skip: moduleMocksUnavailable }, async () => {
+  txOverrides.cashBankAccount = { findMany: async () => [cashAccount({ isActive: false })] };
+  const { updateSale } = await import("../actions");
+
+  const result = await updateSale("sale1", saleForm());
+
+  assert.deepEqual(result, { error: "บัญชีเงินสด/ธนาคาร CASH-1 - เงินสด ถูกปิดใช้งานแล้ว" });
+  assert.deepEqual(criticalReports, []);
 });

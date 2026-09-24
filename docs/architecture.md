@@ -64,6 +64,7 @@
 
 ## Important Source Of Truth
 - Schema: `prisma/schema.prisma`
+- Schema changes: additive SQL ใน `prisma/migrations/<YYYYMMDD>_<name>/migration.sql` ตาม `.rules` §6 — ห้าม `prisma db push` (จะ drop index ค้นหา + `product_search_documents.trgm_text` ที่อยู่นอก schema; `prisma.config.ts` บล็อกไว้เมื่อชี้ production) · ตรวจ drift แบบ read-only ด้วย `npx tsx scripts/check-schema-drift.ts`
 - Stock engine: `lib/stock-card.ts`
 - VAT utility: `lib/vat.ts`
 - Doc numbering: `lib/doc-number.ts`

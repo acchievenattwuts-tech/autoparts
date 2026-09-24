@@ -2,7 +2,8 @@ import { del } from "@vercel/blob";
 
 import { prepareExpenseAttachment, type PreparedExpenseAttachment } from "@/lib/expense-attachment-storage";
 import { WHT_ATTACHMENT_ROOT } from "@/lib/wht-attachment-constants";
-import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
+import { deletePrivateBlobObjects, putPrivateBlobObject } from "@/lib/private-blob-storage";
+import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/private-file-ref";
 
 /**
  * ที่เก็บไฟล์หนังสือรับรอง 50 ทวิ ที่ลูกค้าออกให้เรา
@@ -10,6 +11,10 @@ import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
  * ใช้ตัวตรวจ/แปลงไฟล์ตัวเดียวกับไฟล์แนบใบค่าใช้จ่าย (ตรวจชนิดจริงจาก magic bytes
  * รูปภาพแปลงเป็น WebP ขาวดำย่อขนาด ส่วน PDF เก็บดิบเพื่อรักษาน้ำหนักหลักฐาน)
  * แต่แยก object root และการตรวจสิทธิ์ลบออกจากกัน เพื่อไม่ให้ลบข้ามโมดูลได้
+ *
+ * ไฟล์มีเลขผู้เสียภาษี/ข้อมูลส่วนบุคคล (PII) จึงเก็บใน PRIVATE Blob store และ DB เก็บ
+ * object pathname — เปิดดูผ่าน route `/api/admin/wht-attachments/[id]` ที่ตรวจสิทธิ์เท่านั้น
+ * แถวเก่าที่ยังเก็บ public URL ยังเปิดได้ตามเดิม (ดู `lib/private-file-ref.ts`)
  */
 
 const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
@@ -26,19 +31,29 @@ export function buildWhtAttachmentObjectPath(whtReceivedId: string, extension: s
   return `${WHT_ATTACHMENT_ROOT}/${safeId}/${Date.now()}-${crypto.randomUUID()}.${extension}`;
 }
 
+/**
+ * อัปโหลดไฟล์เข้า private store แล้วคืน pathname ที่จะเก็บใน DB
+ * throw เมื่อไม่ได้ตั้งค่า private store — ห้าม fallback ไป public store
+ */
 export async function uploadWhtAttachmentObject(input: {
   whtReceivedId: string;
   prepared: PreparedWhtAttachment;
 }): Promise<string> {
-  return uploadProductsBucketObject({
+  return putPrivateBlobObject({
     objectPath: buildWhtAttachmentObjectPath(input.whtReceivedId, input.prepared.extension),
     body: input.prepared.body,
     contentType: input.prepared.contentType,
   });
 }
 
-/** จริงเฉพาะไฟล์ของโมดูลนี้เท่านั้น — กันไม่ให้ลบ Blob URL อื่นผ่านทางนี้ */
+/** จริงเฉพาะ pathname แบบใหม่ใน private store ใต้ `wht-attachments/` */
+export function isPrivateWhtAttachmentPath(value: string): boolean {
+  return isPrivateObjectPathUnderRoot(value, WHT_ATTACHMENT_ROOT);
+}
+
+/** จริงเฉพาะไฟล์ legacy (public URL) ของโมดูลนี้เท่านั้น — กันไม่ให้ลบ Blob URL อื่นผ่านทางนี้ */
 export function isOwnedWhtAttachmentUrl(url: string): boolean {
+  if (!isLegacyPublicFileUrl(url)) return false;
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -56,8 +71,14 @@ export function isOwnedWhtAttachmentUrl(url: string): boolean {
   return objectPath.startsWith(`${WHT_ATTACHMENT_ROOT}/`);
 }
 
-/** ลบไฟล์ที่เก็บไว้แบบ best-effort — ไม่ throw เพื่อไม่ให้ล้มทั้ง flow */
+/**
+ * ลบไฟล์ที่เก็บไว้แบบ best-effort — ไม่ throw เพื่อไม่ให้ล้มทั้ง flow
+ * ลบจาก store ที่ไฟล์อยู่จริง: pathname ใหม่ลบจาก private store, URL เก่าลบจาก public store
+ */
 export async function deleteWhtAttachmentObjects(urls: string[]): Promise<void> {
+  const privatePaths = urls.filter(isPrivateWhtAttachmentPath);
+  if (privatePaths.length > 0) await deletePrivateBlobObjects(privatePaths);
+
   const ownedUrls = urls.filter(isOwnedWhtAttachmentUrl);
   if (ownedUrls.length === 0) return;
   try {
