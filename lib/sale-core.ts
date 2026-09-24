@@ -14,6 +14,18 @@ import { addThailandDays, startOfThailandDay } from "@/lib/th-date";
 
 export type SaleCoreTxClient = Prisma.TransactionClient;
 
+/**
+ * A condition the user can fix (e.g. the selected receiving account no longer
+ * exists). The message is written for users, so callers may show it as-is
+ * instead of their generic error text.
+ */
+export class SaleCoreUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SaleCoreUserError";
+  }
+}
+
 /** Minimal item shape preload needs (productId + unitName). */
 export type SaleCoreItemInput = { productId: string; unitName: string };
 
@@ -103,7 +115,7 @@ export async function resolveSalePaymentMethod(
     select: { type: true },
   });
   if (!account) {
-    throw new Error("ไม่พบบัญชีรับเงิน");
+    throw new SaleCoreUserError("ไม่พบบัญชีรับเงิน");
   }
 
   return account.type === "CASH" ? PaymentMethod.CASH : PaymentMethod.TRANSFER;
@@ -126,7 +138,7 @@ export async function resolveSalePaymentMethodFromAccounts(
     select: { type: true },
   });
   if (accounts.length !== uniqueIds.length) {
-    throw new Error("ไม่พบบัญชีรับเงิน");
+    throw new SaleCoreUserError("ไม่พบบัญชีรับเงิน");
   }
 
   const allCash = accounts.every((account) => account.type === "CASH");

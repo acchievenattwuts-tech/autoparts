@@ -62,7 +62,7 @@ import {
   type TransactionProductDetailRow,
 } from "@/lib/transaction-product-search";
 import { CashBankDirection, CashBankSourceType, DocumentPaymentDocType } from "@/lib/generated/prisma";
-import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
+import { clearCashBankSourceMovements, isCashBankPostingError, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
   clearDocumentPayments,
@@ -81,7 +81,7 @@ import {
   validateWhtAgainstTotal,
   type WhtReceivedInput,
 } from "@/lib/wht";
-import { cancelWhtReceivedForDocument, persistWhtReceived } from "@/lib/wht-received";
+import { cancelWhtReceivedForDocument, persistWhtReceived, WhtReceivedUserError } from "@/lib/wht-received";
 import { isInventoryTracked, resolveSaleUnitCost } from "@/lib/inventory-tracking";
 import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
 import {
@@ -90,6 +90,7 @@ import {
   getSaleUnitKey,
   preloadSaleDependencies,
   resolveSalePaymentMethodFromAccounts,
+  SaleCoreUserError,
 } from "@/lib/sale-core";
 
 const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
@@ -409,6 +410,19 @@ async function getSaleSignerSnapshot(
     signerSignatureUrl: user?.signatureUrl ?? null,
     signedAt: user?.name ? signedAt : null,
   };
+}
+
+/**
+ * User-fixable conditions raised by the shared helpers the sale transaction runs
+ * (cash/bank posting rules, withholding-tax record, receiving account lookup).
+ * Their Thai message is returned as-is, without reportCriticalError.
+ */
+function isSaleHelperUserError(err: unknown): err is Error {
+  return (
+    isCashBankPostingError(err) ||
+    err instanceof WhtReceivedUserError ||
+    err instanceof SaleCoreUserError
+  );
 }
 
 export async function createSale(
@@ -733,8 +747,8 @@ export async function createSale(
             // Get unit scale
             const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
             const product = productMap.get(item.productId);
-            if (!product) throw new Error("ไม่พบสินค้า");
-            if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+            if (!product) throw new SaleUserError("ไม่พบสินค้า");
+            if (!unit) throw new SaleUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
             const scale      = unit.scale;
             const qtyInBase  = item.qty * scale;
@@ -970,7 +984,9 @@ export async function createSale(
     if (
       err instanceof QuotationError ||
       err instanceof SaleLotValidationError ||
-      err instanceof LotStockInsufficientError
+      err instanceof SaleUserError ||
+      err instanceof LotStockInsufficientError ||
+      isSaleHelperUserError(err)
     ) {
       return { error: err.message };
     }
@@ -1841,7 +1857,8 @@ export async function updateSale(
       err instanceof SaleLotValidationError ||
       err instanceof SaleClaimLockError ||
       err instanceof SaleUserError ||
-      err instanceof LotStockInsufficientError
+      err instanceof LotStockInsufficientError ||
+      isSaleHelperUserError(err)
     ) {
       return { error: err.message };
     }

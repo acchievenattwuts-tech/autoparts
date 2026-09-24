@@ -9,6 +9,18 @@ import { toThaiTaxHalf, toThaiTaxYear, type WhtReceivedInput } from "@/lib/wht";
 
 type TxClient = Prisma.TransactionClient;
 
+/**
+ * A condition the user can fix (income type not usable, 50 ทวิ attachment still
+ * present). The message is written for users, so callers may show it as-is
+ * instead of their generic error text.
+ */
+export class WhtReceivedUserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "WhtReceivedUserError";
+  }
+}
+
 export type WhtReceivedDocType = "RECEIPT" | "SALE";
 
 interface PersistWhtReceivedArgs {
@@ -31,7 +43,7 @@ async function resolveIncomeType(tx: TxClient, incomeTypeId: string) {
   });
 
   if (!incomeType || !incomeType.isActive || !incomeType.usableForReceived) {
-    throw new Error("ประเภทเงินได้ที่เลือกใช้กับภาษีที่ถูกหักไม่ได้");
+    throw new WhtReceivedUserError("ประเภทเงินได้ที่เลือกใช้กับภาษีที่ถูกหักไม่ได้");
   }
 
   return incomeType;
@@ -72,7 +84,7 @@ export async function persistWhtReceived(
   if (!wht) {
     if (!existing) return;
     if (existing._count.attachments > 0) {
-      throw new Error(
+      throw new WhtReceivedUserError(
         "เอกสารนี้มีไฟล์แนบหนังสือรับรอง 50 ทวิ อยู่ กรุณาลบไฟล์แนบก่อนจึงจะเอายอดภาษีหัก ณ ที่จ่ายออกได้",
       );
     }

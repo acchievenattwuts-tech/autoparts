@@ -7,7 +7,7 @@ import {
 } from "@/lib/document-mutation-guard";
 
 /**
- * A condition the user can act on, raised inside the updateSale / cancelSale
+ * A condition the user can act on, raised inside the createSale / updateSale / cancelSale
  * transaction so the whole write rolls back. The action returns its message
  * as-is — without reportCriticalError, which is reserved for system failures.
  *

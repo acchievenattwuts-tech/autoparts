@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test, { before, beforeEach, mock } from "node:test";
 
 import { Prisma } from "@/lib/generated/prisma";
+// Loaded before the module mock below, so this is the real class.
+import { WhtReceivedUserError } from "@/lib/wht-received";
 
 // createReceipt / updateReceipt: Thai business-rule messages still reach the user,
 // Prisma/DB error text does not, and a receiptNo collision is retried.
@@ -20,6 +22,7 @@ let receiptStatusInTx: string | null = "ACTIVE";
 // Every data write a receipt flow can make (receipt.update is also traced in callLog).
 let writeLog: string[] = [];
 let reportedErrors = 0;
+let whtPersistError: Error | null = null;
 
 const recordLockQuery = async (query: unknown) => {
   const { sql, values } = query as { sql: string; values: unknown[] };
@@ -104,6 +107,7 @@ before(async () => {
         writeLog.push("wht.cancel");
       },
       persistWhtReceived: async () => {
+        if (whtPersistError) throw whtPersistError;
         writeLog.push("wht.persist");
       },
       whtReceivedSnapshotSelect: { id: true },
@@ -185,6 +189,7 @@ beforeEach(() => {
   receiptStatusInTx = "ACTIVE";
   writeLog = [];
   reportedErrors = 0;
+  whtPersistError = null;
   fakeTx = baseTx(async () => ({ id: "rec-1" }));
 });
 
@@ -216,6 +221,30 @@ test("Prisma error text is replaced by the generic message", async () => {
   });
   const result = await actions.createReceipt(receiptForm());
   assert.deepEqual(result, { success: false, error: "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้" });
+});
+
+// The typed withholding-tax user error (shared with the sale flow) keeps the receipt
+// behavior unchanged: same Thai message, and still reported as before.
+test("createReceipt / updateReceipt return the withholding-tax message exactly as before", async () => {
+  const message =
+    "เอกสารนี้มีไฟล์แนบหนังสือรับรอง 50 ทวิ อยู่ กรุณาลบไฟล์แนบก่อนจึงจะเอายอดภาษีหัก ณ ที่จ่ายออกได้";
+  whtPersistError = new WhtReceivedUserError(message);
+
+  assert.deepEqual(await actions.createReceipt(receiptForm()), { success: false, error: message });
+  assert.equal(reportedErrors, 1);
+
+  existingReceipt = {
+    id: "rec1",
+    receiptNo: "REC26090001",
+    status: "ACTIVE",
+    signerName: "Staff",
+    signerSignatureUrl: null,
+    signedAt: null,
+    user: { name: "Staff", signatureUrl: null },
+    items: [{ saleId: "sale-1", cnId: null, customerAdvanceId: null }],
+  };
+  assert.deepEqual(await actions.updateReceipt("rec1", receiptForm()), { error: message });
+  assert.equal(reportedErrors, 2);
 });
 
 test("a collision that survives every retry is not shown as raw Prisma text", async () => {
