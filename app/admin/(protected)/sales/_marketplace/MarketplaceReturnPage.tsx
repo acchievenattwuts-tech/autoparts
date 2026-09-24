@@ -5,7 +5,8 @@ import { requirePermission } from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
-import { DocStatus } from "@/lib/generated/prisma";
+import { CreditNoteType, DocStatus } from "@/lib/generated/prisma";
+import { getReferencedReturnProgress } from "@/lib/credit-note-return";
 import { formatDateThai } from "@/lib/th-date";
 import {
   getMarketplaceChannelConfig,
@@ -73,12 +74,44 @@ export default async function MarketplaceReturnPage({
   // ยังไม่ได้เลือกใบขาย → ให้เลือกจากรายการก่อน เพื่อบังคับว่าใบคืนต้องผูกใบขายเสมอ
   // (ยอดคืนจึงหักออกจากช่องทางเดียวกันได้ และรอบรับเงินหยิบไปหักได้ถูกใบ)
   if (!selectedSale) {
-    const sales = await db.sale.findMany({
+    const saleRows = await db.sale.findMany({
       where: { channel, status: DocStatus.ACTIVE },
       orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
       take: RECENT_SALE_LIMIT,
-      select: { id: true, saleNo: true, saleDate: true, channelRefNo: true, netAmount: true },
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        channelRefNo: true,
+        netAmount: true,
+        items: { select: { id: true, productId: true, quantity: true } },
+        creditNotes: {
+          where: { status: DocStatus.ACTIVE, type: CreditNoteType.RETURN },
+          select: {
+            items: { select: { saleItemId: true, productId: true, qty: true } },
+          },
+        },
+      },
     });
+    const sales = saleRows
+      .map((sale) => ({
+        ...sale,
+        returnProgress: getReferencedReturnProgress({
+          saleLines: sale.items.map((item) => ({
+            id: item.id,
+            productId: item.productId,
+            soldBaseQty: Number(item.quantity),
+          })),
+          returnLines: sale.creditNotes.flatMap((creditNote) =>
+            creditNote.items.map((item) => ({
+              saleItemId: item.saleItemId,
+              productId: item.productId,
+              returnedBaseQty: Number(item.qty),
+            })),
+          ),
+        }),
+      }))
+      .filter((sale) => !sale.returnProgress.isFullyReturned);
 
     return (
       <div className="space-y-6">
@@ -112,7 +145,14 @@ export default async function MarketplaceReturnPage({
               ) : (
                 sales.map((sale) => (
                   <tr key={sale.id} className="border-t border-slate-100 dark:border-white/5">
-                    <td className="p-3 font-mono text-sky-700 dark:text-sky-300">{sale.saleNo}</td>
+                    <td className="p-3 font-mono text-sky-700 dark:text-sky-300">
+                      {sale.saleNo}
+                      {sale.returnProgress.hasReturns ? (
+                        <span className="ml-2 inline-flex rounded-full bg-amber-100 px-2 py-0.5 font-sans text-xs font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-200">
+                          คืนบางส่วน
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="p-3">{sale.channelRefNo ?? "-"}</td>
                     <td className="p-3">{formatDateThai(sale.saleDate)}</td>
                     <td className="p-3 text-right tabular-nums">{money(Number(sale.netAmount))}</td>

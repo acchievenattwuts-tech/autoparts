@@ -995,8 +995,12 @@ export async function createCreditNote(
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
+    revalidatePath("/admin/sales");
+    if (afterSnapshot?.saleId) revalidatePath(`/admin/sales/${afterSnapshot.saleId}`);
     if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
-      revalidatePath(`/admin/sales/${getMarketplaceChannelConfig(afterSnapshot.channel).slug}/settlements`);
+      const marketplaceSlug = getMarketplaceChannelConfig(afterSnapshot.channel).slug;
+      revalidatePath(`/admin/sales/${marketplaceSlug}/settlements`);
+      revalidatePath(`/admin/sales/${marketplaceSlug}/returns/new`);
       revalidatePath("/admin/expenses");
       revalidatePath("/admin/reports/marketplace");
     }
@@ -1110,6 +1114,16 @@ export async function cancelCreditNote(
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/credit-notes");
+    revalidatePath("/admin/products");
+    revalidatePath("/admin/sales");
+    if (afterSnapshot?.saleId) revalidatePath(`/admin/sales/${afterSnapshot.saleId}`);
+    if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
+      const marketplaceSlug = getMarketplaceChannelConfig(afterSnapshot.channel).slug;
+      revalidatePath(`/admin/sales/${marketplaceSlug}/settlements`);
+      revalidatePath(`/admin/sales/${marketplaceSlug}/returns/new`);
+      revalidatePath("/admin/expenses");
+      revalidatePath("/admin/reports/marketplace");
+    }
     return { success: true };
   } catch (err) {
     if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };

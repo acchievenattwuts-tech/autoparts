@@ -50,7 +50,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
   const cn = await db.creditNote.findUnique({
     where: { id },
     include: {
-      sale: { select: { saleNo: true } },
+      sale: { select: { saleNo: true, channelRefNo: true } },
       user: { select: { name: true } },
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
@@ -88,6 +88,15 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">{cn.cnNo}</span>
       </div>
 
+      {cn.status === "ACTIVE" && cn.channel && isManualMarketplaceChannel(cn.channel) ? (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-100">
+          <p className="font-medium">ใบคืนสินค้า Marketplace ไม่อนุญาตให้แก้ไขย้อนหลังโดยตรง</p>
+          <p className="mt-1 text-amber-800 dark:text-amber-200">
+            หากข้อมูลผิด ให้ยกเลิกใบนี้จากหน้ารายการใบลดหนี้ แล้วบันทึกคืนสินค้าใหม่ ระบบจะย้อนสต๊อก เงิน ต้นทุน และกำไรของใบเดิมก่อนสร้างรายการที่ถูกต้อง
+          </p>
+        </div>
+      ) : null}
+
       <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
         <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
           <div className="flex items-center gap-3">
@@ -120,7 +129,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
             </p>
           </div>
           <div>
-            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ประเภท CN</p>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ประเภทเอกสาร CN</p>
             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
               cn.type === CreditNoteType.RETURN
                 ? "bg-blue-100 text-blue-700 dark:bg-sky-500/20 dark:text-sky-300"
@@ -169,6 +178,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
                 hideSpinner
               >
                 {cn.sale.saleNo}
+                {cn.sale.channelRefNo ? ` (${cn.sale.channelRefNo})` : ""}
               </NavLink>
             </div>
           )}
@@ -233,7 +243,7 @@ const CreditNoteDetailPage = async ({ params }: { params: Promise<{ id: string }
                     )}
                     {cn.type === CreditNoteType.RETURN ? (
                       <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        {stockDispositionLabel[item.stockDisposition]}
+                        ผลต่อสต๊อก: {stockDispositionLabel[item.stockDisposition]}
                         {item.stockDispositionNote ? ` — ${item.stockDispositionNote}` : ""}
                       </div>
                     ) : null}

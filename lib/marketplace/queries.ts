@@ -12,7 +12,10 @@ import {
   MANUAL_MARKETPLACE_CHANNELS,
   type ManualMarketplaceChannel,
 } from "./config";
-import { calculateMarketplaceOrderOutstanding } from "./returns";
+import {
+  calculateMarketplaceOrderOutstanding,
+  isFullyReversedMarketplaceProduct,
+} from "./returns";
 
 /** จำนวนเอกสารสูงสุดที่ดึงมาให้เลือกในหน้ากระทบยอดหนึ่งรอบ */
 const PENDING_DOC_LIMIT = 200;
@@ -577,9 +580,34 @@ export async function getChannelProductProfit(
     );
   }
 
+  const overallByProduct = new Map<
+    string,
+    { quantity: number; salesAmount: number; grossProfit: number }
+  >();
+  for (const row of grouped) {
+    if (!row.channel || !isManualMarketplaceChannel(row.channel)) continue;
+    const key = `${row.channel}:${row.productId ?? row.productName ?? ""}`;
+    const current = overallByProduct.get(key) ?? {
+      quantity: 0,
+      salesAmount: 0,
+      grossProfit: 0,
+    };
+    current.quantity += Number(row._sum.quantity ?? 0);
+    current.salesAmount += Number(row._sum.salesAmountExVat ?? 0);
+    current.grossProfit += Number(row._sum.grossProfit ?? 0);
+    overallByProduct.set(key, current);
+  }
+  const fullyReversedProductKeys = new Set(
+    [...overallByProduct.entries()]
+      .filter(([, totals]) => isFullyReversedMarketplaceProduct(totals))
+      .map(([key]) => key),
+  );
+
   const productRows = new Map<string, ChannelProductProfitRow>();
   for (const row of grouped) {
     if (!row.channel || !isManualMarketplaceChannel(row.channel)) continue;
+    const overallKey = `${row.channel}:${row.productId ?? row.productName ?? ""}`;
+    if (fullyReversedProductKeys.has(overallKey)) continue;
     const salesAmount = Number(row._sum.salesAmountExVat ?? 0);
     const grossProfit = Number(row._sum.grossProfit ?? 0);
     const feeRate = settledRateBySourceId.get(row.sourceId);

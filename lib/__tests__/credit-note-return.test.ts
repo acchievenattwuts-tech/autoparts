@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { MarketplaceReturnStockDisposition } from "@/lib/generated/prisma";
 import {
+  getReferencedReturnProgress,
   isCreditNoteReturnQuantityAvailable,
   resolveReferencedReturnSaleItemIds,
   resolveReturnUnitCost,
@@ -111,5 +112,50 @@ describe("credit-note return rules", () => {
         }),
       /CREDIT_NOTE_RETURN_AMBIGUOUS_HISTORY/,
     );
+  });
+
+  it("distinguishes no return, partial return, and full return", () => {
+    const saleLines = [
+      { id: "sale-line-1", productId: "product-1", soldBaseQty: 2 },
+      { id: "sale-line-2", productId: "product-2", soldBaseQty: 1 },
+    ];
+    assert.deepEqual(getReferencedReturnProgress({ saleLines, returnLines: [] }), {
+      hasReturns: false,
+      isFullyReturned: false,
+      remainingBaseQty: 3,
+      remainingLineCount: 2,
+      hasAmbiguousLegacyRows: false,
+    });
+    assert.equal(
+      getReferencedReturnProgress({
+        saleLines,
+        returnLines: [{ saleItemId: "sale-line-1", productId: "product-1", returnedBaseQty: 1 }],
+      }).isFullyReturned,
+      false,
+    );
+    assert.equal(
+      getReferencedReturnProgress({
+        saleLines,
+        returnLines: [
+          { saleItemId: "sale-line-1", productId: "product-1", returnedBaseQty: 1.25 },
+          { saleItemId: "sale-line-1", productId: "product-1", returnedBaseQty: 0.75 },
+          { saleItemId: "sale-line-2", productId: "product-2", returnedBaseQty: 1 },
+        ],
+      }).isFullyReturned,
+      true,
+    );
+  });
+
+  it("does not mark a sale fully returned when legacy return rows are ambiguous", () => {
+    const progress = getReferencedReturnProgress({
+      saleLines: [
+        { id: "sale-line-1", productId: "product-1", soldBaseQty: 1 },
+        { id: "sale-line-2", productId: "product-1", soldBaseQty: 1 },
+      ],
+      returnLines: [{ productId: "product-1", returnedBaseQty: 2 }],
+    });
+    assert.equal(progress.hasReturns, true);
+    assert.equal(progress.hasAmbiguousLegacyRows, true);
+    assert.equal(progress.isFullyReturned, false);
   });
 });

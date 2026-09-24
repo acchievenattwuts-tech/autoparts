@@ -419,8 +419,8 @@ export default async function MarketplaceReportPage({
                       </dd>
                     </div>
                     <div className="flex justify-between gap-2">
-                      <dt className="text-slate-500 dark:text-slate-400">อัตราคืนสินค้า</dt>
-                      <dd className="tabular-nums">
+                      <dt className="font-medium text-rose-600 dark:text-rose-300">อัตราคืนสินค้า</dt>
+                      <dd className="font-semibold tabular-nums text-rose-600 dark:text-rose-300">
                         {percent(stat.returnRate.returnRatePct)} ({stat.returnRate.returnCount} ใบ)
                       </dd>
                     </div>

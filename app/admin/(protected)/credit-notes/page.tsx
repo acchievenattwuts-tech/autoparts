@@ -22,6 +22,7 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 
 const PAGE_SIZE = 30;
 
@@ -103,7 +104,8 @@ const CreditNotesPage = async ({
         refundMethod:   true,
         totalAmount:    true,
         status:         true,
-        sale: { select: { saleNo: true } },
+        channel:        true,
+        sale: { select: { saleNo: true, channelRefNo: true } },
         _count: { select: { items: true } },
       },
     }),
@@ -198,7 +200,14 @@ const CreditNotesPage = async ({
                       {cn.refundMethod ? <span className="text-xs text-slate-400 dark:text-slate-500">({cn.refundMethod === CNRefundMethod.CASH ? "เงินสด" : "โอนเงิน"})</span> : null}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{cn.sale ? <span className="font-mono text-xs">{cn.sale.saleNo}</span> : "-"}</td>
+                  <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {cn.sale ? (
+                      <span className="font-mono text-xs">
+                        {cn.sale.saleNo}
+                        {cn.sale.channelRefNo ? ` (${cn.sale.channelRefNo})` : ""}
+                      </span>
+                    ) : "-"}
+                  </td>
                   <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{cn._count.items} รายการ</td>
                   <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(cn.totalAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
                   <td className="px-4 py-3">{cn.status === "CANCELLED" ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge> : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
@@ -207,7 +216,7 @@ const CreditNotesPage = async ({
                       <NavLink href={`/admin/credit-notes/${cn.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200" hideSpinner><Eye size={14} /> ดู</NavLink>
                       {cn.status === "ACTIVE" ? (
                         <>
-                          {canUpdate ? <NavLink href={`/admin/credit-notes/${cn.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
+                          {canUpdate && !(cn.channel && isManualMarketplaceChannel(cn.channel)) ? <NavLink href={`/admin/credit-notes/${cn.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
                           {canCancel ? <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} /> : null}
                         </>
                       ) : null}

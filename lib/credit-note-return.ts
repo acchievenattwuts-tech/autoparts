@@ -43,6 +43,95 @@ export type ReferencedReturnRequest = {
   requestedBaseQty: number;
 };
 
+export type ReferencedReturnProgressLine = {
+  saleItemId?: string | null;
+  productId?: string | null;
+  returnedBaseQty: number;
+};
+
+export type ReferencedReturnProgress = {
+  hasReturns: boolean;
+  isFullyReturned: boolean;
+  remainingBaseQty: number;
+  remainingLineCount: number;
+  hasAmbiguousLegacyRows: boolean;
+};
+
+/**
+ * สรุปสถานะคืนของใบขายโดยยึด saleItemId เป็นหลัก และรองรับ CN เก่าที่ยังไม่ผูกบรรทัดขาย
+ * แบบ fail-closed: ถ้ารายการเก่าคลุมเครือ จะไม่สรุปว่า "คืนครบ" เพื่อไม่ซ่อนเอกสารผิดใบ
+ */
+export function getReferencedReturnProgress(input: {
+  saleLines: ReferencedReturnSaleLine[];
+  returnLines: ReferencedReturnProgressLine[];
+}): ReferencedReturnProgress {
+  const saleLineMap = new Map(input.saleLines.map((line) => [line.id, line]));
+  const linesByProduct = new Map<string, ReferencedReturnSaleLine[]>();
+  for (const line of input.saleLines) {
+    const rows = linesByProduct.get(line.productId) ?? [];
+    rows.push(line);
+    linesByProduct.set(line.productId, rows);
+  }
+
+  const returnedBySaleItemId = new Map<string, number>();
+  let hasReturns = false;
+  let hasAmbiguousLegacyRows = false;
+
+  for (const returnLine of input.returnLines) {
+    if (returnLine.returnedBaseQty <= QUANTITY_TOLERANCE) continue;
+    hasReturns = true;
+
+    if (returnLine.saleItemId) {
+      const saleLine = saleLineMap.get(returnLine.saleItemId);
+      if (!saleLine || (returnLine.productId && saleLine.productId !== returnLine.productId)) {
+        hasAmbiguousLegacyRows = true;
+        continue;
+      }
+      returnedBySaleItemId.set(
+        saleLine.id,
+        (returnedBySaleItemId.get(saleLine.id) ?? 0) + returnLine.returnedBaseQty,
+      );
+      continue;
+    }
+
+    const candidates = returnLine.productId
+      ? (linesByProduct.get(returnLine.productId) ?? [])
+      : [];
+    if (candidates.length !== 1) {
+      hasAmbiguousLegacyRows = true;
+      continue;
+    }
+    const saleLine = candidates[0];
+    returnedBySaleItemId.set(
+      saleLine.id,
+      (returnedBySaleItemId.get(saleLine.id) ?? 0) + returnLine.returnedBaseQty,
+    );
+  }
+
+  let remainingBaseQty = 0;
+  let remainingLineCount = 0;
+  for (const saleLine of input.saleLines) {
+    const remaining = Math.max(
+      0,
+      saleLine.soldBaseQty - (returnedBySaleItemId.get(saleLine.id) ?? 0),
+    );
+    remainingBaseQty += remaining;
+    if (remaining > QUANTITY_TOLERANCE) remainingLineCount += 1;
+  }
+
+  return {
+    hasReturns,
+    isFullyReturned:
+      hasReturns &&
+      !hasAmbiguousLegacyRows &&
+      input.saleLines.length > 0 &&
+      remainingLineCount === 0,
+    remainingBaseQty,
+    remainingLineCount,
+    hasAmbiguousLegacyRows,
+  };
+}
+
 export function resolveReferencedReturnSaleItemIds(input: {
   saleLines: ReferencedReturnSaleLine[];
   requests: ReferencedReturnRequest[];

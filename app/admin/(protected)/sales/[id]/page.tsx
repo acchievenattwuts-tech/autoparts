@@ -26,7 +26,8 @@ import {
 import AutoPrint from "@/components/shared/AutoPrint";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
-import { FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import { CreditNoteType, DocStatus, FulfillmentType, SalePaymentType, SaleType } from "@/lib/generated/prisma";
+import { getReferencedReturnProgress } from "@/lib/credit-note-return";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getShippingTrackingUrl, SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
@@ -186,6 +187,15 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
             },
           },
         },
+        creditNotes: {
+          where: { status: DocStatus.ACTIVE, type: CreditNoteType.RETURN },
+          orderBy: { cnDate: "desc" },
+          select: {
+            id: true,
+            cnNo: true,
+            items: { select: { saleItemId: true, productId: true, qty: true } },
+          },
+        },
       },
     }),
     db.siteContent.findMany(),
@@ -215,6 +225,20 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   ]);
 
   if (!sale) notFound();
+  const returnProgress = getReferencedReturnProgress({
+    saleLines: sale.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      soldBaseQty: Number(item.quantity),
+    })),
+    returnLines: sale.creditNotes.flatMap((creditNote) =>
+      creditNote.items.map((item) => ({
+        saleItemId: item.saleItemId,
+        productId: item.productId,
+        returnedBaseQty: Number(item.qty),
+      })),
+    ),
+  });
   const marketplaceConfig = isManualMarketplaceChannel(sale.channel)
     ? getMarketplaceChannelConfig(sale.channel)
     : null;
@@ -339,6 +363,25 @@ ${PRINT_COPY_VISIBILITY_CSS}
           </div>
         ) : null}
 
+        {returnProgress.hasReturns ? (
+          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm dark:border-rose-400/30 dark:bg-rose-500/10">
+            <p className="font-medium text-rose-900 dark:text-rose-100">
+              {returnProgress.isFullyReturned ? "ใบขายนี้คืนสินค้าแล้ว" : "ใบขายนี้คืนสินค้าบางส่วนแล้ว"}
+            </p>
+            <p className="mt-1 text-rose-700 dark:text-rose-200">
+              ไม่สามารถแก้ไขหรือยกเลิกใบขายได้ ต้องยกเลิกใบลดหนี้ที่อ้างอิงก่อน
+              {sale.creditNotes[0] ? (
+                <>
+                  {" "}
+                  <NavLink href={`/admin/credit-notes/${sale.creditNotes[0].id}`} className="font-medium underline underline-offset-2">
+                    ดู {sale.creditNotes[0].cnNo}
+                  </NavLink>
+                </>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+
         <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
           <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
             <div className="flex items-center gap-3">
@@ -348,6 +391,10 @@ ${PRINT_COPY_VISIBILITY_CSS}
               {sale.quotation && <NavLink href={`/admin/sales-quotations/${sale.quotation.id}`} className="text-sm text-sky-700 dark:text-sky-300">อ้างอิง {formatQuotationReference(sale.quotation.quotationNo, sale.quotationRevision ?? sale.quotation.revision)}</NavLink>}
               {sale.status === "CANCELLED" ? (
                 <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
+              ) : returnProgress.hasReturns ? (
+                <AdminStatusBadge tone={returnProgress.isFullyReturned ? "danger" : "warning"}>
+                  {returnProgress.isFullyReturned ? "คืนสินค้า" : "คืนบางส่วน"}
+                </AdminStatusBadge>
               ) : (
                 <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
               )}
@@ -355,6 +402,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
             <div className="flex items-center gap-2">
               {sale.status === "ACTIVE" &&
               canUpdate &&
+              !returnProgress.hasReturns &&
               (!marketplaceConfig ||
                 (canManageMarketplace && sale.marketplaceSettlementLines.length === 0)) ? (
                 <NavLink

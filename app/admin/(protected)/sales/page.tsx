@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import Link from "next/link";
 import { Eye, Pencil, Plus, RotateCcw, WalletCards, BarChart3 } from "lucide-react";
-import { FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
+import { CreditNoteType, DocStatus, FulfillmentType, SaleChannel, SalePaymentType, ShippingStatus } from "@/lib/generated/prisma";
 import type { Prisma } from "@/lib/generated/prisma";
 import SalesFilterBar from "./SalesFilterBar";
 import SalesChannelTabs from "./SalesChannelTabs";
@@ -30,6 +30,7 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { getReferencedReturnProgress } from "@/lib/credit-note-return";
 
 const PAGE_SIZE = 30;
 
@@ -181,6 +182,15 @@ const SalesPage = async ({
       skip: (pageNum - 1) * PAGE_SIZE,
       include: {
         _count: { select: { items: true } },
+        items: { select: { id: true, productId: true, quantity: true } },
+        creditNotes: {
+          where: { status: DocStatus.ACTIVE, type: CreditNoteType.RETURN },
+          orderBy: { cnDate: "desc" },
+          select: {
+            id: true,
+            items: { select: { saleItemId: true, productId: true, qty: true } },
+          },
+        },
         customer: { select: { name: true } },
         marketplaceSettlementLines: {
           where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
@@ -321,6 +331,21 @@ const SalesPage = async ({
             ) : (
               sales.map((s, idx) => {
                 const paymentStatus = getPaymentStatus(s.paymentType, s.amountRemain);
+                const returnProgress = getReferencedReturnProgress({
+                  saleLines: s.items.map((item) => ({
+                    id: item.id,
+                    productId: item.productId,
+                    soldBaseQty: Number(item.quantity),
+                  })),
+                  returnLines: s.creditNotes.flatMap((creditNote) =>
+                    creditNote.items.map((item) => ({
+                      saleItemId: item.saleItemId,
+                      productId: item.productId,
+                      returnedBaseQty: Number(item.qty),
+                    })),
+                  ),
+                });
+                const returnCreditNoteId = s.creditNotes[0]?.id;
 
                 return (
                   <tr
@@ -351,6 +376,18 @@ const SalesPage = async ({
                     <td className="px-4 py-3">
                       {s.status === "CANCELLED" ? (
                         <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
+                      ) : returnProgress.hasReturns ? (
+                        returnCreditNoteId ? (
+                          <Link href={`/admin/credit-notes/${returnCreditNoteId}`}>
+                            <AdminStatusBadge tone={returnProgress.isFullyReturned ? "danger" : "warning"}>
+                              {returnProgress.isFullyReturned ? "คืนสินค้า" : "คืนบางส่วน"}
+                            </AdminStatusBadge>
+                          </Link>
+                        ) : (
+                          <AdminStatusBadge tone={returnProgress.isFullyReturned ? "danger" : "warning"}>
+                            {returnProgress.isFullyReturned ? "คืนสินค้า" : "คืนบางส่วน"}
+                          </AdminStatusBadge>
+                        )
                       ) : s.marketplaceSettlementLines.length > 0 ? (
                         <AdminStatusBadge tone="info">กระทบยอดแล้ว</AdminStatusBadge>
                       ) : (
@@ -366,13 +403,14 @@ const SalesPage = async ({
                         {s.status === "ACTIVE" ? (
                           <>
                             {canUpdate &&
+                            !returnProgress.hasReturns &&
                             (!isManualMarketplaceChannel(s.channel) ||
                               (canManageMarketplace && s.marketplaceSettlementLines.length === 0)) ? (
                               <Link href={`/admin/sales/${s.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
                                 <Pencil size={14} /> แก้ไข
                               </Link>
                             ) : null}
-                            {canCancel && s.marketplaceSettlementLines.length === 0 ? (
+                            {canCancel && !returnProgress.hasReturns && s.marketplaceSettlementLines.length === 0 ? (
                               <SaleCancelButton saleId={s.id} docNo={s.saleNo} />
                             ) : null}
                           </>

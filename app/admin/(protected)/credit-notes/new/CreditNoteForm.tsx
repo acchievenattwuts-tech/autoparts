@@ -657,7 +657,7 @@ const CreditNoteForm = ({
           )}
           {marketplacePreset ? <input type="hidden" name="type" value="RETURN" /> : (
           <div>
-            <label className={labelCls}>ประเภท CN <span className="text-red-500">*</span></label>
+            <label className={labelCls}>ประเภทเอกสาร CN <span className="text-red-500">*</span></label>
             <select
               name="type"
               value={cnType}
@@ -779,21 +779,26 @@ const CreditNoteForm = ({
                         />
                         {cnType === "RETURN" ? (
                           <div className="mt-2 grid gap-2 md:grid-cols-2">
-                            <select
-                              value={item.stockDisposition ?? "RESTOCK"}
-                              onChange={(event) =>
-                                updateItem(
-                                  i,
-                                  "stockDisposition",
-                                  event.target.value,
-                                )
-                              }
-                              className={`${inputCls} bg-white`}
-                            >
-                              <option value="RESTOCK">รับสินค้าเข้าสต๊อก</option>
-                              <option value="REFUND_ONLY">คืนเงินอย่างเดียว — ไม่ได้รับสินค้า</option>
-                              <option value="DAMAGED_NO_RESTOCK">สินค้าเสียหาย — ไม่รับเข้าสต๊อก</option>
-                            </select>
+                            <label className="block">
+                              <span className="mb-1 block text-xs font-medium text-gray-600 dark:text-slate-300">
+                                ผลต่อสต๊อกของรายการ
+                              </span>
+                              <select
+                                value={item.stockDisposition ?? "RESTOCK"}
+                                onChange={(event) =>
+                                  updateItem(
+                                    i,
+                                    "stockDisposition",
+                                    event.target.value,
+                                  )
+                                }
+                                className={`${inputCls} bg-white`}
+                              >
+                                <option value="RESTOCK">รับสินค้าเข้าสต๊อก</option>
+                                <option value="REFUND_ONLY">คืนเงินอย่างเดียว — ไม่ได้รับสินค้า</option>
+                                <option value="DAMAGED_NO_RESTOCK">สินค้าเสียหาย — ไม่รับเข้าสต๊อก</option>
+                              </select>
+                            </label>
                             {item.stockDisposition !== "RESTOCK" ? (
                               <input
                                 type="text"
