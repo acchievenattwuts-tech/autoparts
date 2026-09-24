@@ -21,6 +21,7 @@ import {
   STOREFRONT_PRODUCTS_PER_PAGE,
   type SearchProductItem,
 } from "@/lib/storefront-product-search";
+import { toStorefrontProductCardItem } from "@/lib/storefront-product-card";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
 import { headers } from "next/headers";
@@ -35,6 +36,7 @@ import {
   clampSearchPrice,
   clampSearchText,
 } from "@/lib/storefront-search-input-limits";
+import { resolveStorefrontPriceFilter } from "@/lib/storefront-pricing";
 
 type QueryValue = string | string[] | undefined;
 
@@ -235,8 +237,13 @@ const ProductsPage = async ({ searchParams }: Props) => {
     parseYearParam(yearMinParam),
     parseYearParam(yearMaxParam),
   );
-  const priceMin = parsePriceParam(priceMinParam);
-  const priceMax = parsePriceParam(priceMaxParam);
+  // Hand-typed ?priceMin/?priceMax are ignored while prices are hidden (the
+  // filter matches the wholesale price). Metadata still treats them as a filtered
+  // URL (noindex, canonical /products), so SEO is unchanged.
+  const { priceMin, priceMax } = resolveStorefrontPriceFilter(
+    parsePriceParam(priceMinParam),
+    parsePriceParam(priceMaxParam),
+  );
   const hasFilter = Boolean(
     q ||
       category ||
@@ -290,11 +297,7 @@ const ProductsPage = async ({ searchParams }: Props) => {
     }
 
     const { products, totalProducts } = landingData;
-    initialProducts = products.map((p) => ({
-      ...p,
-      salePrice: p.salePrice.toString(),
-      retailPrice: p.retailPrice.toString(),
-    }));
+    initialProducts = products.map(toStorefrontProductCardItem);
     initialTotal = totalProducts;
     initialMeta = {
       pageStart: initialProducts.length > 0 ? 1 : 0,

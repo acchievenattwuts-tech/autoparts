@@ -49,9 +49,15 @@ async function safeNotifyLineCustomerLinked(input: {
   }
 }
 
-const PHONE_LOOKUP_LIMIT = 5;
+// Only FAILED lookups (BLOCKED / AMBIGUOUS) count toward these limits; a lookup
+// that links or registers the customer never consumes an attempt. The per-IP
+// ceiling is higher than the per-LINE-user one because Thai mobile carriers put
+// many customers behind one CGNAT address.
+export const PHONE_LOOKUP_LINE_USER_LIMIT = 5;
+export const PHONE_LOOKUP_IP_LIMIT = 15;
 const PHONE_LOOKUP_WINDOW_MS = 60 * 60 * 1000;
 const LIFF_PHONE_LOOKUP_PREFIX = "liff-phone-lookup";
+const LIFF_PHONE_LOOKUP_IP_KEY_PREFIX = `${LIFF_PHONE_LOOKUP_PREFIX}:ip:`;
 const LINE_CUSTOMER_FALLBACK_NAME = "ลูกค้า LINE";
 const PHONE_LOOKUP_LIMIT_MESSAGE =
   "ลองหลายครั้งเกินไป กรุณารอประมาณ 1 ชั่วโมงแล้วลองใหม่อีกครั้ง";
@@ -81,11 +87,46 @@ export function getLiffPhoneLookupThrottleKeys(lineUserId: string, request: Requ
   const { ipAddress } = getRequestContextFromHeaders(request.headers);
   return [
     `${LIFF_PHONE_LOOKUP_PREFIX}:line:${lineUserId}`,
-    ipAddress ? `${LIFF_PHONE_LOOKUP_PREFIX}:ip:${ipAddress}` : null,
+    ipAddress ? `${LIFF_PHONE_LOOKUP_IP_KEY_PREFIX}${ipAddress}` : null,
   ].filter((key): key is string => Boolean(key));
 }
 
-export async function assertLiffPhoneLookupAllowed(keys: string[]) {
+export function getLiffPhoneLookupLimit(key: string): number {
+  return key.startsWith(LIFF_PHONE_LOOKUP_IP_KEY_PREFIX)
+    ? PHONE_LOOKUP_IP_LIMIT
+    : PHONE_LOOKUP_LINE_USER_LIMIT;
+}
+
+/**
+ * Throws the customer-visible limit message when any throttle key has already
+ * reached its failure limit inside the window. Read-only: it never consumes an
+ * attempt — only {@link recordLiffPhoneLookupFailure} does, once the lookup has
+ * actually failed.
+ */
+export async function assertLiffPhoneLookupAllowed(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+
+  const now = new Date();
+  const windowStart = new Date(now.getTime() - PHONE_LOOKUP_WINDOW_MS);
+  const records = await db.loginThrottle.findMany({
+    where: { key: { in: keys } },
+  });
+  const isBlocked = records.some((record) => {
+    if (record.lockedUntil && record.lockedUntil > now) return true;
+    return (
+      record.firstFailureAt !== null &&
+      record.firstFailureAt >= windowStart &&
+      record.failures >= getLiffPhoneLookupLimit(record.key)
+    );
+  });
+
+  if (isBlocked) {
+    throw new Error(PHONE_LOOKUP_LIMIT_MESSAGE);
+  }
+}
+
+/** Counts one failed lookup (BLOCKED / AMBIGUOUS) against every throttle key. */
+export async function recordLiffPhoneLookupFailure(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
 
   const now = new Date();
@@ -95,18 +136,6 @@ export async function assertLiffPhoneLookupAllowed(keys: string[]) {
     where: { key: { in: keys } },
   });
   const recordMap = new Map(records.map((record) => [record.key, record]));
-  const isBlocked = records.some((record) => {
-    if (record.lockedUntil && record.lockedUntil > now) return true;
-    return (
-      record.firstFailureAt !== null &&
-      record.firstFailureAt >= windowStart &&
-      record.failures >= PHONE_LOOKUP_LIMIT
-    );
-  });
-
-  if (isBlocked) {
-    throw new Error(PHONE_LOOKUP_LIMIT_MESSAGE);
-  }
 
   await db.$transaction(
     keys.map((key) => {
@@ -136,7 +165,7 @@ export async function assertLiffPhoneLookupAllowed(keys: string[]) {
         where: { key },
         data: {
           failures,
-          lockedUntil: failures >= PHONE_LOOKUP_LIMIT ? lockedUntil : null,
+          lockedUntil: failures >= getLiffPhoneLookupLimit(key) ? lockedUntil : null,
         },
       });
     }),
@@ -218,6 +247,7 @@ export async function resolveLiffCustomerFromPhone(input: {
       action: AuditAction.LINE_LINK_AMBIGUOUS,
       meta: { lineUserId: input.lineUserId, phone: normalizedPhone, matchedCount: matchedCustomers.length },
     });
+    await recordLiffPhoneLookupFailure(input.throttleKeys);
     return {
       status: "AMBIGUOUS",
       message: AMBIGUOUS_CUSTOMER_MESSAGE,
@@ -233,6 +263,7 @@ export async function resolveLiffCustomerFromPhone(input: {
       customerRef: matchedCustomer.code ?? matchedCustomer.name,
       meta: { lineUserId: input.lineUserId, phone: normalizedPhone },
     });
+    await recordLiffPhoneLookupFailure(input.throttleKeys);
     return {
       status: "BLOCKED",
       message: LINE_ALREADY_LINKED_MESSAGE,

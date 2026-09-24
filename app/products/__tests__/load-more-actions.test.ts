@@ -44,7 +44,23 @@ beforeEach(() => {
   mock.method(console, "error", () => undefined);
 });
 
-const relatedRow = (id: string) => ({ id, salePrice: 100, retailPrice: 120 });
+// A full server-side row: carries wholesale price and the exact stock count,
+// neither of which may reach the browser.
+const relatedRow = (id: string) => ({
+  id,
+  slug: `slug-${id}`,
+  name: `Product ${id}`,
+  code: `CODE-${id}`,
+  imageUrl: null,
+  salePrice: 100,
+  retailPrice: 120,
+  saleUnitName: "ชิ้น",
+  warrantyDays: 0,
+  stock: 7,
+  category: { id: "cat_1", name: "Category", slug: "category" },
+  brand: null,
+  carModels: [],
+});
 
 test("category load-more returns ok with the page when allowed", async () => {
   const { loadMoreCategoryProductsAction } = await import(
@@ -114,7 +130,11 @@ test("related load-more returns the page and hasMore when allowed", async () => 
   assert.equal(result.failed, undefined);
   assert.equal(result.hasMore, true);
   assert.equal(result.products.length, 8);
-  assert.equal(result.products[0].salePrice, "100");
+  const [first] = result.products;
+  assert.equal(first.retailPrice, "120");
+  assert.equal(first.inStock, true);
+  assert.equal("salePrice" in first, false);
+  assert.equal("stock" in first, false);
 });
 
 test("related load-more keeps the button (hasMore) and flags failure on a DB error instead of throwing", async () => {

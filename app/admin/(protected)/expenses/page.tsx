@@ -97,6 +97,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
         marketplaceSettlement: {
           select: { id: true, settlementNo: true, status: true },
         },
+        deliveryCommissionRun: { select: { status: true } },
         items: {
           orderBy: { lineNo: "asc" },
           select: {
@@ -217,6 +218,8 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
             ) : (
               expenses.map((exp, idx) => {
                 const isCancelled = exp.status === "CANCELLED";
+                // Created by an ACTIVE delivery commission run — changed only by cancelling that run.
+                const isCommissionRunExpense = exp.deliveryCommissionRun?.status === "ACTIVE";
                 return (
                   <tr
                     key={exp.id}
@@ -261,7 +264,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                     <td className="px-4 py-3 text-center">
                       {isCancelled ? (
                         <AdminStatusBadge tone="danger">ยกเลิก</AdminStatusBadge>
-                      ) : exp.marketplaceSettlement?.status === "ACTIVE" ? (
+                      ) : exp.marketplaceSettlement?.status === "ACTIVE" || isCommissionRunExpense ? (
                         <AdminStatusBadge tone="info">เอกสารระบบ</AdminStatusBadge>
                       ) : (
                         <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>
@@ -275,7 +278,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                         >
                           <Eye size={14} /> ดู
                         </Link>
-                        {!isCancelled && !exp.marketplaceSettlement ? (
+                        {!isCancelled && !exp.marketplaceSettlement && !isCommissionRunExpense ? (
                           <>
                             {canUpdate ? (
                               <Link

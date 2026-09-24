@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  MARKETPLACE_SETTLEMENT_SOURCE_REASON,
   buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  buildMutationBlockResult,
   createDocumentMutationGuard,
 } from "./document-mutation-guard";
 
@@ -225,5 +228,115 @@ describe("document mutation guard", () => {
       }),
       "ไม่สามารถดำเนินการได้ เนื่องจากถูกนำไปใช้ที่ใบลดหนี้ซื้อ: PR-001, PR-002",
     );
+  });
+
+  it("blocks sale cancel/update while the bill is in an active delivery commission run", async () => {
+    const queries: unknown[] = [];
+    const guard = createDocumentMutationGuard({
+      deliveryCommissionItem: {
+        findMany: async (args) => {
+          queries.push(args);
+          return [{ run: { id: "run-1", runNo: "DCP26090001" } }];
+        },
+      },
+    });
+
+    for (const action of ["cancel", "update"] as const) {
+      const result = await guard.check("Sale", "sale-1", action);
+      assert.equal(result.blocked, true);
+      assert.deepEqual(result.references, [
+        { entityType: "DeliveryCommissionRun", id: "run-1", refNo: "DCP26090001" },
+      ]);
+      assert.equal(
+        buildMutationBlockMessage(result),
+        "ไม่สามารถดำเนินการได้ เนื่องจากบิลนี้ถูกทำจ่ายค่าส่งแล้ว กรุณายกเลิกเอกสารทำจ่ายก่อน: DCP26090001",
+      );
+      assert.deepEqual(buildMutationBlockReferenceLinks(result), [
+        { href: "/admin/delivery-commissions/run-1", label: "DCP26090001" },
+      ]);
+    }
+    // Only runs that still hold the bill (activeSaleId) and are ACTIVE count.
+    assert.deepEqual((queries[0] as { where: unknown }).where, {
+      activeSaleId: "sale-1",
+      run: { status: "ACTIVE" },
+    });
+  });
+
+  it("keeps the generic reason when a sale is also used by other downstream documents", async () => {
+    const guard = createDocumentMutationGuard({
+      creditNote: { findMany: async () => [{ id: "cn-1", cnNo: "CN-001" }] },
+      deliveryCommissionItem: { findMany: async () => [{ run: { id: "run-1", runNo: "DCP26090001" } }] },
+    });
+    const result = await guard.check("Sale", "sale-1", "cancel");
+    assert.equal(result.reason, "ถูกนำไปใช้ที่เอกสารปลายทาง");
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["CN-001", "DCP26090001"]);
+  });
+
+  it("allows sale mutation once the delivery commission run is cancelled", async () => {
+    const guard = createDocumentMutationGuard({ deliveryCommissionItem: { findMany: async () => [] } });
+    const result = await guard.check("Sale", "sale-1", "cancel");
+    assert.equal(result.blocked, false);
+  });
+
+  it("blocks expense cancel/update when an active delivery commission run created it", async () => {
+    const queries: unknown[] = [];
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlement: { findMany: async () => [] },
+      deliveryCommissionRun: {
+        findMany: async (args) => {
+          queries.push(args);
+          return [{ id: "run-2", runNo: "DCP26090002" }];
+        },
+      },
+    });
+    for (const action of ["cancel", "update"] as const) {
+      const result = await guard.check("Expense", "expense-2", action);
+      assert.equal(
+        buildMutationBlockMessage(result),
+        "ไม่สามารถดำเนินการได้ เนื่องจากถูกสร้างจากเอกสารทำจ่ายค่าส่ง กรุณายกเลิกที่เอกสารทำจ่ายแทน: DCP26090002",
+      );
+    }
+    assert.deepEqual((queries[0] as { where: unknown }).where, { expenseId: "expense-2", status: "ACTIVE" });
+  });
+
+  it("leaves ordinary expenses and cash/bank documents free of the delivery-commission check", async () => {
+    let runQueries = 0;
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlement: { findMany: async () => [] },
+      deliveryCommissionRun: {
+        findMany: async () => {
+          runQueries += 1;
+          return [];
+        },
+      },
+    });
+    assert.equal((await guard.check("Expense", "expense-3", "cancel")).blocked, false);
+    assert.equal((await guard.check("CashBankAdjustment", "adj-1", "update")).blocked, false);
+    assert.equal((await guard.check("CashBankTransfer", "tr-1", "cancel")).blocked, false);
+    assert.equal(runQueries, 1, "only the Expense check looks at delivery commission runs");
+  });
+
+  it("blocks updating a cash/bank adjustment created by an active marketplace settlement", async () => {
+    const guard = createDocumentMutationGuard({
+      marketplaceSettlement: { findMany: async () => [{ id: "settlement-9", settlementNo: "SPS26090009" }] },
+    });
+    const result = await guard.check("CashBankAdjustment", "adj-9", "update");
+    assert.equal(result.blocked, true);
+    assert.equal(
+      buildMutationBlockMessage(result),
+      "ไม่สามารถดำเนินการได้ เนื่องจากถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน: SPS26090009",
+    );
+  });
+
+  it("builds the same message from relation data a list page already loaded", () => {
+    assert.equal(
+      buildMutationBlockMessage(
+        buildMutationBlockResult(MARKETPLACE_SETTLEMENT_SOURCE_REASON, [
+          { entityType: "MarketplaceSettlement", id: "settlement-9", refNo: "SPS26090009" },
+        ]),
+      ),
+      "ไม่สามารถดำเนินการได้ เนื่องจากถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน: SPS26090009",
+    );
+    assert.equal(buildMutationBlockResult(MARKETPLACE_SETTLEMENT_SOURCE_REASON, []).blocked, false);
   });
 });

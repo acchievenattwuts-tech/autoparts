@@ -3,6 +3,9 @@
  *
  * GET /api/search/products/autocomplete?q=...
  *   - Public endpoint (storefront search bar + admin product list search input both use it).
+ *   - `mode=admin` (storefront-hidden products, wholesale price, exact stock, admin
+ *     link) is honoured only for a signed-in user holding `products.view`; any
+ *     other caller silently gets storefront results.
  *   - Returns active products only.
  *   - Min query length 2 chars, max 8 results.
  *   - Uses the same V2 engine as full search (Phase A-E + synonyms).
@@ -16,6 +19,8 @@ import { db } from "@/lib/db";
 import { getProductPath } from "@/lib/product-slug";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { isLikelyBotUserAgent } from "@/lib/search-bot";
+import { getSessionPermissionContext } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -30,6 +35,11 @@ const RATE_LIMIT_SWEEP_INTERVAL_MS = 5 * 60_000;
 // Bot-path responses may be cached by the requesting client only, never by a
 // shared cache — see the bot branch in GET.
 const BOT_AUTOCOMPLETE_CACHE_CONTROL = "private, max-age=30";
+const STOREFRONT_AUTOCOMPLETE_CACHE_CONTROL = "public, max-age=30, s-maxage=60";
+// Any request that ASKED for admin mode — honoured or not — must stay out of
+// shared caches: an honoured one carries hidden products, wholesale price and stock,
+// and a downgraded one must not be replayed to a real admin for the same URL.
+const ADMIN_AUTOCOMPLETE_CACHE_CONTROL = "private, no-store";
 
 type LocalRateBucket = {
   count: number;
@@ -72,21 +82,26 @@ const checkLocalRateLimit = ({
   return { ok: existing.count <= limit, resetAt: existing.resetAt };
 };
 
-type AutocompleteItem = {
+/** Public (storefront-mode) item: no wholesale price, no exact stock, no admin link. */
+type StorefrontAutocompleteItem = {
   id: string;
   code: string;
   name: string;
   imageUrl: string | null;
-  salePrice: number;
-  stock: number;
   inStock: boolean;
   saleUnitName: string | null;
   reportUnitName: string;
   brand: string | null;
   category: string;
-  /** Storefront product detail path (admin can use it too — admin's edit URL is built client-side). */
+  /** Storefront product detail path. */
   href: string;
-  /** Admin-only edit URL (always set; UI decides which to use). */
+};
+
+/** Admin-mode item — only ever sent to a session holding products.view. */
+type AdminAutocompleteItem = StorefrontAutocompleteItem & {
+  salePrice: number;
+  stock: number;
+  /** Admin product preview URL. */
   adminHref: string;
 };
 
@@ -118,30 +133,50 @@ const AUTOCOMPLETE_SELECT = {
   brand: { select: { name: true } },
 } satisfies Prisma.ProductSelect;
 
-const toAutocompleteItem = (
-  p: Prisma.ProductGetPayload<{ select: typeof AUTOCOMPLETE_SELECT }>,
-): AutocompleteItem => ({
+type AutocompleteProductRow = Prisma.ProductGetPayload<{ select: typeof AUTOCOMPLETE_SELECT }>;
+
+const toStorefrontAutocompleteItem = (
+  p: AutocompleteProductRow,
+): StorefrontAutocompleteItem => ({
   id: p.id,
   code: p.code,
   name: p.name,
   imageUrl: p.imageUrl,
-  salePrice: Number(p.salePrice),
-  stock: Number(p.stock),
   inStock: p.stock > 0,
   saleUnitName: p.saleUnitName,
   reportUnitName: p.reportUnitName,
   brand: p.brand?.name ?? null,
   category: p.category.name,
   href: getProductPath({ category: p.category, product: p }),
+});
+
+const toAdminAutocompleteItem = (p: AutocompleteProductRow): AdminAutocompleteItem => ({
+  ...toStorefrontAutocompleteItem(p),
+  salePrice: Number(p.salePrice),
+  stock: Number(p.stock),
   adminHref: `/admin/products/${p.id}/preview`,
 });
+
+/**
+ * True only for a signed-in, valid session holding products.view — the same
+ * permission the two admin pages that call this endpoint (/admin/products and
+ * /admin/products/search) require. Never throws: no session, a revoked
+ * session, or a missing permission all mean "not admin".
+ */
+const canUseAdminMode = async (): Promise<boolean> => {
+  try {
+    const { role, permissions } = await getSessionPermissionContext();
+    return hasPermissionAccess(role, permissions, "products.view");
+  } catch {
+    return false;
+  }
+};
 
 export const GET = async (request: Request): Promise<NextResponse> => {
   try {
     const url = new URL(request.url);
     const query = normalize(url.searchParams.get("q"));
-    const cacheProfile: ProductSearchCacheProfile =
-      url.searchParams.get("mode") === "admin" ? "admin" : "storefront";
+    const adminModeRequested = url.searchParams.get("mode") === "admin";
 
     if (query.length < MIN_QUERY_LENGTH) {
       return NextResponse.json({ items: [] });
@@ -158,6 +193,13 @@ export const GET = async (request: Request): Promise<NextResponse> => {
         { status: 429, headers: { "Retry-After": String(Math.ceil((rate.resetAt - Date.now()) / 1000)) } },
       );
     }
+
+    const cacheProfile: ProductSearchCacheProfile =
+      adminModeRequested && (await canUseAdminMode()) ? "admin" : "storefront";
+    const toItem = cacheProfile === "admin" ? toAdminAutocompleteItem : toStorefrontAutocompleteItem;
+    const cacheControl = adminModeRequested
+      ? ADMIN_AUTOCOMPLETE_CACHE_CONTROL
+      : STOREFRONT_AUTOCOMPLETE_CACHE_CONTROL;
 
     const isBot = isLikelyBotUserAgent(request.headers.get("user-agent"));
 
@@ -182,14 +224,20 @@ export const GET = async (request: Request): Promise<NextResponse> => {
         orderBy: { createdAt: "desc" },
         take: TAKE,
       });
-      const items = botProducts.map(toAutocompleteItem);
+      const items = botProducts.map(toItem);
       // `private` (no s-maxage): this lightweight result differs from what a real
       // browser gets for the SAME URL (different ranking and totalCount), and
       // nothing varies the shared cache on User-Agent — a public entry written by
       // a crawler would be served to customers for the next minute.
       return NextResponse.json(
         { items, totalCount: items.length },
-        { headers: { "Cache-Control": BOT_AUTOCOMPLETE_CACHE_CONTROL } },
+        {
+          headers: {
+            "Cache-Control": adminModeRequested
+              ? ADMIN_AUTOCOMPLETE_CACHE_CONTROL
+              : BOT_AUTOCOMPLETE_CACHE_CONTROL,
+          },
+        },
       );
     }
 
@@ -230,10 +278,7 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     });
 
     if (result.ids.length === 0) {
-      return NextResponse.json(
-        { items: [] },
-        { headers: { "Cache-Control": "public, max-age=30, s-maxage=60" } },
-      );
+      return NextResponse.json({ items: [] }, { headers: { "Cache-Control": cacheControl } });
     }
 
     const products = await db.product.findMany({
@@ -245,11 +290,11 @@ export const GET = async (request: Request): Promise<NextResponse> => {
     const order = new Map(result.ids.map((id, idx) => [id, idx]));
     products.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 
-    const items: AutocompleteItem[] = products.map(toAutocompleteItem);
+    const items = products.map(toItem);
 
     return NextResponse.json(
       { items, totalCount: result.total },
-      { headers: { "Cache-Control": "public, max-age=30, s-maxage=60" } },
+      { headers: { "Cache-Control": cacheControl } },
     );
   } catch (error) {
     console.error("[product autocomplete] failed", error);

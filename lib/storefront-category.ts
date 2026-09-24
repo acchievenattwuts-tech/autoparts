@@ -7,6 +7,10 @@ import {
   getProductCategorySlug,
   normalizeSlugSegment,
 } from "./product-slug";
+import {
+  toStorefrontProductCardItem,
+  type StorefrontProductCardItem,
+} from "./storefront-product-card";
 
 const CATEGORY_CACHE_TAGS = ["storefront:categories"];
 
@@ -64,6 +68,13 @@ export const getActiveStorefrontCategoryBySlug = async (categorySlug: string) =>
 };
 
 const PAGE_SIZE = 20;
+/**
+ * Stock changes (sales, purchases, adjustments) only invalidate per-product
+ * tags, never the tags below, so without a TTL the in/out-of-stock badges and
+ * the stock-desc order on category pages stayed stale until someone edited a
+ * product or category. Matches the category page's own ISR window.
+ */
+const CATEGORY_PRODUCTS_REVALIDATE_SECONDS = 300;
 
 const fetchCategoryProductPage = unstable_cache(
   async (categoryId: string, page: number) => {
@@ -77,7 +88,6 @@ const fetchCategoryProductPage = unstable_cache(
         slug: true,
         code: true,
         imageUrl: true,
-        salePrice: true,
         retailPrice: true,
         saleUnitName: true,
         warrantyDays: true,
@@ -107,25 +117,34 @@ const fetchCategoryProductPage = unstable_cache(
     const total = await db.product.count({ where });
     // Serialize Decimal → string so the result can be passed from Server Component
     // to Client Component (Next.js 16 forbids Decimal across the boundary).
+    // The cached rows keep `stock` (server-side only); the public card mapper
+    // below reduces it to in/out of stock before anything reaches the browser.
     const serialized = products.map((p) => ({
       ...p,
-      salePrice: p.salePrice.toString(),
       retailPrice: p.retailPrice.toString(),
     }));
     return { products: serialized, total };
   },
   ["storefront-category-products"],
-  { tags: [...CATEGORY_CACHE_TAGS, "storefront:products"] },
+  {
+    tags: [...CATEGORY_CACHE_TAGS, "storefront:products"],
+    revalidate: CATEGORY_PRODUCTS_REVALIDATE_SECONDS,
+  },
 );
 
-export type StorefrontCategoryProductItem = Awaited<
-  ReturnType<typeof fetchCategoryProductPage>
->["products"][number];
+export type StorefrontCategoryProductItem = StorefrontProductCardItem<{
+  id: string;
+  name: string;
+  slug: string | null;
+}>;
 
 export async function getStorefrontCategoryProductPageById(categoryId: string, page: number = 1) {
   const safePage = Math.max(1, page);
   const { products, total } = await fetchCategoryProductPage(categoryId, safePage);
-  return { products, total, page: safePage, pageSize: PAGE_SIZE };
+  // Mapped outside the cache so an entry written by an older deploy (which
+  // still carried salePrice) is stripped the same way as a fresh one.
+  const publicProducts: StorefrontCategoryProductItem[] = products.map(toStorefrontProductCardItem);
+  return { products: publicProducts, total, page: safePage, pageSize: PAGE_SIZE };
 }
 
 export async function getStorefrontCategoryPageData(categorySlug: string, page: number = 1) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { createAdjustment, fetchAdjustmentProductLots } from "./actions";
+import { createAdjustment, fetchAdjustmentProductLots, searchAdjustmentProducts } from "./actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -18,7 +18,6 @@ interface ProductOption {
   code: string;
   name: string;
   description?: string | null;
-  stock: number;
   costPrice: number;
   salePrice: number;
   isActive?: boolean;
@@ -61,13 +60,17 @@ const getDefaultPrice = (
 ) => (product ? (type === "ADJUST_IN" ? product.costPrice : product.salePrice) : 0);
 
 const AdjustmentForm = ({
-  products,
+  products: initialProducts,
   canCreate,
 }: {
+  /** Usually empty: products are searched on demand; picked ones are kept in state below. */
   products: ProductOption[];
   canCreate: boolean;
 }) => {
   const [isPending, startTransition] = useTransition();
+  // Every product picked in this form (from search results). The rest of the form
+  // resolves units / lot settings / default prices through products.find().
+  const [products, setProducts] = useState<ProductOption[]>(initialProducts);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [items, setItems] = useState<AdjItem[]>([emptyItem()]);
@@ -85,14 +88,27 @@ const AdjustmentForm = ({
 
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
 
-  const updateItem = (i: number, field: keyof Omit<AdjItem, "lotItems">, value: string | number) => {
+  const rememberProduct = (product: ProductOption) =>
+    setProducts((prev) =>
+      prev.some((p) => p.id === product.id)
+        ? prev.map((p) => (p.id === product.id ? product : p))
+        : [...prev, product],
+    );
+
+  const updateItem = (
+    i: number,
+    field: keyof Omit<AdjItem, "lotItems">,
+    value: string | number,
+    // A product just picked from search is not in `products` state until the next render.
+    pickedProduct?: ProductOption,
+  ) => {
     setItems((prev) =>
       prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
 
         if (field === "productId") {
-          const product = products.find((p) => p.id === String(value));
+          const product = pickedProduct ?? products.find((p) => p.id === String(value));
           updated.unitName = "";
           updated.price = getDefaultPrice(product, updated.type);
           updated.lotItems = [];
@@ -366,8 +382,16 @@ const AdjustmentForm = ({
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">สินค้า</p>}
                       <ProductSearchSelect
                         products={products}
+                        searchProducts={searchAdjustmentProducts}
+                        selectedProduct={product ?? null}
                         value={item.productId}
-                        onChange={(id) => updateItem(i, "productId", id)}
+                        onProductSelect={(picked) => {
+                          rememberProduct(picked);
+                          updateItem(i, "productId", picked.id, picked);
+                        }}
+                        onChange={(id) => {
+                          if (!id) updateItem(i, "productId", "");
+                        }}
                       />
                     </div>
                     <div className="col-span-6 md:col-span-2">

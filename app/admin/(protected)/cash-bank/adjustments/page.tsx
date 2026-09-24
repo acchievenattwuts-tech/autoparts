@@ -4,6 +4,11 @@ import { db } from "@/lib/db";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import {
+  MARKETPLACE_SETTLEMENT_SOURCE_REASON,
+  buildMutationBlockMessage,
+  buildMutationBlockResult,
+} from "@/lib/document-mutation-guard";
 import AdjustmentManager from "./AdjustmentManager";
 
 export default async function CashBankAdjustmentsPage() {
@@ -31,6 +36,7 @@ export default async function CashBankAdjustmentsPage() {
         status: true,
         cancelNote: true,
         account: { select: { code: true, name: true } },
+        marketplaceSettlement: { select: { id: true, settlementNo: true, status: true } },
       },
     }),
   ]);
@@ -59,6 +65,19 @@ export default async function CashBankAdjustmentsPage() {
           note: adjustment.note,
           status: adjustment.status,
           cancelNote: adjustment.cancelNote,
+          // Same message updateCashBankAdjustment returns for these rows.
+          editBlockedReason:
+            adjustment.marketplaceSettlement?.status === "ACTIVE"
+              ? buildMutationBlockMessage(
+                  buildMutationBlockResult(MARKETPLACE_SETTLEMENT_SOURCE_REASON, [
+                    {
+                      entityType: "MarketplaceSettlement",
+                      id: adjustment.marketplaceSettlement.id,
+                      refNo: adjustment.marketplaceSettlement.settlementNo,
+                    },
+                  ]),
+                )
+              : null,
         }))}
         canCreate={hasPermissionAccess(role, permissions, "cash_bank.adjustments.create")}
         canUpdate={hasPermissionAccess(role, permissions, "cash_bank.adjustments.update")}

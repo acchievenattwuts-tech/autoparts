@@ -34,15 +34,18 @@ interface AutocompleteItem {
   code: string;
   name: string;
   imageUrl: string | null;
-  salePrice: number;
-  stock: number;
+  /** Admin mode only — the API leaves wholesale price out of storefront responses. */
+  salePrice?: number;
+  /** Admin mode only — storefront responses carry just `inStock`. */
+  stock?: number;
   inStock: boolean;
   saleUnitName: string | null;
   reportUnitName: string;
   brand: string | null;
   category: string;
   href: string;
-  adminHref: string;
+  /** Admin mode only (sent to a session holding products.view). */
+  adminHref?: string;
 }
 
 interface KeywordSuggestion {
@@ -327,11 +330,12 @@ const ProductAutocomplete = ({
     if (isNavigating) return;
     setPendingItemId(item.id);
     startNavigation(() => {
+      const adminHref = item.adminHref ?? item.href;
       const href =
         mode === "admin" && adminReturnTo
-          ? `${item.adminHref}?returnTo=${encodeURIComponent(adminReturnTo)}`
+          ? `${adminHref}?returnTo=${encodeURIComponent(adminReturnTo)}`
           : mode === "admin"
-            ? item.adminHref
+            ? adminHref
             : item.href;
       router.push(href);
     });
@@ -571,7 +575,7 @@ const ProductAutocomplete = ({
                             showItemPrice ? (
                               <>
                                 <p className="text-sm font-bold text-[#f97316]">
-                                  ฿{item.salePrice.toLocaleString("th-TH")}
+                                  ฿{(item.salePrice ?? 0).toLocaleString("th-TH")}
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-slate-500">
                                   /{getDisplayUnitName(item)}
@@ -1063,14 +1067,14 @@ const ProductAutocomplete = ({
                           {mode === "admin" && (
                             <span
                               className={`mt-0.5 inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold ${
-                                item.stock <= 0
+                                (item.stock ?? 0) <= 0
                                   ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                                  : item.stock <= 5
+                                  : (item.stock ?? 0) <= 5
                                   ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
                                   : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
                               }`}
                             >
-                              Stock {item.stock.toLocaleString("en-US")} {getDisplayUnitName(item)}
+                              Stock {(item.stock ?? 0).toLocaleString("en-US")} {getDisplayUnitName(item)}
                             </span>
                           )}
                         </div>
@@ -1081,7 +1085,7 @@ const ProductAutocomplete = ({
                             showItemPrice ? (
                               <>
                                 <p className="text-sm font-bold text-[#f97316]">
-                                  ฿{item.salePrice.toLocaleString("th-TH")}
+                                  ฿{(item.salePrice ?? 0).toLocaleString("th-TH")}
                                 </p>
                                 <p className="text-[10px] text-gray-400 dark:text-slate-500">
                                   /{getDisplayUnitName(item)}

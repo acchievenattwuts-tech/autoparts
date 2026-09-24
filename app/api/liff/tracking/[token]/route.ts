@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { db } from "@/lib/db";
-import { isTrackingExpired, isStale } from "@/lib/delivery-tracking";
+import { getTrackingContactPhone, isTrackingExpired, isStale } from "@/lib/delivery-tracking";
 import { getClientIp } from "@/lib/client-ip";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
@@ -48,26 +49,31 @@ export async function GET(
     );
   }
 
-  const sale = await db.sale.findUnique({
-    where: { trackingToken: token },
-    select: {
-      id: true,
-      saleNo: true,
-      shippingStatus: true,
-      shippingAddress: true,
-      trackingExpiry: true,
-      deliveryTracking: {
-        select: { latitude: true, longitude: true, accuracy: true, updatedAt: true },
+  const [sale, config] = await Promise.all([
+    db.sale.findUnique({
+      where: { trackingToken: token },
+      select: {
+        id: true,
+        saleNo: true,
+        shippingStatus: true,
+        shippingAddress: true,
+        trackingExpiry: true,
+        updatedAt: true,
+        deliveryTracking: {
+          select: { latitude: true, longitude: true, accuracy: true, updatedAt: true },
+        },
+        // Driver name only — the phone shown is the shop's central number.
+        deliveryStaff: { select: { name: true } },
       },
-      deliveryStaff: { select: { name: true, phone: true } },
-    },
-  });
+    }),
+    getPublicSiteConfig(),
+  ]);
 
   if (!sale) {
     return NextResponse.json({ error: "ไม่พบข้อมูลการจัดส่ง" }, { status: 404 });
   }
 
-  if (isTrackingExpired(sale.trackingExpiry)) {
+  if (isTrackingExpired(sale)) {
     return NextResponse.json({ error: "ลิงก์ติดตามนี้หมดอายุแล้ว" }, { status: 410 });
   }
 
@@ -88,7 +94,7 @@ export async function GET(
       destination: sale.shippingAddress ?? null,
       driver,
       driverName: sale.deliveryStaff?.name ?? null,
-      driverPhone: sale.deliveryStaff?.phone ?? null,
+      contactPhone: getTrackingContactPhone(config.shopPhone),
     },
     {
       headers: {

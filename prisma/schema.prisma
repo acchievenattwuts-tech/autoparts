@@ -232,6 +232,7 @@ model LineMessage {
   @@index([lineUserId, createdAt])
   @@index([lineMessageId])
   @@index([direction, createdAt])
+  @@index([deliveryStatus, createdAt])
   @@index([intent, createdAt])
 }
 
@@ -253,6 +254,7 @@ model LineAiJob {
   @@index([conversationId, createdAt])
   @@index([lineMessageId])
   @@index([jobType, status, createdAt])
+  @@index([status, createdAt])
 }
 
 model LineAiSuggestion {
@@ -1345,6 +1347,7 @@ model StockCard {
 
   @@index([productId, docDate, sorder])
   @@index([docNo])
+  @@index([referenceId])
 }
 
 model BalanceForward {
@@ -1405,6 +1408,7 @@ model Purchase {
   @@index([cashBankAccountId])
   @@index([purchaseType])
   @@index([purchaseDate(sort: Desc), status])
+  @@index([supplierId, purchaseDate(sort: Desc)])
 }
 
 model PurchaseItem {
@@ -1429,6 +1433,7 @@ model PurchaseItem {
   lotItems         PurchaseItemLot[]
 
   @@index([purchaseId, lineNo])
+  @@index([productId])
 }
 
 model Customer {
@@ -2165,6 +2170,7 @@ model CreditNote {
   @@index([cnDate(sort: Desc), status])
   @@index([cashBankAccountId, cnDate(sort: Desc), status])
   @@index([channel, status, cnDate(sort: Desc)])
+  @@index([customerId, status])
 }
 
 model CreditNoteItem {
@@ -2191,6 +2197,7 @@ model CreditNoteItem {
   lotItems             CreditNoteItemLot[]
 
   @@index([creditNoteId, lineNo])
+  @@index([productId])
   @@index([saleItemId])
 }
 
@@ -2253,6 +2260,7 @@ model PurchaseReturnItem {
   lotItems         PurchaseReturnItemLot[]
 
   @@index([purchaseReturnId, lineNo])
+  @@index([productId])
 }
 
 model SiteContent {
@@ -2790,6 +2798,7 @@ model PurchaseItemLot {
   purchaseItem   PurchaseItem @relation(fields: [purchaseItemId], references: [id], onDelete: Cascade)
 
   @@index([purchaseItemId])
+  @@index([lotNo])
 }
 
 model SaleItemLot {
@@ -2801,6 +2810,7 @@ model SaleItemLot {
   saleItem   SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
 
   @@index([saleItemId])
+  @@index([lotNo])
 }
 
 model PurchaseReturnItemLot {
@@ -2811,6 +2821,7 @@ model PurchaseReturnItemLot {
   purchaseReturnItem   PurchaseReturnItem @relation(fields: [purchaseReturnItemId], references: [id], onDelete: Cascade)
 
   @@index([purchaseReturnItemId])
+  @@index([lotNo])
 }
 
 model CreditNoteItemLot {
@@ -2822,6 +2833,7 @@ model CreditNoteItemLot {
   creditNoteItem   CreditNoteItem @relation(fields: [creditNoteItemId], references: [id], onDelete: Cascade)
 
   @@index([creditNoteItemId])
+  @@index([lotNo])
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.

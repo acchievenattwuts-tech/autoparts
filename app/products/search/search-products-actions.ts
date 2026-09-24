@@ -23,6 +23,7 @@ import {
   EMPTY_SEARCH_RESULT,
   RATE_LIMITED_SEARCH_RESULT,
 } from "@/lib/storefront-search-result-states";
+import { resolveStorefrontPriceFilter } from "@/lib/storefront-pricing";
 
 // Ceilings shared with GET /products (which clamps instead of rejecting) — see
 // lib/storefront-search-input-limits.ts.
@@ -126,9 +127,13 @@ export async function searchProductsAction(
     carBrands,
     yearMin,
     yearMax,
-    priceMin,
-    priceMax,
   } = parsed.data;
+  // Same rule the search itself applies (lib/storefront-product-search.ts), so
+  // telemetry records the filter that actually ran.
+  const { priceMin, priceMax } = resolveStorefrontPriceFilter(
+    parsed.data.priceMin,
+    parsed.data.priceMax,
+  );
   const skip = (page - 1) * STOREFRONT_PRODUCTS_PER_PAGE;
 
   const searchInput = {
@@ -144,8 +149,8 @@ export async function searchProductsAction(
     carBrandNames: carBrands,
     yearMin: yearMin ?? null,
     yearMax: yearMax ?? null,
-    priceMin: priceMin ?? null,
-    priceMax: priceMax ?? null,
+    priceMin,
+    priceMax,
     skip,
     take: STOREFRONT_PRODUCTS_PER_PAGE,
     order: "createdAtDesc",

@@ -1,4 +1,5 @@
 import { db } from "../lib/db";
+import { formatSkippedOverCap, mergeImportedSynonyms } from "../lib/search-synonym-import-merge";
 
 type SynonymSeed = {
   term: string;
@@ -211,44 +212,46 @@ const seeds: SynonymSeed[] = [
 
 const normalize = (value: string) => value.trim();
 
-const mergeSynonyms = (existing: string[], incoming: string[], term: string) => {
-  const lowerTerm = term.toLowerCase();
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const value of [...incoming, ...existing]) {
-    const clean = normalize(value);
-    const key = clean.toLowerCase();
-    if (!clean || key === lowerTerm || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(clean);
-  }
-
-  return merged.slice(0, 10);
-};
+// Dry run unless --apply is passed. Usage:
+//   npx tsx --env-file=.env.local scripts/import-search-synonyms-researched.ts           # preview
+//   npx tsx --env-file=.env.local scripts/import-search-synonyms-researched.ts --apply   # write
+const shouldApply = process.argv.includes("--apply");
 
 async function main() {
   let created = 0;
   let updated = 0;
+  let skipped = 0;
 
   for (const seed of seeds) {
     const term = normalize(seed.term);
     const existing = await db.searchSynonym.findUnique({ where: { term } });
-    const synonyms = mergeSynonyms(existing?.synonyms ?? [], seed.synonyms, term);
+    const merge = mergeImportedSynonyms({ existing: existing?.synonyms ?? [], incoming: seed.synonyms, term });
+    const { synonyms } = merge;
+    if (merge.skippedOverCap.length > 0) console.log(formatSkippedOverCap(term, merge));
 
     if (existing) {
+      const nextLanguage = existing.language ?? seed.language ?? null;
+      if (merge.added.length === 0 && existing.isActive && existing.language === nextLanguage) {
+        skipped += 1;
+        continue;
+      }
+      console.log(`update: ${term} +[${merge.added.join(" | ")}]`);
+      updated += 1;
+      if (!shouldApply) continue;
       await db.searchSynonym.update({
         where: { id: existing.id },
         data: {
           synonyms,
-          language: existing.language ?? seed.language ?? null,
+          language: nextLanguage,
           isActive: true,
         },
       });
-      updated += 1;
       continue;
     }
 
+    console.log(`create: ${term} -> ${synonyms.join(" | ")}`);
+    created += 1;
+    if (!shouldApply) continue;
     await db.searchSynonym.create({
       data: {
         term,
@@ -257,10 +260,11 @@ async function main() {
         isActive: true,
       },
     });
-    created += 1;
   }
 
-  console.log(`Imported researched search synonyms. created=${created} updated=${updated}`);
+  console.log(
+    `${shouldApply ? "Imported" : "Dry-run (pass --apply to write)"} researched search synonyms. created=${created} updated=${updated} skipped=${skipped}`,
+  );
 }
 
 main()

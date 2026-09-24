@@ -6,8 +6,9 @@ import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import OrderStatusTimeline from "@/components/liff/OrderStatusTimeline";
 import TrackingSmartLink from "@/components/liff/TrackingSmartLink";
 import { db } from "@/lib/db";
-import { isTrackingExpired } from "@/lib/delivery-tracking";
+import { getTrackingContactPhone, isTrackingExpired } from "@/lib/delivery-tracking";
 import { getLiffCustomer } from "@/lib/liff-data";
+import { getPublicSiteConfig } from "@/lib/site-config";
 import { formatDateThai } from "@/lib/th-date";
 import InlineDeliveryTracker from "./InlineDeliveryTracker";
 import PaymentHistory from "./PaymentHistory";
@@ -64,12 +65,14 @@ export default async function LiffOrderDetailPage({
         trackingNo: true,
         trackingToken: true,
         trackingExpiry: true,
+        updatedAt: true,
         destLatitude: true,
         destLongitude: true,
         deliveryTracking: {
           select: { latitude: true, longitude: true, accuracy: true, updatedAt: true },
         },
-        deliveryStaff: { select: { name: true, phone: true } },
+        // Driver name only — the tracker shows the shop's central phone.
+        deliveryStaff: { select: { name: true } },
         items: {
           select: {
             id: true,
@@ -142,9 +145,14 @@ export default async function LiffOrderDetailPage({
     order.fulfillmentType === "DELIVERY" &&
     order.shippingStatus === "OUT_FOR_DELIVERY" &&
     !!order.trackingToken &&
-    !isTrackingExpired(order.trackingExpiry) &&
+    !isTrackingExpired(order) &&
     order.destLatitude !== null &&
     order.destLongitude !== null;
+
+  // Site config is only needed for the live tracker's contact phone.
+  const trackingContactPhone = showLiveTracking
+    ? getTrackingContactPhone((await getPublicSiteConfig()).shopPhone)
+    : null;
 
   const destLat = order.destLatitude ?? null;
   const destLon = order.destLongitude ?? null;
@@ -268,7 +276,7 @@ export default async function LiffOrderDetailPage({
               destLon={destLon}
               driver={liveDriver}
               driverName={order.deliveryStaff?.name ?? null}
-              driverPhone={order.deliveryStaff?.phone ?? null}
+              contactPhone={trackingContactPhone}
             />
           ) : (
             <>

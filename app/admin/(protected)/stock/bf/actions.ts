@@ -13,7 +13,7 @@ import {
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
 import { AuditAction } from "@/lib/generated/prisma";
-import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { writeBalanceForwardLots, writeStockMovementLots, reverseBalanceForwardLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 
@@ -191,7 +191,7 @@ export async function createBF(
       });
       createdBalanceForwardId = bf.id;
 
-      await writeStockCard(tx, {
+      const stockCardId = await writeStockCard(tx, {
         productId,
         docNo,
         docDate:    parsedDocDate,
@@ -213,14 +213,11 @@ export async function createBF(
           expDate:      lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
         }));
 
-        // Use bf.id as purchaseItemId for lot tracking
-        await writePurchaseLots(tx, bf.id, productId, lotsInBase);
-
-        const sc = await tx.stockCard.findFirst({
-          where: { referenceId: bf.id, source: "BF" },
-          select: { id: true },
-        });
-        if (sc) await writeStockMovementLots(tx, sc.id, lotsInBase, "in");
+        // ProductLot + LotBalance only — a BF is not a PurchaseItem, so no
+        // PurchaseItemLot (its purchaseItemId FK would reject bf.id). The lot
+        // trail lives on the BF StockCard row, which cancelBF reverses from.
+        await writeBalanceForwardLots(tx, productId, lotsInBase);
+        await writeStockMovementLots(tx, stockCardId, lotsInBase, "in");
       }
     });
     const afterSnapshot = createdBalanceForwardId
@@ -287,8 +284,9 @@ export async function cancelBF(
         throw new BalanceForwardUserError("เอกสารถูกยกเลิกไปแล้ว");
       }
 
-      // Reverse Lot balances (bf.id is used as purchaseItemId in writePurchaseLots)
-      await reversePurchaseLotBalance(tx, bf.id, bf.productId);
+      // Reverse Lot balances from the BF StockCard's StockMovementLot rows —
+      // must run before the StockCard delete below (StockMovementLot cascades).
+      await reverseBalanceForwardLotBalance(tx, bf.id, bf.productId);
 
       // Delete StockCard rows for this docNo
       await tx.stockCard.deleteMany({ where: { docNo: bf.docNo, source: "BF" } });

@@ -53,9 +53,41 @@ export function shouldRecalcRoute(
   return haversineDistance(prevLat, prevLon, newLat, newLon) > DELIVERY_TRACKING_CONFIG.ROUTE_RECALC_THRESHOLD_KM;
 }
 
-export function isTrackingExpired(trackingExpiry: Date | null | undefined): boolean {
-  if (!trackingExpiry) return false;
-  return new Date() > trackingExpiry;
+/**
+ * Phone shown on the tracking views: the shop's central number from site config
+ * (`shop_phone`), never the driver's personal phone. Null (= hide the phone line)
+ * when the shop has not configured one.
+ */
+export function getTrackingContactPhone(shopPhone: string | null | undefined): string | null {
+  const phone = shopPhone?.trim();
+  return phone ? phone : null;
+}
+
+/** A public tracking link lives at most this long after it was issued/renewed. */
+export const TRACKING_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export type TrackingLinkExpiryInput = {
+  /** Explicit expiry stamped on the sale (DELIVERED +48h, sale cancelled +48h). */
+  trackingExpiry: Date | null | undefined;
+  shippingStatus: string;
+  /**
+   * Fallback anchor when no explicit expiry is stamped. Sale.updatedAt is the
+   * closest stored instant to token issuance: it is bumped by the same update
+   * that generates/renews the token (shippingStatus → OUT_FOR_DELIVERY) and is
+   * never earlier than it, so a live delivery is never cut off early.
+   */
+  updatedAt: Date;
+};
+
+/**
+ * A tracking link is expired when the shipment is cancelled, when its explicit
+ * expiry has passed, or — with no explicit expiry — 7 days after the sale was
+ * last updated. A missing expiry never means "valid forever".
+ */
+export function isTrackingExpired(input: TrackingLinkExpiryInput, now: Date = new Date()): boolean {
+  if (input.shippingStatus === "CANCELLED") return true;
+  if (input.trackingExpiry) return now > input.trackingExpiry;
+  return now.getTime() > input.updatedAt.getTime() + TRACKING_LINK_TTL_MS;
 }
 
 export type OsrmRouteResult = {

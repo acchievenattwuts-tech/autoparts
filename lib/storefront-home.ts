@@ -35,6 +35,7 @@ const FITMENT_TAKE = 4;
 
 const ONE_DAY_SECONDS = 86_400;
 const THIRTY_MINUTES_SECONDS = 1_800;
+const FIVE_MINUTES_SECONDS = 300;
 
 const STOREFRONT_PRODUCT_WHERE = {
   isActive: true,
@@ -51,7 +52,6 @@ const HOME2_CARD_SELECT = {
   retailPrice: true,
   saleUnitName: true,
   warrantyDays: true,
-  stock: true,
   category: { select: { id: true, name: true, slug: true } },
   brand: { select: { name: true } },
   carModels: {
@@ -79,7 +79,6 @@ export interface StorefrontProductCardData {
   retailPrice: number;
   saleUnitName: string;
   warrantyDays: number;
-  stock: number;
   category: { id: string; name: string; slug: string | null };
   brandName: string | null;
   /** e.g. "TOYOTA - VIOS 2013-2017, TOYOTA - YARIS 2014+" */
@@ -148,7 +147,6 @@ const toCardData = (product: Home2ProductRow): StorefrontProductCardData => ({
   retailPrice: Number(product.retailPrice),
   saleUnitName: product.saleUnitName,
   warrantyDays: product.warrantyDays,
-  stock: product.stock,
   category: product.category,
   brandName: product.brand?.name ?? null,
   fitmentSummary: buildFitmentSummary(product.carModels),
@@ -305,7 +303,9 @@ const getHome2WeeklyBestSellersForDate = unstable_cache(
         .sort((left, right) => (rankById.get(left.id) ?? 0) - (rankById.get(right.id) ?? 0))
         .map(toCardData);
     }),
-  ["home2-weekly-best-sellers"],
+  // v2: card payload no longer carries the exact stock count — a new key keeps
+  // entries cached with the old shape from being served to the browser.
+  ["home2-weekly-best-sellers-v2"],
   { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
 );
 
@@ -326,33 +326,49 @@ export interface StorefrontProductPage {
  * `id` breaks ties. Without it, skip/take could repeat or drop a row between
  * pages.
  */
-const getHome2NewArrivalsPage = unstable_cache(
-  async (page: number): Promise<StorefrontProductPage> =>
-    withDbRetry(async () => {
-      const [products, total] = await Promise.all([
-        db.product.findMany({
-          where: STOREFRONT_PRODUCT_WHERE,
-          select: HOME2_CARD_SELECT,
-          orderBy: [{ createdAt: "desc" }, { id: "asc" }],
-          skip: (page - 1) * NEW_ARRIVAL_PAGE_SIZE,
-          take: NEW_ARRIVAL_PAGE_SIZE,
-        }),
-        db.product.count({ where: STOREFRONT_PRODUCT_WHERE }),
-      ]);
+const fetchHome2NewArrivalsPage = async (page: number): Promise<StorefrontProductPage> =>
+  withDbRetry(async () => {
+    const [products, total] = await Promise.all([
+      db.product.findMany({
+        where: STOREFRONT_PRODUCT_WHERE,
+        select: HOME2_CARD_SELECT,
+        orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+        skip: (page - 1) * NEW_ARRIVAL_PAGE_SIZE,
+        take: NEW_ARRIVAL_PAGE_SIZE,
+      }),
+      db.product.count({ where: STOREFRONT_PRODUCT_WHERE }),
+    ]);
 
-      return {
-        products: products.map(toCardData),
-        total,
-        page,
-        pageSize: NEW_ARRIVAL_PAGE_SIZE,
-      };
-    }),
-  ["home2-new-arrivals"],
+    return {
+      products: products.map(toCardData),
+      total,
+      page,
+      pageSize: NEW_ARRIVAL_PAGE_SIZE,
+    };
+  });
+
+/** Page 1 — rendered into the home page itself. */
+const getHome2NewArrivalsFirstPage = unstable_cache(
+  fetchHome2NewArrivalsPage,
+  // v2: see home2-weekly-best-sellers-v2 above.
+  ["home2-new-arrivals-v2"],
   { tags: ["storefront:products"], revalidate: ONE_DAY_SECONDS },
 );
 
+/**
+ * Pages 2+ — the "load more" API. Stock changes never invalidate the
+ * storefront:products tag, so a sold-out product (the list is in-stock only)
+ * stays listed until the TTL; these pages refresh within 5 minutes, like the
+ * category grids.
+ */
+const getHome2NewArrivalsLaterPage = unstable_cache(
+  fetchHome2NewArrivalsPage,
+  ["home2-new-arrivals-later-v1"],
+  { tags: ["storefront:products"], revalidate: FIVE_MINUTES_SECONDS },
+);
+
 export const getHomeNewArrivals = (page = 1): Promise<StorefrontProductPage> =>
-  getHome2NewArrivalsPage(page);
+  page > 1 ? getHome2NewArrivalsLaterPage(page) : getHome2NewArrivalsFirstPage(page);
 
 /**
  * Car models to offer as one-tap chips in the hero.

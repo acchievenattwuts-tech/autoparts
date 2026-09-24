@@ -13,29 +13,70 @@ import {
   pruneExpiredProfitExplanationHistory,
 } from "@/lib/profit-explanation/history";
 import { generateProfitExplanation } from "@/lib/profit-explanation/service";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { requirePermission } from "@/lib/require-auth";
+import { isDateOnlyString } from "@/lib/th-date";
+import { z } from "zod";
 
-function parseBasis(value: unknown): ProfitRevenueBasis {
-  return value === "inc_vat" ? "inc_vat" : "ex_vat";
-}
+/** Missing, null and blank values mean "not given", so the dashboard defaults apply as before. */
+const blankToUndefined = (value: unknown): unknown => {
+  if (value === null) return undefined;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
 
-function parseFilters(input: Record<string, unknown> | URLSearchParams): {
+// isDateOnlyString = YYYY-MM-DD that parses (Thailand offset) to a valid Date.
+const dateOnlySchema = z.preprocess(
+  blankToUndefined,
+  z.string().refine((value) => isDateOnlyString(value)).optional(),
+);
+
+/** Shared by GET (query string) and POST (JSON body). */
+const profitExplanationFiltersSchema = z.object({
+  from: dateOnlySchema,
+  to: dateOnlySchema,
+  basis: z.preprocess(blankToUndefined, z.enum(["ex_vat", "inc_vat"]).default("ex_vat")),
+});
+
+type ProfitExplanationFilters = {
   from?: string;
   to?: string;
   basis: ProfitRevenueBasis;
-} {
-  const get = (key: string): unknown => (input instanceof URLSearchParams ? input.get(key) : input[key]);
-  const from = get("from");
-  const to = get("to");
+};
 
-  return {
-    from: typeof from === "string" && from.trim() ? from.trim() : undefined,
-    to: typeof to === "string" && to.trim() ? to.trim() : undefined,
-    basis: parseBasis(get("basis")),
-  };
+function parseFilters(input: Record<string, unknown> | URLSearchParams): ProfitExplanationFilters | null {
+  const get = (key: string): unknown => (input instanceof URLSearchParams ? input.get(key) : input[key]);
+  const parsed = profitExplanationFiltersSchema.safeParse({
+    from: get("from"),
+    to: get("to"),
+    basis: get("basis"),
+  });
+  return parsed.success ? parsed.data : null;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function invalidFiltersResponse(): Response {
+  return Response.json({ error: "PROFIT_EXPLANATION_INVALID_FILTERS" }, { status: 400 });
 }
 
 const MAX_ERROR_MESSAGE_LENGTH = 500;
+
+/** Each POST computes the dashboard and calls Gemini, so it is capped per user. GET (history) is not. */
+const GENERATE_RATE_LIMIT_MAX_REQUESTS = 5;
+const GENERATE_RATE_LIMIT_WINDOW_MS = 10 * 60_000;
+const MS_PER_SECOND = 1000;
+
+function rateLimitedResponse(resetAt: number): Response {
+  const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - Date.now()) / MS_PER_SECOND));
+  return Response.json(
+    { error: "PROFIT_EXPLANATION_RATE_LIMITED", retryAfterSeconds },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
+}
 
 /** Housekeeping only: a failed prune must not fail reading or creating history. */
 async function pruneExpiredHistoryBestEffort(): Promise<void> {
@@ -61,7 +102,9 @@ export async function GET(request: Request): Promise<Response> {
     // same resolver getProfitDashboardData() applies, without computing the
     // whole dashboard.
     const url = new URL(request.url);
-    const filters = resolveProfitDashboardFilters(parseFilters(url.searchParams));
+    const input = parseFilters(url.searchParams);
+    if (!input) return invalidFiltersResponse();
+    const filters = resolveProfitDashboardFilters(input);
     const items = await listRecentProfitExplanationHistory({
       filters,
       take: 5,
@@ -76,8 +119,18 @@ export async function GET(request: Request): Promise<Response> {
 export async function POST(request: Request): Promise<Response> {
   try {
     const session = await requirePermission("dashboard.view");
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const data = await getProfitDashboardData(parseFilters(body));
+    const body: unknown = await request.json().catch(() => ({}));
+    const input = isPlainObject(body) ? parseFilters(body) : null;
+    if (!input) return invalidFiltersResponse();
+    // Checked before the dashboard aggregate and the Gemini call; invalid
+    // filters (400 above) do not consume the user's quota.
+    const rate = await checkRateLimit({
+      key: `profit-explanation:${session.user.id}`,
+      limit: GENERATE_RATE_LIMIT_MAX_REQUESTS,
+      windowMs: GENERATE_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rate.ok) return rateLimitedResponse(rate.resetAt);
+    const data = await getProfitDashboardData(input);
     const evidence = buildProfitExplanationEvidence(data);
     const generated = await generateProfitExplanation(evidence);
 

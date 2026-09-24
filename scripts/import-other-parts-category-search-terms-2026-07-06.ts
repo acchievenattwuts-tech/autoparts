@@ -1,5 +1,6 @@
 import { db } from "../lib/db";
 import { normalizeSearchText } from "../lib/search-normalization";
+import { formatSkippedOverCap, mergeImportedSynonyms } from "../lib/search-synonym-import-merge";
 
 type CategoryAliasSeed = {
   alias: string;
@@ -15,7 +16,6 @@ type SynonymSeed = {
 };
 
 const OTHER_PARTS_CATEGORY_NAME = "อะไหล่อื่นๆ";
-const MAX_SYNONYMS_PER_TERM = 10;
 const shouldApply = process.argv.includes("--apply");
 
 const categoryAliasSeeds: CategoryAliasSeed[] = [
@@ -129,20 +129,15 @@ const mergeSynonyms = ({
   term: string;
   globallyUsed: Set<string>;
 }) => {
-  const normalizedTerm = normalizeSearchText(term);
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const value of [...existing, ...incoming]) {
-    const trimmed = clean(value);
-    const key = normalizeSearchText(trimmed);
-    if (!trimmed || !key || key === normalizedTerm || seen.has(key)) continue;
-    if (globallyUsed.has(key)) continue;
-    seen.add(key);
-    merged.push(trimmed);
-  }
-
-  return merged.slice(0, MAX_SYNONYMS_PER_TERM);
+  // Existing synonyms stay verbatim and first; new ones are appended up to the cap.
+  const merge = mergeImportedSynonyms({
+    existing,
+    incoming: incoming.map(clean),
+    term,
+    excludeKeys: globallyUsed,
+  });
+  if (merge.skippedOverCap.length > 0) console.log(formatSkippedOverCap(term, merge));
+  return merge.synonyms;
 };
 
 async function importCategoryAliases() {

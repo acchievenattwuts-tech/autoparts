@@ -1,4 +1,8 @@
-import { getRoutePermission, isKnowledgePermission } from "@/lib/access-control";
+import {
+  getRoutePermission,
+  isKnowledgePermission,
+  type PermissionKey,
+} from "@/lib/access-control";
 
 /**
  * The route-level authorization decision for /admin, lifted out of the NextAuth
@@ -39,6 +43,30 @@ export type AdminRouteAccessDecision =
   | { type: "deny" }
   | { type: "redirect"; to: string };
 
+/**
+ * Pages whose own requirePermission() key differs from the prefix rule that
+ * getRoutePermission() would apply (e.g. /admin/sales/shopee/settlements sits
+ * under the /admin/sales prefix = sales.view, but the page itself only checks
+ * marketplace.manage). Since the proxy now really enforces "deny", the route
+ * gate must never demand a key the page does not demand, or someone the page
+ * lets in would be blocked. Each override is a key the page itself requires.
+ * lib/__tests__/admin-route-access-page-parity.test.ts keeps this in sync.
+ */
+const PAGE_PERMISSION_OVERRIDES: ReadonlyArray<{ pattern: RegExp; permission: PermissionKey }> = [
+  { pattern: /^\/admin\/sales\/(?:shopee|lazada)\/new$/, permission: "sales.create" },
+  { pattern: /^\/admin\/sales\/(?:shopee|lazada)\/returns\/new$/, permission: "credit_notes.create" },
+  { pattern: /^\/admin\/sales\/(?:shopee|lazada)\/settlements$/, permission: "marketplace.manage" },
+  { pattern: /^\/admin\/marketplace\/settlements(?:\/|$)/, permission: "marketplace.manage" },
+  { pattern: /^\/admin\/knowledge\/test$/, permission: "knowledge.sync" },
+  { pattern: /^\/admin\/wht\/certificates\/new$/, permission: "wht.create" },
+  { pattern: /^\/admin\/wht\/filings\/new$/, permission: "wht_filings.manage" },
+];
+
+/** The permission the route gate requires for an admin path (see overrides above). */
+export const resolveAdminRoutePermission = (pathname: string): PermissionKey | null | undefined =>
+  PAGE_PERMISSION_OVERRIDES.find((override) => override.pattern.test(pathname))?.permission ??
+  getRoutePermission(pathname);
+
 const ALLOW: AdminRouteAccessDecision = { type: "allow" };
 const DENY: AdminRouteAccessDecision = { type: "deny" };
 const redirectTo = (to: string): AdminRouteAccessDecision => ({ type: "redirect", to });
@@ -59,7 +87,7 @@ export const decideAdminRouteAccess = (
   const isAdminRoute = pathname.startsWith("/admin");
   const isLoginPage = pathname === ADMIN_LOGIN_PATH;
   const isChangePasswordPage = pathname === ADMIN_CHANGE_PASSWORD_PATH;
-  const requiredPermission = getRoutePermission(pathname);
+  const requiredPermission = resolveAdminRoutePermission(pathname);
 
   // Already signed in and still valid? Bounce off the login form. A revoked
   // session must fall through and be allowed to render the form again,

@@ -1,5 +1,5 @@
 import { auth } from "./auth";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextProxy, type NextRequest } from "next/server";
 import { db } from "@/lib/db";
 import { getClientIp } from "@/lib/client-ip";
 import { shouldRejectRootPost } from "@/lib/root-request-guard";
@@ -20,7 +20,11 @@ import {
  * Bot/Rate-Limit Protection + Admin Auth
  *
  * Admin paths (/admin/*):
- *   auth() callback handles session checking (unchanged from original)
+ *   delegated to the auth()-wrapped handler: session check + authorized()
+ *   callback in auth.config.ts (login redirect, 403 on a denied permission).
+ *
+ * Public paths never call auth(): a staff member's session cookie is not read,
+ * re-checked against the DB or re-issued on storefront pages and images.
  *
  * Public paths:
  *   - Block aggressive bot user-agents (AI scrapers, SEO crawlers)
@@ -56,25 +60,28 @@ function sweepStaleEntries(now: number) {
   }
 }
 
-export const proxy = auth(async (req) => {
-  const { pathname } = req.nextUrl;
+/**
+ * The URL the auth() wrapper used to hand this request: next-auth swaps the
+ * origin for AUTH_URL / NEXTAUTH_URL (reqWithEnvURL in next-auth/lib/env.js).
+ * Public requests no longer pass through auth(), so the legacy product
+ * redirect resolves against this to keep its Location exactly as before.
+ */
+function getAuthEnvRequestUrl(req: NextRequest): string {
+  const envUrl = process.env.AUTH_URL ?? process.env.NEXTAUTH_URL;
+  if (!envUrl) return req.url;
+  const { href, origin } = req.nextUrl;
+  return href.replace(origin, new URL(envUrl).origin);
+}
+
+type AdminPassThrough = (req: NextRequest, event: NextFetchEvent) => NextResponse;
+
+// Everything admin-specific happens inside auth(): the session read and the
+// authorized() decision. Once that allows the request it just continues.
+const passAdminRequestThrough: AdminPassThrough = () => NextResponse.next();
+const adminProxy = auth(passAdminRequestThrough);
+
+async function handlePublicRequest(req: NextRequest, pathname: string, method: string): Promise<Response> {
   const userAgent = req.headers.get("user-agent") ?? "";
-  const method = req.method.toUpperCase();
-
-  if (shouldRejectRootPost(pathname, method)) {
-    return new NextResponse("Method Not Allowed", {
-      status: 405,
-      headers: {
-        Allow: "GET, HEAD",
-        "Cache-Control": "no-store",
-      },
-    });
-  }
-
-  // Admin paths — leave entirely to auth session logic (no bot check needed)
-  if (pathname.startsWith("/admin")) {
-    return NextResponse.next();
-  }
 
   if (userAgent && isAggressiveBotUserAgent(userAgent)) {
     return new NextResponse("Forbidden", { status: 403 });
@@ -142,7 +149,7 @@ export const proxy = auth(async (req) => {
     });
 
     if (redirectTarget) {
-      return NextResponse.redirect(new URL(redirectTarget, req.url), 308);
+      return NextResponse.redirect(new URL(redirectTarget, getAuthEnvRequestUrl(req)), 308);
     }
   }
 
@@ -160,7 +167,29 @@ export const proxy = auth(async (req) => {
   }
 
   return NextResponse.next();
-});
+}
+
+export const proxy: NextProxy = async (req, event) => {
+  const { pathname } = req.nextUrl;
+  const method = req.method.toUpperCase();
+
+  // First for every path, admin included.
+  if (shouldRejectRootPost(pathname, method)) {
+    return new NextResponse("Method Not Allowed", {
+      status: 405,
+      headers: {
+        Allow: "GET, HEAD",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  if (pathname.startsWith("/admin")) {
+    return adminProxy(req, event);
+  }
+
+  return handlePublicRequest(req, pathname, method);
+};
 
 export const config = {
   matcher: [

@@ -12,6 +12,13 @@ import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { resolveExpenseAttachmentViewSource } from "@/lib/private-file-ref";
 import ExpenseAttachmentsPanel, { type ExpenseAttachmentView } from "./ExpenseAttachmentsPanel";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
+import {
+  DELIVERY_COMMISSION_EXPENSE_REASON,
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  buildMutationBlockResult,
+} from "@/lib/document-mutation-guard";
 
 const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("expenses.view");
@@ -52,6 +59,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             status: true,
           },
         },
+        deliveryCommissionRun: { select: { id: true, runNo: true, status: true } },
       },
     }),
     db.documentPayment.findMany({
@@ -66,6 +74,14 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
 
   if (!expense) notFound();
   const activityEvents = await getDocumentActivityTimeline("Expense", expense.id);
+  // Same result the Expense guard returns: the run's expense changes only by cancelling the run.
+  const commissionRunBlock = buildMutationBlockResult(
+    DELIVERY_COMMISSION_EXPENSE_REASON,
+    expense.deliveryCommissionRun?.status === "ACTIVE"
+      ? [{ entityType: "DeliveryCommissionRun", id: expense.deliveryCommissionRun.id, refNo: expense.deliveryCommissionRun.runNo }]
+      : [],
+  );
+  const commissionRunBlockMessage = buildMutationBlockMessage(commissionRunBlock);
 
   const attachments: ExpenseAttachmentView[] = expense.attachments.map((attachment) => {
     const viewSource = resolveExpenseAttachmentViewSource(attachment);
@@ -110,7 +126,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
             )}
           </div>
-          {expense.status === "ACTIVE" && canUpdate && !expense.marketplaceSettlement && (
+          {expense.status === "ACTIVE" && canUpdate && !expense.marketplaceSettlement && !commissionRunBlockMessage && (
             <NavLink
               href={`/admin/expenses/${id}/edit`}
               className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
@@ -119,6 +135,15 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
             </NavLink>
           )}
         </div>
+
+        {expense.status === "ACTIVE" && commissionRunBlockMessage ? (
+          <div className="mb-5">
+            <DocumentMutationBlockedNotice
+              message={commissionRunBlockMessage}
+              references={buildMutationBlockReferenceLinks(commissionRunBlock)}
+            />
+          </div>
+        ) : null}
 
         {expense.marketplaceSettlement ? (
           <div className="mb-5 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm dark:border-sky-400/30 dark:bg-sky-500/10">

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, XCircle } from "lucide-react";
 
 import { db } from "@/lib/db";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
+import { getVerifyDocumentState } from "@/lib/verify-document-status";
 import { verifyDocumentToken, type VerifyDocumentType } from "@/lib/verify-token";
 
 export const dynamic = "force-dynamic";
@@ -30,23 +31,36 @@ export default async function VerifyDocumentPage({
   const document = documentType && tokenValid
     ? await loadVerifyDocument({ type: documentType, docNo: decodedDocNo })
     : null;
-  const isValid = Boolean(tokenValid && document);
+  const state = getVerifyDocumentState({ tokenValid, document });
+  const cancelledAtText = document?.cancelledAt ? formatDateTimeThai(document.cancelledAt) : null;
 
   return (
     <main className="min-h-dvh bg-slate-100 px-5 py-8">
       <section className="mx-auto max-w-lg rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-        {isValid ? (
+        {state === "valid" ? (
           <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
+        ) : state === "cancelled" ? (
+          <Ban className="mx-auto h-14 w-14 text-amber-600" />
         ) : (
           <XCircle className="mx-auto h-14 w-14 text-rose-600" />
         )}
-        <h1 className="mt-4 font-kanit text-2xl font-bold text-slate-950">
-          {isValid ? "เอกสารถูกต้อง" : "ตรวจสอบเอกสารไม่สำเร็จ"}
+        <h1
+          className={`mt-4 font-kanit text-2xl font-bold ${state === "cancelled" ? "text-amber-700" : "text-slate-950"}`}
+        >
+          {state === "valid"
+            ? "เอกสารถูกต้อง"
+            : state === "cancelled"
+              ? "ออกจากระบบจริง แต่ถูกยกเลิกแล้ว"
+              : "ตรวจสอบเอกสารไม่สำเร็จ"}
         </h1>
         <p className="mt-2 text-sm text-slate-500">
-          {isValid
+          {state === "valid"
             ? "QR นี้ออกโดยระบบศรีวรรณ อะไหล่แอร์"
-            : "ลิงก์ตรวจสอบไม่ถูกต้อง หมดอายุ หรือไม่พบเอกสารในระบบ"}
+            : state === "cancelled"
+              ? cancelledAtText
+                ? `เอกสารนี้ถูกยกเลิกเมื่อ ${cancelledAtText} น. จึงไม่มีผลใช้งานแล้ว`
+                : "เอกสารนี้ถูกยกเลิกแล้ว จึงไม่มีผลใช้งาน"
+              : "ลิงก์ตรวจสอบไม่ถูกต้อง หมดอายุ หรือไม่พบเอกสารในระบบ"}
         </p>
 
         <dl className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4 text-left text-sm">
@@ -62,6 +76,14 @@ export default async function VerifyDocumentPage({
           </div>
           {document ? (
             <>
+              {state === "cancelled" ? (
+                <div>
+                  <dt className="text-slate-500">สถานะเอกสาร</dt>
+                  <dd className="font-semibold text-amber-700">
+                    ยกเลิกแล้ว{cancelledAtText ? ` (${cancelledAtText} น.)` : ""}
+                  </dd>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-slate-500">วันที่เอกสาร</dt>
                 <dd className="font-semibold text-slate-950">{formatDateThai(document.date)}</dd>
@@ -109,6 +131,8 @@ async function loadVerifyDocument({
         saleDate: true,
         customerName: true,
         netAmount: true,
+        status: true,
+        cancelledAt: true,
         customer: { select: { name: true } },
       },
     });
@@ -118,6 +142,8 @@ async function loadVerifyDocument({
           date: sale.saleDate,
           customerName: sale.customer?.name ?? sale.customerName,
           amount: sale.netAmount,
+          status: sale.status,
+          cancelledAt: sale.cancelledAt,
         }
       : null;
   }
@@ -128,6 +154,8 @@ async function loadVerifyDocument({
       receiptDate: true,
       customerName: true,
       totalAmount: true,
+      status: true,
+      cancelledAt: true,
       customer: { select: { name: true } },
     },
   });
@@ -137,6 +165,8 @@ async function loadVerifyDocument({
         date: receipt.receiptDate,
         customerName: receipt.customer?.name ?? receipt.customerName,
         amount: receipt.totalAmount,
+        status: receipt.status,
+        cancelledAt: receipt.cancelledAt,
       }
     : null;
 }

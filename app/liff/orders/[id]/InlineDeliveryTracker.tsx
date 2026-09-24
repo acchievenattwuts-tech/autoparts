@@ -27,7 +27,8 @@ type TrackingData = {
   status: string;
   driver: Driver | null;
   driverName: string | null;
-  driverPhone: string | null;
+  /** Shop's central phone (site config) — never the driver's personal number. */
+  contactPhone: string | null;
   destination: string | null;
 };
 
@@ -37,7 +38,7 @@ type Props = {
   destLon: number | null;
   driver: Driver | null;
   driverName: string | null;
-  driverPhone: string | null;
+  contactPhone: string | null;
 };
 
 function formatUpdatedAt(iso: string): string {
@@ -74,13 +75,13 @@ const InlineDeliveryTracker = ({
   destLon,
   driver: initialDriver,
   driverName,
-  driverPhone,
+  contactPhone,
 }: Props) => {
   const [data, setData] = useState<TrackingData>({
     status: "OUT_FOR_DELIVERY",
     driver: initialDriver,
     driverName,
-    driverPhone,
+    contactPhone,
     destination: null,
   });
   const [eta, setEta] = useState<{ duration: number; distance: number; estimated?: boolean } | null>(null);
@@ -377,7 +378,7 @@ const InlineDeliveryTracker = ({
     : false;
   const nearby =
     driver && destLat && destLon ? isNearby(driver.lat, driver.lon, destLat, destLon) : false;
-  const driverPhoneHref = data.driverPhone?.replace(/[^0-9+]/g, "") ?? "";
+  const contactPhoneHref = data.contactPhone?.replace(/[^0-9+]/g, "") ?? "";
   const driverUpdatedClock = driver ? formatClockTime(new Date(driver.updatedAt)) : "";
   const etaArrivalClock = driver && eta ? formatEtaArrival(driver.updatedAt, eta.duration) : "";
   const routeStatusText =
@@ -477,20 +478,20 @@ const InlineDeliveryTracker = ({
       ) : null}
 
       {/* Driver card */}
-      {(data.driverName || data.driverPhone) && (
+      {(data.driverName || data.contactPhone) && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-white px-3 py-3">
           <div className="min-w-0">
             <p className="text-xs text-slate-500">ผู้ส่ง</p>
             {data.driverName && (
               <p className="truncate text-sm font-semibold text-slate-900">{data.driverName}</p>
             )}
-            {data.driverPhone && driverPhoneHref && (
+            {data.contactPhone && contactPhoneHref && (
               <a
-                href={`tel:${driverPhoneHref}`}
+                href={`tel:${contactPhoneHref}`}
                 className="mt-1 inline-flex items-center gap-1.5 text-sm font-bold text-green-700 active:text-green-800"
               >
                 <Phone size={14} />
-                {data.driverPhone}
+                ติดต่อร้าน {data.contactPhone}
               </a>
             )}
             {driver && (
@@ -500,9 +501,9 @@ const InlineDeliveryTracker = ({
               </p>
             )}
           </div>
-          {data.driverPhone && driverPhoneHref && (
+          {data.contactPhone && contactPhoneHref && (
             <a
-              href={`tel:${driverPhoneHref}`}
+              href={`tel:${contactPhoneHref}`}
               className="flex shrink-0 items-center gap-1.5 rounded-lg bg-green-50 px-3 py-2 text-sm font-bold text-green-700 active:bg-green-100"
             >
               <Phone size={15} />

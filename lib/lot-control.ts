@@ -111,6 +111,50 @@ async function ensureLotBalanceAvailable(
 // ─── Write lot rows after purchase ───────────────────────────────────────────
 
 /**
+ * Stock-in lot bookkeeping shared by purchases and Balance Forward:
+ * 1. Upsert ProductLot (master)
+ * 2. Upsert LotBalance (+qtyInBase)
+ * `purchaseItemId` is recorded on a newly created ProductLot only when the lot
+ * really comes from a PurchaseItem; other sources leave it null.
+ */
+async function upsertIncomingLot(
+  tx: TxClient,
+  productId: string,
+  lot: LotSubRowBase,
+  purchaseItemId: string | null
+): Promise<void> {
+  // 1. Upsert ProductLot master
+  await tx.productLot.upsert({
+    where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+    create: {
+      productId,
+      lotNo:         lot.lotNo,
+      purchaseItemId,
+      mfgDate:       lot.mfgDate,
+      expDate:       lot.expDate,
+      unitCost:      new Prisma.Decimal(lot.unitCostBase),
+    },
+    update: {
+      // ไม่เขียนทับ unitCost — เก็บต้นทุนครั้งแรกที่ซื้อเข้า
+      expDate:  lot.expDate ?? undefined,
+    },
+  });
+
+  // 2. Upsert LotBalance
+  await tx.lotBalance.upsert({
+    where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
+    create: {
+      productId,
+      lotNo:     lot.lotNo,
+      qtyOnHand: new Prisma.Decimal(lot.qtyInBase),
+    },
+    update: {
+      qtyOnHand: { increment: new Prisma.Decimal(lot.qtyInBase) },
+    },
+  });
+}
+
+/**
  * บันทึก Lot rows หลังจากสร้าง PurchaseItem แล้ว:
  * 1. Upsert ProductLot (master)
  * 2. Upsert LotBalance (+qtyInBase)
@@ -123,35 +167,7 @@ export async function writePurchaseLots(
   lots: LotSubRowBase[]
 ): Promise<void> {
   for (const lot of lots) {
-    // 1. Upsert ProductLot master
-    await tx.productLot.upsert({
-      where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
-      create: {
-        productId,
-        lotNo:         lot.lotNo,
-        purchaseItemId,
-        mfgDate:       lot.mfgDate,
-        expDate:       lot.expDate,
-        unitCost:      new Prisma.Decimal(lot.unitCostBase),
-      },
-      update: {
-        // ไม่เขียนทับ unitCost — เก็บต้นทุนครั้งแรกที่ซื้อเข้า
-        expDate:  lot.expDate ?? undefined,
-      },
-    });
-
-    // 2. Upsert LotBalance
-    await tx.lotBalance.upsert({
-      where: { productId_lotNo: { productId, lotNo: lot.lotNo } },
-      create: {
-        productId,
-        lotNo:     lot.lotNo,
-        qtyOnHand: new Prisma.Decimal(lot.qtyInBase),
-      },
-      update: {
-        qtyOnHand: { increment: new Prisma.Decimal(lot.qtyInBase) },
-      },
-    });
+    await upsertIncomingLot(tx, productId, lot, purchaseItemId);
 
     // 3. Create PurchaseItemLot
     await tx.purchaseItemLot.create({
@@ -217,6 +233,49 @@ export async function reversePurchaseLotBalance(
       WHERE "productId" = ${productId} AND "lotNo" = ${lot.lotNo}
     `;
   }
+}
+
+// ─── Balance Forward (BF) Lot functions ──────────────────────────────────────
+
+/**
+ * Lot bookkeeping for a Balance Forward: ProductLot upsert + LotBalance
+ * increment only. A BF is not a PurchaseItem, so it must NOT create a
+ * PurchaseItemLot (PurchaseItemLot.purchaseItemId has a real FK to
+ * PurchaseItem) and it leaves ProductLot.purchaseItemId null, like other
+ * non-purchase stock-in sources. The BF's per-lot trail is the StockMovementLot
+ * rows the caller writes on the BF StockCard row (source = BF).
+ */
+export async function writeBalanceForwardLots(
+  tx: TxClient,
+  productId: string,
+  lots: LotSubRowBase[]
+): Promise<void> {
+  for (const lot of lots) {
+    await upsertIncomingLot(tx, productId, lot, null);
+  }
+}
+
+/**
+ * Reverse LotBalance for a cancelled Balance Forward, driven by the
+ * StockMovementLot rows of its StockCard (source = BF, referenceId = bfId).
+ * Must run BEFORE the StockCard rows are deleted (StockMovementLot cascades).
+ */
+export async function reverseBalanceForwardLotBalance(
+  tx: TxClient,
+  balanceForwardId: string,
+  productId: string
+): Promise<void> {
+  const stockCards = await tx.stockCard.findMany({
+    where: { referenceId: balanceForwardId, source: "BF", productId },
+    select: {
+      productId: true,
+      lotMovements: {
+        select: { lotNo: true, qtyIn: true, qtyOut: true },
+      },
+    },
+  });
+
+  await reverseStockCardLotMovements(tx, stockCards);
 }
 
 // ─── Sale Lot functions ───────────────────────────────────────────────────────
@@ -507,6 +566,22 @@ export async function reverseAdjustmentLotBalance(
     },
   });
 
+  await reverseStockCardLotMovements(tx, stockCards);
+}
+
+interface StockCardLotMovementsForReversal {
+  productId: string;
+  lotMovements: { lotNo: string; qtyIn: Prisma.Decimal; qtyOut: Prisma.Decimal }[];
+}
+
+/**
+ * Undo the LotBalance effect of StockMovementLot rows: an "in" movement is
+ * deducted back (clamped at 0), an "out" movement is added back.
+ */
+async function reverseStockCardLotMovements(
+  tx: TxClient,
+  stockCards: StockCardLotMovementsForReversal[]
+): Promise<void> {
   for (const sc of stockCards) {
     for (const lot of sc.lotMovements) {
       if (Number(lot.qtyIn) > 0) {

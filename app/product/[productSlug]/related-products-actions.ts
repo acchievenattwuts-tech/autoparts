@@ -3,6 +3,10 @@
 import { z } from "zod";
 import { getRelatedStorefrontProductsPaginated } from "@/lib/storefront-product";
 import {
+  toStorefrontProductCardItem,
+  type StorefrontProductCardItem,
+} from "@/lib/storefront-product-card";
+import {
   STOREFRONT_ID_MAX_LENGTH,
   allowStorefrontLoadMore,
 } from "@/lib/storefront-load-more-guard";
@@ -15,15 +19,8 @@ const LoadMoreSchema = z.object({
   skip: z.number().int().min(0).max(500),
 });
 
-type RawRelatedProduct = Awaited<
-  ReturnType<typeof getRelatedStorefrontProductsPaginated>
->[number];
-
-// salePrice/retailPrice serialized to string for safe Server→Client boundary transfer
-export type RelatedProduct = Omit<RawRelatedProduct, "salePrice" | "retailPrice"> & {
-  salePrice: string;
-  retailPrice: string;
-};
+// Public card payload only: retail price as a string, stock reduced to in/out.
+export type RelatedProduct = StorefrontProductCardItem<{ id: string; name: string; slug: string | null }>;
 
 export type LoadMoreRelatedProductsResult = {
   products: RelatedProduct[];
@@ -62,11 +59,7 @@ export async function loadMoreRelatedProducts(
     const hasMore = rows.length > LOAD_MORE_TAKE;
     const products: RelatedProduct[] = rows
       .slice(0, LOAD_MORE_TAKE)
-      .map((p) => ({
-        ...p,
-        salePrice: p.salePrice.toString(),
-        retailPrice: p.retailPrice.toString(),
-      }));
+      .map(toStorefrontProductCardItem);
 
     return { products, hasMore };
   } catch (error) {

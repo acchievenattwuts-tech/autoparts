@@ -1,14 +1,39 @@
 import type { NextAuthConfig } from "next-auth";
 import { db, withDbRetry } from "@/lib/db";
-import { isSessionRevisionInvalid } from "@/lib/auth-session-revocation";
+import { buildAdminForbiddenResponse } from "@/lib/admin-forbidden-response";
 import { decideAdminRouteAccess } from "@/lib/admin-route-access";
+import { isSessionRevoked, type UserAuthState } from "@/lib/auth-revocation-cache";
+
+/**
+ * Staff sessions end after 7 idle days (Auth.js default: 30). With the JWT
+ * strategy every auth() call re-issues the cookie with a fresh 7-day expiry, so
+ * this is a sliding window; `session.updateAge` only throttles database-backed
+ * sessions and has no effect here.
+ */
+const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+
+const loadUserAuthState = (userId: string): Promise<UserAuthState | null> =>
+  withDbRetry(() =>
+    db.user.findUnique({
+      where: { id: userId },
+      select: {
+        authVersion: true,
+        isActive: true,
+      },
+    }),
+  );
 
 export const authConfig: NextAuthConfig = {
   pages: {
     signIn: "/admin/login",
   },
+  session: {
+    strategy: "jwt",
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  },
   callbacks: {
-    authorized({ auth, request: { nextUrl } }) {
+    authorized({ auth, request }) {
+      const { nextUrl } = request;
       // The decision itself lives in lib/admin-route-access.ts so it can be
       // tested without a request; this callback only carries it out.
       const decision = decideAdminRouteAccess({
@@ -24,7 +49,12 @@ export const authConfig: NextAuthConfig = {
       if (decision.type === "redirect") {
         return Response.redirect(new URL(decision.to, nextUrl));
       }
-      return decision.type === "allow";
+      // A Response, not `false`: when auth() wraps a handler (proxy.ts), Auth.js
+      // ignores a boolean false and runs the handler anyway.
+      if (decision.type === "deny") {
+        return buildAdminForbiddenResponse(request);
+      }
+      return true;
     },
     async jwt({ token, user }) {
       if (user) {
@@ -44,19 +74,11 @@ export const authConfig: NextAuthConfig = {
       }
 
       try {
-        const current = await withDbRetry(() =>
-          db.user.findUnique({
-            where: { id: token.id as string },
-            select: {
-              authVersion: true,
-              isActive: true,
-            },
-          }),
-        );
-        token.sessionInvalid = isSessionRevisionInvalid({
+        // Memoized per user for up to 30s; see lib/auth-revocation-cache.ts.
+        token.sessionInvalid = await isSessionRevoked({
+          userId: token.id,
           tokenVersion: token.authVersion,
-          currentVersion: current?.authVersion,
-          isActive: current?.isActive,
+          load: loadUserAuthState,
         });
       } catch (error) {
         // Authorization must fail closed when the revocation check cannot run.

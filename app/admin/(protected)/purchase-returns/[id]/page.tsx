@@ -11,6 +11,10 @@ import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import {
+  PURCHASE_RETURN_SETTLEMENT_LABELS,
+  hasPurchaseReturnSupplierCredit,
+} from "../purchase-return-presentation";
 
 const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchase_returns.view");
@@ -23,6 +27,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
     include: {
       supplier: { select: { name: true } },
       purchase: { select: { purchaseNo: true } },
+      claim: { select: { id: true, claimNo: true } },
       cashBankAccount: { select: { name: true } },
       user:     { select: { name: true } },
       items: {
@@ -119,6 +124,17 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
               </Link>
             </div>
           )}
+          {ret.claim && (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">อ้างอิงใบเคลม</p>
+              <Link
+                href={`/admin/warranty-claims/${ret.claim.id}`}
+                className="font-mono text-[#1e3a5f] hover:underline dark:text-sky-300 dark:hover:text-sky-200"
+              >
+                {ret.claim.claimNo}
+              </Link>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ประเภทการคืน</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{returnTypeLabel[ret.type] ?? ret.type}</p>
@@ -127,6 +143,20 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ภาษี</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{vatLabel[ret.vatType] ?? ret.vatType}</p>
           </div>
+          <div>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">รูปแบบการรับชดเชย</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
+              {PURCHASE_RETURN_SETTLEMENT_LABELS[ret.settlementType]}
+            </p>
+          </div>
+          {hasPurchaseReturnSupplierCredit(ret.settlementType) && (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">ยอดคงเหลือ (เครดิต)</p>
+              <p className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">
+                {Number(ret.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{ret.user?.name ?? "-"}</p>

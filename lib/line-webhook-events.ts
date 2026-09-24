@@ -39,6 +39,19 @@ export type NormalizedLineWebhookEvent = {
   canReply: boolean;
 };
 
+/**
+ * Webhook event types that belong in the chat / AI pipeline. Everything else
+ * (unsend, unfollow, memberJoined/Left, videoPlayComplete, beacon, …) carries no
+ * customer message, so it must not create an INBOUND row, bump the inbound seq,
+ * show typing dots, or hand the chat to an admin. The webhook route still
+ * updates the LINE recipient record for every event (e.g. unfollow).
+ */
+const LINE_PIPELINE_EVENT_TYPES: ReadonlySet<string> = new Set(["message", "follow", "postback"]);
+
+export function isLinePipelineEvent(event: Pick<NormalizedLineWebhookEvent, "eventType">): boolean {
+  return LINE_PIPELINE_EVENT_TYPES.has(event.eventType);
+}
+
 function normalizeMessageType(event: LineWebhookEvent): LineMessageType {
   if (event.type === "follow") return LineMessageType.FOLLOW;
   if (event.type === "postback") return LineMessageType.POSTBACK;

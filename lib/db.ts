@@ -260,6 +260,16 @@ export async function withDbRetry<T>(
 // For stock/bf (maxDuration=180s), multiple sequential transactions can each use up to 110s.
 const TX_TIMEOUT = 110_000; // 110s — safely under Supabase 120s statement_timeout
 
+// Max time Prisma waits to acquire a pooled connection and START the
+// interactive transaction. Prisma's default is only 2s, so under pool pressure
+// (8 connections per instance) a write failed with P2028 "Unable to start a
+// transaction" long before node-postgres' own acquire window
+// (DEFAULT_DB_CONNECTION_TIMEOUT_MS) would have handed it a connection.
+// Aligned with SEARCH_TX_MAX_WAIT_MS. This wait happens before `fn` runs and
+// is not counted in TX_TIMEOUT, so a transaction's worst-case wall time is
+// TX_MAX_WAIT_MS + timeout.
+const TX_MAX_WAIT_MS = 10_000;
+
 // Per-transaction guardrails (Supabase ships with both disabled: 0).
 //  - lock_timeout: a statement waiting longer than this on a row lock fails
 //    fast instead of hanging until the whole-transaction timeout. Turns
@@ -276,7 +286,7 @@ type TxFn<T> = Parameters<typeof db.$transaction>[0] & ((tx: Parameters<Paramete
 
 export function dbTx<T>(
   fn: TxFn<T>,
-  options?: { timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
+  options?: { timeout?: number; maxWait?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
 ): Promise<T> {
   return db.$transaction(
     async (tx) => {
@@ -291,6 +301,7 @@ export function dbTx<T>(
       return fn(tx);
     },
     {
+      maxWait: options?.maxWait ?? TX_MAX_WAIT_MS,
       timeout: options?.timeout ?? TX_TIMEOUT,
       isolationLevel: options?.isolationLevel,
     },

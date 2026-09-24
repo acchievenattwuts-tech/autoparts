@@ -14,6 +14,11 @@ import { extractProductSearchRequiredTokens } from "@/lib/product-search-require
 import { segmentThaiQueryTokens } from "@/lib/thai-segment";
 import { resolveStorefrontSearchIntent } from "@/lib/storefront-search-intent";
 import { resolveCarYearRangeFilter } from "@/lib/car-year-range";
+import { resolveStorefrontPriceFilter } from "@/lib/storefront-pricing";
+import {
+  toStorefrontProductCardItem,
+  type StorefrontProductCardItem,
+} from "@/lib/storefront-product-card";
 
 /**
  * Fitment chips are user-facing, so their order must not depend on the
@@ -34,7 +39,6 @@ const PRODUCT_SELECT = {
   name: true,
   code: true,
   imageUrl: true,
-  salePrice: true,
   retailPrice: true,
   saleUnitName: true,
   warrantyDays: true,
@@ -58,25 +62,14 @@ const PRODUCT_SELECT = {
   },
 } as const;
 
-export type SearchProductItem = {
-  id: string;
-  slug: string | null;
-  name: string;
-  code: string;
-  imageUrl: string | null;
-  salePrice: string;
-  retailPrice: string;
-  saleUnitName: string | null;
-  warrantyDays: number;
-  stock: number;
-  category: { name: string; slug: string | null };
-  brand: { name: string } | null;
-  carModels: Array<{
-    yearStart: number | null;
-    yearEnd: number | null;
-    carModel: { name: string; carBrand: { name: string } };
-  }>;
-};
+/** What the browser receives per search result (retail price + in/out of stock only). */
+export type SearchProductItem = StorefrontProductCardItem;
+
+/**
+ * Server-side cached row. Keeps the exact `stock` for the in/out mapping; it is
+ * converted by {@link toStorefrontProductCardItem} before leaving the server.
+ */
+type CachedSearchProductItem = Omit<SearchProductItem, "inStock"> & { stock: number };
 
 export type StorefrontProductSearchInput = {
   q?: string;
@@ -117,6 +110,10 @@ export type SearchProductsResult = {
 };
 
 type SearchProductRecord = Prisma.ProductGetPayload<{ select: typeof PRODUCT_SELECT }>;
+
+type CachedSearchProductsResult = Omit<SearchProductsResult, "products"> & {
+  products: CachedSearchProductItem[];
+};
 
 type NormalizedStorefrontProductSearchInput = {
   q?: string;
@@ -173,17 +170,21 @@ const normalizeSearchInput = (
   // ปีรถ: กรอกด้านเดียว = ปีนั้นปีเดียว (ดู lib/car-year-range.ts). ทำซ้ำที่ชั้นนี้
   // ด้วยเพื่อให้ server action ที่ถูกเรียกตรงจากฝั่ง client ได้กติกาเดียวกับหน้าเพจ
   ...resolveCarYearRangeFilter(normalizeYearInput(input.yearMin), normalizeYearInput(input.yearMax)),
-  priceMin: normalizePriceInput(input.priceMin),
-  priceMax: normalizePriceInput(input.priceMax),
+  // Ignored while storefront prices are hidden (it filters on the wholesale
+  // price). Normalised here so direct Server Action calls get the same rule and
+  // price-only variants share one cache entry.
+  ...resolveStorefrontPriceFilter(
+    normalizePriceInput(input.priceMin),
+    normalizePriceInput(input.priceMax),
+  ),
 });
 
-const serializeSearchProduct = (product: SearchProductRecord): SearchProductItem => ({
+const serializeSearchProduct = (product: SearchProductRecord): CachedSearchProductItem => ({
   id: product.id,
   slug: product.slug,
   name: product.name,
   code: product.code,
   imageUrl: product.imageUrl,
-  salePrice: product.salePrice.toString(),
   retailPrice: product.retailPrice.toString(),
   saleUnitName: product.saleUnitName,
   warrantyDays: product.warrantyDays,
@@ -248,7 +249,7 @@ export async function runStorefrontProductSearchWithRequiredTokenFallback(
 const getCachedStorefrontProductSearchPageData = unstable_cache(
   async (
     input: NormalizedStorefrontProductSearchInput,
-  ): Promise<SearchProductsResult> => {
+  ): Promise<CachedSearchProductsResult> => {
     const skip = (input.page - 1) * STOREFRONT_PRODUCTS_PER_PAGE;
     const { searchResult, requiredTokenFallback } =
       await runStorefrontProductSearchWithRequiredTokenFallback({
@@ -357,6 +358,15 @@ async function enrichInputWithSearchIntent(
   return { input: enriched, intentYearApplied: resolved.fitmentYear !== null };
 }
 
+/**
+ * Maps a cached page to the browser payload. Runs outside the cache so an entry
+ * written by an older deploy (which still carried salePrice) is stripped too.
+ */
+const toPublicSearchPageData = (cached: CachedSearchProductsResult): SearchProductsResult => ({
+  ...cached,
+  products: cached.products.map(toStorefrontProductCardItem),
+});
+
 export async function getStorefrontProductSearchPageData(
   input: StorefrontProductSearchInput,
 ): Promise<SearchProductsResult> {
@@ -371,8 +381,8 @@ export async function getStorefrontProductSearchPageData(
     const retry = await getCachedStorefrontProductSearchPageData(
       normalizeSearchInput({ ...enriched, year: null }),
     );
-    if (retry.total > 0) return retry;
+    if (retry.total > 0) return toPublicSearchPageData(retry);
   }
 
-  return result;
+  return toPublicSearchPageData(result);
 }

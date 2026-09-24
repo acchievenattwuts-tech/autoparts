@@ -20,11 +20,11 @@ type ProductForCard = {
   name: string;
   code: string;
   imageUrl: string | null;
-  salePrice: { toString(): string } | number;
   retailPrice?: { toString(): string } | number | null;
   saleUnitName?: string | null;
   warrantyDays?: number | null;
-  stock: number;
+  /** Only in/out of stock reaches the browser — see lib/storefront-product-card.ts. */
+  inStock: boolean;
   category: { name: string; slug?: string | null };
   brand: { name: string } | null;
   carModels?: {
@@ -68,7 +68,7 @@ const ProductCard = ({
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const inStock = product.stock > 0;
+  const { inStock } = product;
   const productPath = getProductPath({
     category: product.category,
     product,

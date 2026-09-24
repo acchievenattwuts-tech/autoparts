@@ -60,6 +60,8 @@ export async function GET(
       select: {
         id: true,
         trackingExpiry: true,
+        shippingStatus: true,
+        updatedAt: true,
         destLatitude: true,
         destLongitude: true,
         deliveryTracking: {
@@ -72,7 +74,7 @@ export async function GET(
       return NextResponse.json({ error: "ไม่พบข้อมูลการจัดส่ง" }, { status: 404 });
     }
 
-    if (isTrackingExpired(sale.trackingExpiry)) {
+    if (isTrackingExpired(sale)) {
       return NextResponse.json({ error: "ลิงก์ติดตามนี้หมดอายุแล้ว" }, { status: 410 });
     }
 

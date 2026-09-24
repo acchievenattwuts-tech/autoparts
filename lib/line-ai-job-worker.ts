@@ -117,9 +117,13 @@ export async function processPendingLineAiJobs(input?: {
     ? await db.lineAiJob.findMany({
         where: { id: { in: claimed.map((row) => row.id) } },
         orderBy: { createdAt: "asc" },
-        include: {
+        // Only id/payload, the full conversation and the message's id + createdAt
+        // are used below — never the message's rawEvent JSON or text.
+        select: {
+          id: true,
+          payload: true,
           conversation: true,
-          lineMessage: true,
+          lineMessage: { select: { id: true, createdAt: true } },
         },
       })
     : [];

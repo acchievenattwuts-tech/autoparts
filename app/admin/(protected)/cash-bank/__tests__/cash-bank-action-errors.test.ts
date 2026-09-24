@@ -11,6 +11,8 @@ type FakeTx = Record<string, Record<string, (...args: unknown[]) => unknown> | (
 let fakeTx: FakeTx = {};
 let generatedNumbers: string[] = [];
 let permissionError: Error | null = null;
+let guardBlockMessage: string | null = null;
+const guardCalls: unknown[][] = [];
 
 const uniqueViolation = (fields: string[]) =>
   new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
@@ -42,7 +44,12 @@ before(async () => {
     },
   });
   await mock.module("@/lib/document-mutation-guard", {
-    namedExports: { getDocumentMutationBlockMessage: async () => null },
+    namedExports: {
+      getDocumentMutationBlockMessage: async (...args: unknown[]) => {
+        guardCalls.push(args);
+        return guardBlockMessage;
+      },
+    },
   });
   await mock.module("@/lib/doc-number", {
     namedExports: {
@@ -120,6 +127,8 @@ const accountForm = (overrides: Record<string, string> = {}) => {
 beforeEach(() => {
   generatedNumbers = [];
   permissionError = null;
+  guardBlockMessage = null;
+  guardCalls.length = 0;
   fakeTx = postingTx();
 });
 
@@ -205,4 +214,52 @@ test("account update: a missing permission shows a Thai message instead of FORBI
   permissionError = new Error("FORBIDDEN");
   const result = await actions.updateCashBankAccount("acc-1", accountForm());
   assert.deepEqual(result, { error: "ไม่มีสิทธิ์เข้าถึง" });
+});
+
+const adjustmentForm = () => {
+  const form = new FormData();
+  form.set("adjustDate", "2026-09-15");
+  form.set("accountId", "acc-from");
+  form.set("direction", "IN");
+  form.set("amount", "10");
+  form.set("reason", "ปรับยอด");
+  return form;
+};
+
+test("adjustment update is refused before any write when a marketplace settlement created it", async () => {
+  guardBlockMessage =
+    "ไม่สามารถดำเนินการได้ เนื่องจากถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน: SPS26090009";
+  let transactionOpened = false;
+  fakeTx = postingTx({
+    cashBankAdjustment: {
+      findUnique: async () => {
+        transactionOpened = true;
+        return { id: "adj-9", status: "ACTIVE", adjustNo: "CA26090009" };
+      },
+      update: async () => {
+        throw new Error("must not update");
+      },
+    },
+  });
+  const result = await actions.updateCashBankAdjustment("adj-9", adjustmentForm());
+  assert.deepEqual(result, { error: guardBlockMessage });
+  assert.deepEqual(guardCalls, [["CashBankAdjustment", "adj-9", "update"]]);
+  assert.equal(transactionOpened, false);
+});
+
+test("a manually created adjustment still updates normally", async () => {
+  let updated = false;
+  fakeTx = postingTx({
+    cashBankAdjustment: {
+      findUnique: async () => ({ id: "adj-1", status: "ACTIVE", adjustNo: "CA26090001" }),
+      update: async () => {
+        updated = true;
+        return { id: "adj-1" };
+      },
+    },
+  });
+  const result = await actions.updateCashBankAdjustment("adj-1", adjustmentForm());
+  assert.deepEqual(result, { success: true });
+  assert.equal(updated, true);
+  assert.deepEqual(guardCalls, [["CashBankAdjustment", "adj-1", "update"]]);
 });

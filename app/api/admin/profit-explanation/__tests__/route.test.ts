@@ -14,6 +14,10 @@ let pruneFails = false;
 let dashboardComputations = 0;
 const createdHistory: HistoryInput[] = [];
 const listedFilters: unknown[] = [];
+type RateLimitCall = { key: string; limit: number; windowMs: number };
+const rateLimitCalls: RateLimitCall[] = [];
+let rateLimitOk = true;
+let geminiCalls = 0;
 
 const evidence = {
   filters: FILTERS,
@@ -63,7 +67,20 @@ before(async () => {
     },
   });
   await mock.module("@/lib/google-ai-client", {
-    namedExports: { generateGeminiContent: async () => geminiReply() },
+    namedExports: {
+      generateGeminiContent: async () => {
+        geminiCalls += 1;
+        return geminiReply();
+      },
+    },
+  });
+  await mock.module("@/lib/rate-limit", {
+    namedExports: {
+      checkRateLimit: async (options: RateLimitCall) => {
+        rateLimitCalls.push(options);
+        return { ok: rateLimitOk, remaining: rateLimitOk ? 4 : 0, resetAt: Date.now() + 90_000 };
+      },
+    },
   });
 });
 
@@ -72,6 +89,9 @@ beforeEach(() => {
   dashboardComputations = 0;
   createdHistory.length = 0;
   listedFilters.length = 0;
+  rateLimitCalls.length = 0;
+  rateLimitOk = true;
+  geminiCalls = 0;
   geminiReply = async () => ({ keyRef: "key-1", text: JSON.stringify({ summary: "ok", confidence: "high" }) });
 });
 
@@ -132,4 +152,83 @@ test("GET resolves filters without computing the dashboard and survives a failed
 
   await GET(new Request("https://shop.test/api/admin/profit-explanation"));
   assert.deepEqual(listedFilters[1], { from: "month-start", to: "today", basis: "ex_vat" });
+});
+
+test("GET and POST reject malformed or impossible dates with 400 before any work", async () => {
+  const { GET, POST } = await import("../route");
+  const badQueries = ["from=abc", "to=2026-13-01", "from=2026-9-1", "from=20260901", "to=275760-01-01", "basis=gross"];
+  for (const query of badQueries) {
+    const response = await GET(new Request(`https://shop.test/api/admin/profit-explanation?${query}`));
+    assert.equal(response.status, 400, query);
+    assert.deepEqual(await response.json(), { error: "PROFIT_EXPLANATION_INVALID_FILTERS" });
+  }
+  assert.equal(listedFilters.length, 0);
+
+  const badBodies = [{ ...FILTERS, from: "yesterday" }, { ...FILTERS, to: 20260923 }, [FILTERS], null];
+  for (const body of badBodies) {
+    const response = await POST(
+      new Request("https://shop.test/api/admin/profit-explanation", { method: "POST", body: JSON.stringify(body) }),
+    );
+    assert.equal(response.status, 400, JSON.stringify(body));
+  }
+  assert.equal(dashboardComputations, 0);
+  assert.equal(createdHistory.length, 0);
+});
+
+test("filters the dashboard can send keep working exactly as before", async () => {
+  const { GET, POST } = await import("../route");
+  // Blank values fall back to the dashboard defaults; a reversed range is still
+  // accepted because the dashboard's two date inputs allow picking one.
+  await GET(new Request("https://shop.test/api/admin/profit-explanation?from=&to=%20&basis="));
+  await GET(new Request("https://shop.test/api/admin/profit-explanation?from=2026-09-23&to=2026-09-01&basis=ex_vat"));
+  await GET(new Request("https://shop.test/api/admin/profit-explanation?from=2015-01-01&to=2026-09-23&basis=inc_vat"));
+  assert.deepEqual(listedFilters, [
+    { from: "month-start", to: "today", basis: "ex_vat" },
+    { from: "2026-09-23", to: "2026-09-01", basis: "ex_vat" },
+    { from: "2015-01-01", to: "2026-09-23", basis: "inc_vat" },
+  ]);
+
+  const reversed = await POST(
+    new Request("https://shop.test/api/admin/profit-explanation", {
+      method: "POST",
+      body: JSON.stringify({ from: "2026-09-23", to: "2026-09-01", basis: "ex_vat" }),
+    }),
+  );
+  assert.equal(reversed.status, 200);
+  const emptyBody = await POST(new Request("https://shop.test/api/admin/profit-explanation", { method: "POST" }));
+  assert.equal(emptyBody.status, 200);
+});
+
+test("POST is rate limited per user (5 per 10 minutes) before the dashboard and Gemini run", async () => {
+  const ok = await post();
+  assert.equal(ok.status, 200);
+  assert.deepEqual(rateLimitCalls, [{ key: "profit-explanation:u1", limit: 5, windowMs: 10 * 60_000 }]);
+
+  rateLimitOk = false;
+  dashboardComputations = 0;
+  geminiCalls = 0;
+  createdHistory.length = 0;
+  const { POST } = await import("../route");
+  const response = await POST(
+    new Request("https://shop.test/api/admin/profit-explanation", { method: "POST", body: JSON.stringify(FILTERS) }),
+  );
+  assert.equal(response.status, 429);
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  assert.ok(retryAfter >= 1 && retryAfter <= 90, String(retryAfter));
+  assert.deepEqual(await response.json(), { error: "PROFIT_EXPLANATION_RATE_LIMITED", retryAfterSeconds: retryAfter });
+  assert.equal(dashboardComputations, 0);
+  assert.equal(geminiCalls, 0);
+  assert.equal(createdHistory.length, 0);
+});
+
+test("GET history and invalid POST filters do not consume the rate limit", async () => {
+  const { GET, POST } = await import("../route");
+  await GET(new Request("https://shop.test/api/admin/profit-explanation?from=2026-09-01&to=2026-09-23"));
+  await POST(
+    new Request("https://shop.test/api/admin/profit-explanation", {
+      method: "POST",
+      body: JSON.stringify({ ...FILTERS, from: "yesterday" }),
+    }),
+  );
+  assert.equal(rateLimitCalls.length, 0);
 });

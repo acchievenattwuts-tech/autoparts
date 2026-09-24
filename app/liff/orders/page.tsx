@@ -3,6 +3,7 @@ import { BadgeDollarSign, ChevronRight, ReceiptText, Store, Truck } from "lucide
 
 import LinkPhoneForm from "@/components/liff/LinkPhoneForm";
 import { db } from "@/lib/db";
+import type { Prisma } from "@/lib/generated/prisma";
 import { getLiffCustomer } from "@/lib/liff-data";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
@@ -13,6 +14,8 @@ const money = (value: unknown) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+
+const LIFF_RECENT_ORDERS_LIMIT = 50;
 
 export default async function LiffOrdersPage() {
   const [customer, config] = await Promise.all([getLiffCustomer(), getPublicSiteConfig()]);
@@ -31,31 +34,54 @@ export default async function LiffOrdersPage() {
     );
   }
 
-  const orders = await db.sale.findMany({
-    where: {
-      customerId: customer.id,
-      status: "ACTIVE",
-    },
-    select: {
-      id: true,
-      saleNo: true,
-      saleDate: true,
-      netAmount: true,
-      amountRemain: true,
-      paymentType: true,
-      fulfillmentType: true,
-      shippingStatus: true,
-      _count: { select: { items: true } },
-    },
-    orderBy: { saleDate: "desc" },
-    take: 50,
-  });
+  // The list below shows only the latest bills; the header totals are separate
+  // aggregate/count queries so a customer with more bills than the list cap
+  // still sees the real figures. The outstanding filter is the same one the
+  // /liff/outstanding payment page uses (credit bills with a balance left).
+  const activeBillsWhere = {
+    customerId: customer.id,
+    status: "ACTIVE",
+  } satisfies Prisma.SaleWhereInput;
+  const outstandingBillsWhere = {
+    ...activeBillsWhere,
+    paymentType: "CREDIT_SALE",
+    amountRemain: { gt: 0 },
+  } satisfies Prisma.SaleWhereInput;
 
-  const outstandingCount = orders.filter((order) => Number(order.amountRemain ?? 0) > 0).length;
-  const totalOutstanding = orders.reduce((sum, order) => sum + Number(order.amountRemain ?? 0), 0);
-  const inDeliveryCount = orders.filter(
-    (order) => order.fulfillmentType === "DELIVERY" && order.shippingStatus === "OUT_FOR_DELIVERY",
-  ).length;
+  const [orders, totalBillCount, outstandingSummary, inDeliveryCount] = await Promise.all([
+    db.sale.findMany({
+      where: activeBillsWhere,
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        netAmount: true,
+        amountRemain: true,
+        paymentType: true,
+        fulfillmentType: true,
+        shippingStatus: true,
+        _count: { select: { items: true } },
+      },
+      orderBy: { saleDate: "desc" },
+      take: LIFF_RECENT_ORDERS_LIMIT,
+    }),
+    db.sale.count({ where: activeBillsWhere }),
+    db.sale.aggregate({
+      where: outstandingBillsWhere,
+      _sum: { amountRemain: true },
+      _count: { _all: true },
+    }),
+    db.sale.count({
+      where: {
+        ...activeBillsWhere,
+        fulfillmentType: "DELIVERY",
+        shippingStatus: "OUT_FOR_DELIVERY",
+      },
+    }),
+  ]);
+
+  const outstandingCount = outstandingSummary._count._all;
+  const totalOutstanding = Number(outstandingSummary._sum.amountRemain ?? 0);
 
   return (
     <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-24 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
@@ -91,7 +117,7 @@ export default async function LiffOrdersPage() {
           <Link href="/liff/orders" className="rounded-2xl border border-blue-100 bg-white/80 px-3 py-3 shadow-sm transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800/80">
             <ReceiptText className="mb-2 h-5 w-5 text-blue-700 dark:text-sky-400" />
             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">บิลทั้งหมด</p>
-            <p className="font-kanit text-xl font-bold text-blue-950 dark:text-slate-100">{orders.length}</p>
+            <p className="font-kanit text-xl font-bold text-blue-950 dark:text-slate-100">{totalBillCount}</p>
           </Link>
           <Link href="/liff/orders" className="rounded-2xl border border-blue-100 bg-white/80 px-3 py-3 shadow-sm transition active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800/80">
             <Truck className="mb-2 h-5 w-5 text-blue-700 dark:text-sky-400" />

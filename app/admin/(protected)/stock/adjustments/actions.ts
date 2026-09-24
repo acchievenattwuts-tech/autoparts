@@ -23,6 +23,10 @@ import {
 } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import {
+  searchAdjustmentProductOptions,
+  type AdjustmentProductOption,
+} from "@/lib/adjustment-product-search";
 
 const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
 
@@ -314,6 +318,26 @@ export async function createAdjustment(
     console.error("[createAdjustment]", error);
     if (error instanceof AdjustmentUserError) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+  }
+}
+
+const adjustmentProductQuerySchema = z.string().max(100);
+
+/**
+ * Product picker search for the adjustment form: at most 20 active, stock-tracked
+ * products with only the fields the form uses. Gated like createAdjustment
+ * (the sale/purchase search actions require sales/purchases permissions).
+ */
+export async function searchAdjustmentProducts(query: string): Promise<AdjustmentProductOption[]> {
+  const session = await requirePermission("stock.adjustments.create").catch(() => null);
+  if (!session?.user?.id) return [];
+  const parsed = adjustmentProductQuerySchema.safeParse(query);
+  if (!parsed.success) return [];
+  try {
+    return await searchAdjustmentProductOptions(parsed.data);
+  } catch (error) {
+    console.error("[searchAdjustmentProducts]", error);
+    throw new Error("ค้นหาสินค้าไม่สำเร็จ");
   }
 }
 

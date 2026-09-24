@@ -34,7 +34,7 @@ import {
   ShippingStatus,
   VatType,
 } from "@/lib/generated/prisma";
-import { generateTrackingToken } from "@/lib/delivery-tracking";
+import { generateTrackingToken, TRACKING_LINK_TTL_MS } from "@/lib/delivery-tracking";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   getMarketplaceChannelConfig,
@@ -43,7 +43,8 @@ import {
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
-import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, type LotSubRow } from "@/lib/lot-control";
+import { getSaleLineLotError, SaleLotValidationError } from "./sale-lot-guard";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import {
   getTransactionProductDetailRowsByIds,
@@ -731,6 +732,15 @@ export async function createSale(
             const isTracked = isInventoryTracked(product.inventoryTracking);
             const costPerBase = resolveSaleUnitCost(product);
 
+            // A tracked lot-controlled product must always name its lots, even when lotItems is empty.
+            const lotErr = getSaleLineLotError({
+              isTracked,
+              isLotControl: product.isLotControl,
+              lotItems: item.lotItems as LotSubRow[],
+              qty: item.qty,
+            });
+            if (lotErr) throw new SaleLotValidationError(lotErr);
+
             const itemTotal    = item.qty * item.salePrice;
             const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
             const configuredAmount = normalPriceByProduct.get(item.productId);
@@ -794,11 +804,8 @@ export async function createSale(
               referenceId: saleItem.id,
             }, stockCrossedToZero) : null;
 
-            // Lot Control - only if product has isLotControl=true
-            if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-                const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
-                if (lotErr) throw new Error(lotErr);
-
+            // Lot Control - only if product has isLotControl=true (lot rows validated above)
+            if (stockCardId && product.isLotControl) {
                 const lotsInBase = item.lotItems.map((lot) => ({
                   lotNo:        lot.lotNo.trim(),
                   qtyInBase:    lot.qty * scale,
@@ -950,7 +957,7 @@ export async function createSale(
     });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
-    if (err instanceof QuotationError) return { error: err.message };
+    if (err instanceof QuotationError || err instanceof SaleLotValidationError) return { error: err.message };
     await reportCriticalError(err, { scope: "sales.create" });
     if (
       isManualMarketplaceChannel(channel) &&
@@ -1065,9 +1072,8 @@ export async function cancelSale(
           cancelledAt,
           cancelNote,
           amountRemain: new Prisma.Decimal(0),
-          ...(sale.trackingToken
-            ? { trackingExpiry: new Date(cancelledAt.getTime() + TRACKING_TOKEN_TTL_MS) }
-            : {}),
+          // A cancelled sale's public tracking link stops working immediately.
+          ...(sale.trackingToken ? { trackingExpiry: cancelledAt } : {}),
         },
       });
       await rebuildSaleProfitFacts(tx, saleId);
@@ -1572,6 +1578,16 @@ export async function updateSale(
         const qtyInBase = item.qty * scale;
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const costPerBase  = resolveSaleUnitCost(product);
+
+        // A tracked lot-controlled product must always name its lots, even when lotItems is empty.
+        const lotErr = getSaleLineLotError({
+          isTracked,
+          isLotControl: product.isLotControl,
+          lotItems: item.lotItems as LotSubRow[],
+          qty: item.qty,
+        });
+        if (lotErr) throw new SaleLotValidationError(lotErr);
+
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
 
@@ -1610,10 +1626,7 @@ export async function updateSale(
           referenceId: saleItem.id,
         }) : null;
 
-        if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-            const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, false);
-            if (lotErr) throw new Error(lotErr);
-
+        if (stockCardId && product.isLotControl) {
             const lotsInBase = item.lotItems.map((lot) => ({
               lotNo:        lot.lotNo.trim(),
               qtyInBase:    lot.qty * scale,
@@ -1753,6 +1766,7 @@ export async function updateSale(
     });
     return { success: true };
   } catch (err) {
+    if (err instanceof SaleLotValidationError) return { error: err.message };
     console.error("[updateSale]", err);
     if (
       marketplaceConfig &&
@@ -2153,7 +2167,9 @@ export async function updateShippingStatus(
       sale.shippingStatus !== ShippingStatus.OUT_FOR_DELIVERY &&
       !sale.trackingToken;
 
-    const shouldClearTrackingExpiry =
+    // Issuing or renewing a link (OUT_FOR_DELIVERY) gives it TRACKING_LINK_TTL_MS
+    // (7 days) — a link never lives forever.
+    const shouldRenewTrackingExpiry =
       parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
       Boolean(sale.trackingToken || shouldGenerateToken);
 
@@ -2175,7 +2191,9 @@ export async function updateShippingStatus(
               trackingToken: generateTrackingToken(),
             }
           : {}),
-        ...(shouldClearTrackingExpiry ? { trackingExpiry: null } : {}),
+        ...(shouldRenewTrackingExpiry
+          ? { trackingExpiry: new Date(Date.now() + TRACKING_LINK_TTL_MS) }
+          : {}),
         ...(shouldExpireToken
           ? { trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS) }
           : {}),

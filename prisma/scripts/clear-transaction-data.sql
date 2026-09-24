@@ -1,4 +1,16 @@
 -- ================================================================
+-- !!! DANGER — TEST DATABASES ONLY. NEVER RUN AGAINST PRODUCTION. !!!
+--
+-- This file permanently deletes every sale, purchase, receipt, stock card,
+-- cash/bank movement and product in the connected database. Plain SQL cannot
+-- tell which Supabase project it is connected to, so the only protection is
+-- the opt-in check right after BEGIN: the script aborts (nothing is deleted)
+-- unless you deliberately uncomment the SET LOCAL line below it. Prefer
+-- prisma/scripts/clear-transaction-data.ts, which dry-runs by default and
+-- refuses the production project outright.
+--
+-- AuditLog is NOT deleted — it is append-only (.rules §9).
+-- ================================================================
 -- clear-transaction-data.sql
 -- ลบข้อมูล transaction ทั้งหมด — เก็บเฉพาะ Master data
 --
@@ -14,6 +26,16 @@
 -- ================================================================
 
 BEGIN;
+
+-- Opt-in guard: uncomment ONLY when connected to a disposable test database.
+-- SET LOCAL autoparts.allow_clear_transaction_data = 'test-db-only';
+DO $$
+BEGIN
+  IF current_setting('autoparts.allow_clear_transaction_data', true) IS DISTINCT FROM 'test-db-only' THEN
+    RAISE EXCEPTION 'clear-transaction-data.sql refused: test databases only. Read the header of this file.';
+  END IF;
+END
+$$;
 
 -- ────────────────────────────────────────────────────────────────
 -- STEP 1: Lot sub-rows
@@ -121,7 +143,7 @@ DELETE FROM "LotBalance";
 -- STEP 15: Analytics / Logs
 -- ────────────────────────────────────────────────────────────────
 DELETE FROM "FactProfit";
-DELETE FROM "AuditLog";
+-- AuditLog is append-only (.rules §9) — deliberately NOT deleted.
 DELETE FROM "LineDailySummaryDispatch";
 DELETE FROM "StorefrontVisitDaily";
 

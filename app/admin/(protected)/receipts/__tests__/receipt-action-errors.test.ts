@@ -6,11 +6,23 @@ import { Prisma } from "@/lib/generated/prisma";
 // createReceipt / updateReceipt: Thai business-rule messages still reach the user,
 // Prisma/DB error text does not, and a receiptNo collision is retried.
 
-type FakeTx = Record<string, Record<string, (...args: unknown[]) => unknown>>;
+type FakeFn = (...args: unknown[]) => unknown;
+type FakeTx = Record<string, Record<string, FakeFn> | FakeFn>;
 
 let fakeTx: FakeTx = {};
 let generatedNumbers: string[] = [];
 let validationMessage: string | null = null;
+// Ordered trace of row locks, the outstanding-balance read, and receipt writes.
+let callLog: string[] = [];
+let existingReceipt: unknown = null;
+
+const recordLockQuery = async (query: unknown) => {
+  const { sql, values } = query as { sql: string; values: unknown[] };
+  const table = /FROM\s+"(\w+)"/.exec(sql)?.[1] ?? "?";
+  const isSortedRowLock = /ORDER BY id\s+FOR UPDATE/.test(sql);
+  callLog.push(`${isSortedRowLock ? "lock" : "query"}:${table}:${values.join(",")}`);
+  return [];
+};
 
 const uniqueViolation = (fields: string[]) =>
   new Prisma.PrismaClientKnownRequestError("Invalid `prisma.receipt.create()` invocation: Unique constraint failed", {
@@ -70,14 +82,17 @@ before(async () => {
   });
   await mock.module("@/lib/ar-settlement", {
     namedExports: {
-      getAvailableReceiptDocuments: async () => [],
+      getAvailableReceiptDocuments: async () => {
+        callLog.push("available");
+        return [];
+      },
       validateReceiptItemsAgainstAvailable: () => validationMessage,
     },
   });
   await mock.module("@/lib/db", {
     namedExports: {
       db: {
-        receipt: { findUnique: async () => null },
+        receipt: { findUnique: async () => existingReceipt },
         documentPayment: { findMany: async () => [] },
       },
       dbTx: async (fn: (tx: FakeTx) => Promise<unknown>) => fn(fakeTx),
@@ -87,10 +102,17 @@ before(async () => {
 });
 
 const baseTx = (receiptCreate: (args: unknown) => unknown): FakeTx => ({
+  $queryRaw: recordLockQuery,
   user: { findUnique: async () => ({ name: "Staff", signatureUrl: null }) },
   cashBankAccount: { findMany: async () => [{ type: "CASH" }] },
-  receipt: { create: receiptCreate },
-  receiptItem: { createMany: async () => ({ count: 1 }) },
+  receipt: {
+    create: receiptCreate,
+    update: async () => {
+      callLog.push("receipt.update");
+      return {};
+    },
+  },
+  receiptItem: { createMany: async () => ({ count: 1 }), deleteMany: async () => ({ count: 1 }) },
   documentPayment: { deleteMany: async () => ({ count: 0 }), createMany: async () => ({ count: 1 }) },
 });
 
@@ -106,6 +128,8 @@ const receiptForm = () => {
 beforeEach(() => {
   generatedNumbers = [];
   validationMessage = null;
+  callLog = [];
+  existingReceipt = null;
   fakeTx = baseTx(async () => ({ id: "rec-1" }));
 });
 
@@ -146,4 +170,83 @@ test("a collision that survives every retry is not shown as raw Prisma text", as
   const result = await actions.createReceipt(receiptForm());
   assert.deepEqual(result, { success: false, error: "เกิดข้อผิดพลาด ไม่สามารถบันทึกใบเสร็จได้" });
   assert.equal(generatedNumbers.length, 3);
+});
+
+// #31 — sale/CN/advance rows are locked (sorted ids, CreditNote → Sale → CustomerAdvance)
+// before the outstanding balance is read, so concurrent receipts cannot both
+// validate against the same pre-commit amountRemain.
+const EXPECTED_MIXED_LOCKS = [
+  "lock:CreditNote:cn-y,cn-z",
+  "lock:Sale:sale-a,sale-b",
+  "lock:CustomerAdvance:adv-1,adv-2",
+];
+
+const mixedItems = [
+  { saleId: "sale-b", paidAmount: 300 },
+  { saleId: "sale-a", paidAmount: 200 },
+  { cnId: "cn-z", paidAmount: 50 },
+  { cnId: "cn-y", paidAmount: 50 },
+  { customerAdvanceId: "adv-2", paidAmount: 50 },
+  { customerAdvanceId: "adv-1", paidAmount: 50 },
+];
+
+const mixedReceiptForm = () => {
+  const form = receiptForm();
+  form.set("items", JSON.stringify(mixedItems));
+  form.set("payments", JSON.stringify([{ cashBankAccountId: "acc-1", amount: 300 }]));
+  return form;
+};
+
+test("createReceipt locks sale/CN/advance rows with sorted ids before reading outstanding", async () => {
+  const result = await actions.createReceipt(mixedReceiptForm());
+  assert.equal(result.success, true);
+  assert.deepEqual(callLog, [...EXPECTED_MIXED_LOCKS, "available"]);
+});
+
+test("createReceipt issues no lock query for a document type it does not settle", async () => {
+  const result = await actions.createReceipt(receiptForm());
+  assert.equal(result.success, true);
+  assert.deepEqual(callLog, ["lock:Sale:sale-1", "available"]);
+});
+
+test("updateReceipt locks old and new documents with sorted ids before reading outstanding", async () => {
+  existingReceipt = {
+    id: "rec1",
+    receiptNo: "REC26090001",
+    status: "ACTIVE",
+    signerName: "Staff",
+    signerSignatureUrl: null,
+    signedAt: null,
+    user: { name: "Staff", signatureUrl: null },
+    items: [
+      { saleId: "sale-c", cnId: null, customerAdvanceId: null },
+      { saleId: null, cnId: "cn-x", customerAdvanceId: null },
+    ],
+  };
+  const result = await actions.updateReceipt("rec1", mixedReceiptForm());
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(callLog.slice(0, 4), [
+    "lock:CreditNote:cn-x,cn-y,cn-z",
+    "lock:Sale:sale-a,sale-b,sale-c",
+    "lock:CustomerAdvance:adv-1,adv-2",
+    "available",
+  ]);
+});
+
+test("cancelReceipt locks every settled document before cancelling the receipt", async () => {
+  existingReceipt = {
+    id: "rec1",
+    receiptNo: "REC26090001",
+    status: "ACTIVE",
+    items: mixedItems.map((item) => ({
+      saleId: item.saleId ?? null,
+      cnId: item.cnId ?? null,
+      customerAdvanceId: item.customerAdvanceId ?? null,
+    })),
+  };
+  const form = new FormData();
+  form.set("receiptId", "rec1");
+  const result = await actions.cancelReceipt(form);
+  assert.deepEqual(result, { success: true });
+  assert.deepEqual(callLog, [...EXPECTED_MIXED_LOCKS, "receipt.update"]);
 });

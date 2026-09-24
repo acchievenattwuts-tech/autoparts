@@ -14,7 +14,8 @@ export type MutableDocumentEntityType =
   | "WarrantyClaim"
   | "CashBankTransfer"
   | "CashBankAdjustment"
-  | "MarketplaceSettlement";
+  | "MarketplaceSettlement"
+  | "DeliveryCommissionRun";
 
 export type DocumentMutationAction = "update" | "cancel" | "reopen";
 
@@ -45,7 +46,18 @@ export type GuardDb = {
   marketplaceSettlementLine?: { findMany(args: FindManyArgs): FindManyResult };
   marketplaceSettlement?: { findMany(args: FindManyArgs): FindManyResult };
   expense?: { findMany(args: FindManyArgs): FindManyResult };
+  deliveryCommissionItem?: { findMany(args: FindManyArgs): FindManyResult };
+  deliveryCommissionRun?: { findMany(args: FindManyArgs): FindManyResult };
 };
+
+/** Reason for documents a marketplace settlement round created (fee expense, transfer, adjustment). */
+export const MARKETPLACE_SETTLEMENT_SOURCE_REASON =
+  "ถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน";
+/** Same wording updateShippingStatus uses for a bill whose delivery commission is already paid. */
+export const DELIVERY_COMMISSION_SALE_REASON = "บิลนี้ถูกทำจ่ายค่าส่งแล้ว กรุณายกเลิกเอกสารทำจ่ายก่อน";
+/** Reason for the expense a delivery commission run created. */
+export const DELIVERY_COMMISSION_EXPENSE_REASON =
+  "ถูกสร้างจากเอกสารทำจ่ายค่าส่ง กรุณายกเลิกที่เอกสารทำจ่ายแทน";
 
 const allow = (): MutationBlockResult => ({
   blocked: false,
@@ -59,6 +71,13 @@ const block = (reason: string, references: MutationBlockReference[],
   reason: references.length > 0 ? reason : null,
   references,
 });
+
+/**
+ * Builds the result the guard would return from relation data a list page has
+ * already loaded, so a disabled button can show the exact server message
+ * without one guard query per row.
+ */
+export const buildMutationBlockResult = block;
 
 const uniqueRefs = (refs: MutationBlockReference[],
 ): MutationBlockReference[] => {
@@ -135,6 +154,7 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   CashBankTransfer: "/admin/cash-bank/transfers",
   CashBankAdjustment: "/admin/cash-bank/adjustments",
   MarketplaceSettlement: "/admin/marketplace/settlements",
+  DeliveryCommissionRun: "/admin/delivery-commissions",
 };
 
 export type MutationBlockReferenceLink = {
@@ -165,7 +185,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
         return block("ถูกนำไปใช้ที่ใบขาย", mapDirectRefs(sales, "Sale", "saleNo"));
       }
       if (entityType === "Sale") {
-        const [creditNotes, receiptItems, claims, settlements] = await Promise.all([
+        const [creditNotes, receiptItems, claims, settlements, commissionItems] = await Promise.all([
           database.creditNote?.findMany({
             where: { saleId: entityId, status: "ACTIVE" },
             select: { id: true, cnNo: true },
@@ -183,13 +203,27 @@ export function createDocumentMutationGuard(database: GuardDb) {
             where: { saleId: entityId, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
             select: { settlement: { select: { id: true, settlementNo: true } } },
           }) ?? Promise.resolve([]),
+          // A bill held by an ACTIVE delivery commission run has had its commission paid.
+          database.deliveryCommissionItem?.findMany({
+            where: { activeSaleId: entityId, run: { status: "ACTIVE" } },
+            select: { run: { select: { id: true, runNo: true } } },
+          }) ?? Promise.resolve([]),
         ]);
-        return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
+        const otherRefs = [
           ...mapDirectRefs(creditNotes, "CreditNote", "cnNo"),
           ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
           ...mapDirectRefs(claims, "WarrantyClaim", "claimNo"),
           ...mapNestedRefs(settlements, "settlement", "MarketplaceSettlement", "settlementNo"),
-        ]);
+        ];
+        const commissionRefs = uniqueRefs(
+          mapNestedRefs(commissionItems, "run", "DeliveryCommissionRun", "runNo"),
+        );
+        return block(
+          otherRefs.length === 0 && commissionRefs.length > 0
+            ? DELIVERY_COMMISSION_SALE_REASON
+            : "ถูกนำไปใช้ที่เอกสารปลายทาง",
+          [...otherRefs, ...commissionRefs],
+        );
       }
 
       if (entityType === "Purchase") {
@@ -249,14 +283,27 @@ export function createDocumentMutationGuard(database: GuardDb) {
             : entityType === "CashBankTransfer"
               ? "cashBankTransferId"
               : "cashBankAdjustmentId";
-        const settlements =
-          (await database.marketplaceSettlement?.findMany({
+        const [settlements, commissionRuns] = await Promise.all([
+          database.marketplaceSettlement?.findMany({
             where: { [field]: entityId, status: "ACTIVE" },
             select: { id: true, settlementNo: true },
-          })) ?? [];
+          }) ?? Promise.resolve([]),
+          // The expense a delivery commission run created is cancelled by cancelling
+          // the run (cancelDeliveryCommissionRun updates it directly, not via this guard).
+          entityType === "Expense"
+            ? (database.deliveryCommissionRun?.findMany({
+                where: { expenseId: entityId, status: "ACTIVE" },
+                select: { id: true, runNo: true },
+              }) ?? Promise.resolve([]))
+            : Promise.resolve([]),
+        ]);
+        const settlementRefs = mapDirectRefs(settlements, "MarketplaceSettlement", "settlementNo");
+        const commissionRefs = mapDirectRefs(commissionRuns, "DeliveryCommissionRun", "runNo");
         return block(
-          "ถูกสร้างจากรอบรับเงินช่องทางขาย กรุณายกเลิกที่รอบรับเงินแทน",
-          mapDirectRefs(settlements, "MarketplaceSettlement", "settlementNo"),
+          settlementRefs.length === 0 && commissionRefs.length > 0
+            ? DELIVERY_COMMISSION_EXPENSE_REASON
+            : MARKETPLACE_SETTLEMENT_SOURCE_REASON,
+          [...settlementRefs, ...commissionRefs],
         );
       }
 

@@ -12,6 +12,7 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import { PURCHASE_RETURN_SETTLEMENT_LABELS } from "../purchase-return-presentation";
 
 interface ProductOption {
   id: string;
@@ -586,7 +587,7 @@ const PurchaseReturnForm = ({
                     : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
-                รับเงินคืน
+                {PURCHASE_RETURN_SETTLEMENT_LABELS.CASH_REFUND}
               </button>
               <button
                 type="button"
@@ -597,7 +598,7 @@ const PurchaseReturnForm = ({
                     : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
                 }`}
               >
-                เครดิตซัพพลายเออร์
+                {PURCHASE_RETURN_SETTLEMENT_LABELS.SUPPLIER_CREDIT}
               </button>
             </div>
           </div>

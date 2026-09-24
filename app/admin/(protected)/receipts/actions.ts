@@ -219,6 +219,50 @@ async function lockCustomerAdvancesForReceipt(tx: TxClient, advanceIds: string[]
   `);
 }
 
+async function lockCreditNotesForReceipt(tx: TxClient, cnIds: string[]): Promise<void> {
+  const ids = [...new Set(cnIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id
+    FROM "CreditNote"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id
+    FOR UPDATE
+  `);
+}
+
+async function lockSalesForReceipt(tx: TxClient, saleIds: string[]): Promise<void> {
+  const ids = [...new Set(saleIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`
+    SELECT id
+    FROM "Sale"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id
+    FOR UPDATE
+  `);
+}
+
+/**
+ * Row-lock every document a receipt settles BEFORE its outstanding balance is
+ * read, so two concurrent receipts for the same sale/CN/advance serialize
+ * instead of both validating against the same pre-commit amountRemain.
+ *
+ * Lock order: CreditNote → Sale → CustomerAdvance (ids sorted within each).
+ * updateCreditNote holds its CreditNote lock and may then re-point `saleId`,
+ * whose FK check takes a KEY SHARE lock on the Sale; taking CreditNote before
+ * Sale here keeps that pair in the same order. No other flow locks an existing
+ * CreditNote or CustomerAdvance while holding a Sale lock.
+ */
+async function lockReceiptSettlementDocuments(
+  tx: TxClient,
+  affectedIds: { saleIds: string[]; cnIds: string[]; advanceIds: string[] },
+): Promise<void> {
+  await lockCreditNotesForReceipt(tx, affectedIds.cnIds);
+  await lockSalesForReceipt(tx, affectedIds.saleIds);
+  await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
+}
+
 function collectAffectedReceiptIds(items: Array<{
   saleId?: string | null | undefined;
   cnId?: string | null | undefined;
@@ -415,7 +459,7 @@ export async function createReceipt(
         receiptNo = nextReceiptNo;
         createdReceiptId = "";
         await dbTx(async (tx) => {
-          await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
+          await lockReceiptSettlementDocuments(tx, affectedIds);
           const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "");
           const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
           if (validationError) throw new Error(validationError);
@@ -557,7 +601,11 @@ export async function cancelReceipt(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(receiptId);
     await dbTx(async (tx) => {
-      await lockCustomerAdvancesForReceipt(tx, affectedAdvanceIds);
+      await lockReceiptSettlementDocuments(tx, {
+        saleIds: affectedSaleIds,
+        cnIds: affectedCnIds,
+        advanceIds: affectedAdvanceIds,
+      });
       await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.RECEIPT, receiptId);
       await tx.receipt.update({
@@ -667,7 +715,7 @@ export async function updateReceipt(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await lockCustomerAdvancesForReceipt(tx, allAffectedIds.advanceIds);
+      await lockReceiptSettlementDocuments(tx, allAffectedIds);
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "", id);
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
       if (validationError) throw new Error(validationError);

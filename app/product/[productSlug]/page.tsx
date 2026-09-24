@@ -39,6 +39,7 @@ import {
   getActiveStorefrontProductById,
   getRelatedStorefrontProductsByCategory,
 } from "@/lib/storefront-product";
+import { toStorefrontProductCardItem } from "@/lib/storefront-product-card";
 import {
   getStorefrontRetailPricing,
   STOREFRONT_PRICE_INQUIRY_LABEL,
@@ -188,11 +189,9 @@ const ProductDetailPage = async ({ params }: Props) => {
     relatedProductsRaw = [];
   }
   const initialHasMore = relatedProductsRaw.length > INITIAL_TAKE;
-  const relatedProducts = relatedProductsRaw.slice(0, INITIAL_TAKE).map((p) => ({
-    ...p,
-    salePrice: p.salePrice.toString(),
-    retailPrice: p.retailPrice.toString(),
-  }));
+  const relatedProducts = relatedProductsRaw
+    .slice(0, INITIAL_TAKE)
+    .map(toStorefrontProductCardItem);
   const canonicalUrl = absoluteUrl(canonicalPath);
   const description = buildStorefrontProductDescription(product);
   const retailPricing = getStorefrontRetailPricing(product.retailPrice);

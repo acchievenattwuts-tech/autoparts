@@ -124,6 +124,19 @@ function ResultView({ result }: { result: ProfitExplanationResult }) {
   );
 }
 
+const HTTP_TOO_MANY_REQUESTS = 429;
+const SECONDS_PER_MINUTE = 60;
+
+/** Server caps generation at 5 requests per user per 10 minutes (see the profit-explanation route). */
+function rateLimitMessage(retryAfterSeconds: number | undefined): string {
+  const base = "ขอคำอธิบายจาก AI ได้สูงสุด 5 ครั้งใน 10 นาที";
+  if (typeof retryAfterSeconds !== "number" || !Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) {
+    return `${base} กรุณารอสักครู่แล้วลองใหม่`;
+  }
+  const minutes = Math.max(1, Math.ceil(retryAfterSeconds / SECONDS_PER_MINUTE));
+  return `${base} กรุณาลองใหม่ในอีกประมาณ ${minutes} นาที`;
+}
+
 export default function ProfitExplanationPanel({ filters }: Props) {
   const [result, setResult] = useState<ProfitExplanationResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -146,6 +159,12 @@ export default function ProfitExplanationPanel({ filters }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(filters),
       });
+
+      if (response.status === HTTP_TOO_MANY_REQUESTS) {
+        const payload = (await response.json().catch(() => ({}))) as { retryAfterSeconds?: number };
+        setError(rateLimitMessage(payload.retryAfterSeconds));
+        return;
+      }
 
       if (!response.ok) {
         setError("ยังสร้างคำอธิบายไม่ได้ กรุณาลองใหม่หรือเช็ค Gemini key");

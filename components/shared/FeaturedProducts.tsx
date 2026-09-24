@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import ProductCard from "@/components/shared/ProductCard";
 import ScrollReveal from "@/components/shared/ScrollReveal";
 import { db } from "@/lib/db";
+import { toStorefrontProductCardItem } from "@/lib/storefront-product-card";
 
 const FEATURED_COUNT = 8;
 const MAX_PER_CATEGORY = 2;
@@ -23,7 +24,6 @@ export const fetchHomeFeaturedProducts = unstable_cache(
         name: true,
         code: true,
         imageUrl: true,
-        salePrice: true,
         retailPrice: true,
         saleUnitName: true,
         warrantyDays: true,
@@ -116,14 +116,7 @@ const FeaturedProducts = async ({ lineUrl, products }: Props) => {
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {resolvedProducts.map((product, index) => (
             <ScrollReveal key={product.id} delay={index * 60} className="h-full">
-              <ProductCard
-                product={{
-                  ...product,
-                  salePrice: product.salePrice.toString(),
-                  retailPrice: product.retailPrice.toString(),
-                }}
-                lineUrl={lineUrl}
-              />
+              <ProductCard product={toStorefrontProductCardItem(product)} lineUrl={lineUrl} />
             </ScrollReveal>
           ))}
         </div>

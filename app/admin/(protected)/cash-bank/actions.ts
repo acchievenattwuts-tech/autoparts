@@ -688,6 +688,15 @@ export async function updateCashBankAdjustment(adjustmentId: string, formData: F
     if (!isDateOnlyString(parsed.data.adjustDate)) {
       return { error: "วันที่ปรับยอดไม่ถูกต้อง" };
     }
+
+    // Adjustments a marketplace settlement created are changed only by cancelling that settlement.
+    const mutationBlockMessage = await getDocumentMutationBlockMessage(
+      "CashBankAdjustment",
+      adjustmentId,
+      "update",
+    );
+    if (mutationBlockMessage) return { error: mutationBlockMessage };
+
     const docDate = parseDateOnlyToDate(parsed.data.adjustDate);
     const beforeSnapshot = await getCashBankAdjustmentAuditSnapshot(adjustmentId);
 

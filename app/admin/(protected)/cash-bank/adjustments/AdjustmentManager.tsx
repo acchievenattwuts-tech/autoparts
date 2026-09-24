@@ -29,6 +29,8 @@ type AdjustmentRow = {
   note: string | null;
   status: "ACTIVE" | "CANCELLED";
   cancelNote: string | null;
+  /** Set when a marketplace settlement created this adjustment — it can only change via that settlement. */
+  editBlockedReason: string | null;
 };
 
 type Props = {
@@ -301,9 +303,21 @@ export default function AdjustmentManager({ accounts, adjustments, canCreate, ca
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-2">
                       {canUpdate && adjustment.status === "ACTIVE" && (
-                        <button type="button" onClick={() => handleEdit(adjustment)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15">
-                          แก้ไข
-                        </button>
+                        adjustment.editBlockedReason ? (
+                          <button
+                            type="button"
+                            disabled
+                            title={adjustment.editBlockedReason}
+                            aria-label={`แก้ไข — ${adjustment.editBlockedReason}`}
+                            className="cursor-not-allowed rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-400 dark:bg-white/5 dark:text-slate-500"
+                          >
+                            แก้ไข
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => handleEdit(adjustment)} className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-white/10 dark:text-slate-200 dark:hover:bg-white/15">
+                            แก้ไข
+                          </button>
+                        )
                       )}
                       {canCancel && adjustment.status === "ACTIVE" && (
                         <button

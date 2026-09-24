@@ -128,7 +128,7 @@ import {
 import { recordKnowledgeRagHumanOnlySignal } from "@/lib/chat-core/knowledge-rag";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
+import { isLinePipelineEvent, normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -4207,7 +4207,8 @@ export async function processLineWebhookPayload(
   }
 
   for (const event of events) {
-    if (!event.lineUserId) {
+    // Non-message events (unsend, unfollow, …) never enter the pipeline.
+    if (!event.lineUserId || !isLinePipelineEvent(event)) {
       result.skippedCount += 1;
       continue;
     }
@@ -4323,7 +4324,9 @@ async function processCoalescedEvents(
   const classByMessageId = new Map<string, LineImageClassification>();
 
   for (const event of events) {
-    if (!event.lineUserId) {
+    // Non-message events (unsend, unfollow, …) never enter the pipeline: no
+    // INBOUND row, no seq bump, no typing dots, no admin handoff.
+    if (!event.lineUserId || !isLinePipelineEvent(event)) {
       result.skippedCount += 1;
       continue;
     }

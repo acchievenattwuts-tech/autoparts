@@ -9,7 +9,6 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
-import { INVENTORY_TRACKING_TRACKED } from "@/lib/inventory-tracking";
 
 const AdjustmentsPage = async ({
   searchParams,
@@ -32,31 +31,9 @@ const AdjustmentsPage = async ({
     },
   } : {};
 
-  const [products, adjustments] = await Promise.all([
-    db.product.findMany({
-      where: { inventoryTracking: INVENTORY_TRACKING_TRACKED },
-      orderBy: { code: "asc" },
-      select: {
-        id:          true,
-        code:        true,
-        name:        true,
-        description: true,
-        stock:       true,
-        costPrice:   true,
-        salePrice:   true,
-        isActive:    true,
-        isLotControl:      true,
-        requireExpiryDate: true,
-        lotIssueMethod:    true,
-        category: { select: { name: true } },
-        brand:    { select: { name: true } },
-        aliases:  { select: { alias: true } },
-        units: {
-          select: { name: true, scale: true, isBase: true },
-          orderBy: { isBase: "desc" },
-        },
-      },
-    }),
+  // Products are searched on demand by AdjustmentForm (searchAdjustmentProducts),
+  // like the sale/purchase forms, instead of shipping the whole catalog.
+  const [adjustments] = await Promise.all([
     db.adjustment.findMany({
       where: adjustmentWhere,
       orderBy: { adjustDate: "desc" },
@@ -83,24 +60,6 @@ const AdjustmentsPage = async ({
     }),
   ]);
 
-  const productOptions = products.map((p) => ({
-    id:          p.id,
-    code:        p.code,
-    name:        p.name,
-    description: p.description,
-    stock:       p.stock,
-    costPrice:   Number(p.costPrice),
-    salePrice:   Number(p.salePrice),
-    isActive:    p.isActive,
-    isLotControl:      p.isLotControl,
-    requireExpiryDate: p.requireExpiryDate,
-    lotIssueMethod:    p.lotIssueMethod,
-    categoryName: p.category.name,
-    brandName:   p.brand?.name ?? null,
-    aliases:     p.aliases.map((a) => a.alias),
-    units:       p.units.map((u) => ({ name: u.name, scale: Number(u.scale), isBase: u.isBase })),
-  }));
-
   const serialized = adjustments.map((a) => ({
     ...a,
     adjustDate:  a.adjustDate.toISOString(),
@@ -116,7 +75,7 @@ const AdjustmentsPage = async ({
         description="ปรับเพิ่ม/ลดจำนวนสินค้าพร้อมระบุเหตุผล"
       />
 
-      <AdjustmentForm products={productOptions} canCreate={canCreate} />
+      <AdjustmentForm products={[]} canCreate={canCreate} />
 
       <div>
         <div className="flex items-center justify-between mb-4">

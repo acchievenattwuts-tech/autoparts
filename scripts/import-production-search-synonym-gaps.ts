@@ -1,13 +1,12 @@
 import { db } from "../lib/db";
 import { normalizeSearchText } from "../lib/search-normalization";
+import { formatSkippedOverCap, mergeImportedSynonyms } from "../lib/search-synonym-import-merge";
 
 type SynonymSeed = {
   term: string;
   synonyms: string[];
   language?: string;
 };
-
-const MAX_SYNONYMS_PER_TERM = 10;
 
 const seeds: SynonymSeed[] = [
   {
@@ -351,25 +350,14 @@ const seeds: SynonymSeed[] = [
 
 const normalize = (value: string) => value.trim();
 
-const mergeSynonyms = (existing: string[], incoming: string[], term: string) => {
-  const lowerTerm = normalizeSearchText(term);
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const value of [...incoming, ...existing]) {
-    const clean = normalize(value);
-    const key = normalizeSearchText(clean);
-    if (!clean || key === lowerTerm || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(clean);
-  }
-
-  return merged.slice(0, MAX_SYNONYMS_PER_TERM);
-};
+// Dry run unless --apply is passed. Usage:
+//   npx tsx --env-file=.env.local scripts/import-production-search-synonym-gaps.ts           # preview
+//   npx tsx --env-file=.env.local scripts/import-production-search-synonym-gaps.ts --apply   # write
+const shouldApply = process.argv.includes("--apply");
 
 async function main() {
   const existingRows = await db.searchSynonym.findMany({
-    select: { id: true, term: true, synonyms: true, language: true },
+    select: { id: true, term: true, synonyms: true, language: true, isActive: true },
   });
   const normalizedTermMap = new Map(existingRows.map((row) => [normalizeSearchText(row.term), row]));
 
@@ -381,51 +369,64 @@ async function main() {
   for (const seed of seeds) {
     const term = normalize(seed.term);
     const existing = normalizedTermMap.get(normalizeSearchText(term));
-    const synonyms = mergeSynonyms(existing?.synonyms ?? [], seed.synonyms, existing?.term ?? term);
-    const oldCount = existing?.synonyms.length ?? 0;
+    const merge = mergeImportedSynonyms({
+      existing: existing?.synonyms ?? [],
+      incoming: seed.synonyms,
+      term: existing?.term ?? term,
+    });
+    const { synonyms } = merge;
+    if (merge.skippedOverCap.length > 0) console.log(formatSkippedOverCap(existing?.term ?? term, merge));
 
     if (existing) {
-      if (
-        existing.synonyms.length === synonyms.length &&
-        existing.synonyms.every((value, index) => value === synonyms[index])
-      ) {
+      // Same skip rule as before: nothing changes when no synonym is added.
+      if (merge.added.length === 0) {
         skipped += 1;
         continue;
       }
 
-      await db.searchSynonym.update({
-        where: { id: existing.id },
-        data: {
-          synonyms,
-          language: existing.language ?? seed.language ?? null,
-          isActive: true,
-        },
-      });
+      console.log(`update: ${existing.term} +[${merge.added.join(" | ")}]`);
       updated += 1;
-      addedSynonyms += Math.max(0, synonyms.length - oldCount);
+      addedSynonyms += merge.added.length;
+      if (shouldApply) {
+        await db.searchSynonym.update({
+          where: { id: existing.id },
+          data: {
+            synonyms,
+            language: existing.language ?? seed.language ?? null,
+            isActive: true,
+          },
+        });
+      }
+      // Later seeds that reach the same row must merge on top of this result.
+      normalizedTermMap.set(normalizeSearchText(existing.term), { ...existing, synonyms });
       continue;
     }
 
-    await db.searchSynonym.create({
-      data: {
-        term,
-        synonyms,
-        language: seed.language ?? null,
-        isActive: true,
-      },
-    });
+    console.log(`create: ${term} -> ${synonyms.join(" | ")}`);
+    const createdRow = shouldApply
+      ? await db.searchSynonym.create({
+          data: {
+            term,
+            synonyms,
+            language: seed.language ?? null,
+            isActive: true,
+          },
+          select: { id: true },
+        })
+      : null;
     normalizedTermMap.set(normalizeSearchText(term), {
-      id: "",
+      id: createdRow?.id ?? "",
       term,
       synonyms,
       language: seed.language ?? null,
+      isActive: true,
     });
     created += 1;
     addedSynonyms += synonyms.length;
   }
 
   console.log(
-    `Imported production search synonym gaps. seeds=${seeds.length} created=${created} updated=${updated} skipped=${skipped} addedSynonyms=${addedSynonyms}`,
+    `${shouldApply ? "Imported" : "Dry-run (pass --apply to write)"} production search synonym gaps. seeds=${seeds.length} created=${created} updated=${updated} skipped=${skipped} addedSynonyms=${addedSynonyms}`,
   );
 }
 

@@ -1,12 +1,11 @@
 import { db } from "../lib/db";
+import { formatSkippedOverCap, mergeImportedSynonyms } from "../lib/search-synonym-import-merge";
 
 type SynonymSeed = {
   term: string;
   synonyms: string[];
   language?: string;
 };
-
-const MAX_SYNONYMS_PER_TERM = 64;
 
 const brandSynonyms: Record<string, string[]> = {
   Chevrolet: ["เชฟโรเลต", "เชฟโรเลท", "เชฟ", "chevy"],
@@ -159,39 +158,36 @@ const modelSynonyms: Record<string, string[]> = {
 
 const normalize = (value: string) => value.trim();
 
-const mergeSynonyms = (existing: string[], incoming: string[], term: string) => {
-  const lowerTerm = term.toLowerCase();
-  const seen = new Set<string>();
-  const merged: string[] = [];
+// Dry run unless --apply is passed. Usage:
+//   npx tsx --env-file=.env.local scripts/import-car-search-synonyms.ts           # preview
+//   npx tsx --env-file=.env.local scripts/import-car-search-synonyms.ts --apply   # write
+const shouldApply = process.argv.includes("--apply");
 
-  for (const value of [...incoming, ...existing]) {
-    const clean = normalize(value);
-    const key = clean.toLowerCase();
-    if (!clean || key === lowerTerm || seen.has(key)) continue;
-    seen.add(key);
-    merged.push(clean);
-  }
-
-  return merged.slice(0, MAX_SYNONYMS_PER_TERM);
-};
-
-async function upsertSynonym(seed: SynonymSeed) {
+async function upsertSynonym(seed: SynonymSeed): Promise<"created" | "updated" | "unchanged"> {
   const term = normalize(seed.term);
   const existing = await db.searchSynonym.findUnique({ where: { term } });
-  const synonyms = mergeSynonyms(existing?.synonyms ?? [], seed.synonyms, term);
+  const merge = mergeImportedSynonyms({ existing: existing?.synonyms ?? [], incoming: seed.synonyms, term });
+  const { synonyms } = merge;
+  if (merge.skippedOverCap.length > 0) console.log(formatSkippedOverCap(term, merge));
 
   if (existing) {
+    const nextLanguage = existing.language ?? seed.language ?? null;
+    if (merge.added.length === 0 && existing.isActive && existing.language === nextLanguage) return "unchanged";
+    console.log(`update: ${term} +[${merge.added.join(" | ")}]`);
+    if (!shouldApply) return "updated";
     await db.searchSynonym.update({
       where: { id: existing.id },
       data: {
         synonyms,
-        language: existing.language ?? seed.language ?? null,
+        language: nextLanguage,
         isActive: true,
       },
     });
     return "updated" as const;
   }
 
+  console.log(`create: ${term} -> ${synonyms.join(" | ")}`);
+  if (!shouldApply) return "created";
   await db.searchSynonym.create({
     data: {
       term,
@@ -242,10 +238,11 @@ async function main() {
     const result = await upsertSynonym(seed);
     if (result === "created") created += 1;
     if (result === "updated") updated += 1;
+    if (result === "unchanged") skipped += 1;
   }
 
   console.log(
-    `Imported car search synonyms. brands=${brands.length} seeds=${seeds.length} created=${created} updated=${updated} skipped=${skipped}`,
+    `${shouldApply ? "Imported" : "Dry-run (pass --apply to write)"} car search synonyms. brands=${brands.length} seeds=${seeds.length} created=${created} updated=${updated} skipped=${skipped}`,
   );
 }
 

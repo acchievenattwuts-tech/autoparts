@@ -1,4 +1,5 @@
 export const dynamic = "force-dynamic";
+export const maxDuration = 300; // Vercel Pro ceiling: Re-calculate loops batches of recalculateStockCardMany (one dbTx per 100 products)
 
 import Link from "next/link";
 import { ClipboardList } from "lucide-react";

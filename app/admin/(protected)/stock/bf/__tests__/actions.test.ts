@@ -12,6 +12,7 @@ const called = (name: string) => calls.filter((c) => c.name === name);
 
 let lastDocNo: string | null = null;
 let claimCount = 1;
+let productIsLotControl = false;
 
 const tx = {
   $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
@@ -43,7 +44,7 @@ const tx = {
 
 const db = {
   productUnit: { findUnique: async () => ({ scale: 12 }) },
-  product: { findUnique: async () => ({ inventoryTracking: "TRACKED", isLotControl: false, requireExpiryDate: false }) },
+  product: { findUnique: async () => ({ inventoryTracking: "TRACKED", isLotControl: productIsLotControl, requireExpiryDate: false }) },
   balanceForward: {
     findUnique: async () => ({
       id: "bf-1",
@@ -85,10 +86,15 @@ before(async () => {
   });
   await mock.module("@/lib/lot-control", {
     namedExports: {
-      writePurchaseLots: async () => undefined,
-      writeStockMovementLots: async () => undefined,
+      writePurchaseLots: async (...args: unknown[]) => record("writePurchaseLots", ...args.slice(1)),
+      writeBalanceForwardLots: async (_tx: unknown, productId: string, lots: unknown) =>
+        record("writeBalanceForwardLots", productId, lots),
+      writeStockMovementLots: async (_tx: unknown, stockCardId: string, lots: unknown, direction: string) =>
+        record("writeStockMovementLots", stockCardId, lots, direction),
       reversePurchaseLotBalance: async (_tx: unknown, id: string, productId: string) =>
         record("reversePurchaseLotBalance", id, productId),
+      reverseBalanceForwardLotBalance: async (_tx: unknown, id: string, productId: string) =>
+        record("reverseBalanceForwardLotBalance", id, productId),
       validateLotRows: () => null,
     },
   });
@@ -98,6 +104,7 @@ beforeEach(() => {
   calls.length = 0;
   lastDocNo = null;
   claimCount = 1;
+  productIsLotControl = false;
 });
 
 const load = async () => import("../actions");
@@ -136,6 +143,31 @@ test("createBF allocates the BF number inside the transaction under a per-month 
   assert.equal((called("writeStockCard")[0].args[0] as { docNo: string }).docNo, "BF26090042");
 });
 
+test("createBF for a lot-controlled product books lots without PurchaseItemLot and trails them on its StockCard", { skip: moduleMocksUnavailable }, async () => {
+  const { createBF } = await load();
+  productIsLotControl = true;
+  const lots = [
+    { lotNo: " L1 ", qty: 1.5, unitCost: 24, mfgDate: "", expDate: "2027-01-31" },
+    { lotNo: "L2", qty: 0.5, unitCost: 36, mfgDate: "", expDate: "" },
+  ];
+  assert.deepEqual(await createBF(bfForm("2026-09-23", lots)), { success: true, docNo: "BF26090001" });
+
+  assert.equal(called("writePurchaseLots").length, 0, "a BF id must never be written as a purchaseItemId");
+  const [booked] = called("writeBalanceForwardLots");
+  assert.equal(booked.args[0], "p1");
+  const bookedLots = booked.args[1] as { lotNo: string; qtyInBase: number; unitCostBase: number; expDate: Date | null }[];
+  // Same base-unit conversion as before (scale = 12).
+  assert.deepEqual(bookedLots.map((l) => [l.lotNo, l.qtyInBase, l.unitCostBase]), [["L1", 18, 2], ["L2", 6, 3]]);
+  assert.equal(bookedLots[1].expDate, null);
+
+  const [trail] = called("writeStockMovementLots");
+  assert.equal(trail.args[0], "sc-1", "lot movements hang off the StockCard row writeStockCard created");
+  assert.equal(trail.args[1], booked.args[1]);
+  assert.equal(trail.args[2], "in");
+  const names = calls.map((c) => c.name);
+  assert.ok(names.indexOf("writeStockCard") < names.indexOf("writeStockMovementLots"));
+});
+
 const cancelForm = () => {
   const formData = new FormData();
   formData.set("bfId", "bf-1");
@@ -146,7 +178,7 @@ test("cancelBF stops without reversing lots when another cancel already claimed 
   const { cancelBF } = await load();
   claimCount = 0;
   assert.deepEqual(await cancelBF(cancelForm()), { error: "เอกสารถูกยกเลิกไปแล้ว" });
-  assert.equal(called("reversePurchaseLotBalance").length, 0);
+  assert.equal(called("reverseBalanceForwardLotBalance").length, 0);
   assert.equal(called("stockCard.deleteMany").length, 0);
   assert.equal(called("recalculateStockCard").length, 0);
 });
@@ -156,8 +188,9 @@ test("cancelBF claims, reverses, deletes and recalculates in that order", { skip
   assert.deepEqual(await cancelBF(cancelForm()), { success: true });
   assert.deepEqual(
     calls.map((c) => c.name),
-    ["balanceForward.updateMany", "reversePurchaseLotBalance", "stockCard.deleteMany", "recalculateStockCard"],
+    ["balanceForward.updateMany", "reverseBalanceForwardLotBalance", "stockCard.deleteMany", "recalculateStockCard"],
   );
+  assert.deepEqual(called("reverseBalanceForwardLotBalance")[0].args, ["bf-1", "p1"]);
   const claim = called("balanceForward.updateMany")[0].args[0] as { where: unknown };
   assert.deepEqual(claim.where, { id: "bf-1", status: { not: "CANCELLED" } });
 });

@@ -1,4 +1,7 @@
 export const dynamic = "force-dynamic";
+// Explicit ceiling for the daily retention run; the batched LineMessage.rawEvent
+// clear stops on its own 20s budget, well inside this limit.
+export const maxDuration = 60;
 
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
@@ -9,6 +12,7 @@ import {
   LINE_AI_JOB_COMPLETED_OR_SKIPPED_RETENTION_DAYS,
   LINE_AI_JOB_FAILED_RETENTION_DAYS,
   LINE_AI_SUGGESTION_RETENTION_DAYS,
+  LINE_MESSAGE_RAW_EVENT_RETENTION_DAYS,
 } from "@/lib/line-ai-retention-service";
 import {
   API_THROTTLE_RETENTION_DAYS,
@@ -57,6 +61,7 @@ export async function GET(request: Request): Promise<Response> {
           completedOrSkippedJobs: LINE_AI_JOB_COMPLETED_OR_SKIPPED_RETENTION_DAYS,
           failedJobs: LINE_AI_JOB_FAILED_RETENTION_DAYS,
           suggestions: LINE_AI_SUGGESTION_RETENTION_DAYS,
+          lineMessageRawEvents: LINE_MESSAGE_RAW_EVENT_RETENTION_DAYS,
         },
         db: {
           loginThrottles: LOGIN_THROTTLE_RETENTION_DAYS,

@@ -6,6 +6,20 @@ const COMPARE_AT_MULTIPLIER = 1.3;
  */
 export const HIDE_STOREFRONT_PRICE = true;
 
+/**
+ * Storefront price-range filter as it is actually applied. The filter matches
+ * Product.salePrice (the wholesale price), so while prices are hidden it is
+ * ignored — otherwise ?priceMin/?priceMax would let anyone probe that price.
+ * With prices shown, the values pass through unchanged.
+ */
+export const resolveStorefrontPriceFilter = (
+  priceMin: number | null | undefined,
+  priceMax: number | null | undefined,
+): { priceMin: number | null; priceMax: number | null } =>
+  HIDE_STOREFRONT_PRICE
+    ? { priceMin: null, priceMax: null }
+    : { priceMin: priceMin ?? null, priceMax: priceMax ?? null };
+
 /** ข้อความแทนราคาเมื่อซ่อนราคาหน้าบ้าน */
 export const STOREFRONT_PRICE_INQUIRY_LABEL = "สอบถามราคา";
 

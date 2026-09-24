@@ -267,6 +267,24 @@ function buildInputData(files, snapshot) {
   const importKeys = new Set(products.map((row) => row.import_key));
   if (importKeys.size !== products.length) fail("products.csv contains duplicate import_key values");
 
+  // executeImport creates exactly one ProductUnit (the purchase unit, scale 1).
+  // A different sale/report unit name would point at a unit that does not exist.
+  const unitMismatches = products.filter(
+    (row) => row.saleUnitName !== row.purchaseUnitName || row.reportUnitName !== row.purchaseUnitName,
+  );
+  if (unitMismatches.length) {
+    fail(
+      "products.csv rows whose saleUnitName/reportUnitName differ from purchaseUnitName " +
+        "(this importer only creates the purchase unit — make all three the same or add the units manually):\n" +
+        unitMismatches
+          .map(
+            (row) =>
+              `  ${row.import_key}: purchase="${row.purchaseUnitName}" sale="${row.saleUnitName}" report="${row.reportUnitName}"`,
+          )
+          .join("\n"),
+    );
+  }
+
   const unknownAliasKeys = aliases.filter((row) => !importKeys.has(row.import_key)).map((row) => row.import_key);
   const unknownFitmentKeys = fitments.filter((row) => !importKeys.has(row.import_key)).map((row) => row.import_key);
   if (unknownAliasKeys.length) fail(`Aliases refer to unknown products: ${Array.from(new Set(unknownAliasKeys)).join(", ")}`);
