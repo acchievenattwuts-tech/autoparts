@@ -10,7 +10,11 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { ensureAccessControlSetup, setUserKnowledgeAccess } from "@/lib/access-control";
+import {
+  ensureAccessControlSetup,
+  isKnowledgePermission,
+  setUserKnowledgeAccess,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
@@ -140,9 +144,7 @@ export async function createUser(
       },
     });
 
-    if (knowledgeAccess) {
-      await setUserKnowledgeAccess(user.id, true);
-    }
+    const knowledgePermissions = knowledgeAccess ? await setUserKnowledgeAccess(user.id, true) : [];
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -154,6 +156,7 @@ export async function createUser(
       after: {
         ...toAuditUser(user),
         passwordSet: true,
+        knowledgePermissions,
       },
     });
 
@@ -273,18 +276,29 @@ export async function updateUser(
       },
     });
 
-    if (knowledgeAccess !== existingKnowledgeAccess) {
-      await setUserKnowledgeAccess(id, knowledgeAccess);
-    }
+    const existingKnowledgePermissions = existingUser.directPermissionGrants
+      .map((item) => item.permission.key)
+      .filter(isKnowledgePermission)
+      .sort();
+    // Knowledge grants depend on role + app role (approve/sync/archive only for
+    // app role ADMIN), so a role or app-role change re-applies them even when the
+    // checkbox did not change. Runs after the user update so the new roles are read.
+    const rolesChanged = role !== existingUser.role || nextAppRoleId !== existingUser.appRoleId;
+    const nextKnowledgePermissions =
+      knowledgeAccess !== existingKnowledgeAccess || (knowledgeAccess && rolesChanged)
+        ? await setUserKnowledgeAccess(id, knowledgeAccess)
+        : existingKnowledgePermissions;
 
     const diff = diffEntity(
       {
         ...toAuditUser(existingUser),
         passwordSet: true,
+        knowledgePermissions: existingKnowledgePermissions,
       },
       {
         ...toAuditUser(updatedUser),
         passwordChanged: Boolean(password),
+        knowledgePermissions: [...nextKnowledgePermissions].sort(),
       },
     );
 

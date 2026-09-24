@@ -161,7 +161,7 @@ const UserForm = ({ user, roleOptions }: UserFormProps) => {
           <div className="md:col-span-2">
             <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-500/20 dark:bg-sky-500/10">
               <input type="checkbox" checked={knowledgeAccess} onChange={(event) => setKnowledgeAccess(event.target.checked)} className="mt-1 h-4 w-4 rounded border-gray-300" />
-              <span><span className="block text-sm font-semibold text-sky-900 dark:text-sky-100">สิทธิ์คลังความรู้ AI ครบทั้งหมด</span><span className="mt-1 block text-xs leading-5 text-sky-700 dark:text-sky-300">สร้าง แก้ไข อนุมัติ เผยแพร่ Sync ทดลองถาม และยกเลิกเผยแพร่ได้ ผู้ใช้ใหม่จะไม่ถูกเปิดสิทธิ์นี้อัตโนมัติ</span></span>
+              <span><span className="block text-sm font-semibold text-sky-900 dark:text-sky-100">สิทธิ์คลังความรู้ AI</span><span className="mt-1 block text-xs leading-5 text-sky-700 dark:text-sky-300">ดู สร้าง แก้ไข และส่งอนุมัติได้ ส่วนการอนุมัติ/เผยแพร่ Sync ทดลองถาม และยกเลิกเผยแพร่ ได้เฉพาะผู้ที่มีบทบาทการใช้งาน ADMIN ผู้ใช้ใหม่จะไม่ถูกเปิดสิทธิ์นี้อัตโนมัติ</span></span>
             </label>
           </div>
 

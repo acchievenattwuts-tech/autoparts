@@ -220,8 +220,52 @@ export const KNOWLEDGE_PERMISSION_KEYS = [
   "knowledge.archive",
 ] as const;
 
+export type KnowledgePermissionKey = (typeof KNOWLEDGE_PERMISSION_KEYS)[number];
+
+/**
+ * Approving/publishing, syncing (incl. the AI test page) and archiving knowledge
+ * decide what the LINE/Messenger bots tell customers, so only knowledge admins
+ * (see isKnowledgeAdminUser) may hold them. Everyone with knowledge access keeps
+ * view/create/update.
+ */
+export const KNOWLEDGE_ADMIN_ONLY_PERMISSION_KEYS = [
+  "knowledge.approve",
+  "knowledge.sync",
+  "knowledge.archive",
+] as const satisfies readonly KnowledgePermissionKey[];
+
 export function isKnowledgePermission(permission: string): boolean {
   return (KNOWLEDGE_PERMISSION_KEYS as readonly string[]).includes(permission);
+}
+
+export function isKnowledgeAdminOnlyPermission(permission: string): boolean {
+  return (KNOWLEDGE_ADMIN_ONLY_PERMISSION_KEYS as readonly string[]).includes(permission);
+}
+
+export const KNOWLEDGE_ADMIN_APP_ROLE_NAME = "ADMIN";
+
+export type KnowledgeRoleSubject = {
+  /** Legacy User.role (ADMIN | STAFF). */
+  role: string | null | undefined;
+  /** Name of the assigned AppRole, if any. */
+  appRoleName: string | null | undefined;
+};
+
+/**
+ * "ADMIN" for the knowledge CMS is the app role ADMIN. A legacy role=ADMIN user
+ * only counts when no app role is assigned (a legacy ADMIN with a staff app role
+ * is not a knowledge admin).
+ */
+export function isKnowledgeAdminUser({ role, appRoleName }: KnowledgeRoleSubject): boolean {
+  if (appRoleName) return appRoleName === KNOWLEDGE_ADMIN_APP_ROLE_NAME;
+  return role === "ADMIN";
+}
+
+/** Knowledge keys this user receives when knowledge access is switched on. */
+export function getKnowledgePermissionKeysForUser(subject: KnowledgeRoleSubject): KnowledgePermissionKey[] {
+  return isKnowledgeAdminUser(subject)
+    ? [...KNOWLEDGE_PERMISSION_KEYS]
+    : KNOWLEDGE_PERMISSION_KEYS.filter((permission) => !isKnowledgeAdminOnlyPermission(permission));
 }
 
 const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
@@ -510,18 +554,32 @@ export async function getUserPermissionKeys(userId: string): Promise<PermissionK
   });
 
   if (!user) return [];
+  return resolveUserPermissionKeys({
+    role: user.role,
+    appRolePermissionKeys: user.appRole?.permissions.map((item) => item.permission.key) ?? [],
+    directPermissionKeys: user.directPermissionGrants.map((item) => item.permission.key),
+  });
+}
+
+/**
+ * Effective permission keys, same rules as login (auth.ts): a legacy ADMIN gets
+ * every key except knowledge keys, which come only from direct grants; anyone
+ * else gets app role + direct grants.
+ */
+export function resolveUserPermissionKeys(user: {
+  role: string;
+  appRolePermissionKeys: readonly string[];
+  directPermissionKeys: readonly string[];
+}): PermissionKey[] {
   if (user.role === "ADMIN") {
-    const directlyGranted = new Set(user.directPermissionGrants.map((item) => item.permission.key));
+    const directlyGranted = new Set(user.directPermissionKeys);
     return ALL_PERMISSION_KEYS.filter(
       (permission) => !isKnowledgePermission(permission) || directlyGranted.has(permission),
     );
   }
 
-  return [...new Set([
-    ...(user.appRole?.permissions.map((item) => item.permission.key) ?? []),
-    ...user.directPermissionGrants.map((item) => item.permission.key),
-  ])].filter((permissionKey): permissionKey is PermissionKey =>
-    ALL_PERMISSION_KEYS.includes(permissionKey as PermissionKey)
+  return [...new Set([...user.appRolePermissionKeys, ...user.directPermissionKeys])].filter(
+    (permissionKey): permissionKey is PermissionKey => ALL_PERMISSION_KEYS.includes(permissionKey as PermissionKey),
   );
 }
 
@@ -529,24 +587,45 @@ export function getAllPermissionKeys(): PermissionKey[] {
   return [...ALL_PERMISSION_KEYS];
 }
 
-export async function setUserKnowledgeAccess(userId: string, enabled: boolean): Promise<void> {
+/**
+ * Replaces the user's direct knowledge grants based on the user's CURRENT role
+ * and app role (call it after saving a role change): knowledge admins get all six
+ * keys, anyone else view/create/update only. Returns the keys now granted.
+ */
+export async function setUserKnowledgeAccess(
+  userId: string,
+  enabled: boolean,
+): Promise<KnowledgePermissionKey[]> {
   await ensureAccessControlSetup();
-  const permissions = await db.permission.findMany({
-    where: { key: { in: [...KNOWLEDGE_PERMISSION_KEYS] } },
-    select: { id: true },
-  });
+  const [permissions, user] = await Promise.all([
+    db.permission.findMany({
+      where: { key: { in: [...KNOWLEDGE_PERMISSION_KEYS] } },
+      select: { id: true, key: true },
+    }),
+    db.user.findUnique({
+      where: { id: userId },
+      select: { role: true, appRole: { select: { name: true } } },
+    }),
+  ]);
+  if (!user) throw new Error("USER_NOT_FOUND");
+  const grantedKeyList = enabled
+    ? getKnowledgePermissionKeysForUser({ role: user.role, appRoleName: user.appRole?.name })
+    : [];
+  const grantedKeys = new Set<string>(grantedKeyList);
+  const grantedPermissions = permissions.filter((permission) => grantedKeys.has(permission.key));
   await db.$transaction(async (tx) => {
     await tx.userPermissionGrant.deleteMany({
       where: { userId, permissionId: { in: permissions.map((item) => item.id) } },
     });
-    if (enabled && permissions.length > 0) {
+    if (enabled && grantedPermissions.length > 0) {
       await tx.userPermissionGrant.createMany({
-        data: permissions.map((permission) => ({ userId, permissionId: permission.id })),
+        data: grantedPermissions.map((permission) => ({ userId, permissionId: permission.id })),
         skipDuplicates: true,
       });
     }
     await tx.user.update({ where: { id: userId }, data: { authVersion: { increment: 1 } } });
   });
+  return grantedKeyList;
 }
 
 export function hasPermissionAccess(

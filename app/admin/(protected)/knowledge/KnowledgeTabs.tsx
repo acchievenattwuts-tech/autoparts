@@ -19,12 +19,18 @@ function TabPendingIndicator() {
 
 export default function KnowledgeTabs({
   active,
+  permissions,
 }: {
   active: KnowledgeAdminTabId;
+  /** Session permission keys; when given, tabs the user cannot open are hidden. */
+  permissions?: readonly string[];
 }) {
+  const tabs = permissions
+    ? KNOWLEDGE_ADMIN_TABS.filter((tab) => permissions.includes(tab.permission))
+    : KNOWLEDGE_ADMIN_TABS;
   return (
     <nav className="mb-5 flex gap-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
-      {KNOWLEDGE_ADMIN_TABS.map((tab) => (
+      {tabs.map((tab) => (
         <Link
           key={tab.href}
           href={tab.href}

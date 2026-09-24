@@ -13,6 +13,7 @@ import {
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import KnowledgeActions from "../KnowledgeActions";
+import { getKnowledgeActionPermissions } from "../knowledge-action-permissions";
 import KnowledgeEditor from "../KnowledgeEditor";
 
 const labels: Record<string, string> = {
@@ -112,6 +113,7 @@ export default async function KnowledgeDetailPage({
             revisionId={revision.id}
             status={revision.status}
             hasActive={Boolean(source.activeRevisionId)}
+            permissions={getKnowledgeActionPermissions(session)}
           />
         }
       />

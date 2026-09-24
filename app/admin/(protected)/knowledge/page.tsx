@@ -60,7 +60,7 @@ export default async function KnowledgeAdminPage({
   searchParams: Promise<{ q?: string; type?: string; status?: string }>;
 }) {
   await ensureAccessControlSetupOnce();
-  await requirePermission("knowledge.view");
+  const session = await requirePermission("knowledge.view");
   const params = await searchParams;
   const type = ["ARTICLE", "FAQ", "POLICY"].includes(params.type ?? "")
     ? (params.type as KnowledgeSourceType)
@@ -238,7 +238,7 @@ export default async function KnowledgeAdminPage({
           </Link>
         }
       />
-      <KnowledgeTabs active="library" />
+      <KnowledgeTabs active="library" permissions={session.user.permissions} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <div

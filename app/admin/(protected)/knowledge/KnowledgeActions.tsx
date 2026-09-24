@@ -18,6 +18,7 @@ import {
   retryKnowledgePublish,
   submitKnowledgeForApproval,
 } from "./actions";
+import type { KnowledgeActionPermissions } from "./knowledge-action-permissions";
 
 type Feedback = { text: string; error: boolean } | null;
 
@@ -26,11 +27,13 @@ export default function KnowledgeActions({
   revisionId,
   status,
   hasActive,
+  permissions,
 }: {
   sourceId: string;
   revisionId: string;
   status: string;
   hasActive: boolean;
+  permissions: KnowledgeActionPermissions;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -73,7 +76,7 @@ export default function KnowledgeActions({
   return (
     <div className="space-y-3" aria-busy={pending}>
       <div className="flex flex-wrap gap-2">
-        {["DRAFT", "REJECTED", "SYNC_FAILED"].includes(status) && (
+        {permissions.canUpdate && ["DRAFT", "REJECTED", "SYNC_FAILED"].includes(status) && (
           <button
             type="button"
             disabled={pending}
@@ -89,7 +92,7 @@ export default function KnowledgeActions({
           </button>
         )}
 
-        {status === "PENDING_APPROVAL" && (
+        {permissions.canApprove && status === "PENDING_APPROVAL" && (
           <>
             <button
               type="button"
@@ -124,7 +127,7 @@ export default function KnowledgeActions({
           </>
         )}
 
-        {status === "SYNC_FAILED" && (
+        {permissions.canSync && status === "SYNC_FAILED" && (
           <button
             type="button"
             disabled={pending}
@@ -140,7 +143,7 @@ export default function KnowledgeActions({
           </button>
         )}
 
-        {status === "ACTIVE" && (
+        {permissions.canUpdate && status === "ACTIVE" && (
           <button
             type="button"
             disabled={pending}
@@ -156,7 +159,7 @@ export default function KnowledgeActions({
           </button>
         )}
 
-        {hasActive && (
+        {permissions.canArchive && hasActive && (
           <button
             type="button"
             disabled={pending}

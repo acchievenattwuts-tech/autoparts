@@ -16,7 +16,19 @@ type Gap = {
   sourceId: string | null;
 };
 
-export default function QualityGapActions({ gap }: { gap: Gap }) {
+/** UX only: reviewKnowledgeGap/dismissKnowledgeGap require knowledge.approve, createDraftFromKnowledgeGap knowledge.create. */
+type GapActionPermissions = {
+  canApprove: boolean;
+  canCreate: boolean;
+};
+
+export default function QualityGapActions({
+  gap,
+  permissions,
+}: {
+  gap: Gap;
+  permissions: GapActionPermissions;
+}) {
   const [title, setTitle] = useState(gap.internalTitle ?? "");
   const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{
@@ -49,32 +61,37 @@ export default function QualityGapActions({ gap }: { gap: Gap }) {
   }
 
   if (gap.status === "REVIEWED") {
+    if (!permissions.canCreate && !permissions.canApprove) return null;
     return (
       <div className="space-y-2">
         <p className="text-xs text-slate-500">{gap.internalTitle}</p>
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => run(() => createDraftFromKnowledgeGap(gap.id))}
-            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:cursor-wait disabled:opacity-50"
-          >
-            {pending ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <FilePlus2 className="h-3.5 w-3.5" />
-            )}
-            สร้างร่างที่ปิด RAG
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => run(() => dismissKnowledgeGap(gap.id))}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-          >
-            <XCircle className="h-3.5 w-3.5" />
-            ข้าม
-          </button>
+          {permissions.canCreate && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => createDraftFromKnowledgeGap(gap.id))}
+              className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-medium text-white hover:bg-sky-700 disabled:cursor-wait disabled:opacity-50"
+            >
+              {pending ? (
+                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FilePlus2 className="h-3.5 w-3.5" />
+              )}
+              สร้างร่างที่ปิด RAG
+            </button>
+          )}
+          {permissions.canApprove && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => run(() => dismissKnowledgeGap(gap.id))}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+            >
+              <XCircle className="h-3.5 w-3.5" />
+              ข้าม
+            </button>
+          )}
         </div>
         {feedback && (
           <p
@@ -87,6 +104,8 @@ export default function QualityGapActions({ gap }: { gap: Gap }) {
       </div>
     );
   }
+
+  if (!permissions.canApprove) return null;
 
   return (
     <form

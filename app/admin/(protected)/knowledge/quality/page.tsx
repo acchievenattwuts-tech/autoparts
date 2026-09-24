@@ -25,7 +25,12 @@ function percent(value: number): string {
 
 export default async function KnowledgeQualityPage() {
   await ensureAccessControlSetupOnce();
-  await requirePermission("knowledge.view");
+  const session = await requirePermission("knowledge.view");
+  const sessionPermissions = session.user.permissions ?? [];
+  const gapActionPermissions = {
+    canApprove: sessionPermissions.includes("knowledge.approve"),
+    canCreate: sessionPermissions.includes("knowledge.create"),
+  };
   const data = await getKnowledgeRagDashboardData(30);
   const total = data.metrics.reduce((sum, item) => sum + item.total, 0);
   const answered = data.metrics.reduce((sum, item) => sum + item.answered, 0);
@@ -66,7 +71,7 @@ export default async function KnowledgeQualityPage() {
         title="คุณภาพและช่องว่างความรู้"
         description="ติดตาม coverage, no-answer, latency และ handoff แยก LINE/Messenger โดยไม่เก็บข้อความหรือข้อมูลระบุตัวลูกค้า"
       />
-      <KnowledgeTabs active="quality" />
+      <KnowledgeTabs active="quality" permissions={sessionPermissions} />
 
       {!data.available && (
         <div
@@ -225,7 +230,7 @@ export default async function KnowledgeQualityPage() {
                       {formatDateTimeThai(gap.lastSeenAt)} น.
                     </td>
                     <td className="px-4 py-3">
-                      <QualityGapActions gap={gap} />
+                      <QualityGapActions gap={gap} permissions={gapActionPermissions} />
                     </td>
                   </tr>
                 ))}

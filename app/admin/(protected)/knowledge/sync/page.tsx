@@ -17,10 +17,12 @@ import { formatKnowledgeTimestamp } from "@/lib/knowledge-cms-format";
 import { requirePermission } from "@/lib/require-auth";
 import KnowledgeTabs from "../KnowledgeTabs";
 import KnowledgeActions from "../KnowledgeActions";
+import { getKnowledgeActionPermissions } from "../knowledge-action-permissions";
 
 export default async function KnowledgeSyncPage() {
   await ensureAccessControlSetupOnce();
-  await requirePermission("knowledge.view");
+  const session = await requirePermission("knowledge.view");
+  const actionPermissions = getKnowledgeActionPermissions(session);
   const [jobs, chunks] = await Promise.all([
     db.knowledgeSyncJob.findMany({
       include: { revision: { include: { source: true } } },
@@ -50,7 +52,7 @@ export default async function KnowledgeSyncPage() {
         description="Cron ทำงานทุก 6 ชั่วโมง เวอร์ชันเดิมจะยังใช้งานต่อหาก revision ใหม่สร้าง embedding ไม่สำเร็จ"
         meta={`สำเร็จล่าสุด: ${lastSuccess?.finishedAt ? `${formatKnowledgeTimestamp(lastSuccess.finishedAt)} น. (เวลาไทย)` : "-"}`}
       />
-      <KnowledgeTabs active="sync" />
+      <KnowledgeTabs active="sync" permissions={session.user.permissions} />
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(([label, value, Icon]) => (
           <div
@@ -126,6 +128,7 @@ export default async function KnowledgeSyncPage() {
                         hasActive={Boolean(
                           job.revision.source.activeRevisionId,
                         )}
+                        permissions={actionPermissions}
                       />
                     ) : (
                       <RefreshCw className="h-4 w-4 text-slate-300" />

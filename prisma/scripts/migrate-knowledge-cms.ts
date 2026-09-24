@@ -1,18 +1,13 @@
 import { KnowledgeRevisionStatus, Prisma } from "../../lib/generated/prisma";
 import { db } from "../../lib/db";
-import { ensureAccessControlSetup } from "../../lib/access-control";
+import {
+  ensureAccessControlSetup,
+  getKnowledgePermissionKeysForUser,
+  KNOWLEDGE_PERMISSION_KEYS,
+} from "../../lib/access-control";
 import { getKnowledgeCmsSeedEntries } from "../../lib/knowledge-cms-seed";
 import { buildKnowledgeRevisionChecksum } from "../../lib/knowledge-cms-types";
 import { publishKnowledgeRevision } from "../../lib/knowledge-cms-publish";
-
-const knowledgePermissionKeys = [
-  "knowledge.view",
-  "knowledge.create",
-  "knowledge.update",
-  "knowledge.approve",
-  "knowledge.sync",
-  "knowledge.archive",
-] as const;
 
 async function main() {
   await ensureAccessControlSetup();
@@ -23,11 +18,23 @@ async function main() {
   const grantMarker = await db.knowledgeSyncState.findUnique({ where: { id: grantMarkerId } });
   let activeUsersGranted = 0;
   if (!grantMarker) {
-    const permissions = await db.permission.findMany({ where: { key: { in: [...knowledgePermissionKeys] } }, select: { id: true } });
-    const activeUsers = await db.user.findMany({ where: { isActive: true }, select: { id: true } });
+    // Every active user gets view/create/update; approve/sync/archive only knowledge
+    // admins (app role ADMIN, or legacy ADMIN without an app role).
+    const permissions = await db.permission.findMany({ where: { key: { in: [...KNOWLEDGE_PERMISSION_KEYS] } }, select: { id: true, key: true } });
+    const activeUsers = await db.user.findMany({
+      where: { isActive: true },
+      select: { id: true, role: true, appRole: { select: { name: true } } },
+    });
     await db.$transaction([
       db.userPermissionGrant.createMany({
-        data: activeUsers.flatMap((user) => permissions.map((permission) => ({ userId: user.id, permissionId: permission.id }))),
+        data: activeUsers.flatMap((user) => {
+          const grantedKeys = new Set<string>(
+            getKnowledgePermissionKeysForUser({ role: user.role, appRoleName: user.appRole?.name }),
+          );
+          return permissions
+            .filter((permission) => grantedKeys.has(permission.key))
+            .map((permission) => ({ userId: user.id, permissionId: permission.id }));
+        }),
         skipDuplicates: true,
       }),
       db.knowledgeSyncState.create({ data: { id: grantMarkerId, lastSuccessAt: new Date(), runCount: 1 } }),

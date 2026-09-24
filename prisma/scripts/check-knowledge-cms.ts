@@ -1,6 +1,11 @@
 import { Prisma } from "../../lib/generated/prisma";
 import { db } from "../../lib/db";
-import { KNOWLEDGE_PERMISSION_KEYS } from "../../lib/access-control";
+import {
+  isKnowledgeAdminOnlyPermission,
+  isKnowledgeAdminUser,
+  KNOWLEDGE_PERMISSION_KEYS,
+  resolveUserPermissionKeys,
+} from "../../lib/access-control";
 import { getKnowledgeEmbeddingModelId } from "../../lib/knowledge-embeddings";
 import {
   assessKnowledgeQuality,
@@ -9,19 +14,18 @@ import {
 import { parseKnowledgeContent } from "../../lib/knowledge-cms-types";
 
 async function main() {
-  const [activeUsers, fullyGrantedUsers, sources, activeSources, failedRevisions, pendingRevisions, syncJobs, indexRows, productModels, marker, inventory, operationalMetrics, feedbackCount, gapCounts] = await Promise.all([
+  const [activeUsers, activeUserAccess, sources, activeSources, failedRevisions, pendingRevisions, syncJobs, indexRows, productModels, marker, inventory, operationalMetrics, feedbackCount, gapCounts] = await Promise.all([
     db.user.count({ where: { isActive: true } }),
-    db.$queryRaw<Array<{ count: number }>>(Prisma.sql`
-      SELECT count(*)::int AS count FROM (
-        SELECT upg."userId"
-        FROM "UserPermissionGrant" upg
-        JOIN "Permission" p ON p.id = upg."permissionId"
-        JOIN "User" u ON u.id = upg."userId"
-        WHERE u."isActive" = true AND p.key = ANY(${[...KNOWLEDGE_PERMISSION_KEYS]}::text[])
-        GROUP BY upg."userId"
-        HAVING count(DISTINCT p.key) = ${KNOWLEDGE_PERMISSION_KEYS.length}
-      ) granted
-    `),
+    // Effective permissions are resolved exactly like login: app role + direct
+    // grants, and for a legacy ADMIN every key but knowledge (direct grants only).
+    db.user.findMany({
+      where: { isActive: true },
+      select: {
+        role: true,
+        appRole: { select: { name: true, permissions: { select: { permission: { select: { key: true } } } } } },
+        directPermissionGrants: { select: { permission: { select: { key: true } } } },
+      },
+    }),
     db.knowledgeSource.count(),
     db.knowledgeSource.count({ where: { isArchived: false, activeRevisionId: { not: null } } }),
     db.knowledgeRevision.count({ where: { status: "SYNC_FAILED" } }),
@@ -106,9 +110,27 @@ async function main() {
     }).map((issue) => ({ sourceId: row.sourceId, code: issue.code })),
   ]);
 
+  const userAccess = activeUserAccess.map((user) => ({
+    isKnowledgeAdmin: isKnowledgeAdminUser({ role: user.role, appRoleName: user.appRole?.name }),
+    permissions: resolveUserPermissionKeys({
+      role: user.role,
+      appRolePermissionKeys: user.appRole?.permissions.map((item) => item.permission.key) ?? [],
+      directPermissionKeys: user.directPermissionGrants.map((item) => item.permission.key),
+    }),
+  }));
+  const fullyGrantedAdmins = userAccess.filter(
+    (user) => user.isKnowledgeAdmin && KNOWLEDGE_PERMISSION_KEYS.every((key) => user.permissions.includes(key)),
+  ).length;
+  // Informational: non-admins whose effective permissions still include
+  // approve/sync/archive (prisma/scripts/revoke-staff-knowledge-approve.ts lists them).
+  const nonAdminsWithAdminOnlyKnowledge = userAccess.filter(
+    (user) => !user.isKnowledgeAdmin && user.permissions.some(isKnowledgeAdminOnlyPermission),
+  ).length;
+
   const summary = {
     activeUsers,
-    fullyGrantedUsers: fullyGrantedUsers[0]?.count ?? 0,
+    fullyGrantedAdmins,
+    nonAdminsWithAdminOnlyKnowledge,
     sources,
     activeSources,
     failedRevisions,
@@ -132,7 +154,10 @@ async function main() {
 
   const index = indexRows[0];
   if (!marker) throw new Error("KNOWLEDGE_PERMISSION_SNAPSHOT_MARKER_MISSING");
-  if ((fullyGrantedUsers[0]?.count ?? 0) !== activeUsers) throw new Error("ACTIVE_USER_KNOWLEDGE_GRANTS_INCOMPLETE");
+  // approve/sync/archive belong to knowledge admins (app role ADMIN, or legacy ADMIN
+  // without an app role); the CMS stays operable while at least one active knowledge
+  // admin holds the full set. Per-user access is managed on the users page.
+  if (fullyGrantedAdmins < 1) throw new Error("NO_ACTIVE_ADMIN_WITH_FULL_KNOWLEDGE_GRANTS");
   if (sources === 0 || sources !== activeSources) throw new Error("KNOWLEDGE_SOURCES_NOT_ALL_ACTIVE");
   if (failedRevisions > 0 || pendingRevisions > 0) throw new Error("KNOWLEDGE_REVISION_HEALTH_FAILED");
   if (!index || index.cms_approved === 0 || index.cms_approved !== index.embedded) throw new Error("KNOWLEDGE_CMS_INDEX_INCOMPLETE");
