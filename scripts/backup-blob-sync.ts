@@ -12,7 +12,14 @@
  *
  * Usage (all paths are absolute, set by the workflow):
  *   BLOB_READ_WRITE_TOKEN=... npx tsx scripts/backup-blob-sync.ts \
- *     --work-dir <dir> --state <previous blob-index.json | missing> --date 2026-08-17
+ *     --work-dir <dir> --state <previous blob-index.json | missing> --date 2026-08-17 \
+ *     [--source-label private]
+ *
+ * The token decides which store is mirrored. The workflow runs this twice: once with
+ * the public store token and once with the PRIVATE store token (payment slips,
+ * expense attachments, delivery proofs) in a separate --work-dir. --source-label
+ * only tags the private run's manifest (`source` + file name); without it the
+ * outputs are exactly what the public run has always written.
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -55,7 +62,11 @@ interface CliOptions {
   workDir: string;
   statePath: string | null;
   dateKey: string;
+  sourceLabel: string | null;
 }
+
+/** The label becomes part of a file name, so keep it to a safe slug. */
+const SOURCE_LABEL_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 const parseCliOptions = (argv: string[]): CliOptions => {
   const read = (flag: string): string | null => {
@@ -69,7 +80,12 @@ const parseCliOptions = (argv: string[]): CliOptions => {
   if (!workDir) throw new Error("MISSING_ARG:--work-dir");
   if (!dateKey) throw new Error("MISSING_ARG:--date");
 
-  return { workDir, statePath: read("--state"), dateKey };
+  const sourceLabel = read("--source-label");
+  if (sourceLabel !== null && !SOURCE_LABEL_PATTERN.test(sourceLabel)) {
+    throw new Error(`INVALID_ARG:--source-label:${sourceLabel}`);
+  }
+
+  return { workDir, statePath: read("--state"), dateKey, sourceLabel };
 };
 
 /**
@@ -152,7 +168,11 @@ const main = async (): Promise<void> => {
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) throw new Error("BLOB_READ_WRITE_TOKEN_REQUIRED");
 
-  const { workDir, statePath, dateKey } = parseCliOptions(process.argv.slice(2));
+  const { workDir, statePath, dateKey, sourceLabel } = parseCliOptions(process.argv.slice(2));
+  const manifestSource = sourceLabel ? `vercel-blob-${sourceLabel}` : "vercel-blob";
+  const manifestFileName = sourceLabel
+    ? `blob-manifest-${sourceLabel}-${dateKey}.json`
+    : `blob-manifest-${dateKey}.json`;
   const mirrorRoot = path.join(workDir, "blob-mirror");
   const stateDir = path.join(workDir, "state");
   const manifestDir = path.join(workDir, "db");
@@ -161,7 +181,7 @@ const main = async (): Promise<void> => {
   await mkdir(stateDir, { recursive: true });
   await mkdir(manifestDir, { recursive: true });
 
-  console.log("📋 Listing Vercel Blob objects...");
+  console.log(`📋 Listing Vercel Blob objects (${manifestSource})...`);
   const [blobs, previousIndex] = await Promise.all([listAllBlobs(token), readPreviousIndex(statePath)]);
   console.log(`   found ${blobs.length} objects`);
 
@@ -196,11 +216,11 @@ const main = async (): Promise<void> => {
 
   await writeFile(path.join(stateDir, "blob-index.json"), JSON.stringify(nextIndex, null, 2), "utf8");
   await writeFile(
-    path.join(manifestDir, `blob-manifest-${dateKey}.json`),
+    path.join(manifestDir, manifestFileName),
     JSON.stringify(
       {
         createdAt: new Date().toISOString(),
-        source: "vercel-blob",
+        source: manifestSource,
         totalItems: blobs.length,
         totalBytes,
         // Objects deleted from production since the last run. They stay in the

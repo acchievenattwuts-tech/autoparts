@@ -27,7 +27,7 @@ import {
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
-import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
+import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, type LotSubRow } from "@/lib/lot-control";
 import {
   getTransactionProductDetailRowsByIds,
   searchTransactionProductDetailRows,
@@ -48,6 +48,7 @@ import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { refreshProductPurchaseLastFields } from "@/lib/product-purchase-last";
 import { getPurchaseUserErrorMessage, PurchaseUserError } from "./purchase-user-error";
 import { reversePurchaseLotBalancesBatch } from "./purchase-lot-reversal";
+import { getPurchaseLineLotError } from "./purchase-lot-guard";
 
 const serializePurchaseProductOption = (product: TransactionProductDetailRow) => ({
   id: product.id,
@@ -268,6 +269,27 @@ async function preloadPurchaseDependencies(
       ]),
     ),
   };
+}
+
+// A tracked lot-controlled product must always name its lots, even when lotItems
+// is empty — otherwise StockCard goes up with no ProductLot / LotBalance. Runs
+// over every incoming line before the transaction writes anything.
+function assertPurchaseLinesHaveLots(
+  items: PurchaseItemInput[],
+  productMap: Map<string, PurchaseProductSnapshot>,
+): void {
+  for (const item of items) {
+    const product = productMap.get(item.productId);
+    if (!product) continue; // the line loop reports the missing product
+    const lotErr = getPurchaseLineLotError({
+      isTracked: isInventoryTracked(product.inventoryTracking),
+      isLotControl: product.isLotControl,
+      requireExpiryDate: product.requireExpiryDate,
+      lotItems: item.lotItems as LotSubRow[],
+      qty: item.qty,
+    });
+    if (lotErr) throw new PurchaseUserError(lotErr);
+  }
 }
 
 async function resolvePurchasePaymentMethod(
@@ -580,6 +602,7 @@ export async function createPurchase(
             payments,
           );
           const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
+          assertPurchaseLinesHaveLots(validItems, productMap);
 
           // 1. Create Purchase header
           const purchase = await tx.purchase.create({
@@ -663,11 +686,8 @@ export async function createPurchase(
             }) : null;
 
             // 4. Lot Control - only if product has isLotControl=true
+            //    (lot rows already validated by assertPurchaseLinesHaveLots)
             if (stockCardId && item.lotItems.length > 0 && product?.isLotControl) {
-                // Validate lot rows (server-side)
-                const lotErr = validateLotRows(item.lotItems as LotSubRow[], item.qty, product.requireExpiryDate);
-                if (lotErr) throw new PurchaseUserError(lotErr);
-
                 // Convert lot rows to base unit
                 const lotsInBase = item.lotItems.map((lot) => ({
                   lotNo:        lot.lotNo.trim(),
@@ -1081,6 +1101,18 @@ export async function updatePurchase(
       );
       const productIdsNeedingRecalc = new Set<string>();
 
+      // Lines (re)created in step 3. Differential: only added/changed lines.
+      // Fallback: every line.
+      const itemsToCreate: { item: typeof validItems[number]; itemIndex: number }[] =
+        useDifferential
+          ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], itemIndex: a.newIdx }))
+          : validItems.map((item, itemIndex) => ({ item, itemIndex }));
+
+      // Preloaded for every incoming line (a superset of itemsToCreate) so the
+      // lot guard can check them all before step 1 deletes anything.
+      const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
+      assertPurchaseLinesHaveLots(validItems, productMap);
+
       // 1. Drop stock effects for removed/changed lines only.
       //    Differential path: only the lines that didn't survive signature
       //    matching are reversed + deleted. Fallback path: everything is
@@ -1271,17 +1303,7 @@ export async function updatePurchase(
           }
       }
 
-      // 3. Create items + stock cards.
-      //    Differential: only added/changed lines. Fallback: every line.
-      const itemsToCreate: { item: typeof validItems[number]; itemIndex: number }[] =
-        useDifferential
-          ? addedNewItems.map((a) => ({ item: validItems[a.newIdx], itemIndex: a.newIdx }))
-          : validItems.map((item, itemIndex) => ({ item, itemIndex }));
-
-      const { productMap, unitMap } = await preloadPurchaseDependencies(
-        tx,
-        itemsToCreate.map(({ item }) => item),
-      );
+      // 3. Create items + stock cards for itemsToCreate (resolved above).
       const stockProductIdsToCreate = [
         ...new Set(
           itemsToCreate
@@ -1417,7 +1439,8 @@ export async function updatePurchase(
         }
 
         // 3c. Lot rows: only for lot-controlled tracked lines (rare). Map back
-        //     the freshly-created StockCard ids by referenceId.
+        //     the freshly-created StockCard ids by referenceId. Lot rows were
+        //     already validated by assertPurchaseLinesHaveLots.
         const lotLines = prepared.filter((p) => {
           const product = productMap.get(p.productId);
           return p.isTracked && p.item.lotItems.length > 0 && product?.isLotControl;
@@ -1434,14 +1457,6 @@ export async function updatePurchase(
             lotStockCards.map((row) => [row.referenceId ?? "", row.id]),
           );
           for (const p of lotLines) {
-            const product = productMap.get(p.productId);
-            const lotErr = validateLotRows(
-              p.item.lotItems as LotSubRow[],
-              p.item.qty,
-              product?.requireExpiryDate ?? false,
-            );
-            if (lotErr) throw new PurchaseUserError(lotErr);
-
             const purchaseItemId = itemIdByLineNo.get(p.lineNo);
             const stockCardId = purchaseItemId ? stockCardIdByItemId.get(purchaseItemId) : undefined;
             if (!purchaseItemId || !stockCardId) throw new Error("ไม่พบรายการสินค้าที่เพิ่งสร้าง");

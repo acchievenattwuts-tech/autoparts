@@ -219,6 +219,11 @@ async function getSaleRelationEvents(id: string,
     where: { saleId: id, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
     select: { amount: true, settlement: { select: { id: true, settlementNo: true, settlementDate: true, createdAt: true } } },
   });
+  // Same "held by an ACTIVE run" condition as the Sale mutation guard.
+  const commissionItems = await db.deliveryCommissionItem.findMany({
+    where: { saleId: id, activeSaleId: { not: null }, run: { status: "ACTIVE" } },
+    select: { commissionAmount: true, run: { select: { id: true, runNo: true, payDate: true, createdAt: true } } },
+  });
 
   return [
     ...receipts.map((item) => buildRelationActivityEvent({
@@ -261,6 +266,16 @@ async function getSaleRelationEvents(id: string,
       description: `ยอดจับคู่ ${formatMoneyActivity(String(item.amount))}`,
       href: `/admin/marketplace/settlements/${item.settlement.id}`,
       hrefLabel: item.settlement.settlementNo,
+      tone: "used",
+    })),
+    ...commissionItems.map((item) => buildRelationActivityEvent({
+      id: `sale-${id}-delivery-commission-run-${item.run.id}`,
+      kind: "USED_BY",
+      occurredAt: item.run.createdAt ?? item.run.payDate,
+      title: "ถูกนำไปใช้ที่เอกสารทำจ่ายค่าส่ง",
+      description: `ยอดทำจ่าย ${formatMoneyActivity(String(item.commissionAmount))}`,
+      href: `/admin/delivery-commissions/${item.run.id}`,
+      hrefLabel: item.run.runNo,
       tone: "used",
     })),
   ];
@@ -723,6 +738,30 @@ async function getAdvanceRefundRelationEvents(
     : [];
 }
 
+async function getExpenseRelationEvents(id: string,
+): Promise<DocumentActivityEvent[]> {
+  const db = await getDb();
+  // The run that generated this expense — shown whatever its status, like a
+  // receipt's source sale (cancelling the run cancels this expense with it).
+  const run = await db.deliveryCommissionRun.findUnique({
+    where: { expenseId: id },
+    select: { id: true, runNo: true, payDate: true, createdAt: true, commissionTotal: true },
+  });
+
+  return run
+    ? [buildRelationActivityEvent({
+        id: `expense-${id}-delivery-commission-run-${run.id}`,
+        kind: "USES_SOURCE",
+        occurredAt: run.createdAt ?? run.payDate,
+        title: "ถูกสร้างจากเอกสารทำจ่ายค่าส่ง",
+        description: `ยอดทำจ่าย ${formatMoneyActivity(String(run.commissionTotal))}`,
+        href: `/admin/delivery-commissions/${run.id}`,
+        hrefLabel: run.runNo,
+        tone: "used",
+      })]
+    : [];
+}
+
 async function getWarrantyClaimRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
@@ -799,6 +838,7 @@ async function getRelationEvents(
   )
     return getAdvanceRefundRelationEvents(entityType, id);
   if (entityType === "WarrantyClaim") return getWarrantyClaimRelationEvents(id);
+  if (entityType === "Expense") return getExpenseRelationEvents(id);
   return [];
 }
 

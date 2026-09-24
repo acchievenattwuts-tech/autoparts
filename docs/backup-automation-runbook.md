@@ -1,6 +1,6 @@
 # Weekly Backup Automation Runbook
 
-คู่มือตั้งค่าและกู้คืนระบบสำรองข้อมูลอัตโนมัติ ที่สำรอง **ฐานข้อมูล Supabase** และ **ไฟล์รูปทั้งหมดใน Vercel Blob** ขึ้น **Google Drive** ทุกสัปดาห์
+คู่มือตั้งค่าและกู้คืนระบบสำรองข้อมูลอัตโนมัติ ที่สำรอง **ฐานข้อมูล Supabase**, **รูปสาธารณะใน Vercel Blob (public store)** และ **ไฟล์ส่วนตัวใน Vercel Blob (private store: สลิปโอนเงิน LINE, เอกสารแนบค่าใช้จ่าย, หลักฐานการส่งของ)** ขึ้น **Google Drive** ทุกสัปดาห์
 
 สร้างเมื่อ: 2026-08-17
 
@@ -13,7 +13,7 @@
 | สั่งเอง | ปุ่ม "สำรองข้อมูลเดี๋ยวนี้" ในหน้า Backup Center หรือปุ่ม Run workflow บน GitHub |
 | ปลายทาง | Google Drive ผ่าน `rclone` |
 | แจ้งเตือน | รองรับ Telegram ทั้งกรณีสำเร็จและล้มเหลว; ต้องตั้ง GitHub Secrets ก่อน (ยังไม่ได้ตั้ง ณ 2026-08-28) |
-| เก็บย้อนหลัง | dump + report 60 วัน / ไฟล์รูปเก็บสะสมไม่ลบ |
+| เก็บย้อนหลัง | dump + manifest + report 60 วัน / ไฟล์ Blob ทั้ง public และ private เก็บสะสมไม่ลบ |
 
 **ทำไมต้องรันบน GitHub ไม่ใช่บน Vercel** — Vercel serverless runtime ไม่มีคำสั่ง `pg_dump` และมีลิมิตเวลาทำงาน 300 วินาที ส่วน runner ของ GitHub เป็น Ubuntu เต็มรูปแบบ ติดตั้ง `pg_dump` และ `rclone` ได้ และให้เวลาถึง 6 ชั่วโมง
 
@@ -32,6 +32,24 @@ Drive API และเพิ่ม retry/backoff สำหรับ `rclone` แ
 
 หลักฐานนี้ยืนยันว่าไฟล์ถูกสร้างและอยู่บน Google Drive ครบ แต่ยังไม่ทดแทนการซ้อม
 `pg_restore` เข้า database แยก ซึ่งต้องทำเป็น restore drill ตามหัวข้อบำรุงรักษาด้านล่าง
+
+### สำรอง private Blob store (เพิ่ม 2026-09-24)
+
+ก่อนหน้านี้ workflow ใช้แค่ `BLOB_READ_WRITE_TOKEN` (public store) จึงสำรองได้เฉพาะรูปสาธารณะ
+ไฟล์ใน private store — สลิปโอนเงิน LINE (`YYYY/MM/DD/<id>.webp` ที่ root ของ store),
+`expense-attachments/...` และ `delivery-proofs/...` — **ไม่เคยถูกสำรอง**
+
+- [x] เพิ่ม step `Fetch previous blob index (private) from Drive` และ `Sync Vercel Blob (private) incrementally`
+  รัน `scripts/backup-blob-sync.ts` ตัวเดิมด้วย token `BLOB_SLIPS_READ_WRITE_TOKEN` แยก work dir/state
+  (`--source-label private` ทำให้ manifest เป็น `source: "vercel-blob-private"` และชื่อไฟล์
+  `blob-manifest-private-<วันที่>.json`; ผลลัพธ์ของรอบ public เหมือนเดิมทุกไฟล์)
+- [x] อัปโหลด `db-private/` → `blob-mirror-private/` → `state-private/` (state อยู่หลัง mirror ของตัวเองเสมอ)
+  ด้วย rclone throttling ชุดเดียวกับ public; `db-private/` ถูกลบตาม retention 60 วัน, `blob-mirror-private/` ไม่ลบ
+- [x] ถ้ายังไม่ได้ตั้ง secret `BLOB_SLIPS_READ_WRITE_TOKEN` step private จะข้ามพร้อม `::warning::`
+  โดย backup ส่วนอื่นยังสำเร็จ แต่ report เขียน `NOT BACKED UP` และ Telegram ขึ้น "⚠️ Backup สำเร็จบางส่วน"
+- [x] ถ้า secret นี้มีค่าเดียวกับ `BLOB_READ_WRITE_TOKEN` workflow จะ fail ทันที กันไม่ให้ report อ้างว่าสำรองไฟล์ส่วนตัวแล้วทั้งที่จริงเป็นรูปสาธารณะซ้ำ
+- ยังไม่เข้ารหัสไฟล์ส่วนตัวบน Drive ในรอบนี้ — ความปลอดภัยพึ่ง scope `drive.file` และบัญชี Google ที่ถือ backup
+- ยังไม่ได้รัน workflow จริงหลังเพิ่ม private store; รอบแรกจะดาวน์โหลดไฟล์ private ทั้งหมด (full sync)
 
 ## โครงสร้างไฟล์บน Google Drive
 
@@ -52,17 +70,27 @@ Drive API และเพิ่ม retry/backoff สำหรับ `rclone` แ
 autoparts-backup/
   db/
     postgres-2026-08-17.dump          ← pg_dump custom format (ใช้ pg_restore)
-    blob-manifest-2026-08-17.json     ← รายการไฟล์รูปทั้งหมด ณ วันนั้น
+    blob-manifest-2026-08-17.json     ← รายการไฟล์ใน public store ทั้งหมด ณ วันนั้น
+  db-private/
+    blob-manifest-private-2026-08-17.json ← รายการไฟล์ใน private store ทั้งหมด ณ วันนั้น
   blob-mirror/
-    products/<code>/<file>.webp       ← ไฟล์จริง เก็บสะสม ไม่เคยลบ
+    products/<code>/<file>.webp       ← ไฟล์จริงของ public store เก็บสะสม ไม่เคยลบ
     expenses/... , line/... ฯลฯ
+  blob-mirror-private/
+    YYYY/MM/DD/<id>.webp              ← สลิปโอนเงิน LINE (อยู่ที่ root ของ private store)
+    expense-attachments/...           ← เอกสารแนบค่าใช้จ่าย
+    delivery-proofs/...               ← หลักฐานการส่งของ
   state/
-    blob-index.json                   ← ตัวจำว่าไฟล์ไหนสำรองไปแล้ว (etag)
+    blob-index.json                   ← ตัวจำว่าไฟล์ public ไหนสำรองไปแล้ว (etag)
+  state-private/
+    blob-index.json                   ← ตัวจำของ private store (แยกกัน ห้ามสลับ)
   reports/
     REPORT-2026-08-17.txt             ← ขนาด dump, จำนวนไฟล์, จำนวนแถวต่อตาราง
 ```
 
-`state/blob-index.json` คือหัวใจของการทำงานแบบ incremental — รอบถัดไปจะโหลดเฉพาะไฟล์ที่ `etag` เปลี่ยน ทำให้ egress จาก Vercel Blob แทบเป็นศูนย์หลังรอบแรก
+`state/blob-index.json` คือหัวใจของการทำงานแบบ incremental — รอบถัดไปจะโหลดเฉพาะไฟล์ที่ `etag` เปลี่ยน ทำให้ egress จาก Vercel Blob แทบเป็นศูนย์หลังรอบแรก `state-private/blob-index.json` ทำหน้าที่เดียวกันสำหรับ private store
+
+`blob-mirror-private/` มีข้อมูลส่วนบุคคล (PII) และยังไม่ได้เข้ารหัส — อย่าแชร์โฟลเดอร์ `autoparts-backup` ให้ใคร และดูแลบัญชี Google ที่ถือ backup เหมือนบัญชี production
 
 ## ขั้นตอนตั้งค่า (ทำครั้งเดียว)
 
@@ -202,12 +230,13 @@ Remove-Item test.txt
 
 ### 3. ใส่ GitHub Secrets
 
-ไปที่ `GitHub repo > Settings > Secrets and variables > Actions > New repository secret` แล้วเพิ่ม 6 ตัว:
+ไปที่ `GitHub repo > Settings > Secrets and variables > Actions > New repository secret` แล้วเพิ่ม 7 ตัว:
 
 | ชื่อ Secret | ค่า |
 |---|---|
 | `BACKUP_DATABASE_URL` | connection string ของ `backup_reader` จากข้อ 1 |
-| `BLOB_READ_WRITE_TOKEN` | token เดียวกับที่ใช้ใน Vercel |
+| `BLOB_READ_WRITE_TOKEN` | token ของ **public** store (รูปสาธารณะ) เดียวกับที่ใช้ใน Vercel |
+| `BLOB_SLIPS_READ_WRITE_TOKEN` | token ของ **private** store (สลิป/เอกสารแนบค่าใช้จ่าย/หลักฐานการส่งของ) เดียวกับที่ใช้ใน Vercel — ถ้าไม่ตั้ง backup ยังรันได้แต่ **ไม่สำรองไฟล์ส่วนตัว** และต้องไม่ใช่ค่าเดียวกับ `BLOB_READ_WRITE_TOKEN` |
 | `RCLONE_CONFIG_BASE64` | ค่า base64 จากข้อ 2 |
 | `RCLONE_REMOTE` | `gdrive:autoparts-backup` |
 | `TELEGRAM_BOT_TOKEN` | token เดียวกับที่ใช้ในระบบ |
@@ -236,8 +265,8 @@ deploy ใหม่หนึ่งครั้ง แล้วปุ่มใน
 
 - สถานะในหน้าเปลี่ยนเป็น "กำลังทำงาน" ภายในไม่กี่วินาที
 - Telegram เด้งแจ้งผลเมื่อเสร็จ
-- บน Google Drive มีไฟล์ครบทั้ง 4 โฟลเดอร์
-- เปิด `reports/REPORT-<วันที่>.txt` ดูว่าจำนวนแถวสมเหตุสมผล
+- บน Google Drive มีไฟล์ครบทั้ง 7 โฟลเดอร์ (`db`, `db-private`, `blob-mirror`, `blob-mirror-private`, `state`, `state-private`, `reports`)
+- เปิด `reports/REPORT-<วันที่>.txt` ดูว่าจำนวนแถวสมเหตุสมผล และหัวข้อ `private blob summary` มีตัวเลข ไม่ใช่ `NOT BACKED UP`
 
 **รอบแรกจะช้าที่สุด** เพราะต้องโหลดไฟล์รูปทั้งหมด รอบถัดไปจะเหลือไม่กี่นาที
 
@@ -285,7 +314,28 @@ rclone copy "gdrive:autoparts-backup/blob-mirror/products/AB123/main.webp" D:\re
 
 > สคริปต์ `backup-blob-restore.ts` ยังไม่ได้เขียน — ตอนนี้ถ้าต้องกู้ไฟล์จำนวนมากให้แจ้งก่อน จะเขียนให้ตอนนั้น เพราะการอัปโหลดทับ Blob store เป็นงานที่ต้องคุมมือ ไม่ควรมีสคริปต์พร้อมยิงวางทิ้งไว้
 
+### กู้คืนไฟล์ส่วนตัว (private store)
+
+ไฟล์ใน `blob-mirror-private/` ต้องกลับเข้า **private store เท่านั้น** ด้วย token `BLOB_SLIPS_READ_WRITE_TOKEN`
+ที่ pathname เดิมเป๊ะ ๆ เพราะฐานข้อมูลเก็บ pathname (ไม่ใช่ URL) — เช่น `PaymentSlip.imageUrl` = `2026/09/01/<id>.webp`
+
+```ts
+await put(pathname, body, {
+  access: "private",
+  addRandomSuffix: false,
+  token: process.env.BLOB_SLIPS_READ_WRITE_TOKEN,
+});
+```
+
+- ห้ามใช้ `BLOB_READ_WRITE_TOKEN` หรือ `access: "public"` — ไฟล์ PII จะหลุดไปอยู่ใน public store ที่เปิดด้วย URL ได้
+- ห้ามปล่อย `addRandomSuffix` เป็นค่า default — pathname จะเปลี่ยนแล้วแอปหาไฟล์ไม่เจอ
+- หา pathname ได้จาก `db-private/blob-manifest-private-<วันที่>.json` หรือจาก path ของไฟล์ใน `blob-mirror-private/`
+
 ## Troubleshooting
+
+### Telegram แจ้ง "⚠️ Backup สำเร็จบางส่วน"
+
+ฐานข้อมูลและรูปสาธารณะสำรองแล้ว แต่ไฟล์ส่วนตัวไม่ได้สำรอง เพราะยังไม่ได้ตั้ง GitHub secret `BLOB_SLIPS_READ_WRITE_TOKEN` — ใส่ token ของ private store แล้วสั่งรันใหม่
 
 ### Telegram แจ้งว่า backup ล้มเหลว
 
@@ -313,7 +363,7 @@ GitHub ปิด scheduled workflow อัตโนมัติเมื่อ r
 
 ### เนื้อที่ Google Drive เต็ม
 
-`blob-mirror/` เก็บสะสมโดยตั้งใจ (เป็นด่านสุดท้ายกันไฟล์ถูกลบพลาด) ถ้าเนื้อที่ตึงจริง ๆ ให้ดู `removedSinceLastRun` ใน manifest ล่าสุดเพื่อรู้ว่าไฟล์ไหนไม่ได้อยู่ใน production แล้ว แล้วค่อยตัดสินใจลบทีละรายการ อย่าใช้ `rclone sync` กับโฟลเดอร์นี้เด็ดขาด เพราะจะลบไฟล์เก่าทิ้งทันที
+`blob-mirror/` และ `blob-mirror-private/` เก็บสะสมโดยตั้งใจ (เป็นด่านสุดท้ายกันไฟล์ถูกลบพลาด) ถ้าเนื้อที่ตึงจริง ๆ ให้ดู `removedSinceLastRun` ใน manifest ล่าสุดเพื่อรู้ว่าไฟล์ไหนไม่ได้อยู่ใน production แล้ว แล้วค่อยตัดสินใจลบทีละรายการ อย่าใช้ `rclone sync` กับโฟลเดอร์นี้เด็ดขาด เพราะจะลบไฟล์เก่าทิ้งทันที
 
 ## สิ่งที่ระบบนี้ไม่ครอบคลุม
 

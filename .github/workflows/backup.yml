@@ -6,8 +6,9 @@ name: Weekly Backup
 #  - workflow_dispatch: the one-click button in Backup Center posts here
 #
 # Artifacts land on Google Drive via rclone — a different provider from both
-# Supabase (database) and Vercel Blob (images), which is the whole point of a
-# backup. See docs/backup-automation-runbook.md for setup and restore steps.
+# Supabase (database) and Vercel Blob (public images + the PRIVATE store holding
+# payment slips, expense attachments and delivery proofs), which is the whole
+# point of a backup. See docs/backup-automation-runbook.md for setup and restore.
 
 on:
   schedule:
@@ -169,6 +170,46 @@ jobs:
             --state "$WORK_DIR/state/blob-index.json" \
             --date "${{ steps.meta.outputs.date }}"
 
+      # Step names must keep "fetch previous blob index" / "sync vercel blob" so the
+      # Backup Center progress bar (lib/github-backup-progress.ts) maps them to the
+      # same stage as the public sync.
+      - name: Fetch previous blob index (private) from Drive
+        env:
+          RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$WORK_DIR/private/state"
+          # Absent on the very first private run — that is not an error, it just means a full sync.
+          rclone copy "$RCLONE_REMOTE/state-private/blob-index.json" "$WORK_DIR/private/state/" || true
+
+      # The PRIVATE store (LINE payment slips, expense attachments, delivery proofs)
+      # needs its own token. A missing token must not cost the database and public
+      # image backup, so warn and skip; the report and Telegram then say that the
+      # private files were NOT backed up.
+      - name: Sync Vercel Blob (private) incrementally
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_SLIPS_READ_WRITE_TOKEN }}
+          PUBLIC_BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BLOB_READ_WRITE_TOKEN:-}" ]; then
+            echo "::warning::BLOB_SLIPS_READ_WRITE_TOKEN is not configured — private files (payment slips, expense attachments, delivery proofs) were NOT backed up."
+            echo "PRIVATE_BLOB_STATUS=skipped" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          # Same token = same store: the "private" mirror would silently be a second
+          # copy of the public images while the report claims private files are safe.
+          if [ "$BLOB_READ_WRITE_TOKEN" = "${PUBLIC_BLOB_READ_WRITE_TOKEN:-}" ]; then
+            echo "::error::BLOB_SLIPS_READ_WRITE_TOKEN equals BLOB_READ_WRITE_TOKEN — it must be the PRIVATE store token."
+            exit 1
+          fi
+          npx tsx scripts/backup-blob-sync.ts \
+            --work-dir "$WORK_DIR/private" \
+            --state "$WORK_DIR/private/state/blob-index.json" \
+            --date "${{ steps.meta.outputs.date }}" \
+            --source-label private
+          echo "PRIVATE_BLOB_STATUS=synced" >> "$GITHUB_ENV"
+
       - name: Write report
         env:
           PGURL: ${{ secrets.BACKUP_DATABASE_URL }}
@@ -184,6 +225,13 @@ jobs:
             echo "blob summary:"
             cat "$WORK_DIR/blob-summary.json"
             echo
+            echo "private blob summary (payment slips, expense attachments, delivery proofs):"
+            if [ "${PRIVATE_BLOB_STATUS:-}" = "synced" ]; then
+              cat "$WORK_DIR/private/blob-summary.json"
+              echo
+            else
+              echo "NOT BACKED UP (${PRIVATE_BLOB_STATUS:-not run}) — configure the BLOB_SLIPS_READ_WRITE_TOKEN GitHub secret."
+            fi
             echo "approximate row counts (pg_stat_user_tables.n_live_tup):"
             psql "$PGURL" -At -F$'\t' -c "
               select relname, n_live_tup
@@ -194,9 +242,10 @@ jobs:
           } > "$REPORT"
           cat "$REPORT"
 
-      # Upload order matters. Persist the small database dump and report before
-      # the potentially long first Blob mirror. The state file must remain last:
-      # it records that every indexed Blob object is safely on Drive.
+      # Upload order matters. Persist the small database dump, manifests and report
+      # before the potentially long first Blob mirrors. Each state file must stay
+      # after its own mirror: it records that every indexed Blob object of that
+      # store is safely on Drive.
       - name: Upload to Google Drive
         env:
           RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
@@ -207,18 +256,31 @@ jobs:
           # and allow enough backoff for the per-minute quota window to recover.
           RCLONE_OPTS="--transfers 2 --checkers 2 --tpslimit 4 --tpslimit-burst 4 --low-level-retries 20 --retries 8 --retries-sleep 30s --stats 30s --stats-one-line --stats-log-level NOTICE"
           rclone copy "$WORK_DIR/db" "$RCLONE_REMOTE/db" $RCLONE_OPTS
+          if [ "${PRIVATE_BLOB_STATUS:-}" = "synced" ]; then
+            rclone copy "$WORK_DIR/private/db" "$RCLONE_REMOTE/db-private" $RCLONE_OPTS
+          fi
           rclone copy "$WORK_DIR/REPORT-${{ steps.meta.outputs.date }}.txt" "$RCLONE_REMOTE/reports" $RCLONE_OPTS
           rclone copy "$WORK_DIR/blob-mirror" "$RCLONE_REMOTE/blob-mirror" $RCLONE_OPTS
           rclone copy "$WORK_DIR/state/blob-index.json" "$RCLONE_REMOTE/state" $RCLONE_OPTS
+          if [ "${PRIVATE_BLOB_STATUS:-}" = "synced" ]; then
+            rclone copy "$WORK_DIR/private/blob-mirror" "$RCLONE_REMOTE/blob-mirror-private" $RCLONE_OPTS
+            rclone copy "$WORK_DIR/private/state/blob-index.json" "$RCLONE_REMOTE/state-private" $RCLONE_OPTS
+          fi
 
-      # Dumps and reports age out after 60 days. blob-mirror is never pruned:
-      # it is the only copy of images deleted from production.
+      # Dumps, manifests and reports age out after 60 days. blob-mirror and
+      # blob-mirror-private are never pruned: they are the only copy of files
+      # deleted from production.
       - name: Apply retention
         env:
           RCLONE_REMOTE: ${{ secrets.RCLONE_REMOTE }}
         run: |
           set -euo pipefail
           rclone delete "$RCLONE_REMOTE/db" --min-age 60d
+          # db-private does not exist until the first private sync; rclone delete
+          # fails on a missing directory.
+          if rclone lsf "$RCLONE_REMOTE/db-private" --max-depth 1 > /dev/null 2>&1; then
+            rclone delete "$RCLONE_REMOTE/db-private" --min-age 60d
+          fi
           rclone delete "$RCLONE_REMOTE/reports" --min-age 60d
 
       # Runs even when an earlier step failed — a silent backup failure is the
@@ -243,8 +305,18 @@ jobs:
           if [ "$JOB_STATUS" = "success" ]; then
             TOTAL=$(jq -r '.totalFiles' "$WORK_DIR/blob-summary.json" 2>/dev/null || echo "?")
             CHANGED=$(jq -r '.changedFiles' "$WORK_DIR/blob-summary.json" 2>/dev/null || echo "?")
-            TEXT=$(printf '✅ Backup สำเร็จ %s\nฐานข้อมูล: %s bytes\nไฟล์ทั้งหมด: %s รายการ\nอัปโหลดรอบนี้: %s ไฟล์\nเก็บที่ Google Drive เรียบร้อย\n%s' \
-              "$BACKUP_DATE" "${DUMP_SIZE:-0}" "$TOTAL" "$CHANGED" "$RUN_URL")
+            if [ "${PRIVATE_BLOB_STATUS:-}" = "synced" ]; then
+              PRIVATE_TOTAL=$(jq -r '.totalFiles' "$WORK_DIR/private/blob-summary.json" 2>/dev/null || echo "?")
+              PRIVATE_CHANGED=$(jq -r '.changedFiles' "$WORK_DIR/private/blob-summary.json" 2>/dev/null || echo "?")
+              TITLE="✅ Backup สำเร็จ"
+              PRIVATE_LINE=$(printf 'ไฟล์ส่วนตัว (สลิป/เอกสารแนบ/หลักฐานส่ง): %s รายการ, อัปโหลดรอบนี้ %s ไฟล์' \
+                "$PRIVATE_TOTAL" "$PRIVATE_CHANGED")
+            else
+              TITLE="⚠️ Backup สำเร็จบางส่วน"
+              PRIVATE_LINE="ไฟล์ส่วนตัว (สลิป/เอกสารแนบ/หลักฐานส่ง): ไม่ได้สำรอง — ยังไม่ได้ตั้ง BLOB_SLIPS_READ_WRITE_TOKEN"
+            fi
+            TEXT=$(printf '%s %s\nฐานข้อมูล: %s bytes\nรูปสาธารณะ: %s รายการ, อัปโหลดรอบนี้ %s ไฟล์\n%s\nเก็บที่ Google Drive เรียบร้อย\n%s' \
+              "$TITLE" "$BACKUP_DATE" "${DUMP_SIZE:-0}" "$TOTAL" "$CHANGED" "$PRIVATE_LINE" "$RUN_URL")
           else
             TEXT=$(printf '❌ Backup ล้มเหลว %s\nสถานะ: %s\nกรุณาเปิดดู log แล้วสั่งรันใหม่\n%s' \
               "$BACKUP_DATE" "$JOB_STATUS" "$RUN_URL")

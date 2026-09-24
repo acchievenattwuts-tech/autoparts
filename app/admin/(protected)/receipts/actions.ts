@@ -263,6 +263,52 @@ async function lockReceiptSettlementDocuments(
   await lockCustomerAdvancesForReceipt(tx, affectedIds.advanceIds);
 }
 
+/** Raised inside a transaction when the receipt is gone or no longer ACTIVE. */
+class ReceiptNotActiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReceiptNotActiveError";
+  }
+}
+
+/**
+ * Locks the receipt row for the rest of the transaction and re-checks that it is
+ * still ACTIVE. The status check before the transaction is only a fast path: two
+ * cancel/update requests for the same receipt could both pass it and then both
+ * reverse AR and cash. With the row locked, the second request waits, sees
+ * CANCELLED, and stops before any write.
+ *
+ * Lock order: Receipt FIRST, then lockReceiptSettlementDocuments
+ * (CreditNote → Sale → CustomerAdvance). No other flow writes or locks an
+ * existing Receipt row, so nothing takes these locks in the reverse order.
+ */
+async function lockActiveReceipt(
+  tx: TxClient,
+  receiptId: string,
+  notActiveMessage: string,
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`
+    SELECT "status"::text AS "status"
+    FROM "Receipt"
+    WHERE id = ${receiptId}
+    FOR UPDATE
+  `);
+  if (rows.length === 0) throw new ReceiptNotActiveError("ไม่พบเอกสาร");
+  if (rows[0].status !== "ACTIVE") throw new ReceiptNotActiveError(notActiveMessage);
+}
+
+/** Settlement lines of a locked receipt, read inside the transaction so a concurrent update cannot leave them stale. */
+async function getLockedReceiptAffectedIds(
+  tx: TxClient,
+  receiptId: string,
+): Promise<ReturnType<typeof collectAffectedReceiptIds>> {
+  const items = await tx.receiptItem.findMany({
+    where: { receiptId },
+    select: { saleId: true, cnId: true, customerAdvanceId: true },
+  });
+  return collectAffectedReceiptIds(items);
+}
+
 function collectAffectedReceiptIds(items: Array<{
   saleId?: string | null | undefined;
   cnId?: string | null | undefined;
@@ -586,26 +632,21 @@ export async function cancelReceipt(
 
   const { receiptId, cancelNote } = parsed.data;
 
+  // Fast path only — the authoritative status check runs under the row lock below.
   const receipt = await db.receipt.findUnique({
     where: { id: receiptId },
-    include: { items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true, customerAdvanceId: true } } },
+    select: { status: true },
   });
   if (!receipt)                        return { error: "ไม่พบเอกสาร" };
   if (receipt.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
-
-  const affectedSaleIds = [...new Set(receipt.items.map((i) => i.saleId).filter((id): id is string => id !== null))];
-  const affectedCnIds   = [...new Set(receipt.items.map((i) => i.cnId).filter((id): id is string => id !== null))];
-  const affectedAdvanceIds = [...new Set(receipt.items.map((i) => i.customerAdvanceId).filter((id): id is string => id !== null))];
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(receiptId);
     await dbTx(async (tx) => {
-      await lockReceiptSettlementDocuments(tx, {
-        saleIds: affectedSaleIds,
-        cnIds: affectedCnIds,
-        advanceIds: affectedAdvanceIds,
-      });
+      await lockActiveReceipt(tx, receiptId, "เอกสารถูกยกเลิกไปแล้ว");
+      const affectedIds = await getLockedReceiptAffectedIds(tx, receiptId);
+      await lockReceiptSettlementDocuments(tx, affectedIds);
       await clearCashBankSourceMovements(tx, CashBankSourceType.RECEIPT, receiptId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.RECEIPT, receiptId);
       await tx.receipt.update({
@@ -613,15 +654,7 @@ export async function cancelReceipt(
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote },
       });
       await cancelWhtReceivedForDocument(tx, "RECEIPT", receiptId);
-      for (const saleId of affectedSaleIds) {
-        await recalculateSaleAmountRemain(tx, saleId);
-      }
-      for (const cnId of affectedCnIds) {
-        await recalculateCNAmountRemain(tx, cnId);
-      }
-      for (const advanceId of affectedAdvanceIds) {
-        await recalculateCustomerAdvanceAmountRemain(tx, advanceId);
-      }
+      await recalculateAffectedReceiptDocuments(tx, affectedIds);
     });
 
     const afterSnapshot = await getReceiptAuditSnapshot(receiptId);
@@ -647,6 +680,7 @@ export async function cancelReceipt(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (err) {
+    if (err instanceof ReceiptNotActiveError) return { error: err.message };
     await reportCriticalError(err, { scope: "receipts.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -671,7 +705,6 @@ export async function updateReceipt(
     where: { id },
     include: {
       user: { select: { name: true, signatureUrl: true } },
-      items: { orderBy: { lineNo: "asc" }, select: { saleId: true, cnId: true, customerAdvanceId: true } },
     },
   });
   if (!existing)                       return { error: "ไม่พบเอกสาร" };
@@ -703,18 +736,21 @@ export async function updateReceipt(
   }
 
   const primaryAccountId = derivePrimaryAccountId(payments);
-  const oldAffectedIds = collectAffectedReceiptIds(existing.items);
   const newAffectedIds = collectAffectedReceiptIds(parsed.items);
-  const allAffectedIds = {
-    saleIds: [...new Set([...oldAffectedIds.saleIds, ...newAffectedIds.saleIds])],
-    cnIds: [...new Set([...oldAffectedIds.cnIds, ...newAffectedIds.cnIds])],
-    advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds])],
-  };
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getReceiptAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockActiveReceipt(tx, id, "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้");
+      // Old lines are re-read under the receipt lock: a concurrent update may have
+      // replaced them after the pre-transaction read above.
+      const oldAffectedIds = await getLockedReceiptAffectedIds(tx, id);
+      const allAffectedIds = {
+        saleIds: [...new Set([...oldAffectedIds.saleIds, ...newAffectedIds.saleIds])],
+        cnIds: [...new Set([...oldAffectedIds.cnIds, ...newAffectedIds.cnIds])],
+        advanceIds: [...new Set([...oldAffectedIds.advanceIds, ...newAffectedIds.advanceIds])],
+      };
       await lockReceiptSettlementDocuments(tx, allAffectedIds);
       const available = await getAvailableReceiptDocumentsForAR(tx, parsed.customerId ?? "", id);
       const validationError = validateReceiptItemsAgainstAvailableForAR(parsed.customerId, parsed.items, available);
@@ -819,6 +855,7 @@ export async function updateReceipt(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (err) {
+    if (err instanceof ReceiptNotActiveError) return { error: err.message };
     await reportCriticalError(err, { scope: "receipts.update" });
     return {
       // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.

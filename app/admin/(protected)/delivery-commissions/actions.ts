@@ -19,6 +19,7 @@ import {
   CashBankSourceType,
   DocStatus,
   FulfillmentType,
+  Prisma,
   ShippingStatus,
   VatType,
 } from "@/lib/generated/prisma";
@@ -48,6 +49,11 @@ const cancelSchema = z.object({
   runId: z.string().min(1),
   cancelNote: z.string().max(200).optional(),
 });
+
+type TxClient = Prisma.TransactionClient;
+
+const RUN_NOT_FOUND_MESSAGE = "ไม่พบเอกสาร";
+const RUN_ALREADY_CANCELLED_MESSAGE = "เอกสารถูกยกเลิกแล้ว";
 
 type PrismaKnownError = {
   code: string;
@@ -353,6 +359,79 @@ export async function createDeliveryCommissionRun(formData: FormData): Promise<C
   return { success: true, runId: createdRunId, runNo: createdRunNo };
 }
 
+/** Raised inside the cancel transaction when the run is gone or no longer ACTIVE. */
+class DeliveryCommissionRunNotActiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DeliveryCommissionRunNotActiveError";
+  }
+}
+
+/**
+ * Locks the run row for the rest of the transaction, re-checks that it is still
+ * ACTIVE, and returns the generated expense id read under the lock. The status
+ * check before the transaction is only a fast path: two cancel requests for the
+ * same run could both pass it and then both clear the expense's cash/bank
+ * movements and rebuild its profit facts. With the row locked, the second
+ * request waits, sees CANCELLED, and stops before any write.
+ *
+ * Lock order: DeliveryCommissionRun FIRST, then (via the writes that follow)
+ * CashBankMovement → Expense → FactProfit rows → DeliveryCommissionItem. No other
+ * flow locks an existing run row: createDeliveryCommissionRun only inserts a new
+ * run, and the Sale/Expense mutation guards read the run without locking it.
+ */
+async function lockActiveDeliveryCommissionRun(
+  tx: TxClient,
+  runId: string,
+): Promise<{ expenseId: string | null }> {
+  const rows = await tx.$queryRaw<{ status: string; expenseId: string | null }[]>(Prisma.sql`
+    SELECT "status"::text AS "status", "expenseId"
+    FROM "DeliveryCommissionRun"
+    WHERE id = ${runId}
+    FOR UPDATE
+  `);
+  if (rows.length === 0) throw new DeliveryCommissionRunNotActiveError(RUN_NOT_FOUND_MESSAGE);
+  if (rows[0].status !== DocStatus.ACTIVE) {
+    throw new DeliveryCommissionRunNotActiveError(RUN_ALREADY_CANCELLED_MESSAGE);
+  }
+  return { expenseId: rows[0].expenseId };
+}
+
+async function cancelLockedDeliveryCommissionRun(
+  tx: TxClient,
+  runId: string,
+  cancelNote: string | undefined,
+): Promise<void> {
+  const { expenseId } = await lockActiveDeliveryCommissionRun(tx, runId);
+
+  if (expenseId) {
+    await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
+    await tx.expense.update({
+      where: { id: expenseId },
+      data: {
+        status: DocStatus.CANCELLED,
+        cancelledAt: new Date(),
+        cancelNote,
+      },
+    });
+    await rebuildExpenseProfitFacts(tx, expenseId);
+  }
+
+  await tx.deliveryCommissionItem.updateMany({
+    where: { runId, activeSaleId: { not: null } },
+    data: { activeSaleId: null },
+  });
+
+  await tx.deliveryCommissionRun.update({
+    where: { id: runId },
+    data: {
+      status: DocStatus.CANCELLED,
+      cancelledAt: new Date(),
+      cancelNote,
+    },
+  });
+}
+
 export async function cancelDeliveryCommissionRun(
   formData: FormData,
 ): Promise<{ success?: boolean; error?: string }> {
@@ -366,39 +445,15 @@ export async function cancelDeliveryCommissionRun(
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
+  // Fast path only — the authoritative status check runs under the row lock below.
   const beforeSnapshot = await getRunAuditSnapshot(parsed.data.runId);
-  if (!beforeSnapshot) return { error: "ไม่พบเอกสาร" };
-  if (beforeSnapshot.status === DocStatus.CANCELLED) return { error: "เอกสารถูกยกเลิกแล้ว" };
+  if (!beforeSnapshot) return { error: RUN_NOT_FOUND_MESSAGE };
+  if (beforeSnapshot.status === DocStatus.CANCELLED) return { error: RUN_ALREADY_CANCELLED_MESSAGE };
 
   try {
-    await dbTx(async (tx) => {
-      if (beforeSnapshot.expenseId) {
-        await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, beforeSnapshot.expenseId);
-        await tx.expense.update({
-          where: { id: beforeSnapshot.expenseId },
-          data: {
-            status: DocStatus.CANCELLED,
-            cancelledAt: new Date(),
-            cancelNote: parsed.data.cancelNote,
-          },
-        });
-        await rebuildExpenseProfitFacts(tx, beforeSnapshot.expenseId);
-      }
-
-      await tx.deliveryCommissionItem.updateMany({
-        where: { runId: parsed.data.runId, activeSaleId: { not: null } },
-        data: { activeSaleId: null },
-      });
-
-      await tx.deliveryCommissionRun.update({
-        where: { id: parsed.data.runId },
-        data: {
-          status: DocStatus.CANCELLED,
-          cancelledAt: new Date(),
-          cancelNote: parsed.data.cancelNote,
-        },
-      });
-    });
+    await dbTx((tx) =>
+      cancelLockedDeliveryCommissionRun(tx, parsed.data.runId, parsed.data.cancelNote),
+    );
 
     const afterSnapshot = await getRunAuditSnapshot(parsed.data.runId);
     if (afterSnapshot) {
@@ -424,6 +479,7 @@ export async function cancelDeliveryCommissionRun(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    if (error instanceof DeliveryCommissionRunNotActiveError) return { error: error.message };
     console.error("[cancelDeliveryCommissionRun]", error);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }

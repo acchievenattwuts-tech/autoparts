@@ -29,6 +29,29 @@ test("maps the long Google Drive upload to an approximate active stage", () => {
   assert.match(progress.label, /Google Drive/);
 });
 
+test("keeps the private Blob steps on the Blob stage so progress never moves backwards", () => {
+  const publicDone = [
+    { name: "Dump PostgreSQL", status: "completed", conclusion: "success" },
+    { name: "Fetch previous blob index from Drive", status: "completed", conclusion: "success" },
+    { name: "Sync Vercel Blob incrementally", status: "completed", conclusion: "success" },
+  ];
+
+  for (const activeName of ["Fetch previous blob index (private) from Drive", "Sync Vercel Blob (private) incrementally"]) {
+    const progress = deriveGithubBackupProgress(
+      "RUNNING",
+      [
+        ...publicDone,
+        { name: activeName, status: "in_progress", conclusion: null },
+        { name: "Write report", status: "queued", conclusion: null },
+      ],
+      null,
+    );
+
+    assert.equal(progress.stage, 3, activeName);
+    assert.equal(progress.percent, 35, activeName);
+  }
+});
+
 test("advances to retention only after the Drive step completes", () => {
   const progress = deriveGithubBackupProgress(
     "RUNNING",

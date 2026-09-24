@@ -17,7 +17,8 @@ import { AuditAction } from "@/lib/generated/prisma";
  * Safety: dry-run by default; never deletes the Supabase source; idempotent
  * (objects already present in Blob are skipped); writes one AuditLog.
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY (private bucket download) + BLOB_READ_WRITE_TOKEN.
+ * Requires SUPABASE_SERVICE_ROLE_KEY (private bucket download) + BLOB_SLIPS_READ_WRITE_TOKEN
+ * (the separate PRIVATE Blob store — never the public BLOB_READ_WRITE_TOKEN).
  *
  * Run:  npm run backfill:payment-slips-blob            (dry-run)
  *       npm run backfill:payment-slips-blob -- --apply (execute)
