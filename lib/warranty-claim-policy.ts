@@ -1,5 +1,5 @@
 import type { ClaimType, WarrantyCreationSource, WarrantyStatus } from "@/lib/generated/prisma";
-import { CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
+import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 
 /**
  * Two claim families, decided by the warranty the claim points to:
@@ -79,7 +79,7 @@ export function buildSaleClaimCancelHistoryLine(input: SaleClaimCancelHistoryInp
     input.cancelledAtText,
     input.actorName?.trim() || "-",
     `${toSingleLine(input.productName)} (${unitText})`,
-    `ประเภท: ${CLAIM_TYPE_LABEL[input.claimType]}`,
+    `ประเภท: ${ADMIN_CLAIM_TYPE_LABEL[input.claimType]}`,
     `อาการ: ${symptom}`,
     `หมายเหตุ: ${toSingleLine(input.note)}`,
   ].join(" • ");

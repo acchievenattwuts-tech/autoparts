@@ -50,7 +50,7 @@ import {
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
-import { CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
+import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 import { lockSaleRowForClaim, lockWarrantyRow } from "@/lib/warranty-claim-locks";
 import {
   appendSaleClaimCancelNote,
@@ -1213,7 +1213,7 @@ async function cancelSaleClaim(
           unitSeq: warranty.unitSeq,
           lotNo: warranty.lotNo,
           claimType: claim.claimType,
-          claimTypeLabel: CLAIM_TYPE_LABEL[claim.claimType],
+          claimTypeLabel: ADMIN_CLAIM_TYPE_LABEL[claim.claimType],
           symptom: claim.symptom,
           supplierName: claim.supplierName,
           statusAtCancel: claim.status,

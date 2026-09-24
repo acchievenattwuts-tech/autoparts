@@ -60,26 +60,36 @@ export function isUniqueViolationOn(error: unknown, field: string): boolean {
   return fields.some((value) => value === field || value.split("_").includes(field));
 }
 
+/** True when the error is a P2002 that positively names any of `fields`. */
+export function isUniqueViolationOnAny(error: unknown, fields: readonly string[]): boolean {
+  return fields.some((field) => isUniqueViolationOn(error, field));
+}
+
 /**
  * Generates a document number and runs `run` with it. When `run` fails because
  * another save took the same number (P2002 on `uniqueField`), a fresh number is
  * generated and `run` is retried, up to `maxAttempts` in total. Any other error —
  * or the last failed attempt — is rethrown unchanged. `run` must be safe to repeat
  * (a single rolled-back transaction, with per-attempt state reset inside it).
+ *
+ * A save that issues several numbers at once passes every generated column as
+ * `uniqueField` and has `generate` return all of them; a collision on any one
+ * regenerates the whole set.
  */
-export async function withDocNumberRetry<T>(options: {
-  uniqueField: string;
-  generate: () => Promise<string>;
-  run: (docNo: string) => Promise<T>;
+export async function withDocNumberRetry<T, N = string>(options: {
+  uniqueField: string | readonly string[];
+  generate: () => Promise<N>;
+  run: (docNo: N) => Promise<T>;
   maxAttempts?: number;
 }): Promise<T> {
   const maxAttempts = Math.max(1, options.maxAttempts ?? DOC_NUMBER_MAX_ATTEMPTS);
+  const uniqueFields = typeof options.uniqueField === "string" ? [options.uniqueField] : options.uniqueField;
   for (let attempt = 1; ; attempt += 1) {
     const docNo = await options.generate();
     try {
       return await options.run(docNo);
     } catch (error) {
-      if (attempt >= maxAttempts || !isUniqueViolationOn(error, options.uniqueField)) throw error;
+      if (attempt >= maxAttempts || !isUniqueViolationOnAny(error, uniqueFields)) throw error;
     }
   }
 }

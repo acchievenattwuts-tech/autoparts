@@ -404,3 +404,69 @@ test("cancelSale is refused while any claim exists on its warranties, listing th
   assert.deepEqual((claimQuery?.args as { where: unknown }).where, { warranty: { saleId: "sale1" } });
   assert.deepEqual(txCalls, []);
 });
+
+// ── updateSale returns the typed concurrent-edit messages instead of the generic error ──
+
+const withConsoleErrorSpy = async (run: () => Promise<void>): Promise<number> => {
+  let errors = 0;
+  const spy = mock.method(console, "error", () => {
+    errors += 1;
+  });
+  try {
+    await run();
+  } finally {
+    spy.mock.restore();
+  }
+  return errors;
+};
+
+test("updateSale returns the concurrent-edit message when the sale changed after the form loaded", { skip: moduleMocksUnavailable }, async () => {
+  const { updateSale } = await import("../actions");
+  txOverrides.sale = {
+    findUnique: async () => ({ quotationId: null, status: "ACTIVE", updatedAt: new Date("2026-09-20T03:05:00.000Z") }),
+  };
+
+  let result: Awaited<ReturnType<typeof updateSale>> | undefined;
+  const consoleErrors = await withConsoleErrorSpy(async () => {
+    result = await updateSale("sale1", saleForm({}, [lockedLinePayload]));
+  });
+
+  assert.deepEqual(result, { error: "ใบขายถูกแก้ไขระหว่างดำเนินการ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง" });
+  assert.equal(txMethods().includes("sale.update"), false);
+  assert.deepEqual(criticalReports, []);
+  assert.equal(consoleErrors, 0, "an expected concurrent edit is not logged as an error");
+});
+
+test("updateSale returns the sale-status message when the sale was cancelled meanwhile", { skip: moduleMocksUnavailable }, async () => {
+  const { updateSale } = await import("../actions");
+  txOverrides.sale = {
+    findUnique: async () => ({ quotationId: null, status: "CANCELLED", updatedAt: SALE_UPDATED_AT }),
+  };
+
+  let result: Awaited<ReturnType<typeof updateSale>> | undefined;
+  const consoleErrors = await withConsoleErrorSpy(async () => {
+    result = await updateSale("sale1", saleForm({}, [lockedLinePayload]));
+  });
+
+  assert.deepEqual(result, { error: "ใบขายไม่อยู่ในสถานะที่แก้ไขได้" });
+  assert.equal(txMethods().includes("sale.update"), false);
+  assert.deepEqual(criticalReports, []);
+  assert.equal(consoleErrors, 0);
+});
+
+test("updateSale still hides unexpected errors behind the generic message", { skip: moduleMocksUnavailable }, async () => {
+  const { updateSale } = await import("../actions");
+  txOverrides.sale = {
+    findUnique: async () => {
+      throw new Error("connection reset");
+    },
+  };
+
+  let result: Awaited<ReturnType<typeof updateSale>> | undefined;
+  const consoleErrors = await withConsoleErrorSpy(async () => {
+    result = await updateSale("sale1", saleForm({}, [lockedLinePayload]));
+  });
+
+  assert.deepEqual(result, { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" });
+  assert.equal(consoleErrors, 1);
+});

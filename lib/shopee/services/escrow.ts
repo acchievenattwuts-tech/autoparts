@@ -1,5 +1,6 @@
 import { db, dbTx } from "@/lib/db";
 import { generateExpenseNo } from "@/lib/doc-number";
+import { isDatabaseLayerError, isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   CashBankDirection,
   CashBankSourceType,
@@ -193,6 +194,18 @@ async function lockShopeeFeeExpenseOrder(
   return { id: existing.id, expenseNo: existing.expenseNo };
 }
 
+/** Every freshly generated expenseNo was taken by a concurrent expense save. */
+export const SHOPEE_FEE_EXPENSE_NUMBER_CONFLICT_MESSAGE =
+  "เลขที่ค่าใช้จ่ายชนกับรายการที่บันทึกพร้อมกัน ระบบลองออกเลขใหม่แล้วยังไม่สำเร็จ กรุณากดสร้าง Expense ค่า Shopee อีกครั้ง";
+export const SHOPEE_FEE_EXPENSE_FAILED_MESSAGE = "สร้าง Expense ค่า Shopee ไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
+
+/** Message stored in escrowLastError and shown to the user; Prisma/DB error text stays server-side. */
+function toShopeeFeeExpenseErrorMessage(error: unknown): string {
+  if (isUniqueViolationOn(error, "expenseNo")) return SHOPEE_FEE_EXPENSE_NUMBER_CONFLICT_MESSAGE;
+  if (error instanceof Error && !isDatabaseLayerError(error)) return error.message;
+  return SHOPEE_FEE_EXPENSE_FAILED_MESSAGE;
+}
+
 export async function createShopeeFeeExpense(params: {
   orderImportId: string;
   userId: string;
@@ -219,66 +232,78 @@ export async function createShopeeFeeExpense(params: {
   }
 
   const expenseDate = new Date();
-  const expenseNo = await generateExpenseNo(expenseDate);
+  let expenseNo = "";
   let createdExpenseId = "";
 
   try {
-    const reusedExpense = await dbTx(async (tx): Promise<ExistingFeeExpense | null> => {
-      const existingExpense = await lockShopeeFeeExpenseOrder(tx, draft.orderImportId);
-      if (existingExpense) return existingExpense;
+    // expenseNo is "latest + 1" generated outside the transaction, so a concurrent
+    // expense save anywhere can take the same number (P2002 on expenseNo). The WHOLE
+    // transaction is re-run with a fresh number — per-order lock, re-read, insert and
+    // dependent writes — because Postgres aborts the transaction after the failed insert.
+    const reusedExpense = await withDocNumberRetry({
+      uniqueField: "expenseNo",
+      generate: () => generateExpenseNo(expenseDate),
+      run: (nextExpenseNo) => {
+        expenseNo = nextExpenseNo;
+        createdExpenseId = "";
+        return dbTx(async (tx): Promise<ExistingFeeExpense | null> => {
+          const existingExpense = await lockShopeeFeeExpenseOrder(tx, draft.orderImportId);
+          if (existingExpense) return existingExpense;
 
-      const expenseCodeIds = await ensureShopeeExpenseCodes(tx, draft.lines.map((line) => line.kind));
-      const totalAmount = roundMoney(draft.totalAmount);
+          const expenseCodeIds = await ensureShopeeExpenseCodes(tx, draft.lines.map((line) => line.kind));
+          const totalAmount = roundMoney(draft.totalAmount);
 
-      const expense = await tx.expense.create({
-        data: {
-          expenseNo,
-          expenseDate,
-          userId: params.userId,
-          cashBankAccountId: draft.settlementAccountId,
-          totalAmount: new Prisma.Decimal(totalAmount),
-          subtotalAmount: new Prisma.Decimal(totalAmount),
-          vatType: VatType.NO_VAT,
-          vatRate: new Prisma.Decimal(0),
-          vatAmount: new Prisma.Decimal(0),
-          netAmount: new Prisma.Decimal(totalAmount),
-          note: `Shopee fees order ${draft.orderSn}`,
-          items: {
-            create: draft.lines.map((line, index) => {
-              const expenseCodeId = expenseCodeIds.get(line.kind);
-              if (!expenseCodeId) throw new Error(`missing expense code for ${line.kind}`);
-              return {
-                lineNo: index + 1,
-                expenseCodeId,
-                description: `${line.label} (${draft.orderSn})`,
-                amount: new Prisma.Decimal(roundMoney(line.amount)),
-              };
-            }),
-          },
-        },
-      });
-      createdExpenseId = expense.id;
+          const expense = await tx.expense.create({
+            data: {
+              expenseNo,
+              expenseDate,
+              userId: params.userId,
+              cashBankAccountId: draft.settlementAccountId,
+              totalAmount: new Prisma.Decimal(totalAmount),
+              subtotalAmount: new Prisma.Decimal(totalAmount),
+              vatType: VatType.NO_VAT,
+              vatRate: new Prisma.Decimal(0),
+              vatAmount: new Prisma.Decimal(0),
+              netAmount: new Prisma.Decimal(totalAmount),
+              note: `Shopee fees order ${draft.orderSn}`,
+              items: {
+                create: draft.lines.map((line, index) => {
+                  const expenseCodeId = expenseCodeIds.get(line.kind);
+                  if (!expenseCodeId) throw new Error(`missing expense code for ${line.kind}`);
+                  return {
+                    lineNo: index + 1,
+                    expenseCodeId,
+                    description: `${line.label} (${draft.orderSn})`,
+                    amount: new Prisma.Decimal(roundMoney(line.amount)),
+                  };
+                }),
+              },
+            },
+          });
+          createdExpenseId = expense.id;
 
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [{
-        accountId: draft.settlementAccountId!,
-        txnDate: expenseDate,
-        direction: CashBankDirection.OUT,
-        amount: totalAmount,
-        referenceNo: expenseNo,
-        note: `Shopee fees ${draft.orderSn}`,
-      }]);
+          await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [{
+            accountId: draft.settlementAccountId!,
+            txnDate: expenseDate,
+            direction: CashBankDirection.OUT,
+            amount: totalAmount,
+            referenceNo: expenseNo,
+            note: `Shopee fees ${draft.orderSn}`,
+          }]);
 
-      await rebuildExpenseProfitFacts(tx, expense.id);
+          await rebuildExpenseProfitFacts(tx, expense.id);
 
-      await tx.shopeeOrderImport.update({
-        where: { id: draft.orderImportId },
-        data: {
-          escrowExpenseId: expense.id,
-          escrowSyncedAt: new Date(),
-          escrowLastError: null,
-        },
-      });
-      return null;
+          await tx.shopeeOrderImport.update({
+            where: { id: draft.orderImportId },
+            data: {
+              escrowExpenseId: expense.id,
+              escrowSyncedAt: new Date(),
+              escrowLastError: null,
+            },
+          });
+          return null;
+        });
+      },
     });
 
     if (reusedExpense) {
@@ -286,12 +311,12 @@ export async function createShopeeFeeExpense(params: {
     }
     return { ok: true, expenseId: createdExpenseId, expenseNo, reused: false };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "สร้าง Expense ค่า Shopee ไม่สำเร็จ";
+    const message = toShopeeFeeExpenseErrorMessage(error);
     await db.shopeeOrderImport.update({
       where: { id: params.orderImportId },
       data: { escrowLastError: message },
     }).catch(() => undefined);
-    console.error("[shopee] create fee expense failed:", message);
+    console.error("[shopee] create fee expense failed:", error);
     return { ok: false, error: message };
   }
 }

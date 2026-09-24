@@ -17,6 +17,7 @@ import {
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { getSiteConfig } from "@/lib/site-config";
+import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 import PrintButton from "./PrintButton";
 
 interface Props {
@@ -32,11 +33,6 @@ const STATUS_LABEL: Record<string, string> = {
   CLOSED: "ปิดเคลม",
   RETURNED_TO_CUSTOMER: "ส่งคืนลูกค้าแล้ว",
   CANCELLED: "ยกเลิกแล้ว",
-};
-
-const CLAIM_TYPE_LABEL: Record<string, string> = {
-  REPLACE_NOW: "เปลี่ยนของให้ทันที",
-  CUSTOMER_WAIT: "ลูกค้ารอเคลม",
 };
 
 const OUTCOME_LABEL: Record<string, string> = {
@@ -135,7 +131,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
         claim={claim}
         shopConfig={config}
         statusLabel={STATUS_LABEL}
-        claimTypeLabel={CLAIM_TYPE_LABEL}
+        claimTypeLabel={ADMIN_CLAIM_TYPE_LABEL}
         outcomeLabel={OUTCOME_LABEL}
         copyLabel={PRINT_COPY_LABEL_ORIGINAL}
         rootClassName={CLAIM_PRINT_SLIP_CLASS}
@@ -144,7 +140,7 @@ ${PRINT_COPY_VISIBILITY_CSS}
         claim={claim}
         shopConfig={config}
         statusLabel={STATUS_LABEL}
-        claimTypeLabel={CLAIM_TYPE_LABEL}
+        claimTypeLabel={ADMIN_CLAIM_TYPE_LABEL}
         outcomeLabel={OUTCOME_LABEL}
         copyLabel={PRINT_COPY_LABEL_DUPLICATE}
         rootClassName={`${CLAIM_PRINT_SLIP_CLASS} ${PRINT_SLIP_COPY_CLASS}`}

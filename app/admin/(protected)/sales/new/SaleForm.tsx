@@ -17,7 +17,13 @@ import WhtReceivedFields, {
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, autoAllocateLots, type LotSubRow, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { fetchProductLots } from "../actions";
-import { shiftRowIndexCacheAfterRemoval } from "../row-index-cache";
+import { createRowRequestTracker, omitRowState } from "@/lib/form-row-state";
+import {
+  createSaleRowKey,
+  rekeyRestoredSaleRows,
+  seedSaleRows,
+  stripSaleRowKeys,
+} from "../sale-row-state";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import {
@@ -118,15 +124,18 @@ interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
   claimLock?:   { claimNos: string[]; reason: string };
 }
 
+/** A form row: `rowKey` is client-only (React key + per-row lot state) and stripped on submit/draft. */
+type FormLineItem = LineItem & { rowKey: string };
+
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, unitListPrice: 0, lineDiscount: 0, warrantyDays: 0, supplierId: "", supplierName: "", moreDetail: "", lotItems: [] });
+const emptyItem = (): FormLineItem => ({ productId: "", unitName: "", qty: 1, salePrice: 0, unitListPrice: 0, lineDiscount: 0, warrantyDays: 0, supplierId: "", supplierName: "", moreDetail: "", lotItems: [], rowKey: createSaleRowKey() });
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /** Recompute the reporting line-discount total from list price vs net price. */
-const withLineDiscount = (item: LineItem): LineItem => ({
+const withLineDiscount = <T extends LineItem>(item: T): T => ({
   ...item,
   lineDiscount: round2(Math.max(0, item.unitListPrice - item.salePrice) * item.qty),
 });
@@ -166,7 +175,7 @@ const priceForSelection = (
 };
 
 /** Ensure a restored/legacy draft item carries the two new price fields. */
-const normalizeDraftItem = (item: LineItem): LineItem => {
+const normalizeDraftItem = <T extends LineItem>(item: T): T => {
   const salePrice = item.salePrice ?? 0;
   const unitListPrice = Math.max(item.unitListPrice ?? 0, salePrice);
   return withLineDiscount({ ...item, salePrice, unitListPrice });
@@ -263,7 +272,13 @@ const SaleForm = ({
   const [quotationNo, setQuotationNo] = useState(initialData?.quotationNo ?? "");
   const [saleType, setSaleType] = useState(initialData?.saleType ?? "RETAIL");
   const [note, setNote] = useState(initialData?.note ?? "");
-  const [items, setItems]         = useState<LineItem[]>(initialData?.items.map(normalizeDraftItem) ?? [emptyItem()]);
+  // Seeded rows get their rowKeys once; lot options the edit page built by row index follow them.
+  const [seededRows] = useState((): { rows: FormLineItem[]; lots: Record<string, LotAvailableJSON[]> } => {
+    if (!initialData) return { rows: [emptyItem()], lots: {} };
+    const { rows, state } = seedSaleRows(initialData.items.map(normalizeDraftItem), initialAvailableLots);
+    return { rows, lots: state };
+  });
+  const [items, setItems]         = useState<FormLineItem[]>(seededRows.rows);
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? defaultCustomerId);
   const [channelRefNo, setChannelRefNo] = useState(initialData?.channelRefNo ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
@@ -300,8 +315,26 @@ const SaleForm = ({
 
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? (isMarketplace ? "NO_VAT" : defaultVatType));
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
-  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(initialAvailableLots);
-  const [lotsLoading, setLotsLoading]     = useState<Record<number, boolean>>({});
+  // Per-row lot state is keyed by FormLineItem.rowKey, so removing a row never shifts
+  // another row's lots onto it.
+  const [availableLots, setAvailableLots] = useState<Record<string, LotAvailableJSON[]>>(seededRows.lots);
+  const [lotsLoading, setLotsLoading]     = useState<Record<string, boolean>>({});
+  // Latest lot request per row: a late response for a removed/changed row is dropped.
+  const lotRequests = useRef(createRowRequestTracker());
+
+  /** Row's lot state is stale (row removed, or product changed): drop it and any request in flight. */
+  const clearRowLots = (rowKey: string) => {
+    lotRequests.current.forget(rowKey);
+    setAvailableLots((prev) => omitRowState(prev, rowKey));
+    setLotsLoading((prev) => omitRowState(prev, rowKey));
+  };
+
+  /** The whole row list is replaced: every row's lot state and request in flight is stale. */
+  const resetAllRowLots = () => {
+    lotRequests.current.reset();
+    setAvailableLots({});
+    setLotsLoading({});
+  };
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const customerOptions = customers;
   const supplierOptions = suppliers;
@@ -352,7 +385,7 @@ const SaleForm = ({
       vatType,
       vatRate,
       creditTerm,
-      items,
+      items: stripSaleRowKeys(items),
     }), [quotationId, quotationNo, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, fulfillmentType, items, note, paymentType, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
   const applyDraft = async (draft: SaleDraftPayload) => {
@@ -399,7 +432,12 @@ const SaleForm = ({
     setVatType(draft.vatType);
     setVatRate(draft.vatRate);
     setCreditTerm(draft.creditTerm);
-    setItems(mergeClaimLockedItems(draft.items as LineItem[], initialData?.items ?? []).map(normalizeDraftItem));
+    const restored = rekeyRestoredSaleRows(
+      items,
+      mergeClaimLockedItems(draft.items as LineItem[], initialData?.items ?? []).map(normalizeDraftItem),
+    );
+    restored.droppedKeys.forEach(clearRowLots);
+    setItems(restored.rows);
     setAvailableDraft(null);
     setDraftStatus("กู้คืน draft แล้ว");
   };
@@ -448,7 +486,7 @@ const SaleForm = ({
           vatType,
           vatRate,
           creditTerm,
-          items,
+          items: stripSaleRowKeys(items),
         });
         window.localStorage.setItem(draftKey, JSON.stringify(draft));
         lastPersistedDraftRef.current = snapshot;
@@ -461,28 +499,34 @@ const SaleForm = ({
     return () => window.clearTimeout(timeout);
   }, [quotationId, quotationNo, primaryAccountId, payments, creditTerm, customerNameOverride, customerPhoneOverride, destLat, destLon, discount, draftKey, fulfillmentType, getDraftSnapshot, items, note, paymentType, persistedSaleId, saleDate, saleType, selectedCustomerId, shippingAddress, shippingFee, shippingMethod, vatRate, vatType]);
 
-  const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
-    const result = await fetchProductLots(productId, lotIssueMethod);
-    if (!("error" in result)) setAvailableLots((prev) => ({ ...prev, [itemIdx]: result }));
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
+  /** Loads the row's available lots; returns null when it failed or the row moved on meanwhile. */
+  const loadLots = async (
+    rowKey: string,
+    productId: string,
+    lotIssueMethod: string,
+  ): Promise<LotAvailableJSON[] | null> => {
+    const token = lotRequests.current.begin(rowKey);
+    setLotsLoading((prev) => ({ ...prev, [rowKey]: true }));
+    try {
+      const result = await fetchProductLots(productId, lotIssueMethod);
+      if (!lotRequests.current.isCurrent(rowKey, token) || "error" in result) return null;
+      setAvailableLots((prev) => ({ ...prev, [rowKey]: result }));
+      return result;
+    } catch (loadError) {
+      console.error("[SaleForm] load lots", loadError);
+      return null;
+    } finally {
+      if (lotRequests.current.isCurrent(rowKey, token)) {
+        setLotsLoading((prev) => ({ ...prev, [rowKey]: false }));
+      }
+    }
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
-  const removeItem = (i: number) => {
-    setItems((prev) => prev.filter((_, idx) => idx !== i));
-    // Lot caches are keyed by row index — shift them so each remaining row keeps its own product's lots.
-    setAvailableLots((prev) => shiftRowIndexCacheAfterRemoval(prev, i));
-    setLotsLoading((prev) => shiftRowIndexCacheAfterRemoval(prev, i));
-  };
-
-  const clearCachedLots = (itemIndex: number) => {
-    setAvailableLots((prev) => {
-      const next = { ...prev };
-      delete next[itemIndex];
-      return next;
-    });
+  const removeItem = (rowKey: string) => {
+    setItems((prev) => prev.filter((item) => item.rowKey !== rowKey));
+    clearRowLots(rowKey);
   };
 
   const rememberProduct = (product: ProductOption) => {
@@ -495,11 +539,11 @@ const SaleForm = ({
     });
   };
 
-  const clearItemProduct = (itemIndex: number) => {
-    clearCachedLots(itemIndex);
+  const clearItemProduct = (rowKey: string) => {
+    clearRowLots(rowKey);
     setItems((prev) =>
-      prev.map((item, idx) =>
-        idx !== itemIndex
+      prev.map((item) =>
+        item.rowKey !== rowKey
           ? item
           : {
               ...item,
@@ -517,12 +561,12 @@ const SaleForm = ({
     );
   };
 
-  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+  const applySelectedProduct = (rowKey: string, product: ProductOption) => {
     rememberProduct(product);
-    clearCachedLots(itemIndex);
+    clearRowLots(rowKey);
     setItems((prev) =>
-      prev.map((item, idx) =>
-        idx !== itemIndex
+      prev.map((item) =>
+        item.rowKey !== rowKey
           ? item
           : {
               ...item,
@@ -541,7 +585,7 @@ const SaleForm = ({
       ),
     );
     if (product.isLotControl) {
-      void loadLots(itemIndex, product.id, product.lotIssueMethod);
+      void loadLots(rowKey, product.id, product.lotIssueMethod);
     }
   };
 
@@ -608,7 +652,7 @@ const SaleForm = ({
     const item = items[itemIdx];
     const prod = productMap.get(item.productId);
     const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    const av = (availableLots[itemIdx] ?? []).find((l) => l.lotNo === lotNo);
+    const av = (availableLots[item.rowKey] ?? []).find((l) => l.lotNo === lotNo);
     // qty already used by other lot rows
     const usedQty = item.lotItems.reduce((s, l, li) => li !== lotIdx ? s + l.qty : s, 0);
     const remaining = Math.max(0, item.qty - usedQty);
@@ -665,20 +709,17 @@ const SaleForm = ({
     }));
   };
 
-  const handleAutoAllocate = async (itemIdx: number) => {
-    const item = items[itemIdx];
+  const handleAutoAllocate = async (rowKey: string): Promise<void> => {
+    const item = items.find((row) => row.rowKey === rowKey);
+    if (!item) return;
     const prod = productMap.get(item.productId);
     if (!prod?.isLotControl) return;
     const scale = prod.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    let available = availableLots[itemIdx];
-    if (!available) {
-      const result = await fetchProductLots(item.productId, prod.lotIssueMethod);
-      if ("error" in result) return;
-      available = result;
-      setAvailableLots((prev) => ({ ...prev, [itemIdx]: available }));
-    }
+    // Null when the load failed, or the row was removed / changed product meanwhile.
+    const available = availableLots[rowKey] ?? (await loadLots(rowKey, item.productId, prod.lotIssueMethod));
+    if (!available) return;
     const allocated = autoAllocateLots(available, item.qty, scale);
-    setItems((prev) => prev.map((it, idx) => idx !== itemIdx ? it : { ...it, lotItems: allocated }));
+    setItems((prev) => prev.map((it) => it.rowKey !== rowKey ? it : { ...it, lotItems: allocated }));
   };
 
   const getUnits = (productId: string) =>
@@ -857,7 +898,7 @@ const SaleForm = ({
     formData.set("quotationId", quotationId);
     formData.set("customerName", customerNameOverride);
     formData.set("customerPhone", customerPhoneOverride);
-    formData.set("items", JSON.stringify(items));
+    formData.set("items", JSON.stringify(stripSaleRowKeys(items)));
     formData.set("paymentType", paymentType);
     formData.set(
       "wht",
@@ -971,14 +1012,15 @@ const SaleForm = ({
           setShippingAddress(quote.data.shippingAddress); setCreditTerm(quote.data.creditTerm);
           setDiscount(quote.data.discount); setVatType(quote.data.vatType); setVatRate(quote.data.vatRate);
           setNote(quote.data.note); setSaleType(quote.data.saleType);
-          setAvailableLots({});
-          setItems(quote.data.items.map((item) => {
+          resetAllRowLots();
+          const { rows } = seedSaleRows(quote.data.items.map((item) => {
             const product = quote.products.find((p) => p.id === item.productId);
             return { ...item, lotItems: product?.isLotControl ? [{ lotNo: "", qty: item.qty, unitCost: 0, mfgDate: "", expDate: "" }] : [] };
           }));
-          quote.data.items.forEach((item, index) => {
-            const product = quote.products.find((p) => p.id === item.productId);
-            if (product?.isLotControl) void loadLots(index, product.id, product.lotIssueMethod);
+          setItems(rows);
+          rows.forEach((row) => {
+            const product = quote.products.find((p) => p.id === row.productId);
+            if (product?.isLotControl) void loadLots(row.rowKey, product.id, product.lotIssueMethod);
           });
         }} />}
       {/* Header card */}
@@ -1422,7 +1464,7 @@ const SaleForm = ({
                   const lockedSupplier = item.supplierId ? supplierMap.get(item.supplierId) : undefined;
                   return (
                     <SaleLockedLineRow
-                      key={i}
+                      key={item.rowKey}
                       index={i}
                       productLabel={lockedProduct ? `[${lockedProduct.code}] ${lockedProduct.name}` : item.productId}
                       supplierLabel={lockedSupplier?.name ?? (item.supplierName || null)}
@@ -1448,7 +1490,7 @@ const SaleForm = ({
                 // ไฮไลต์แถวให้พนักงานกรอกราคาเอง และมีข้อความยืนยันอีกครั้งตอนกดบันทึก
                 const isZeroPriced = Boolean(item.productId) && item.salePrice <= 0;
                 return (
-                  <Fragment key={i}>
+                  <Fragment key={item.rowKey}>
                   <tr
                     className={`border-b border-gray-50 dark:border-white/5 ${
                       isZeroPriced ? "bg-rose-50 dark:bg-rose-500/10" : ""
@@ -1461,9 +1503,9 @@ const SaleForm = ({
                         searchProducts={searchSaleProducts}
                         value={item.productId}
                         selectedProduct={prod ?? null}
-                        onProductSelect={(product) => applySelectedProduct(i, product)}
+                        onProductSelect={(product) => applySelectedProduct(item.rowKey, product)}
                         onChange={(id) => {
-                          if (!id) clearItemProduct(i);
+                          if (!id) clearItemProduct(item.rowKey);
                         }}
                       />
                       {item.productId && (
@@ -1575,7 +1617,7 @@ const SaleForm = ({
                       {items.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removeItem(i)}
+                          onClick={() => removeItem(item.rowKey)}
                           className="text-red-400 hover:text-red-600 transition-colors"
                         >
                           <Trash2 size={15} />
@@ -1601,12 +1643,12 @@ const SaleForm = ({
                               {!lotQtyMatch && <span className="text-xs text-red-500 dark:text-red-400">จำนวน Lot ยังไม่ครบ</span>}
                               <button
                                 type="button"
-                                onClick={() => handleAutoAllocate(i)}
+                                onClick={() => handleAutoAllocate(item.rowKey)}
                                 className="ml-1 inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors dark:text-indigo-300 dark:hover:text-indigo-100 dark:border-indigo-400/30 dark:bg-indigo-500/10"
                               >
                                 <Zap size={11} /> Auto จัดสรร
                               </button>
-                              {lotsLoading[i] && <span className="text-xs text-gray-400 dark:text-slate-500 animate-pulse">กำลังโหลด...</span>}
+                              {lotsLoading[item.rowKey] && <span className="text-xs text-gray-400 dark:text-slate-500 animate-pulse">กำลังโหลด...</span>}
                             </>
                           )}
                         </div>
@@ -1638,7 +1680,7 @@ const SaleForm = ({
                             {item.lotItems.map((lot, li) => {
                               const scale = prod?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
                               const selectedLotNos = item.lotItems.filter((_, lj) => lj !== li).map((l) => l.lotNo);
-                              const lotOptions = (availableLots[i] ?? []).filter(
+                              const lotOptions = (availableLots[item.rowKey] ?? []).filter(
                                 (av) => av.lotNo === lot.lotNo || !selectedLotNos.includes(av.lotNo)
                               );
                               return (

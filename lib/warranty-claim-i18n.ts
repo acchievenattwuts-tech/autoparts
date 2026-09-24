@@ -21,6 +21,12 @@ export const CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
   CUSTOMER_WAIT: "ลูกค้ารอ",
 };
 
+/** Admin wording of the claim type — claim detail page, claim print form and the sale's claim-cancel history. */
+export const ADMIN_CLAIM_TYPE_LABEL: Record<ClaimType, string> = {
+  REPLACE_NOW: "เปลี่ยนของให้ทันที",
+  CUSTOMER_WAIT: "ลูกค้ารอเคลม",
+};
+
 export const CLAIM_OUTCOME_LABEL: Record<ClaimOutcome, string> = {
   RECEIVED: "ได้รับสินค้าคืน",
   NO_RESOLUTION: "ซัพพลายเออร์ไม่รับเคลม",

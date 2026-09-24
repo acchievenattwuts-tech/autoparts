@@ -39,7 +39,7 @@ test("history line carries the details but never a claim number", () => {
   });
   assert.equal(
     line,
-    "25/09/2026 10:15 • นวพล • คอมเพรสเซอร์แอร์ (ชิ้นที่ 2, Lot L-01) • ประเภท: ลูกค้ารอ • อาการ: ไม่เย็น มีเสียงดัง • หมายเหตุ: ลูกค้าเปลี่ยนใจ",
+    "25/09/2026 10:15 • นวพล • คอมเพรสเซอร์แอร์ (ชิ้นที่ 2, Lot L-01) • ประเภท: ลูกค้ารอเคลม • อาการ: ไม่เย็น มีเสียงดัง • หมายเหตุ: ลูกค้าเปลี่ยนใจ",
   );
   assert.doesNotMatch(line, /WC/);
 
@@ -53,7 +53,7 @@ test("history line carries the details but never a claim number", () => {
     symptom: null,
     note: "ซ้ำ",
   });
-  assert.equal(noLot, "25/09/2026 10:16 • - • ไส้กรอง (ชิ้นที่ 1) • ประเภท: เปลี่ยนสินค้าทันที • อาการ: - • หมายเหตุ: ซ้ำ");
+  assert.equal(noLot, "25/09/2026 10:16 • - • ไส้กรอง (ชิ้นที่ 1) • ประเภท: เปลี่ยนของให้ทันที • อาการ: - • หมายเหตุ: ซ้ำ");
 });
 
 test("history is append-only: new lines go after the existing ones, never replacing them", () => {

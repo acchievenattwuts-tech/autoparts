@@ -12,6 +12,13 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import {
+  createRowKey,
+  createRowRequestTracker,
+  omitRowState,
+  seedRowKeys,
+  stripRowKeys,
+} from "@/lib/form-row-state";
 import { PURCHASE_RETURN_SETTLEMENT_LABELS } from "../purchase-return-presentation";
 
 interface ProductOption {
@@ -58,6 +65,11 @@ interface LineItem {
   lotItems: LotSubRow[];
 }
 
+/** A form row: `rowKey` is client-only (React key + per-row lot state) and stripped on submit. */
+type FormLineItem = LineItem & { rowKey: string };
+
+const ROW_KEY_PREFIX = "pr-row";
+
 interface InitialData {
   id: string;
   returnDate: string;
@@ -95,7 +107,14 @@ const RETURN_TYPE_LABELS: Record<string, string> = {
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
 
-const emptyItem = (): LineItem => ({ productId: "", unitName: "", qty: 1, moreDetail: "", lotItems: [] });
+const emptyItem = (): FormLineItem => ({
+  rowKey: createRowKey(ROW_KEY_PREFIX),
+  productId: "",
+  unitName: "",
+  qty: 1,
+  moreDetail: "",
+  lotItems: [],
+});
 
 const PurchaseReturnForm = ({
   products,
@@ -143,7 +162,13 @@ const PurchaseReturnForm = ({
   const [purchaseId, setPurchaseId] = useState(seedData?.purchaseId ?? "");
   const [filteredPurchases, setFilteredPurchases] = useState<PurchaseOption[]>(initialPurchases ?? []);
   const [loadingPurchases, setLoadingPurchases] = useState(false);
-  const [items, setItems] = useState<LineItem[]>(seedData?.items ?? [emptyItem()]);
+  // Seeded rows get their rowKeys once; lots the caller seeded by row index follow them.
+  const [seededRows] = useState((): { rows: FormLineItem[]; lots: Record<string, LotAvailableJSON[]> } => {
+    if (!seedData?.items) return { rows: [emptyItem()], lots: {} };
+    const { rows, state } = seedRowKeys(seedData.items, ROW_KEY_PREFIX, seedData.initialAvailableLots);
+    return { rows, lots: state };
+  });
+  const [items, setItems] = useState<FormLineItem[]>(seededRows.rows);
   const [returnType, setReturnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(
     seedData?.type ?? "RETURN",
   );
@@ -159,19 +184,44 @@ const PurchaseReturnForm = ({
   );
   const [vatType, setVatType] = useState<string>(seedData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(seedData?.vatRate ?? defaultVatRate);
-  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>(seedData?.initialAvailableLots ?? {});
-  const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
+  // Per-row lot state is keyed by FormLineItem.rowKey, so removing a row never shifts
+  // another row's lots onto it.
+  const [availableLots, setAvailableLots] = useState<Record<string, LotAvailableJSON[]>>(seededRows.lots);
+  const [lotsLoading, setLotsLoading] = useState<Record<string, boolean>>({});
+  // Latest lot request per row: a late response for a removed/changed row is dropped.
+  const lotRequests = useRef(createRowRequestTracker());
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const linkedClaimProductId = claimContext?.productId ?? "";
 
-  const loadLots = async (itemIdx: number, productId: string) => {
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
-    const result = await fetchProductLots(productId);
-    if (!("error" in result)) {
-      setAvailableLots((prev) => ({ ...prev, [itemIdx]: result }));
+  /** Row's lot state is stale (row removed, or product changed): drop it and any request in flight. */
+  const clearRowLots = (rowKey: string) => {
+    lotRequests.current.forget(rowKey);
+    setAvailableLots((prev) => omitRowState(prev, rowKey));
+    setLotsLoading((prev) => omitRowState(prev, rowKey));
+  };
+
+  /** The whole row list is replaced: every row's lot state and request in flight is stale. */
+  const resetAllRowLots = () => {
+    lotRequests.current.reset();
+    setAvailableLots({});
+    setLotsLoading({});
+  };
+
+  const loadLots = async (rowKey: string, productId: string): Promise<void> => {
+    const token = lotRequests.current.begin(rowKey);
+    setLotsLoading((prev) => ({ ...prev, [rowKey]: true }));
+    try {
+      const result = await fetchProductLots(productId);
+      if (!lotRequests.current.isCurrent(rowKey, token) || "error" in result) return;
+      setAvailableLots((prev) => ({ ...prev, [rowKey]: result }));
+    } catch (loadError) {
+      console.error("[PurchaseReturnForm] load lots", loadError);
+    } finally {
+      if (lotRequests.current.isCurrent(rowKey, token)) {
+        setLotsLoading((prev) => ({ ...prev, [rowKey]: false }));
+      }
     }
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
   };
 
   // Set when the user declines the "clear items" confirmation, so the option the
@@ -194,7 +244,7 @@ const PurchaseReturnForm = ({
     if (!id) setSelectedSupplierOption(null);
     setPurchaseId("");
     setItems([emptyItem()]);
-    setAvailableLots({});
+    resetAllRowLots();
     if (!id) {
       setFilteredPurchases([]);
       return;
@@ -207,7 +257,7 @@ const PurchaseReturnForm = ({
 
   const handlePurchaseChange = async (id: string) => {
     setPurchaseId(id);
-    setAvailableLots({});
+    resetAllRowLots();
     if (!id) return;
     const detail = await getPurchaseDetail(id);
     if (!detail) return;
@@ -218,9 +268,10 @@ const PurchaseReturnForm = ({
       });
       return [...next.values()];
     });
-    setItems(detail.items.map((item) => ({ ...item })));
-    detail.items.forEach((item, index) => {
-      if (item.lotItems.length > 0) void loadLots(index, item.productId);
+    const { rows } = seedRowKeys(detail.items, ROW_KEY_PREFIX);
+    setItems(rows);
+    rows.forEach((row) => {
+      if (row.lotItems.length > 0) void loadLots(row.rowKey, row.productId);
     });
   };
 
@@ -233,14 +284,9 @@ const PurchaseReturnForm = ({
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
-  const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
-
-  const clearCachedLots = (itemIndex: number) => {
-    setAvailableLots((prev) => {
-      const next = { ...prev };
-      delete next[itemIndex];
-      return next;
-    });
+  const removeItem = (rowKey: string) => {
+    setItems((prev) => prev.filter((item) => item.rowKey !== rowKey));
+    clearRowLots(rowKey);
   };
 
   const rememberProduct = (product: ProductOption) => {
@@ -253,11 +299,11 @@ const PurchaseReturnForm = ({
     });
   };
 
-  const clearItemProduct = (itemIndex: number) => {
-    clearCachedLots(itemIndex);
+  const clearItemProduct = (rowKey: string) => {
+    clearRowLots(rowKey);
     setItems((prev) =>
-      prev.map((item, idx) =>
-        idx !== itemIndex
+      prev.map((item) =>
+        item.rowKey !== rowKey
           ? item
           : {
               ...item,
@@ -270,13 +316,13 @@ const PurchaseReturnForm = ({
     );
   };
 
-  const applySelectedProduct = (itemIndex: number, product: ProductOption) => {
+  const applySelectedProduct = (rowKey: string, product: ProductOption) => {
     rememberProduct(product);
-    clearCachedLots(itemIndex);
+    clearRowLots(rowKey);
     const baseUnit = product.units.find((unit) => unit.isBase) ?? product.units[0];
     setItems((prev) =>
-      prev.map((item, idx) =>
-        idx !== itemIndex
+      prev.map((item) =>
+        item.rowKey !== rowKey
           ? item
           : {
               ...item,
@@ -289,7 +335,7 @@ const PurchaseReturnForm = ({
             },
       ),
     );
-    if (product.isLotControl) void loadLots(itemIndex, product.id);
+    if (product.isLotControl) void loadLots(rowKey, product.id);
   };
 
   const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
@@ -347,7 +393,7 @@ const PurchaseReturnForm = ({
     const item = items[itemIdx];
     const product = productMap.get(item.productId);
     const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    const lot = (availableLots[itemIdx] ?? []).find((entry) => entry.lotNo === lotNo);
+    const lot = (availableLots[item.rowKey] ?? []).find((entry) => entry.lotNo === lotNo);
 
     setItems((prev) =>
       prev.map((entry, idx) => {
@@ -445,7 +491,7 @@ const PurchaseReturnForm = ({
       }
     }
 
-    formData.set("items", JSON.stringify(items));
+    formData.set("items", JSON.stringify(stripRowKeys(items)));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
 
@@ -696,7 +742,7 @@ const PurchaseReturnForm = ({
                 const isLinkedClaimItem = !!linkedClaimProductId && item.productId === linkedClaimProductId;
 
                 return (
-                  <Fragment key={i}>
+                  <Fragment key={item.rowKey}>
                     <tr
                       className={`border-b transition-colors ${
                         isLinkedClaimItem
@@ -716,9 +762,9 @@ const PurchaseReturnForm = ({
                           searchProducts={searchPurchaseReturnProducts}
                           value={item.productId}
                           onChange={(id) => {
-                            if (!id) clearItemProduct(i);
+                            if (!id) clearItemProduct(item.rowKey);
                           }}
-                          onProductSelect={(productOption) => applySelectedProduct(i, productOption)}
+                          onProductSelect={(productOption) => applySelectedProduct(item.rowKey, productOption)}
                           selectedProduct={productMap.get(item.productId) ?? null}
                         />
                         {item.productId && (
@@ -772,7 +818,7 @@ const PurchaseReturnForm = ({
                         {items.length > 1 && (
                           <button
                             type="button"
-                            onClick={() => removeItem(i)}
+                            onClick={() => removeItem(item.rowKey)}
                             className="text-red-400 hover:text-red-600 transition-colors"
                           >
                             <Trash2 size={15} />
@@ -781,7 +827,7 @@ const PurchaseReturnForm = ({
                       </td>
                     </tr>
                     {isLot && returnType === "RETURN" && (
-                      <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50 dark:bg-amber-500/10 dark:border-white/5">
+                      <tr key={`lot-${item.rowKey}`} className="bg-amber-50/60 border-b border-gray-50 dark:bg-amber-500/10 dark:border-white/5">
                         <td colSpan={7} className="px-3 py-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Lot Control</div>
@@ -795,14 +841,14 @@ const PurchaseReturnForm = ({
                           </div>
                           <div className="space-y-2">
                             {item.lotItems.map((lot, lotIdx) => (
-                              <div key={`${i}-${lotIdx}`} className="grid grid-cols-1 md:grid-cols-[2fr_120px_120px_140px_140px_32px] gap-2 items-center">
+                              <div key={`${item.rowKey}-${lotIdx}`} className="grid grid-cols-1 md:grid-cols-[2fr_120px_120px_140px_140px_32px] gap-2 items-center">
                                 <select
                                   value={lot.lotNo}
                                   onChange={(e) => handleLotSelect(i, lotIdx, e.target.value)}
                                   className={`${inputCls} bg-white`}
                                 >
-                                  <option value="">{lotsLoading[i] ? "กำลังโหลด Lot..." : "-- เลือก Lot --"}</option>
-                                  {(availableLots[i] ?? []).map((option) => (
+                                  <option value="">{lotsLoading[item.rowKey] ? "กำลังโหลด Lot..." : "-- เลือก Lot --"}</option>
+                                  {(availableLots[item.rowKey] ?? []).map((option) => (
                                     <option key={option.lotNo} value={option.lotNo}>
                                       {option.lotNo} ({(option.qtyOnHand / scale).toLocaleString("th-TH", { maximumFractionDigits: 4 })})
                                     </option>

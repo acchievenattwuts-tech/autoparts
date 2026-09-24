@@ -10,6 +10,7 @@ import {
   generateExpenseNo,
   generateMarketplaceSettlementNo,
 } from "@/lib/doc-number";
+import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
@@ -36,7 +37,6 @@ import {
   CashBankDirection,
   CashBankSourceType,
   CashBankTransferStatus,
-  CNSettlementType,
   DocStatus,
   MarketplaceFeeKind,
   MarketplaceSettlementDocType,
@@ -45,6 +45,12 @@ import {
   VatType,
 } from "@/lib/generated/prisma";
 import { getAuditActorFromSession, getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
+import {
+  buildEligibleSettlementCreditNoteWhere,
+  buildEligibleSettlementSaleWhere,
+  lockAndRevalidateSettlementDocuments,
+  MarketplaceSettlementDocumentsChangedError,
+} from "./settlement-document-lock";
 
 const channelSchema = z
   .nativeEnum(SaleChannel)
@@ -273,6 +279,38 @@ async function ensureMarketplaceSupplier(
   return created.id;
 }
 
+/**
+ * Unique columns filled with numbers generated for each save attempt. A P2002 on
+ * one of these means a concurrent save took the same number, so the attempt is
+ * retried with fresh numbers. Business uniques ([channel, payoutRef],
+ * activeSaleId, activeCreditNoteId) are deliberately not listed.
+ */
+const SETTLEMENT_DOC_NUMBER_FIELDS = ["settlementNo", "expenseNo", "transferNo", "adjustNo"] as const;
+const SETTLEMENT_DOC_NUMBER_CONFLICT_MESSAGE =
+  "เลขที่เอกสารชนกับรายการที่บันทึกพร้อมกัน ระบบลองออกเลขใหม่แล้วยังไม่สำเร็จ กรุณาบันทึกอีกครั้ง";
+
+type SettlementDocNumbers = {
+  settlementNo: string;
+  transferNo: string;
+  expenseNo: string | null;
+  adjustNo: string | null;
+};
+
+async function generateSettlementDocNumbers(
+  settlementDocPrefix: string,
+  docDate: Date,
+  needsExpense: boolean,
+  needsAdjustment: boolean,
+): Promise<SettlementDocNumbers> {
+  const [settlementNo, transferNo, expenseNo, adjustNo] = await Promise.all([
+    generateMarketplaceSettlementNo(settlementDocPrefix, docDate),
+    generateCashBankTransferNo(docDate),
+    needsExpense ? generateExpenseNo(docDate) : Promise.resolve(null),
+    needsAdjustment ? generateCashBankAdjustmentNo(docDate) : Promise.resolve(null),
+  ]);
+  return { settlementNo, transferNo, expenseNo, adjustNo };
+}
+
 export async function createMarketplaceSettlement(payload: unknown) {
   const parsed = createSettlementSchema.safeParse(payload);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -299,26 +337,14 @@ export async function createMarketplaceSettlement(payload: unknown) {
     return { error: "กรุณาเลือกใบขายหรือใบลดหนี้อย่างน้อย 1 รายการ" };
   }
 
+  // Fast path only — the authoritative check runs under row locks inside the transaction.
   const [sales, creditNotes] = await Promise.all([
     db.sale.findMany({
-      where: {
-        id: { in: saleIds },
-        channel,
-        status: DocStatus.ACTIVE,
-        cashBankAccountId: holdingAccountId,
-        marketplaceSettlementLines: { none: { activeSaleId: { not: null } } },
-      },
+      where: buildEligibleSettlementSaleWhere(channel, holdingAccountId, saleIds),
       select: { id: true, saleNo: true, saleDate: true, netAmount: true },
     }),
     db.creditNote.findMany({
-      where: {
-        id: { in: creditNoteIds },
-        channel,
-        status: DocStatus.ACTIVE,
-        settlementType: CNSettlementType.CASH_REFUND,
-        cashBankAccountId: holdingAccountId,
-        marketplaceSettlementLines: { none: { activeCreditNoteId: { not: null } } },
-      },
+      where: buildEligibleSettlementCreditNoteWhere(channel, holdingAccountId, creditNoteIds),
       select: { id: true, cnNo: true, cnDate: true, totalAmount: true },
     }),
   ]);
@@ -358,187 +384,203 @@ export async function createMarketplaceSettlement(payload: unknown) {
   }
 
   const docDate = parseDateOnlyToDate(input.settlementDate);
-  const [settlementNo, transferNo, expenseNo, adjustNo] = await Promise.all([
-    generateMarketplaceSettlementNo(config.settlementDocPrefix, docDate),
-    generateCashBankTransferNo(docDate),
-    calculation.feeAmount > 0 ? generateExpenseNo(docDate) : Promise.resolve(null),
-    calculation.incomeAmount > 0 ? generateCashBankAdjustmentNo(docDate) : Promise.resolve(null),
-  ]);
-
   const deductionLines = settlementFeeLines.filter((line) => line.amount < 0);
   const incomeLines = settlementFeeLines.filter((line) => line.amount > 0);
 
   try {
     let createdSettlementId = "";
-    await dbTx(async (tx) => {
-      const destination = await tx.cashBankAccount.findFirst({
-        where: { id: input.destinationAccountId, isActive: true, type: "BANK" },
-        select: { id: true },
-      });
-      if (!destination) throw new Error("DESTINATION_NOT_FOUND");
+    let settlementNo = "";
+    // Every number is "latest + 1" read outside the transaction, so a concurrent save
+    // can take the same one (P2002 on its column). Postgres aborts the transaction
+    // after the failed insert, so the WHOLE transaction — row locks, re-checks and all
+    // writes — is re-run with a fresh set of numbers.
+    await withDocNumberRetry({
+      uniqueField: SETTLEMENT_DOC_NUMBER_FIELDS,
+      generate: () =>
+        generateSettlementDocNumbers(
+          config.settlementDocPrefix,
+          docDate,
+          calculation.feeAmount > 0,
+          calculation.incomeAmount > 0,
+        ),
+      run: (docNumbers) => {
+        const { transferNo, expenseNo, adjustNo } = docNumbers;
+        settlementNo = docNumbers.settlementNo;
+        createdSettlementId = "";
+        return dbTx(async (tx) => {
+          // Lock CreditNote → Sale rows and re-check eligibility before any write.
+          await lockAndRevalidateSettlementDocuments(tx, { channel, holdingAccountId, sales, creditNotes });
 
-      let expenseId: string | null = null;
-      if (calculation.feeAmount > 0) {
-        const supplierId = await ensureMarketplaceSupplier(tx, channel, session.user!.id!);
-        const codeIds = await ensureFeeExpenseCodes(
-          tx,
-          channel,
-          deductionLines.map((line) => line.label),
-        );
-        const expense = await tx.expense.create({
-          data: {
-            expenseNo: expenseNo as string,
-            expenseDate: docDate,
-            userId: session.user!.id!,
-            supplierId,
-            cashBankAccountId: holdingAccountId,
-            channel,
-            totalAmount: calculation.feeAmount,
-            subtotalAmount: calculation.feeAmount,
-            netAmount: calculation.feeAmount,
-            vatType: VatType.NO_VAT,
-            vatRate: 0,
-            vatAmount: 0,
-            note: `ค่าธรรมเนียม ${config.label} รอบ ${settlementNo}`,
-            items: {
-              create: deductionLines.map((line, index) => ({
-                lineNo: index + 1,
-                expenseCodeId: codeIds.get(`${config.label} — ${line.label}`) as string,
-                description: `${line.label} (${input.payoutRef})`,
-                amount: Math.abs(line.amount),
-              })),
+          const destination = await tx.cashBankAccount.findFirst({
+            where: { id: input.destinationAccountId, isActive: true, type: "BANK" },
+            select: { id: true },
+          });
+          if (!destination) throw new Error("DESTINATION_NOT_FOUND");
+
+          let expenseId: string | null = null;
+          if (calculation.feeAmount > 0) {
+            const supplierId = await ensureMarketplaceSupplier(tx, channel, session.user!.id!);
+            const codeIds = await ensureFeeExpenseCodes(
+              tx,
+              channel,
+              deductionLines.map((line) => line.label),
+            );
+            const expense = await tx.expense.create({
+              data: {
+                expenseNo: expenseNo as string,
+                expenseDate: docDate,
+                userId: session.user!.id!,
+                supplierId,
+                cashBankAccountId: holdingAccountId,
+                channel,
+                totalAmount: calculation.feeAmount,
+                subtotalAmount: calculation.feeAmount,
+                netAmount: calculation.feeAmount,
+                vatType: VatType.NO_VAT,
+                vatRate: 0,
+                vatAmount: 0,
+                note: `ค่าธรรมเนียม ${config.label} รอบ ${settlementNo}`,
+                items: {
+                  create: deductionLines.map((line, index) => ({
+                    lineNo: index + 1,
+                    expenseCodeId: codeIds.get(`${config.label} — ${line.label}`) as string,
+                    description: `${line.label} (${input.payoutRef})`,
+                    amount: Math.abs(line.amount),
+                  })),
+                },
+              },
+              select: { id: true },
+            });
+            expenseId = expense.id;
+            await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [
+              {
+                accountId: holdingAccountId,
+                txnDate: docDate,
+                direction: CashBankDirection.OUT,
+                amount: calculation.feeAmount,
+                referenceNo: expenseNo as string,
+                note: `${config.label} fees ${settlementNo}`,
+              },
+            ]);
+            // ไม่เรียก rebuildExpenseProfitFacts เพราะรอบรับเงินเป็นผู้เขียน FactProfit ของ
+            // ใบนี้เอง โดยลงวันที่ตามใบขายแต่ละใบแทนวันที่ของใบค่าใช้จ่าย
+          }
+
+          let adjustmentId: string | null = null;
+          if (calculation.incomeAmount > 0) {
+            const adjustment = await tx.cashBankAdjustment.create({
+              data: {
+                adjustNo: adjustNo as string,
+                adjustDate: docDate,
+                accountId: holdingAccountId,
+                direction: CashBankDirection.IN,
+                amount: calculation.incomeAmount,
+                reason: `รายรับพิเศษ ${config.label} รอบ ${settlementNo}`,
+                note: incomeLines.map((line) => `${line.label} ${line.amount.toFixed(2)}`).join(", "),
+                userId: session.user!.id!,
+              },
+              select: { id: true },
+            });
+            adjustmentId = adjustment.id;
+            await replaceCashBankSourceMovements(tx, CashBankSourceType.ADJUSTMENT, adjustment.id, [
+              {
+                accountId: holdingAccountId,
+                txnDate: docDate,
+                direction: CashBankDirection.IN,
+                amount: calculation.incomeAmount,
+                referenceNo: adjustNo as string,
+                note: `${config.label} income ${settlementNo}`,
+              },
+            ]);
+          }
+
+          const transfer = await tx.cashBankTransfer.create({
+            data: {
+              transferNo,
+              transferDate: docDate,
+              fromAccountId: holdingAccountId,
+              toAccountId: input.destinationAccountId,
+              amount: actualPayout,
+              note: `${config.label} payout ${input.payoutRef}`,
+              userId: session.user!.id!,
             },
-          },
-          select: { id: true },
+            select: { id: true },
+          });
+          await replaceCashBankSourceMovements(tx, CashBankSourceType.TRANSFER, transfer.id, [
+            {
+              accountId: holdingAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.OUT,
+              amount: actualPayout,
+              referenceNo: transferNo,
+              note: `${config.label} payout ${input.payoutRef}`,
+            },
+            {
+              accountId: input.destinationAccountId,
+              txnDate: docDate,
+              direction: CashBankDirection.IN,
+              amount: actualPayout,
+              referenceNo: transferNo,
+              note: `${config.label} payout ${input.payoutRef}`,
+            },
+          ]);
+
+          const created = await tx.marketplaceSettlement.create({
+            data: {
+              settlementNo,
+              channel,
+              payoutRef: input.payoutRef,
+              settlementDate: docDate,
+              channelSettingId: setting.id,
+              sourceAccountId: holdingAccountId,
+              destinationAccountId: input.destinationAccountId,
+              salesAmount: calculation.salesAmount,
+              returnAmount: calculation.returnAmount,
+              feeAmount: calculation.feeAmount,
+              incomeAmount: calculation.incomeAmount,
+              payoutAmount: actualPayout,
+              expenseId,
+              cashBankAdjustmentId: adjustmentId,
+              cashBankTransferId: transfer.id,
+              note: input.note || null,
+              userId: session.user!.id!,
+              lines: {
+                create: [
+                  ...sales.map((sale) => ({
+                    docType: MarketplaceSettlementDocType.SALE,
+                    saleId: sale.id,
+                    activeSaleId: sale.id,
+                    docNo: sale.saleNo,
+                    docDate: sale.saleDate,
+                    amount: round2(Number(sale.netAmount)),
+                  })),
+                  ...creditNotes.map((creditNote) => ({
+                    docType: MarketplaceSettlementDocType.CREDIT_NOTE,
+                    creditNoteId: creditNote.id,
+                    activeCreditNoteId: creditNote.id,
+                    docNo: creditNote.cnNo,
+                    docDate: creditNote.cnDate,
+                    amount: round2(-Number(creditNote.totalAmount)),
+                  })),
+                ],
+              },
+              fees: {
+                create: settlementFeeLines.map((line, index) => ({
+                  lineNo: index + 1,
+                  kind: line.kind,
+                  feeCode: line.code,
+                  label: line.label,
+                  amount: round2(line.amount),
+                })),
+              },
+            },
+            select: { id: true },
+          });
+          createdSettlementId = created.id;
+
+          await rebuildMarketplaceSettlementProfitFacts(tx, created.id);
         });
-        expenseId = expense.id;
-        await replaceCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expense.id, [
-          {
-            accountId: holdingAccountId,
-            txnDate: docDate,
-            direction: CashBankDirection.OUT,
-            amount: calculation.feeAmount,
-            referenceNo: expenseNo as string,
-            note: `${config.label} fees ${settlementNo}`,
-          },
-        ]);
-        // ไม่เรียก rebuildExpenseProfitFacts เพราะรอบรับเงินเป็นผู้เขียน FactProfit ของ
-        // ใบนี้เอง โดยลงวันที่ตามใบขายแต่ละใบแทนวันที่ของใบค่าใช้จ่าย
-      }
-
-      let adjustmentId: string | null = null;
-      if (calculation.incomeAmount > 0) {
-        const adjustment = await tx.cashBankAdjustment.create({
-          data: {
-            adjustNo: adjustNo as string,
-            adjustDate: docDate,
-            accountId: holdingAccountId,
-            direction: CashBankDirection.IN,
-            amount: calculation.incomeAmount,
-            reason: `รายรับพิเศษ ${config.label} รอบ ${settlementNo}`,
-            note: incomeLines.map((line) => `${line.label} ${line.amount.toFixed(2)}`).join(", "),
-            userId: session.user!.id!,
-          },
-          select: { id: true },
-        });
-        adjustmentId = adjustment.id;
-        await replaceCashBankSourceMovements(tx, CashBankSourceType.ADJUSTMENT, adjustment.id, [
-          {
-            accountId: holdingAccountId,
-            txnDate: docDate,
-            direction: CashBankDirection.IN,
-            amount: calculation.incomeAmount,
-            referenceNo: adjustNo as string,
-            note: `${config.label} income ${settlementNo}`,
-          },
-        ]);
-      }
-
-      const transfer = await tx.cashBankTransfer.create({
-        data: {
-          transferNo,
-          transferDate: docDate,
-          fromAccountId: holdingAccountId,
-          toAccountId: input.destinationAccountId,
-          amount: actualPayout,
-          note: `${config.label} payout ${input.payoutRef}`,
-          userId: session.user!.id!,
-        },
-        select: { id: true },
-      });
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.TRANSFER, transfer.id, [
-        {
-          accountId: holdingAccountId,
-          txnDate: docDate,
-          direction: CashBankDirection.OUT,
-          amount: actualPayout,
-          referenceNo: transferNo,
-          note: `${config.label} payout ${input.payoutRef}`,
-        },
-        {
-          accountId: input.destinationAccountId,
-          txnDate: docDate,
-          direction: CashBankDirection.IN,
-          amount: actualPayout,
-          referenceNo: transferNo,
-          note: `${config.label} payout ${input.payoutRef}`,
-        },
-      ]);
-
-      const created = await tx.marketplaceSettlement.create({
-        data: {
-          settlementNo,
-          channel,
-          payoutRef: input.payoutRef,
-          settlementDate: docDate,
-          channelSettingId: setting.id,
-          sourceAccountId: holdingAccountId,
-          destinationAccountId: input.destinationAccountId,
-          salesAmount: calculation.salesAmount,
-          returnAmount: calculation.returnAmount,
-          feeAmount: calculation.feeAmount,
-          incomeAmount: calculation.incomeAmount,
-          payoutAmount: actualPayout,
-          expenseId,
-          cashBankAdjustmentId: adjustmentId,
-          cashBankTransferId: transfer.id,
-          note: input.note || null,
-          userId: session.user!.id!,
-          lines: {
-            create: [
-              ...sales.map((sale) => ({
-                docType: MarketplaceSettlementDocType.SALE,
-                saleId: sale.id,
-                activeSaleId: sale.id,
-                docNo: sale.saleNo,
-                docDate: sale.saleDate,
-                amount: round2(Number(sale.netAmount)),
-              })),
-              ...creditNotes.map((creditNote) => ({
-                docType: MarketplaceSettlementDocType.CREDIT_NOTE,
-                creditNoteId: creditNote.id,
-                activeCreditNoteId: creditNote.id,
-                docNo: creditNote.cnNo,
-                docDate: creditNote.cnDate,
-                amount: round2(-Number(creditNote.totalAmount)),
-              })),
-            ],
-          },
-          fees: {
-            create: settlementFeeLines.map((line, index) => ({
-              lineNo: index + 1,
-              kind: line.kind,
-              feeCode: line.code,
-              label: line.label,
-              amount: round2(line.amount),
-            })),
-          },
-        },
-        select: { id: true },
-      });
-      createdSettlementId = created.id;
-
-      await rebuildMarketplaceSettlementProfitFacts(tx, created.id);
+      },
     });
 
     await safeWriteAuditLog({
@@ -588,6 +630,11 @@ export async function createMarketplaceSettlement(payload: unknown) {
     revalidatePath("/admin/cash-bank");
     return { success: true, settlementNo, payoutDifference };
   } catch (error) {
+    if (error instanceof MarketplaceSettlementDocumentsChangedError) return { error: error.message };
+    if (isUniqueViolationOnAny(error, SETTLEMENT_DOC_NUMBER_FIELDS)) {
+      console.error("[marketplace] SETTLEMENT_DOC_NUMBER_CONFLICT", error);
+      return { error: SETTLEMENT_DOC_NUMBER_CONFLICT_MESSAGE };
+    }
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       return { error: "เลขอ้างอิงการรับเงินนี้ถูกบันทึกแล้ว หรือมีเอกสารถูกกระทบยอดซ้ำ" };
     }

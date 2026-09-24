@@ -326,6 +326,22 @@ function buildStringRange(from: string, to: string,
   return { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
 }
 
+/**
+ * Warranty filter for the open-claims section. The product and customer code
+ * ranges are merged into ONE warranty object so both apply (AND); spreading them
+ * as two `warranty` keys let the customer range silently replace the product range.
+ */
+export function buildOpenClaimWarrantyWhere(
+  productCodeRange: { gte?: string; lte?: string } | undefined,
+  customerCodeRange: { gte?: string; lte?: string } | undefined,
+): Prisma.WarrantyWhereInput | undefined {
+  if (!productCodeRange && !customerCodeRange) return undefined;
+  return {
+    ...(productCodeRange ? { product: { code: productCodeRange } } : {}),
+    ...(customerCodeRange ? { sale: { customer: { code: customerCodeRange } } } : {}),
+  };
+}
+
 async function runQueryBatches(batches: Array<Array<Promise<unknown>>>) {
   const results: unknown[] = [];
 
@@ -910,14 +926,14 @@ export async function getReportsData(filters: ParsedReportFilters,
         },
         take: 100,
       });
+  const openClaimWarrantyWhere = buildOpenClaimWarrantyWhere(productCodeRange, customerCodeRange);
   const openClaimsPromise = db.warrantyClaim.findMany({
         where: {
           status: {
             in: [WarrantyClaimStatus.DRAFT, WarrantyClaimStatus.SENT_TO_SUPPLIER],
           },
           ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
-          ...(productCodeRange ? { warranty: { product: { code: productCodeRange } } } : {}),
-          ...(customerCodeRange ? { warranty: { sale: { customer: { code: customerCodeRange } } } } : {}),
+          ...(openClaimWarrantyWhere ? { warranty: openClaimWarrantyWhere } : {}),
         },
         orderBy: [{ claimDate: "desc" }, { claimNo: "desc" }],
         select: {

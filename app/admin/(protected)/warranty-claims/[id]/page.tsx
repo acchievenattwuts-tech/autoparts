@@ -17,6 +17,7 @@ import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
 import { formatDateThai } from "@/lib/th-date";
 import { getWarrantyClaimKind } from "@/lib/warranty-claim-policy";
+import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -72,7 +73,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
             product: { select: { code: true, name: true, isLotControl: true } },
             customerName: true,
             customer: { select: { name: true } },
-            sale: { select: { saleNo: true, customerName: true } },
+            sale: { select: { id: true, saleNo: true, customerName: true } },
           },
         },
         claimLots: {
@@ -251,7 +252,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
                 <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">ใบขาย</p>
                 {claim.warranty.sale ? (
                   <Link
-                    href={`/admin/sales/${claim.warranty.sale.saleNo}`}
+                    href={`/admin/sales/${claim.warranty.sale.id}`}
                     className="font-mono text-sm text-[#1e3a5f] hover:underline dark:text-sky-300"
                   >
                     {claim.warranty.sale.saleNo}
@@ -289,7 +290,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
               <div>
                 <p className="mb-0.5 text-xs text-gray-400 dark:text-slate-500">ประเภทเคลม</p>
                 <p className="font-medium text-gray-700 dark:text-slate-200">
-                  {claim.claimType === "REPLACE_NOW" ? "เปลี่ยนของให้ทันที" : "ลูกค้ารอเคลม"}
+                  {ADMIN_CLAIM_TYPE_LABEL[claim.claimType]}
                 </p>
               </div>
               <div>

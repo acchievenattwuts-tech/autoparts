@@ -1837,6 +1837,9 @@ export async function updateSale(
     return { success: true };
   } catch (err) {
     if (
+      // QuotationError also carries the in-transaction concurrent-edit and
+      // sale-status checks from prepareSaleQuotationReference.
+      err instanceof QuotationError ||
       err instanceof SaleLotValidationError ||
       err instanceof SaleClaimLockError ||
       err instanceof LotStockInsufficientError

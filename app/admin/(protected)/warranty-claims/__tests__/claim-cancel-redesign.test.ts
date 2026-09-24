@@ -282,7 +282,7 @@ test("sale claim cancel: stock reversed, cancelled PR detached, claim deleted, h
   assert.equal(lines[0], "old line kept", "existing history is never overwritten");
   assert.match(
     lines[1],
-    /^\d{2}\/\d{2}\/\d{4}.* • นวพล • คอมเพรสเซอร์แอร์ \(ชิ้นที่ 2, Lot L-01\) • ประเภท: ลูกค้ารอ • อาการ: ไม่เย็น • หมายเหตุ: ลูกค้าเปลี่ยนใจ$/,
+    /^\d{2}\/\d{2}\/\d{4}.* • นวพล • คอมเพรสเซอร์แอร์ \(ชิ้นที่ 2, Lot L-01\) • ประเภท: ลูกค้ารอเคลม • อาการ: ไม่เย็น • หมายเหตุ: ลูกค้าเปลี่ยนใจ$/,
   );
   assert.doesNotMatch(lines[1], /WC26090004/);
 

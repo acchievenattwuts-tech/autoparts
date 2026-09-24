@@ -155,3 +155,37 @@ test("a distributionNo collision reruns the whole unit of work with a fresh numb
   assert.deepEqual(seen, ["PD26090001", "PD26090002"]);
   assert.equal(result, "PD26090002");
 });
+
+test("withDocNumberRetry with several columns regenerates the whole number set on a collision in any of them", async () => {
+  let generation = 0;
+  const seen: string[] = [];
+  const result = await withDocNumberRetry({
+    uniqueField: ["settlementNo", "expenseNo", "transferNo", "adjustNo"],
+    generate: async () => {
+      generation += 1;
+      return { settlementNo: `SPS${generation}`, expenseNo: `OE${generation}` };
+    },
+    run: async (numbers) => {
+      seen.push(`${numbers.settlementNo}/${numbers.expenseNo}`);
+      if (seen.length === 1) throw adapterP2002(['"expenseNo"']);
+      if (seen.length === 2) throw adapterP2002(['"transferNo"']);
+      return numbers.settlementNo;
+    },
+  });
+  assert.deepEqual(seen, ["SPS1/OE1", "SPS2/OE2", "SPS3/OE3"]);
+  assert.equal(result, "SPS3");
+
+  let runs = 0;
+  await assert.rejects(
+    withDocNumberRetry({
+      uniqueField: ["settlementNo", "expenseNo"],
+      generate: async () => ({ settlementNo: "SPS1" }),
+      run: async () => {
+        runs += 1;
+        throw adapterP2002(['"channel"', '"payoutRef"']);
+      },
+    }),
+    (error) => isUniqueViolationOn(error, "payoutRef"),
+  );
+  assert.equal(runs, 1);
+});
