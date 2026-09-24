@@ -10,7 +10,8 @@ import {
   generateExpenseNo,
   generateMarketplaceSettlementNo,
 } from "@/lib/doc-number";
-import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
+import { isUniqueViolationOn, isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
+import { ensureExpenseCodesByName } from "@/lib/auto-expense-code";
 import {
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
@@ -204,79 +205,89 @@ async function requireSettlementPermissions(needsAdjustment: boolean) {
 /**
  * สร้าง/หา ExpenseCode ของค่าธรรมเนียมช่องทาง เพื่อให้รายงานค่าใช้จ่ายแยกประเภทได้
  * โดยผู้ใช้ไม่ต้องไปสร้างรหัสเองล่วงหน้า
+ *
+ * Runs OUTSIDE the settlement transaction (lib/auto-expense-code.ts): two first
+ * settlements at the same moment no longer collide on ExpenseCode.code inside it.
  */
 async function ensureFeeExpenseCodes(
-  tx: Prisma.TransactionClient,
   channel: ManualMarketplaceChannel,
   labels: string[],
 ): Promise<Map<string, string>> {
   const config = getMarketplaceChannelConfig(channel);
-  const names = [...new Set(labels)].map((label) => `${config.label} — ${label}`);
-  const existing = await tx.expenseCode.findMany({
-    where: { name: { in: names } },
-    select: { id: true, name: true },
-  });
-  const result = new Map(existing.map((item) => [item.name, item.id]));
-  if (result.size === names.length) return result;
-
-  const used = await tx.expenseCode.findMany({
-    where: { code: { startsWith: config.feeExpenseCodePrefix } },
-    select: { code: true },
-  });
-  let next =
-    used.reduce(
-      (max, item) => Math.max(max, Number(item.code.slice(config.feeExpenseCodePrefix.length)) || 0),
-      0,
-    ) + 1;
-
-  for (const name of names) {
-    if (result.has(name)) continue;
-    const created = await tx.expenseCode.create({
-      data: {
-        code: `${config.feeExpenseCodePrefix}${String(next).padStart(3, "0")}`,
-        name,
-        description: `ค่าธรรมเนียม ${config.label} จากการกระทบยอดแบบคีย์เอง`,
-      },
-      select: { id: true },
-    });
-    next += 1;
-    result.set(name, created.id);
-  }
-  return result;
+  const prefix = config.feeExpenseCodePrefix;
+  return ensureExpenseCodesByName(
+    [...new Set(labels)].map((label) => ({
+      name: `${config.label} — ${label}`,
+      description: `ค่าธรรมเนียม ${config.label} จากการกระทบยอดแบบคีย์เอง`,
+    })),
+    async (client, count) => {
+      const used = await client.expenseCode.findMany({
+        where: { code: { startsWith: prefix } },
+        select: { code: true },
+      });
+      const next =
+        used.reduce((max, item) => Math.max(max, Number(item.code.slice(prefix.length)) || 0), 0) + 1;
+      return Array.from({ length: count }, (_, index) => `${prefix}${String(next + index).padStart(3, "0")}`);
+    },
+  );
 }
 
 /**
  * คู่ค้าของค่าธรรมเนียม marketplace ใช้ชื่อช่องทางตามที่เจ้าของระบบกำหนด
  * และจงใจไม่เติมรหัส/เลขภาษี/ข้อมูลติดต่อที่ยังไม่ได้รับการยืนยัน
+ *
+ * Runs OUTSIDE the settlement transaction. The Supplier and its audit row are
+ * created in their own short transaction; when a concurrent first settlement
+ * created the same Supplier first (P2002 on Supplier.name), its row is re-read
+ * and reused instead of failing the settlement.
  */
 async function ensureMarketplaceSupplier(
-  tx: Prisma.TransactionClient,
   channel: ManualMarketplaceChannel,
   userId: string,
 ): Promise<string> {
   const name = getMarketplaceChannelConfig(channel).label;
-  const existing = await tx.supplier.findUnique({
-    where: { name },
-    select: { id: true },
-  });
-  if (existing) return existing.id;
+  const findSupplierId = async (): Promise<string | null> =>
+    (await db.supplier.findUnique({ where: { name }, select: { id: true } }))?.id ?? null;
 
-  const created = await tx.supplier.create({
-    data: { name },
-    select: { id: true },
-  });
-  await tx.auditLog.create({
-    data: {
-      userId,
-      action: AuditAction.CREATE,
-      entityType: "Supplier",
-      entityId: created.id,
-      entityRef: name,
-      after: { name },
-      meta: { source: "MARKETPLACE_SETTLEMENT" },
-    },
-  });
-  return created.id;
+  const existingId = await findSupplierId();
+  if (existingId) return existingId;
+
+  try {
+    return await dbTx(async (tx) => {
+      const created = await tx.supplier.create({
+        data: { name },
+        select: { id: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId,
+          action: AuditAction.CREATE,
+          entityType: "Supplier",
+          entityId: created.id,
+          entityRef: name,
+          after: { name },
+          meta: { source: "MARKETPLACE_SETTLEMENT" },
+        },
+      });
+      return created.id;
+    });
+  } catch (error) {
+    if (!isUniqueViolationOn(error, "name")) throw error;
+    const winnerId = await findSupplierId();
+    if (!winnerId) throw error;
+    return winnerId;
+  }
+}
+
+/** Supplier + fee ExpenseCodes a fee Expense needs; created on first use, outside the settlement transaction. */
+async function ensureSettlementFeeMasterRows(
+  channel: ManualMarketplaceChannel,
+  feeLabels: string[],
+  userId: string,
+): Promise<{ supplierId: string; codeIds: Map<string, string> }> {
+  const supplierId = await ensureMarketplaceSupplier(channel, userId);
+  const codeIds = await ensureFeeExpenseCodes(channel, feeLabels);
+  return { supplierId, codeIds };
 }
 
 /**
@@ -387,6 +398,23 @@ export async function createMarketplaceSettlement(payload: unknown) {
   const deductionLines = settlementFeeLines.filter((line) => line.amount < 0);
   const incomeLines = settlementFeeLines.filter((line) => line.amount > 0);
 
+  // The Supplier / fee ExpenseCodes the fee Expense references are found or created
+  // BEFORE the settlement transaction, so a concurrent first settlement can no longer
+  // abort it with a P2002 on Supplier.name / ExpenseCode.code. Set iff there is a fee.
+  let feeMasterRows: { supplierId: string; codeIds: Map<string, string> } | null = null;
+  if (calculation.feeAmount > 0) {
+    try {
+      feeMasterRows = await ensureSettlementFeeMasterRows(
+        channel,
+        deductionLines.map((line) => line.label),
+        session.user!.id!,
+      );
+    } catch (error) {
+      console.error("[marketplace] SETTLEMENT_MASTER_ROWS_FAILED", error);
+      return { error: "บันทึกการกระทบยอดไม่สำเร็จ" };
+    }
+  }
+
   try {
     let createdSettlementId = "";
     let settlementNo = "";
@@ -418,13 +446,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
           if (!destination) throw new Error("DESTINATION_NOT_FOUND");
 
           let expenseId: string | null = null;
-          if (calculation.feeAmount > 0) {
-            const supplierId = await ensureMarketplaceSupplier(tx, channel, session.user!.id!);
-            const codeIds = await ensureFeeExpenseCodes(
-              tx,
-              channel,
-              deductionLines.map((line) => line.label),
-            );
+          if (feeMasterRows) {
+            const { supplierId, codeIds } = feeMasterRows;
             const expense = await tx.expense.create({
               data: {
                 expenseNo: expenseNo as string,

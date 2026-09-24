@@ -48,3 +48,12 @@ test("admin warranty list: cancelled rows get a badge/filter and no claim or can
   assert.match(source, /canCancel && w\.createdVia === "MANUAL" && w\.wStatus !== "cancelled"/);
   assert.match(source, /<Ban size=\{11\} \/> ยกเลิก/);
 });
+
+test("admin warranty list: the cancel dialog wording follows isOnSiteWarranty (on-site = kept as cancelled, sale-linked = deleted)", () => {
+  const page = read("app/admin/(protected)/warranties/page.tsx");
+  assert.match(page, /saleId: true,/);
+  assert.match(page, /onSite=\{isOnSiteWarranty\(w\)\}/);
+  const button = read("app/admin/(protected)/warranties/CancelWarrantyButton.tsx");
+  assert.match(button, /onSite \? \(/);
+  assert.match(button, /ลบออกจากระบบ/);
+});

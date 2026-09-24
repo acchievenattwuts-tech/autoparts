@@ -8,8 +8,8 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
-import { lockWarrantyRow } from "@/lib/warranty-claim-locks";
-import { WARRANTY_CANCEL_NOTE_MAX_LENGTH } from "@/lib/warranty-claim-policy";
+import { lockSaleRowForClaim, lockWarrantyRow } from "@/lib/warranty-claim-locks";
+import { isOnSiteWarranty, WARRANTY_CANCEL_NOTE_MAX_LENGTH } from "@/lib/warranty-claim-policy";
 import {
   addThailandDays,
   parseDateOnlyToStartOfDay,
@@ -75,14 +75,12 @@ export async function createWarranty(
 
   try {
     if (d.mode === "WITH_SALE") {
+      // A cancelled sale-linked warranty is deleted (see cancelWarranty), so the line
+      // can get a warranty again; only a live one blocks.
       const existing = await db.warranty.findFirst({
         where: { saleItemId: d.saleItemId, unitSeq: 1 },
-        select: { status: true },
+        select: { id: true },
       });
-      if (existing?.status === "CANCELLED") {
-        // Cancelled warranties are kept (not deleted), and [saleItemId, unitSeq] is unique.
-        return { error: "รายการสินค้านี้เคยบันทึกประกันและถูกยกเลิกไปแล้ว ไม่สามารถบันทึกซ้ำได้" };
-      }
       if (existing) return { error: "รายการสินค้านี้มีการบันทึกประกันไปแล้ว" };
 
       const saleItem = await db.saleItem.findUnique({
@@ -254,8 +252,8 @@ export async function cancelWarranty(
         lotNo: true,
         note: true,
         claims: {
-          where: { status: { not: "CANCELLED" } },
-          select: { id: true, claimNo: true },
+          orderBy: { claimNo: "asc" },
+          select: { claimNo: true, status: true },
         },
       },
     });
@@ -270,27 +268,21 @@ export async function cancelWarranty(
       };
     }
 
-    if (warranty.claims.length > 0) {
-      return { error: buildWarrantyOpenClaimsError(warranty.claims.map((c) => c.claimNo)) };
+    const onSite = isOnSiteWarranty(warranty);
+    const blockingClaimNos = warranty.claims
+      .filter((claim) => !onSite || claim.status !== "CANCELLED")
+      .map((claim) => claim.claimNo);
+    if (blockingClaimNos.length > 0) {
+      return { error: buildWarrantyOpenClaimsError(blockingClaimNos) };
     }
 
-    // Cancelled in place (never deleted): its cancelled claims keep pointing at it.
-    // Re-checked under a row lock so a claim opened meanwhile still blocks the cancel.
     const cancelledAt = new Date();
-    const blockedBy = await dbTx(async (tx) => {
-      await lockWarrantyRow(tx, warrantyId);
-      const openClaims = await tx.warrantyClaim.findMany({
-        where: { warrantyId, status: { not: "CANCELLED" } },
-        select: { claimNo: true },
-      });
-      if (openClaims.length > 0) return openClaims.map((c) => c.claimNo);
-      await tx.warranty.update({
-        where: { id: warrantyId },
-        data: { status: "CANCELLED", cancelledAt, cancelNote },
-      });
-      return null;
-    });
-    if (blockedBy) return { error: buildWarrantyOpenClaimsError(blockedBy) };
+    const saleLinkedSaleId = onSite ? null : warranty.saleId;
+    const txResult = saleLinkedSaleId
+      ? await deleteSaleLinkedWarranty(warrantyId, saleLinkedSaleId)
+      : await cancelOnSiteWarrantyInPlace(warrantyId, cancelledAt, cancelNote);
+    if (txResult.missing) return { error: "ไม่พบรายการประกัน" };
+    if (txResult.blockedBy) return { error: buildWarrantyOpenClaimsError(txResult.blockedBy) };
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -317,16 +309,71 @@ export async function cancelWarranty(
         note: warranty.note,
         status: warranty.status,
       },
-      after: { status: "CANCELLED", cancelledAt, cancelNote },
-      meta: { cancelNote },
+      // Sale-linked: the row is deleted, so this entry is its only remaining record.
+      after: saleLinkedSaleId ? { deleted: true, cancelNote } : { status: "CANCELLED", cancelledAt, cancelNote },
+      meta: saleLinkedSaleId ? { cancelNote, deleted: true } : { cancelNote },
     });
 
     revalidatePath("/admin/warranties");
+    if (saleLinkedSaleId) revalidatePath(`/admin/sales/${saleLinkedSaleId}`);
     return { success: true };
   } catch (err) {
     console.error("[cancelWarranty]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
+}
+
+type WarrantyCancelTxResult = { blockedBy?: string[]; missing?: boolean };
+
+/**
+ * On-site warranty (no sale): cancelled in place, never deleted — its cancelled
+ * claims keep pointing at it. Re-checked under a row lock so a claim opened
+ * meanwhile still blocks the cancel.
+ */
+async function cancelOnSiteWarrantyInPlace(
+  warrantyId: string,
+  cancelledAt: Date,
+  cancelNote: string | null,
+): Promise<WarrantyCancelTxResult> {
+  return dbTx(async (tx) => {
+    await lockWarrantyRow(tx, warrantyId);
+    const openClaims = await tx.warrantyClaim.findMany({
+      where: { warrantyId, status: { not: "CANCELLED" } },
+      select: { claimNo: true },
+    });
+    if (openClaims.length > 0) return { blockedBy: openClaims.map((c) => c.claimNo) };
+    await tx.warranty.update({
+      where: { id: warrantyId },
+      data: { status: "CANCELLED", cancelledAt, cancelNote },
+    });
+    return {};
+  });
+}
+
+/**
+ * Manual warranty added to a sale line: behaves like a sale warranty — any claim
+ * blocks (cancelled sale claims are deleted, so none is ever left behind), otherwise
+ * the row is DELETED so the line can get a warranty again. Locks Sale → Warranty,
+ * the order createClaim and the sale flows use, then re-checks under the locks.
+ */
+async function deleteSaleLinkedWarranty(
+  warrantyId: string,
+  saleId: string,
+): Promise<WarrantyCancelTxResult> {
+  return dbTx(async (tx) => {
+    await lockSaleRowForClaim(tx, saleId);
+    await lockWarrantyRow(tx, warrantyId);
+    const current = await tx.warranty.findUnique({ where: { id: warrantyId }, select: { id: true } });
+    if (!current) return { missing: true };
+    const claims = await tx.warrantyClaim.findMany({
+      where: { warrantyId },
+      orderBy: { claimNo: "asc" },
+      select: { claimNo: true },
+    });
+    if (claims.length > 0) return { blockedBy: claims.map((c) => c.claimNo) };
+    await tx.warranty.delete({ where: { id: warrantyId } });
+    return {};
+  });
 }
 
 export async function getSaleItems(saleId: string) {

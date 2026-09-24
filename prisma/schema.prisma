@@ -1802,7 +1802,7 @@ model Warranty {
   unitSeq      Int                    @default(1)
   lotNo        String?
   createdVia   WarrantyCreationSource @default(AUTO_FROM_SALE)
-  /// Only MANUAL (on-site) warranties are ever cancelled; AUTO_FROM_SALE rows stay ACTIVE.
+  /// Only on-site warranties (MANUAL, no sale) are ever cancelled; sale-linked rows are deleted instead.
   status       WarrantyStatus         @default(ACTIVE)
   cancelledAt  DateTime?              @db.Timestamptz(3)
   cancelNote   String?

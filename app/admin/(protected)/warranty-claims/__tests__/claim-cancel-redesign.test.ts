@@ -386,3 +386,70 @@ test("a warranty cancelled between the pre-check and the transaction is still re
     fakeDb.warranty.findUnique = original;
   }
 });
+
+// A MANUAL warranty added to a sale line ("อ้างอิงใบขาย") behaves exactly like a sale
+// warranty; only a MANUAL warranty with no sale is the on-site special case.
+const manualSaleWarranty = (): WarrantyRow => ({
+  id: "w-msale", status: "ACTIVE", createdVia: "MANUAL", saleId: "sale-1", productId: "prod-1", unitSeq: 1, lotNo: null, endDate: FAR_FUTURE, product,
+});
+
+test("a claim on a manual WITH_SALE warranty uses the WC series under the Sale → Warranty locks", { skip: moduleMocksUnavailable }, async () => {
+  warranties.push(manualSaleWarranty());
+  const { createClaim } = await import("../actions");
+
+  const result = await createClaim(createForm("w-msale"));
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.claimNo, "WC26090005", "continues the WC series, not WCM");
+  assert.deepEqual(calls.slice(0, 2), ["lock:Sale:sale-1", "lock:Warranty:w-msale"]);
+});
+
+test("cancelling a claim on a manual WITH_SALE warranty deletes it, appends the sale history line and audit, and the warranty can be claimed again", { skip: moduleMocksUnavailable }, async () => {
+  warranties.push(manualSaleWarranty());
+  claims.push({ id: "c-msale", claimNo: "WC26090005", warrantyId: "w-msale", status: "DRAFT", claimType: "CUSTOMER_WAIT", symptom: "มีเสียงดัง", supplierName: null });
+  purchaseReturns = [{ id: "pr-old", returnNo: "PR26090003", claimId: "c-msale", status: "CANCELLED" }];
+  const { cancelClaimAction, createClaim } = await import("../actions");
+
+  const result = await cancelClaimAction(cancelForm("c-msale", "คีย์ผิดรายการ"));
+
+  assert.deepEqual(result, { success: true, deleted: true });
+  assert.equal(claims.some((c) => c.id === "c-msale"), false, "claim row deleted, not kept as CANCELLED");
+  assert.equal(purchaseReturns[0].claimId, null, "cancelled purchase return detached");
+  assert.equal(calls[0], "lock:Sale:sale-1");
+  assert.ok(calls.includes("warrantyClaim.delete:c-msale"));
+  assert.equal(calls.some((call) => call.startsWith("warrantyClaim.update")), false);
+
+  const lines = (sale.claimCancelNotes ?? "").split("\n");
+  assert.equal(lines[0], "old line kept");
+  assert.match(
+    lines[1],
+    / • นวพล • คอมเพรสเซอร์แอร์ \(ชิ้นที่ 1\) • ประเภท: ลูกค้ารอเคลม • อาการ: มีเสียงดัง • หมายเหตุ: คีย์ผิดรายการ$/,
+  );
+  assert.equal(txAudits.length, 1);
+  assert.equal(txAudits[0].entityType, "Sale");
+  assert.equal(txAudits[0].entityId, "sale-1");
+  const meta = txAudits[0].meta as Record<string, unknown>;
+  assert.equal(meta.event, "WARRANTY_CLAIM_DELETED");
+  assert.equal(meta.warrantyId, "w-msale");
+  assert.equal(meta.cancelNote, "คีย์ผิดรายการ");
+  assert.equal(safeAudits.some((audit) => audit.entityType === "WarrantyClaim"), false);
+
+  const reopened = await createClaim(createForm("w-msale"));
+  assert.equal(reopened.error, undefined);
+  assert.equal(reopened.claimNo, "WC26090005", "the deleted WC number is reused, like any sale claim");
+  assert.deepEqual(criticalReports, []);
+});
+
+test("an on-site warranty (MANUAL, no sale) still gets WCM claims kept as CANCELLED", { skip: moduleMocksUnavailable }, async () => {
+  const { createClaim, cancelClaimAction } = await import("../actions");
+  claims = claims.filter((c) => c.id !== "c-site");
+
+  const created = await createClaim(createForm("w-site"));
+  assert.equal(created.claimNo, "WCM26090001");
+  assert.equal(calls.some((call) => call.startsWith("lock:Sale:")), false, "no sale to lock");
+
+  const cancelled = await cancelClaimAction(cancelForm(claims.find((c) => c.claimNo === "WCM26090001")?.id ?? "", "ลูกค้ายกเลิก"));
+  assert.deepEqual(cancelled, { success: true, deleted: false });
+  assert.equal(claims.find((c) => c.claimNo === "WCM26090001")?.status, "CANCELLED");
+  assert.equal(sale.claimCancelNotes, "old line kept");
+});

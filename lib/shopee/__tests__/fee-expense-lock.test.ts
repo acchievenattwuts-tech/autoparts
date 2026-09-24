@@ -46,13 +46,6 @@ const fakeTx: FakeTx = {
       return {};
     },
   },
-  expenseCode: {
-    findMany: async () => [
-      { id: "code-c", code: "E0001", name: "Shopee commission fee" },
-      { id: "code-s", code: "E0002", name: "Shopee service fee" },
-    ],
-    create: async () => ({ id: "code-new" }),
-  },
   expense: {
     create: async (args: unknown) => {
       const { data } = args as { data: { totalAmount: { toString(): string } } };
@@ -103,6 +96,13 @@ before(async () => {
             record("db.shopeeOrderImport.update");
             return {};
           },
+        },
+        // Fee ExpenseCodes are read before the transaction (lib/auto-expense-code.ts); both exist.
+        expenseCode: {
+          findMany: async () => [
+            { id: "code-c", name: "Shopee commission fee" },
+            { id: "code-s", name: "Shopee service fee" },
+          ],
         },
       },
       dbTx: async (fn: (tx: FakeTx) => Promise<unknown>) => fn(fakeTx),

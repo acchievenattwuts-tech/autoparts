@@ -11,6 +11,7 @@ import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import CancelWarrantyButton from "./CancelWarrantyButton";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { isOnSiteWarranty } from "@/lib/warranty-claim-policy";
 import {
   addThailandDays,
   formatDateThai,
@@ -103,6 +104,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         endDate: true,
         note: true,
         unitSeq: true,
+        saleId: true,
         saleItemId: true,
         customerName: true,
         createdVia: true,
@@ -367,6 +369,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                             <CancelWarrantyButton
                               warrantyId={w.id}
                               warrantyLabel={`${w.product.name} (${w.product.code})`}
+                              onSite={isOnSiteWarranty(w)}
                             />
                           )}
                         </div>

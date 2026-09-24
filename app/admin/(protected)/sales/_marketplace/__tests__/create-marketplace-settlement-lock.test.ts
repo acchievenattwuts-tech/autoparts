@@ -30,6 +30,17 @@ let settlementCreateError: Error | null = null;
 let expenseCreateErrors: Error[] = [];
 /** Per-prefix counters so each regeneration returns a fresh number. */
 let docNumberSeq: Record<string, number> = {};
+// ── Auto-created master rows (read / created before the settlement transaction) ──
+/** Successive db.supplier.findUnique results; the default is an existing Supplier. */
+let dbSupplierReads: ({ id: string } | null)[] = [];
+/** When false, db.expenseCode.findMany finds none of the requested names. */
+let dbExpenseCodesExist = true;
+/** Successive by-name reads inside the short ExpenseCode transaction. */
+let txExpenseCodeReads: { id: string; name: string }[][] = [];
+let usedFeeCodes: string[] = [];
+let supplierCreateErrors: Error[] = [];
+let expenseCodeCreateErrors: Error[] = [];
+let lastExpenseData: unknown = null;
 
 const nextDocNo = (prefix: string): string => {
   docNumberSeq[prefix] = (docNumberSeq[prefix] ?? 0) + 1;
@@ -77,17 +88,43 @@ const fakeTx: FakeTx = {
     },
   },
   cashBankAccount: { findFirst: writeRecorder("cashBankAccount.findFirst", { id: "bank-1" }) },
-  supplier: { findUnique: writeRecorder("supplier.findUnique", { id: "sup-1" }) },
+  // Used only by the short master-row transactions that run before the settlement one.
+  $executeRaw: async (query: unknown) => {
+    const { sql, values } = query as { sql: string; values: unknown[] };
+    record(`${/pg_advisory_xact_lock/.test(sql) ? "advisoryLock" : "exec"}:${values.join(",")}`);
+    return 1;
+  },
+  supplier: {
+    create: async () => {
+      record("tx.supplier.create");
+      const error = supplierCreateErrors.shift();
+      if (error) throw error;
+      return { id: "sup-new" };
+    },
+  },
+  auditLog: { create: writeRecorder("tx.auditLog.create") },
   expenseCode: {
     findMany: async (args: unknown) => {
-      const { where } = args as { where: { name: { in: string[] } } };
-      record("expenseCode.findMany");
-      return where.name.in.map((name) => ({ id: `code:${name}`, name }));
+      const { where } = args as { where: { name?: { in: string[] }; code?: { startsWith: string } } };
+      if (where.name) {
+        record("tx.expenseCode.findMany:name");
+        return (txExpenseCodeReads.shift() ?? []).filter((row) => where.name?.in.includes(row.name));
+      }
+      record(`tx.expenseCode.findMany:code:${where.code?.startsWith}`);
+      return usedFeeCodes.map((code) => ({ code }));
+    },
+    create: async (args: unknown) => {
+      const { data } = args as { data: { code: string; name: string; description: string } };
+      record(`tx.expenseCode.create:${data.code}:${data.name}:${data.description}`);
+      const error = expenseCodeCreateErrors.shift();
+      if (error) throw error;
+      return { id: `new:${data.code}` };
     },
   },
   expense: {
     create: async (args: unknown) => {
       const { data } = args as { data: { expenseNo: string } };
+      lastExpenseData = data;
       record(`expense.create:${data.expenseNo}`);
       const error = expenseCreateErrors.shift();
       if (error) throw error;
@@ -163,6 +200,19 @@ before(async () => {
         },
         sale: { findMany: async () => SALES_PRE_READ.map((sale) => ({ ...sale })) },
         creditNote: { findMany: async () => CREDIT_NOTES_PRE_READ.map((cn) => ({ ...cn })) },
+        supplier: {
+          findUnique: async () => {
+            record("db.supplier.findUnique");
+            return dbSupplierReads.length > 0 ? dbSupplierReads.shift() : { id: "sup-1" };
+          },
+        },
+        expenseCode: {
+          findMany: async (args: unknown) => {
+            const { where } = args as { where: { name: { in: string[] } } };
+            record("db.expenseCode.findMany");
+            return dbExpenseCodesExist ? where.name.in.map((name) => ({ id: `code:${name}`, name })) : [];
+          },
+        },
       },
       dbTx: async (fn: (tx: FakeTx) => Promise<unknown>) => fn(fakeTx),
     },
@@ -204,6 +254,13 @@ beforeEach(() => {
   settlementCreateError = null;
   expenseCreateErrors = [];
   docNumberSeq = {};
+  dbSupplierReads = [];
+  dbExpenseCodesExist = true;
+  txExpenseCodeReads = [];
+  usedFeeCodes = [];
+  supplierCreateErrors = [];
+  expenseCodeCreateErrors = [];
+  lastExpenseData = null;
 });
 
 test("locks CreditNote then Sale rows (sorted ids) before any write, then creates the settlement", async () => {
@@ -315,11 +372,12 @@ const payloadWithFee = () => ({
   lines: [{ code: "COMMISSION", label: "Commission", kind: "FEE", amount: 50 }],
 });
 
+/** Existing Supplier and fee ExpenseCode: read once, before the settlement transaction. */
+const FEE_MASTER_ROWS_READ = ["db.supplier.findUnique", "db.expenseCode.findMany"];
+
 const FEE_ATTEMPT_UNTIL_EXPENSE = (expenseNo: string) => [
   ...LOCK_TRACE,
   "cashBankAccount.findFirst",
-  "supplier.findUnique",
-  "expenseCode.findMany",
   `expense.create:${expenseNo}`,
 ];
 
@@ -329,6 +387,7 @@ test("an expenseNo collision re-runs the whole transaction, locks included, with
   // The whole number set is regenerated for the second attempt.
   assert.deepEqual(result, { success: true, settlementNo: "SPS26090002", payoutDifference: 0 });
   assert.deepEqual(callLog, [
+    ...FEE_MASTER_ROWS_READ,
     ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090001"),
     ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090002"),
     "cashBank.replace:EXPENSE",
@@ -387,4 +446,115 @@ test("business uniques ([channel, payoutRef], activeSaleId, activeCreditNoteId) 
     assert.deepEqual(result, { error: BUSINESS_DUPLICATE_MESSAGE }, fields.join(","));
     assert.equal(callLog.filter((entry) => entry === "marketplaceSettlement.create").length, 1, fields.join(","));
   }
+});
+
+// ── Auto-created master rows on first concurrent use ─────────────────────────
+// The Supplier and fee ExpenseCodes a fee Expense references are found or created
+// BEFORE the settlement transaction. A concurrent first settlement that created the
+// same row first (P2002 on Supplier.name / ExpenseCode.code) is re-read and reused,
+// so the settlement neither fails with the duplicate-payout message nor is aborted.
+
+const FEE_CODE_NAME = "Shopee — Commission";
+const FEE_CODE_DESCRIPTION = "ค่าธรรมเนียม Shopee จากการกระทบยอดแบบคีย์เอง";
+const FEE_SETTLEMENT_TAIL = [
+  "cashBank.replace:EXPENSE",
+  "cashBankTransfer.create",
+  "cashBank.replace:TRANSFER",
+  "marketplaceSettlement.create",
+  "profitFacts.rebuild:set-1",
+];
+
+type CreatedExpenseData = {
+  supplierId: string;
+  items: { create: { expenseCodeId: string }[] };
+};
+
+test("first use creates the Supplier with its audit row before the settlement transaction", async () => {
+  dbSupplierReads = [null];
+  const result = await actions.createMarketplaceSettlement(payloadWithFee());
+  assert.deepEqual(result, { success: true, settlementNo: "SPS26090001", payoutDifference: 0 });
+  assert.deepEqual(callLog, [
+    "db.supplier.findUnique",
+    "tx.supplier.create",
+    "tx.auditLog.create",
+    "db.expenseCode.findMany",
+    ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090001"),
+    ...FEE_SETTLEMENT_TAIL,
+  ]);
+  assert.equal((lastExpenseData as CreatedExpenseData).supplierId, "sup-new");
+});
+
+test("a P2002 on Supplier.name from a concurrent first settlement re-reads and reuses its Supplier", async () => {
+  dbSupplierReads = [null, { id: "sup-winner" }];
+  supplierCreateErrors = [adapterP2002(['"name"'])];
+  const result = await actions.createMarketplaceSettlement(payloadWithFee());
+  assert.deepEqual(result, { success: true, settlementNo: "SPS26090001", payoutDifference: 0 });
+  assert.deepEqual(callLog, [
+    "db.supplier.findUnique",
+    "tx.supplier.create",
+    "db.supplier.findUnique",
+    "db.expenseCode.findMany",
+    ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090001"),
+    ...FEE_SETTLEMENT_TAIL,
+  ]);
+  assert.equal((lastExpenseData as CreatedExpenseData).supplierId, "sup-winner");
+  assert.equal(consoleErrors, 0);
+});
+
+test("first use creates the fee ExpenseCode with the same code / name / description as before", async () => {
+  dbExpenseCodesExist = false;
+  txExpenseCodeReads = [[]];
+  usedFeeCodes = ["SHP001", "SHP007"];
+  const result = await actions.createMarketplaceSettlement(payloadWithFee());
+  assert.deepEqual(result, { success: true, settlementNo: "SPS26090001", payoutDifference: 0 });
+  assert.deepEqual(callLog, [
+    "db.supplier.findUnique",
+    "db.expenseCode.findMany",
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    "tx.expenseCode.findMany:code:SHP",
+    `tx.expenseCode.create:SHP008:${FEE_CODE_NAME}:${FEE_CODE_DESCRIPTION}`,
+    ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090001"),
+    ...FEE_SETTLEMENT_TAIL,
+  ]);
+  assert.deepEqual(
+    (lastExpenseData as CreatedExpenseData).items.create.map((item) => item.expenseCodeId),
+    ["new:SHP008"],
+  );
+});
+
+test("a P2002 on ExpenseCode.code from a concurrent first settlement re-reads and reuses its code", async () => {
+  dbExpenseCodesExist = false;
+  // The concurrent settlement committed the code between our by-name read and our insert.
+  txExpenseCodeReads = [[], [{ id: "code-winner", name: FEE_CODE_NAME }]];
+  expenseCodeCreateErrors = [adapterP2002(['"code"'])];
+  const result = await actions.createMarketplaceSettlement(payloadWithFee());
+  assert.deepEqual(result, { success: true, settlementNo: "SPS26090001", payoutDifference: 0 });
+  assert.deepEqual(callLog, [
+    "db.supplier.findUnique",
+    "db.expenseCode.findMany",
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    "tx.expenseCode.findMany:code:SHP",
+    `tx.expenseCode.create:SHP001:${FEE_CODE_NAME}:${FEE_CODE_DESCRIPTION}`,
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    ...FEE_ATTEMPT_UNTIL_EXPENSE("OE26090001"),
+    ...FEE_SETTLEMENT_TAIL,
+  ]);
+  assert.deepEqual(
+    (lastExpenseData as CreatedExpenseData).items.create.map((item) => item.expenseCodeId),
+    ["code-winner"],
+  );
+  assert.equal(consoleErrors, 0);
+});
+
+test("when every ExpenseCode attempt collides, the settlement is not started and the generic message is returned", async () => {
+  dbExpenseCodesExist = false;
+  expenseCodeCreateErrors = [adapterP2002(['"code"']), adapterP2002(['"code"']), adapterP2002(['"code"'])];
+  const result = await actions.createMarketplaceSettlement(payloadWithFee());
+  assert.deepEqual(result, { error: "บันทึกการกระทบยอดไม่สำเร็จ" });
+  assert.equal(callLog.filter((entry) => entry.startsWith("tx.expenseCode.create:")).length, 3);
+  assert.ok(!callLog.includes("lock:CreditNote:cn-a"), "the settlement transaction never ran");
+  assert.equal(consoleErrors, 1);
 });

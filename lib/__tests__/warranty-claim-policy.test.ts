@@ -7,14 +7,21 @@ import {
   CLAIM_CANCEL_NOTE_REQUIRED_ERROR,
   CLAIM_CANCEL_NOTE_TOO_LONG_ERROR,
   getWarrantyClaimKind,
+  isOnSiteWarranty,
   normalizeClaimCancelNote,
   parseSaleClaimCancelNotes,
 } from "@/lib/warranty-claim-policy";
 
-test("claim kind follows the warranty: sale-created → SALE, on-site (manual) → ONSITE", () => {
+test("only a MANUAL warranty with no sale is on-site; a manual warranty added to a sale line is not", () => {
+  assert.equal(isOnSiteWarranty({ createdVia: "MANUAL", saleId: null }), true);
+  assert.equal(isOnSiteWarranty({ createdVia: "MANUAL", saleId: "sale-1" }), false);
+  assert.equal(isOnSiteWarranty({ createdVia: "AUTO_FROM_SALE", saleId: "sale-1" }), false);
+});
+
+test("claim kind follows the warranty: sale-linked (auto or manual WITH_SALE) → SALE, on-site (no sale) → ONSITE", () => {
   assert.equal(getWarrantyClaimKind({ createdVia: "AUTO_FROM_SALE", saleId: "sale-1" }), "SALE");
+  assert.equal(getWarrantyClaimKind({ createdVia: "MANUAL", saleId: "sale-1" }), "SALE");
   assert.equal(getWarrantyClaimKind({ createdVia: "MANUAL", saleId: null }), "ONSITE");
-  assert.equal(getWarrantyClaimKind({ createdVia: "MANUAL", saleId: "sale-1" }), "ONSITE");
 });
 
 test("the cancel note is required, trimmed and at most 500 characters", () => {

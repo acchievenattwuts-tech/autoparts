@@ -193,3 +193,118 @@ test(
     assert.deepEqual(txCalls, []);
   },
 );
+
+// ── In-transaction guard re-check (after the Sale row lock) ──────────────────
+// A receipt / credit note created after the pre-check is caught by the guard
+// re-run inside the transaction. The user gets the same guard message as the
+// pre-check, with the blocking document numbers, and no critical alert is raised.
+
+const updateForm = () => {
+  const formData = new FormData();
+  formData.set("saleDate", "2026-09-20");
+  formData.set("customerId", "cust-1");
+  formData.set("paymentType", "CREDIT_SALE");
+  formData.set(
+    "items",
+    JSON.stringify([{ productId: "prod-1", unitName: "ชิ้น", qty: 1, salePrice: 100 }]),
+  );
+  return formData;
+};
+
+const existingSaleForUpdate = () => ({
+  ...activeSale,
+  channel: "STORE",
+  customerId: "cust-1",
+  saleDate: new Date("2026-09-20T00:00:00.000+07:00"),
+  user: null,
+  items: [],
+});
+
+/** Transaction writes that must never run once the in-transaction guard blocks. */
+const WRITE_METHODS = /\.(create|createMany|update|updateMany|delete|deleteMany|upsert)$/;
+
+test(
+  "cancelSale returns the guard message with the receipt number when a receipt appears after the pre-check",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    txOverrides.receiptItem = {
+      findMany: async () => [{ receipt: { id: "rc-1", receiptNo: "RC26090001" } }],
+    };
+    const { cancelSale } = await import("../actions");
+
+    const result = await cancelSale(cancelForm());
+
+    assert.deepEqual(result, {
+      error: "ไม่สามารถดำเนินการได้ เนื่องจากถูกนำไปใช้ที่เอกสารปลายทาง: RC26090001",
+    });
+    assert.deepEqual(criticalReports, [], "a user condition raises no critical alert");
+    assert.deepEqual(
+      txCalls.filter((call) => WRITE_METHODS.test(call.method)).map((call) => call.method),
+      [],
+      "nothing is written after the guard blocks",
+    );
+  },
+);
+
+test(
+  "updateSale returns the guard message with the credit note number when a credit note appears after the pre-check",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    dbOverrides.sale = { findUnique: async () => existingSaleForUpdate() };
+    txOverrides.creditNote = {
+      findMany: async () => [{ id: "cn-1", cnNo: "CN26090001" }],
+    };
+    const consoleError = mock.method(console, "error", () => undefined);
+    const { updateSale } = await import("../actions");
+
+    try {
+      const result = await updateSale("sale1", updateForm());
+
+      assert.deepEqual(result, {
+        error: "ไม่สามารถดำเนินการได้ เนื่องจากถูกนำไปใช้ที่เอกสารปลายทาง: CN26090001",
+      });
+      assert.equal(consoleError.mock.callCount(), 0, "handled as a user condition, not logged as a failure");
+      assert.deepEqual(criticalReports, []);
+      assert.deepEqual(
+        txCalls.filter((call) => WRITE_METHODS.test(call.method)).map((call) => call.method),
+        [],
+      );
+    } finally {
+      consoleError.mock.restore();
+    }
+  },
+);
+
+test(
+  "updateSale returns the Thai missing-unit message instead of the generic error",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    dbOverrides.sale = { findUnique: async () => existingSaleForUpdate() };
+    txOverrides.product = {
+      findMany: async () => [
+        {
+          id: "prod-1",
+          avgCost: 50,
+          costPrice: 50,
+          salePrice: 100,
+          retailPrice: 100,
+          memberPrice: 100,
+          inventoryTracking: "TRACKED",
+          isLotControl: false,
+        },
+      ],
+    };
+    const consoleError = mock.method(console, "error", () => undefined);
+    const { updateSale } = await import("../actions");
+
+    try {
+      const result = await updateSale("sale1", updateForm());
+
+      assert.deepEqual(result, { error: "ไม่พบหน่วยนับ ชิ้น ของสินค้า" });
+      assert.equal(consoleError.mock.callCount(), 0);
+      assert.deepEqual(criticalReports, []);
+    } finally {
+      consoleError.mock.restore();
+    }
+  },
+);

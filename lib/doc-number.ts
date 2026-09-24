@@ -303,7 +303,8 @@ export async function generateAdjNo(
 /**
  * Generate warranty claim number using WarrantyClaim table
  * Format: WC{YYMM}{4-digit} for claims on sale warranties, WCM{YYMM}{4-digit}
- * for claims on on-site (manual) warranties. The two series never collide:
+ * for claims on on-site warranties (MANUAL with no sale — see isOnSiteWarranty).
+ * The two series never collide:
  * "WCM2609…" does not start with "WC2609", so each lookup sees only its own.
  * Sale claims are deleted on cancel, so a WC number may be reused; WCM never is.
  */

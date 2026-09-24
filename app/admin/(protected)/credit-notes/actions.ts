@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
+import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -29,11 +30,12 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import {
+  CreditNoteMutationBlockedError,
   CreditNoteNotActiveError,
   creditNoteUnitKey,
   dropLotRowsUnlessReturn,
   loadCreditNoteLineRefs,
-  lockActiveCreditNote,
+  lockMutableCreditNote,
 } from "./credit-note-action-helpers";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import {
@@ -234,6 +236,28 @@ const marketplaceCarrierExpenseSchema = z.object({
   note: z.string().trim().max(500).optional(),
 });
 
+/**
+ * Unique columns whose value createCreditNote generates ("latest + 1"). A P2002 on
+ * one of them means a concurrent save took the number, so the save is retried with
+ * fresh numbers. The business unique [channel, marketplaceReturnRef] is deliberately
+ * not listed: a duplicate marketplace return case is a real conflict, not a race.
+ */
+const CREDIT_NOTE_DOC_NUMBER_FIELDS = ["cnNo", "expenseNo"] as const;
+const CREDIT_NOTE_DOC_NUMBER_CONFLICT_MESSAGE =
+  "เลขที่เอกสารชนกับรายการที่บันทึกพร้อมกัน ระบบลองออกเลขใหม่แล้วยังไม่สำเร็จ กรุณาบันทึกอีกครั้ง";
+
+type CreditNoteDocNumbers = { cnNo: string; carrierExpenseNo: string | null };
+
+/** The CN number, plus the carrier return-shipping expense number when that expense is created. */
+async function generateCreditNoteDocNumbers(
+  docDate: Date,
+  carrierExpenseDate: Date | null,
+): Promise<CreditNoteDocNumbers> {
+  const cnNo = await generateCNNo(docDate);
+  const carrierExpenseNo = carrierExpenseDate ? await generateExpenseNo(carrierExpenseDate) : null;
+  return { cnNo, carrierExpenseNo };
+}
+
 function getCreditNoteReturnError(error: unknown): string | null {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
     return "มีการบันทึกคืนสินค้าใบขายนี้พร้อมกัน กรุณาโหลดข้อมูลล่าสุดแล้วลองใหม่";
@@ -314,29 +338,29 @@ async function validateReferencedReturnItems(
     type: CreditNoteType.RETURN,
     ...(excludeCreditNoteId ? { id: { not: excludeCreditNoteId } } : {}),
   };
-  const [linkedReturns, legacyReturns, unitRows] = await Promise.all([
-    tx.creditNoteItem.groupBy({
-      by: ["saleItemId"],
-      where: {
-        saleItemId: { in: saleItems.map((item) => item.id) },
-        creditNote: creditNoteWhere,
-      },
-      _sum: { qty: true },
-    }),
-    tx.creditNoteItem.groupBy({
-      by: ["productId"],
-      where: {
-        saleItemId: null,
-        productId: { in: [...new Set(items.map((item) => item.productId))] },
-        creditNote: creditNoteWhere,
-      },
-      _sum: { qty: true },
-    }),
-    tx.productUnit.findMany({
-      where: { OR: items.map((item) => ({ productId: item.productId, name: item.unitName })) },
-      select: { productId: true, name: true, scale: true },
-    }),
-  ]);
+  // An interactive transaction owns one PostgreSQL client. Keep these reads
+  // sequential so pg never queues client.query() calls on that pinned client.
+  const linkedReturns = await tx.creditNoteItem.groupBy({
+    by: ["saleItemId"],
+    where: {
+      saleItemId: { in: saleItems.map((item) => item.id) },
+      creditNote: creditNoteWhere,
+    },
+    _sum: { qty: true },
+  });
+  const legacyReturns = await tx.creditNoteItem.groupBy({
+    by: ["productId"],
+    where: {
+      saleItemId: null,
+      productId: { in: [...new Set(items.map((item) => item.productId))] },
+      creditNote: creditNoteWhere,
+    },
+    _sum: { qty: true },
+  });
+  const unitRows = await tx.productUnit.findMany({
+    where: { OR: items.map((item) => ({ productId: item.productId, name: item.unitName })) },
+    select: { productId: true, name: true, scale: true },
+  });
   const linkedReturnMap = new Map(
     linkedReturns.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
   );
@@ -676,21 +700,19 @@ export async function createCreditNote(
     }
   }
   let createdCreditNoteId = "";
+  let savedCnNo = "";
 
   try {
     // Document numbers are generated inside the try so a DB failure here returns
     // a Thai error instead of an unhandled Server Action exception.
     const docDate = parseDateOnlyToDate(cnDate);
-    const cnNo    = await generateCNNo(docDate);
     const carrierExpenseDate = carrierExpense.expenseDate
       ? parseDateOnlyToDate(carrierExpense.expenseDate)
       : null;
-    const carrierExpenseNo =
-      carrierExpense.amount > 0 && carrierExpenseDate
-        ? await generateExpenseNo(carrierExpenseDate)
-        : null;
+    const carrierExpenseNoDate = carrierExpense.amount > 0 ? carrierExpenseDate : null;
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
+    // One attempt: the whole transaction for one set of document numbers.
+    const writeCreditNote = (cnNo: string, carrierExpenseNo: string | null): Promise<void> => dbTx(async (tx) => {
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
       const resolvedSaleItemIds =
         type === CreditNoteType.RETURN && saleId
@@ -957,6 +979,20 @@ export async function createCreditNote(
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
+    // The CN / carrier-expense numbers are "latest + 1" read outside the transaction,
+    // so a concurrent save can take the same one (P2002 on its column). Postgres aborts
+    // the transaction after the failed insert, so the WHOLE transaction — source-sale
+    // re-checks and all writes — is re-run with a freshly generated set of numbers.
+    await withDocNumberRetry({
+      uniqueField: CREDIT_NOTE_DOC_NUMBER_FIELDS,
+      generate: () => generateCreditNoteDocNumbers(docDate, carrierExpenseNoDate),
+      run: ({ cnNo, carrierExpenseNo }) => {
+        savedCnNo = cnNo;
+        createdCreditNoteId = "";
+        return writeCreditNote(cnNo, carrierExpenseNo);
+      },
+    });
+
     const afterSnapshot = createdCreditNoteId
       ? await getCreditNoteAuditSnapshot(createdCreditNoteId)
       : null;
@@ -1004,9 +1040,14 @@ export async function createCreditNote(
       revalidatePath("/admin/expenses");
       revalidatePath("/admin/reports/marketplace");
     }
-    return { success: true, cnNo };
+    return { success: true, cnNo: savedCnNo };
   } catch (err) {
     await reportCriticalError(err, { scope: "credit_notes.create" });
+    // Checked before getCreditNoteReturnError, which maps every other P2002 to the
+    // duplicate marketplace-return-case message.
+    if (isUniqueViolationOnAny(err, CREDIT_NOTE_DOC_NUMBER_FIELDS)) {
+      return { error: CREDIT_NOTE_DOC_NUMBER_CONFLICT_MESSAGE };
+    }
     const returnError = getCreditNoteReturnError(err);
     if (returnError) return { error: returnError };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -1067,7 +1108,7 @@ export async function cancelCreditNote(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(cnId);
     await dbTx(async (tx) => {
-      await lockActiveCreditNote(tx, cnId);
+      await lockMutableCreditNote(tx, cnId, "cancel");
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.CN_SALE, cnId);
 
@@ -1127,6 +1168,7 @@ export async function cancelCreditNote(
     return { success: true };
   } catch (err) {
     if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+    if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1372,7 +1414,7 @@ export async function updateCreditNote(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await lockActiveCreditNote(tx, id);
+      await lockMutableCreditNote(tx, id, "update");
       const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
       const resolvedSaleItemIds =
         type === CreditNoteType.RETURN && saleId
@@ -1645,6 +1687,7 @@ export async function updateCreditNote(
     if (err instanceof CreditNoteNotActiveError) {
       return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
     }
+    if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.update" });
     const returnError = getCreditNoteReturnError(err);
     if (returnError) return { error: returnError };

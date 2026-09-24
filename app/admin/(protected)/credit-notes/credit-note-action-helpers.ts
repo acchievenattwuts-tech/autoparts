@@ -1,4 +1,10 @@
 import type { dbTx } from "@/lib/db";
+import {
+  buildMutationBlockMessage,
+  createDocumentMutationGuard,
+  type DocumentMutationAction,
+  type GuardDb,
+} from "@/lib/document-mutation-guard";
 import { CreditNoteType, type InventoryTracking, Prisma } from "@/lib/generated/prisma";
 
 type CreditNoteTxClient = Parameters<Parameters<typeof dbTx>[0]>[0];
@@ -80,4 +86,40 @@ export async function lockActiveCreditNote(
     Prisma.sql`SELECT "status"::text AS "status" FROM "CreditNote" WHERE "id" = ${creditNoteId} FOR UPDATE`,
   );
   if (rows[0]?.status !== "ACTIVE") throw new CreditNoteNotActiveError();
+}
+
+/** Raised inside a transaction when the mutation guard blocks the credit note under its row lock. */
+export class CreditNoteMutationBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CreditNoteMutationBlockedError";
+  }
+}
+
+/**
+ * lockActiveCreditNote, then re-runs the CreditNote mutation guard (ACTIVE receipt,
+ * ACTIVE marketplace settlement, ACTIVE carrier return-shipping expense) with the
+ * transaction client. The guard before the transaction is only a fast path: a
+ * settlement or receipt could claim the credit note after it, and cancel/update
+ * would then reverse a document that a live downstream document still uses. The
+ * message is the shared guard message, so the action and the detail page agree.
+ *
+ * Lock order: CreditNote FIRST. createMarketplaceSettlement locks CreditNote →
+ * Sale and the receipt flows lock CreditNote → Sale → CustomerAdvance, so every
+ * flow takes the CreditNote row before anything else and they cannot deadlock on
+ * it. The guard only READS Receipt / MarketplaceSettlement / Expense rows.
+ */
+export async function lockMutableCreditNote(
+  tx: CreditNoteTxClient,
+  creditNoteId: string,
+  action: Extract<DocumentMutationAction, "update" | "cancel">,
+): Promise<void> {
+  await lockActiveCreditNote(tx, creditNoteId);
+  const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check(
+    "CreditNote",
+    creditNoteId,
+    action,
+  );
+  const blockMessage = buildMutationBlockMessage(guard);
+  if (blockMessage) throw new CreditNoteMutationBlockedError(blockMessage);
 }

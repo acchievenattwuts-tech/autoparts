@@ -1,6 +1,7 @@
 import { db, dbTx } from "@/lib/db";
 import { generateExpenseNo } from "@/lib/doc-number";
 import { isDatabaseLayerError, isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
+import { ensureExpenseCodesByName } from "@/lib/auto-expense-code";
 import {
   CashBankDirection,
   CashBankSourceType,
@@ -70,42 +71,35 @@ function nextCode(prefix: string, existingCodes: string[]): string {
   return `${prefix}${String(max + 1).padStart(4, "0")}`;
 }
 
+/**
+ * Finds or creates the fee ExpenseCodes OUTSIDE the fee-expense transaction
+ * (lib/auto-expense-code.ts), so two first escrow syncs at the same moment no
+ * longer collide on ExpenseCode.code inside it.
+ */
 async function ensureShopeeExpenseCodes(
-  tx: ShopeeEscrowTx,
   kinds: ShopeeEscrowFeeKind[],
 ): Promise<Map<ShopeeEscrowFeeKind, string>> {
   const uniqueKinds = Array.from(new Set(kinds));
-  const names = uniqueKinds.map((kind) => EXPENSE_CODE_NAMES[kind]);
-  const existing = await tx.expenseCode.findMany({
-    where: { name: { in: names } },
-    select: { id: true, code: true, name: true },
-  });
-  const byName = new Map(existing.map((code) => [code.name, code]));
-  const allCodes = await tx.expenseCode.findMany({ select: { code: true } });
-  const usedCodes = allCodes.map((code) => code.code);
+  const idsByName = await ensureExpenseCodesByName(
+    uniqueKinds.map((kind) => ({
+      name: EXPENSE_CODE_NAMES[kind],
+      description: EXPENSE_CODE_DESCRIPTIONS[kind],
+    })),
+    async (client, count) => {
+      const allCodes = await client.expenseCode.findMany({ select: { code: true } });
+      const usedCodes = allCodes.map((code) => code.code);
+      return Array.from({ length: count }, () => {
+        const code = nextCode("E", usedCodes);
+        usedCodes.push(code);
+        return code;
+      });
+    },
+  );
   const result = new Map<ShopeeEscrowFeeKind, string>();
-
   for (const kind of uniqueKinds) {
-    const name = EXPENSE_CODE_NAMES[kind];
-    const existingCode = byName.get(name);
-    if (existingCode) {
-      result.set(kind, existingCode.id);
-      continue;
-    }
-
-    const code = nextCode("E", usedCodes);
-    usedCodes.push(code);
-    const created = await tx.expenseCode.create({
-      data: {
-        code,
-        name,
-        description: EXPENSE_CODE_DESCRIPTIONS[kind],
-      },
-      select: { id: true },
-    });
-    result.set(kind, created.id);
+    const id = idsByName.get(EXPENSE_CODE_NAMES[kind]);
+    if (id) result.set(kind, id);
   }
-
   return result;
 }
 
@@ -236,6 +230,10 @@ export async function createShopeeFeeExpense(params: {
   let createdExpenseId = "";
 
   try {
+    // Fee ExpenseCodes are found or created before the transaction, so a concurrent
+    // first sync cannot abort it with a P2002 on ExpenseCode.code.
+    const expenseCodeIds = await ensureShopeeExpenseCodes(draft.lines.map((line) => line.kind));
+
     // expenseNo is "latest + 1" generated outside the transaction, so a concurrent
     // expense save anywhere can take the same number (P2002 on expenseNo). The WHOLE
     // transaction is re-run with a fresh number — per-order lock, re-read, insert and
@@ -250,7 +248,6 @@ export async function createShopeeFeeExpense(params: {
           const existingExpense = await lockShopeeFeeExpenseOrder(tx, draft.orderImportId);
           if (existingExpense) return existingExpense;
 
-          const expenseCodeIds = await ensureShopeeExpenseCodes(tx, draft.lines.map((line) => line.kind));
           const totalAmount = roundMoney(draft.totalAmount);
 
           const expense = await tx.expense.create({

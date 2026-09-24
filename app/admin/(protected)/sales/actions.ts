@@ -1,7 +1,7 @@
 "use server";
 
 import { prepareSaleQuotationReference, auditSaleQuotationReference, QuotationError } from "@/lib/sales-quotation";
-import { createDocumentMutationGuard, buildMutationBlockMessage, type GuardDb } from "@/lib/document-mutation-guard";
+import { assertSaleMutationAllowedInTx, SaleUserError } from "./sale-user-error";
 import { deleteDeliveryProofObjects, uploadDeliveryProofObject } from "@/lib/delivery-proof-storage";
 import { DELIVERY_PROOF_ROOT } from "@/lib/private-file-ref";
 import { revalidatePath } from "next/cache";
@@ -1065,8 +1065,7 @@ export async function cancelSale(
     const cancelledAt = new Date();
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, saleId, null, sale.updatedAt);
-      const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", saleId, "cancel");
-      if (guard.blocked) throw new Error(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      await assertSaleMutationAllowedInTx(tx, saleId, "cancel");
       await auditSaleQuotationReference(tx, getAuditActorFromSession(session), saleId, sale.saleNo, previousQuotationId, null, true);
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.SALE, saleId);
@@ -1119,7 +1118,7 @@ export async function cancelSale(
     if (sale.quotationId) revalidatePath(`/admin/sales-quotations/${sale.quotationId}`);
     return { success: true };
   } catch (err) {
-    if (err instanceof QuotationError) return { error: err.message };
+    if (err instanceof QuotationError || err instanceof SaleUserError) return { error: err.message };
     await reportCriticalError(err, { scope: "sales.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1490,8 +1489,7 @@ export async function updateSale(
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
-      const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", id, "update");
-      if (guard.blocked) throw new Error(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      await assertSaleMutationAllowedInTx(tx, id, "update");
       // The Sale row is locked now (prepareSaleQuotationReference) and createClaim
       // takes the same lock, so this re-read is final: any claim not seen by the
       // pre-check was opened meanwhile and may sit on a line about to be rebuilt.
@@ -1641,8 +1639,8 @@ export async function updateSale(
       for (const { item, newIdx } of itemsToCreate) {
         const unit = unitMap.get(getSaleUnitKey(item.productId, item.unitName));
         const product = productMap.get(item.productId);
-        if (!product) throw new Error("ไม่พบสินค้า");
-        if (!unit) throw new Error(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
+        if (!product) throw new SaleUserError("ไม่พบสินค้า");
+        if (!unit) throw new SaleUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
         const scale     = unit.scale;
         const qtyInBase = item.qty * scale;
@@ -1842,6 +1840,7 @@ export async function updateSale(
       err instanceof QuotationError ||
       err instanceof SaleLotValidationError ||
       err instanceof SaleClaimLockError ||
+      err instanceof SaleUserError ||
       err instanceof LotStockInsufficientError
     ) {
       return { error: err.message };

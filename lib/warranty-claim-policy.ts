@@ -3,10 +3,12 @@ import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 
 /**
  * Two claim families, decided by the warranty the claim points to:
- * - SALE   — warranty auto-created by a sale (AUTO_FROM_SALE). Cancel = delete the
- *            claim and append a history line to Sale.claimCancelNotes. Series WC.
- * - ONSITE — warranty staff created on site (MANUAL). Cancel = status CANCELLED,
- *            row kept. Series WCM, never reused.
+ * - SALE   — warranty linked to a sale: auto-created by the sale (AUTO_FROM_SALE)
+ *            or added by staff to a sale line ("อ้างอิงใบขาย", MANUAL with saleId).
+ *            Cancel = delete the claim and append a history line to
+ *            Sale.claimCancelNotes. Series WC.
+ * - ONSITE — on-site warranty with no sale ("ประกันหน้างาน (ไม่มีบิล)", MANUAL with
+ *            saleId null). Cancel = status CANCELLED, row kept. Series WCM, never reused.
  */
 export type WarrantyClaimKind = "SALE" | "ONSITE";
 
@@ -31,11 +33,23 @@ export const SALE_CLAIM_DELETED_ACTIVITY_TITLE = "ยกเลิกใบเค
 /** meta.event marker of that audit row, so the timeline can tell it from a sale cancel. */
 export const SALE_CLAIM_DELETED_AUDIT_EVENT = "WARRANTY_CLAIM_DELETED";
 
-export function getWarrantyClaimKind(warranty: {
+export type WarrantyKindInput = {
   createdVia: WarrantyCreationSource;
   saleId: string | null;
-}): WarrantyClaimKind {
-  return warranty.createdVia === "AUTO_FROM_SALE" && warranty.saleId ? "SALE" : "ONSITE";
+};
+
+/**
+ * The single classification of the on-site special case: a MANUAL warranty with no
+ * sale. Only these get WCM claims kept as CANCELLED and are cancelled in place
+ * (status CANCELLED). Every sale-linked warranty — AUTO_FROM_SALE, or MANUAL added
+ * to a sale line — follows the sale rules.
+ */
+export function isOnSiteWarranty(warranty: WarrantyKindInput): boolean {
+  return warranty.createdVia === "MANUAL" && !warranty.saleId;
+}
+
+export function getWarrantyClaimKind(warranty: WarrantyKindInput): WarrantyClaimKind {
+  return isOnSiteWarranty(warranty) ? "ONSITE" : "SALE";
 }
 
 export function isWarrantyCancelled(warranty: { status: WarrantyStatus }): boolean {

@@ -34,6 +34,16 @@ let storedErrors: (string | null)[] = [];
 let createOutcomes: (Error | null)[] = [];
 let txCount = 0;
 let committedWrites: string[] = [];
+// Fee ExpenseCodes: read before the transaction (lib/auto-expense-code.ts).
+const EXISTING_FEE_CODES = [
+  { id: "code-c", name: "Shopee commission fee" },
+  { id: "code-s", name: "Shopee service fee" },
+];
+let dbExpenseCodeRows: { id: string; name: string }[] = EXISTING_FEE_CODES;
+let txExpenseCodeReads: { id: string; name: string }[][] = [];
+let usedExpenseCodes: string[] = [];
+let expenseCodeCreateErrors: Error[] = [];
+let lastExpenseCodeIds: string[] = [];
 
 const record = (entry: string) => {
   callLog.push(entry);
@@ -56,16 +66,32 @@ const makeTx = (writes: string[]): FakeTx => ({
       return {};
     },
   },
+  // Used only by the short ExpenseCode transaction that runs before the expense one.
   expenseCode: {
-    findMany: async () => [
-      { id: "code-c", code: "E0001", name: "Shopee commission fee" },
-      { id: "code-s", code: "E0002", name: "Shopee service fee" },
-    ],
-    create: async () => ({ id: "code-new" }),
+    findMany: async (args: unknown) => {
+      const { where } = (args ?? {}) as { where?: { name?: { in: string[] } } };
+      if (where?.name) {
+        record("tx.expenseCode.findMany:name");
+        return txExpenseCodeReads.shift() ?? [];
+      }
+      record("tx.expenseCode.findMany:codes");
+      return usedExpenseCodes.map((code) => ({ code }));
+    },
+    create: async (args: unknown) => {
+      const { data } = args as { data: { code: string; name: string; description: string } };
+      record(`tx.expenseCode.create:${data.code}:${data.name}:${data.description}`);
+      const error = expenseCodeCreateErrors.shift();
+      if (error) throw error;
+      writes.push(`expenseCode:${data.code}`);
+      return { id: `new:${data.code}` };
+    },
   },
   expense: {
     create: async (args: unknown) => {
-      const { data } = args as { data: { expenseNo: string } };
+      const { data } = args as {
+        data: { expenseNo: string; items: { create: { expenseCodeId: string }[] } };
+      };
+      lastExpenseCodeIds = data.items.create.map((item) => item.expenseCodeId);
       record(`tx.expense.create:${data.expenseNo}`);
       const outcome = createOutcomes.shift() ?? null;
       if (outcome) throw outcome;
@@ -124,6 +150,12 @@ before(async () => {
             return {};
           },
         },
+        expenseCode: {
+          findMany: async () => {
+            record("db.expenseCode.findMany");
+            return dbExpenseCodeRows;
+          },
+        },
       },
       // A failed attempt rolls back: its writes are only committed when fn resolves.
       dbTx: async (fn: (tx: FakeTx) => Promise<unknown>) => {
@@ -146,6 +178,11 @@ beforeEach(() => {
   createOutcomes = [];
   txCount = 0;
   committedWrites = [];
+  dbExpenseCodeRows = EXISTING_FEE_CODES;
+  txExpenseCodeReads = [];
+  usedExpenseCodes = [];
+  expenseCodeCreateErrors = [];
+  lastExpenseCodeIds = [];
 });
 
 test("a P2002 on expenseNo re-runs the whole transaction with a fresh number", async () => {
@@ -157,6 +194,7 @@ test("a P2002 on expenseNo re-runs the whole transaction with a fresh number", a
   assert.equal(txCount, 2);
   // The per-order lock and re-read run again inside the retried transaction.
   assert.deepEqual(callLog, [
+    "db.expenseCode.findMany",
     `advisoryLock:shopee-fee-expense:${ORDER_ID}`,
     "tx.shopeeOrderImport.findUnique",
     "tx.expense.create:OE26090007",
@@ -205,4 +243,73 @@ test("other database errors store a generic Thai message instead of the Prisma t
   assert.deepEqual(result, { ok: false, error: escrow.SHOPEE_FEE_EXPENSE_FAILED_MESSAGE });
   assert.deepEqual(storedErrors, [escrow.SHOPEE_FEE_EXPENSE_FAILED_MESSAGE]);
   assert.equal(txCount, 1);
+});
+
+// ── Fee ExpenseCodes on first concurrent use ─────────────────────────────────
+// They are found or created before the expense transaction, in their own short
+// transaction under an advisory lock. A P2002 on ExpenseCode.code (a concurrent
+// creator took the number) re-runs that short transaction, which re-reads by name
+// and reuses the winner's row; the expense transaction is never aborted by it.
+
+const SERVICE_FEE_NAME = "Shopee service fee";
+const SERVICE_FEE_DESCRIPTION = "Auto category for Shopee service fee from escrow detail";
+
+test("a missing fee ExpenseCode is created before the expense transaction with the same contents as before", async () => {
+  dbExpenseCodeRows = [EXISTING_FEE_CODES[0]];
+  txExpenseCodeReads = [[EXISTING_FEE_CODES[0]]];
+  usedExpenseCodes = ["E0001", "X0009"];
+  const result = await escrow.createShopeeFeeExpense({ orderImportId: ORDER_ID, userId: "user-1" });
+
+  assert.deepEqual(result, { ok: true, expenseId: "exp-OE26090007", expenseNo: "OE26090007", reused: false });
+  assert.deepEqual(callLog.slice(0, 5), [
+    "db.expenseCode.findMany",
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    "tx.expenseCode.findMany:codes",
+    `tx.expenseCode.create:E0002:${SERVICE_FEE_NAME}:${SERVICE_FEE_DESCRIPTION}`,
+  ]);
+  assert.deepEqual(lastExpenseCodeIds, ["code-c", "new:E0002"]);
+  assert.equal(txCount, 2, "one short ExpenseCode transaction, one expense transaction");
+});
+
+test("a P2002 on ExpenseCode.code from a concurrent first sync re-reads and reuses its code", async () => {
+  dbExpenseCodeRows = [EXISTING_FEE_CODES[0]];
+  txExpenseCodeReads = [
+    [EXISTING_FEE_CODES[0]],
+    [EXISTING_FEE_CODES[0], { id: "code-s-winner", name: SERVICE_FEE_NAME }],
+  ];
+  usedExpenseCodes = ["E0001"];
+  expenseCodeCreateErrors = [uniqueViolation("code")];
+  const result = await escrow.createShopeeFeeExpense({ orderImportId: ORDER_ID, userId: "user-1" });
+
+  assert.deepEqual(result, { ok: true, expenseId: "exp-OE26090007", expenseNo: "OE26090007", reused: false });
+  assert.deepEqual(callLog, [
+    "db.expenseCode.findMany",
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    "tx.expenseCode.findMany:codes",
+    `tx.expenseCode.create:E0002:${SERVICE_FEE_NAME}:${SERVICE_FEE_DESCRIPTION}`,
+    "advisoryLock:auto-expense-code",
+    "tx.expenseCode.findMany:name",
+    `advisoryLock:shopee-fee-expense:${ORDER_ID}`,
+    "tx.shopeeOrderImport.findUnique",
+    "tx.expense.create:OE26090007",
+    "cashBank.replace:exp-OE26090007:OE26090007",
+    "profitFacts.rebuild:exp-OE26090007",
+  ]);
+  assert.deepEqual(lastExpenseCodeIds, ["code-c", "code-s-winner"]);
+  assert.deepEqual(generatedNumbers, ["OE26090007"], "the expense number is not regenerated");
+  assert.deepEqual(committedWrites, ["expense:OE26090007", "link:exp-OE26090007"]);
+  assert.deepEqual(storedErrors, []);
+});
+
+test("when every ExpenseCode attempt collides, no expense transaction runs and a generic Thai message is stored", async () => {
+  dbExpenseCodeRows = [];
+  expenseCodeCreateErrors = [uniqueViolation("code"), uniqueViolation("code"), uniqueViolation("code")];
+  const result = await escrow.createShopeeFeeExpense({ orderImportId: ORDER_ID, userId: "user-1" });
+
+  assert.deepEqual(result, { ok: false, error: escrow.SHOPEE_FEE_EXPENSE_FAILED_MESSAGE });
+  assert.equal(txCount, 3, "three short ExpenseCode attempts, no expense transaction");
+  assert.deepEqual(generatedNumbers, []);
+  assert.deepEqual(storedErrors, [escrow.SHOPEE_FEE_EXPENSE_FAILED_MESSAGE]);
 });
