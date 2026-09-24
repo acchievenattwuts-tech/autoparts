@@ -128,8 +128,11 @@ function runWorkboardSourceChecks() {
   expectIncludes(workboardPage, "export const dynamic = \"force-dynamic\";", "Workboard page must stay dynamic");
   expectIncludes(workboardPage, "requirePermission(\"workboard.view\")", "Workboard page must require workboard.view");
   expectIncludes(workboardPage, "ไม่มีงานค้างในหมวดนี้", "Workboard page must keep the shared empty state text");
-  expectIncludes(workboardPage, "Today Workboard", "Workboard page must keep the Today Workboard title");
+  expectIncludes(workboardPage, "กระดานงานวันนี้", "Workboard page must keep the current Thai title");
   expectIncludes(workboardPage, "ใบขายรอจัดส่งวันนี้", "Workboard page must keep the pending deliveries section");
+  expectIncludes(workboardPage, "ภาษีถูกหัก ณ ที่จ่าย", "Workboard page must include the pending WHT section");
+  expectIncludes(workboardPage, "wht.view", "Workboard pending WHT section must respect wht.view");
+  expectExcludes(workboardPage, "ลูกค้าจาก LINE ข้อมูลยังไม่ครบ", "Workboard page must not show the retired LINE customer section");
   expectIncludes(workboardPage, "COD รอรับเงิน", "Workboard page must keep the COD section");
   expectIncludes(workboardPage, "ลูกหนี้เกินเครดิต", "Workboard page must keep the overdue AR section");
   expectIncludes(workboardPage, "Supplier ครบกำหนดจ่าย", "Workboard page must keep the overdue AP section");
@@ -141,6 +144,9 @@ function runWorkboardSourceChecks() {
   expectIncludes(workboardData, "Promise.all([", "Workboard data loader must fetch sections in parallel");
   expectIncludes(workboardData, "take: 5", "Workboard data queries must cap top lists at 5 items");
   expectIncludes(workboardData, "slice(0, 5)", "Workboard in-memory lists must be capped to 5 items");
+  expectIncludes(workboardData, "queryPendingWht", "Workboard data loader must query pending WHT certificates");
+  expectExcludes(workboardData, "queryIncompleteLineCustomers", "Workboard data loader must not query incomplete LINE customers");
+  expectExcludes(workboardData, "LINE_LIFF", "Workboard data loader must not retain the retired LINE customer filter");
 
   expectFile("app/admin/(protected)/workboard/loading.tsx", "Workboard segment must include loading.tsx");
 }

@@ -10,10 +10,10 @@ import {
   CircleDollarSign,
   ClipboardList,
   Clock3,
+  FileWarning,
   PackageSearch,
   ShieldAlert,
   Truck,
-  UserRoundCheck,
   Wallet,
 } from "lucide-react";
 
@@ -124,12 +124,12 @@ const EmptyState = () => (
 
 const WorkboardPage = async () => {
   const session = await requirePermission("workboard.view");
-  const canViewCustomers = hasPermissionAccess(
+  const canViewWht = hasPermissionAccess(
     session.user.role,
     session.user.permissions,
-    "customers.view",
+    "wht.view",
   );
-  const data = await getWorkboardData({ includeIncompleteLineCustomers: canViewCustomers });
+  const data = await getWorkboardData({ includePendingWht: canViewWht });
 
   return (
     <div className="space-y-4">
@@ -162,40 +162,65 @@ const WorkboardPage = async () => {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        {data.incompleteLineCustomers.canView ? (
+        {data.pendingWht.canView ? (
           <SectionCard
-            icon={UserRoundCheck}
-            title="ลูกค้าจาก LINE ข้อมูลยังไม่ครบ"
-            href="/admin/customers?source=LINE_LIFF"
-            count={data.incompleteLineCustomers.count}
-            tone="emerald"
-            summary="ลูกค้าที่สมัครผ่าน LINE แล้ว แต่ยังขาดที่อยู่จัดส่ง"
+            icon={FileWarning}
+            title="ภาษีถูกหัก ณ ที่จ่าย"
+            href="/admin/wht?cert=PENDING"
+            count={data.pendingWht.count}
+            tone="amber"
+            summary={`ติดตามใบ 50 ทวิจากลูกค้า • เครดิตภาษีรอใช้ ฿${formatCurrency(data.pendingWht.totalTaxAmount)}`}
           >
-            {data.incompleteLineCustomers.items.length === 0 ? (
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-sm dark:bg-emerald-500/10">
+                <p className="text-xs text-emerald-700 dark:text-emerald-200">รอ 0-7 วัน</p>
+                <p className="font-semibold text-emerald-800 dark:text-emerald-100">
+                  {data.pendingWht.buckets.withinSevenDays.toLocaleString("th-TH")}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-amber-50 px-3 py-2 text-sm dark:bg-amber-500/10">
+                <p className="text-xs text-amber-700 dark:text-amber-200">รอ 8-30 วัน</p>
+                <p className="font-semibold text-amber-800 dark:text-amber-100">
+                  {data.pendingWht.buckets.eightToThirtyDays.toLocaleString("th-TH")}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-red-50 px-3 py-2 text-sm dark:bg-red-500/10">
+                <p className="text-xs text-red-600 dark:text-red-200">รอเกิน 30 วัน</p>
+                <p className="font-semibold text-red-700 dark:text-red-100">
+                  {data.pendingWht.buckets.overThirtyDays.toLocaleString("th-TH")}
+                </p>
+              </div>
+            </div>
+            {data.pendingWht.items.length === 0 ? (
               <EmptyState />
             ) : (
               <div className="space-y-3">
-                {data.incompleteLineCustomers.items.map((item) => (
+                {data.pendingWht.items.map((item) => (
                   <Link
                     key={item.id}
-                    href={`/admin/customers/${item.id}`}
-                    className="block rounded-2xl border border-gray-100 px-4 py-3 transition-colors hover:border-emerald-200 hover:bg-emerald-50/60 dark:border-white/10 dark:hover:border-emerald-400/20 dark:hover:bg-emerald-500/5"
+                    href={item.documentNo
+                      ? `/admin/wht?cert=PENDING&q=${encodeURIComponent(item.documentNo)}`
+                      : "/admin/wht?cert=PENDING"}
+                    className="block rounded-2xl border border-gray-100 px-4 py-3 transition-colors hover:border-amber-200 hover:bg-amber-50/60 dark:border-white/10 dark:hover:border-amber-400/20 dark:hover:bg-amber-500/5"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">{item.name}</p>
-                        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                          {[item.code ?? null, item.phone ?? null].filter(Boolean).join(" · ") || "ไม่มีรหัส/เบอร์โทร"}
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-slate-100">
+                          {item.customerName}
                         </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {item.missingShippingAddress ? (
-                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-200">
-                              ขาดที่อยู่จัดส่ง
-                            </span>
-                          ) : null}
-                        </div>
+                        <p className="mt-1 font-mono text-xs font-medium text-[#1e3a5f] dark:text-sky-200">
+                          {item.documentNo ?? "ไม่พบเลขที่เอกสาร"}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                          จ่ายเมื่อ {formatDateThai(item.payDate)} • รอ {item.daysWaiting.toLocaleString("th-TH")} วัน
+                        </p>
                       </div>
-                      <ArrowRight size={16} className="mt-1 shrink-0 text-emerald-600 dark:text-emerald-300" />
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold text-amber-700 dark:text-amber-200">
+                          ฿{formatCurrency(item.taxAmount)}
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">ยังไม่ได้รับใบ</p>
+                      </div>
                     </div>
                   </Link>
                 ))}

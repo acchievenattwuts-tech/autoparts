@@ -97,22 +97,30 @@ export type CashBankBelowItem = {
   threshold: number;
 };
 
-export type IncompleteLineCustomerItem = {
+export type PendingWhtItem = {
   id: string;
-  code: string | null;
-  name: string;
-  phone: string | null;
-  lineLinkedAt: Date | null;
-  missingShippingAddress: boolean;
+  documentNo: string | null;
+  customerName: string;
+  payDate: Date;
+  taxAmount: number;
+  daysWaiting: number;
+};
+
+export type PendingWhtBucketCounts = {
+  withinSevenDays: number;
+  eightToThirtyDays: number;
+  overThirtyDays: number;
 };
 
 export type WorkboardData = {
   generatedAt: Date;
   todayStart: Date;
-  incompleteLineCustomers: {
+  pendingWht: {
     canView: boolean;
     count: number;
-    items: IncompleteLineCustomerItem[];
+    totalTaxAmount: number;
+    buckets: PendingWhtBucketCounts;
+    items: PendingWhtItem[];
   };
   pendingDeliveries: {
     count: number;
@@ -579,47 +587,59 @@ async function queryCashBankBelow() {
   };
 }
 
-async function queryIncompleteLineCustomers() {
+async function queryPendingWht(todayStart: Date) {
   const where = {
-    isActive: true,
-    source: "LINE_LIFF" as const,
-    OR: [{ shippingAddress: null }, { shippingAddress: "" }],
+    status: "ACTIVE" as const,
+    certReceivedAt: null,
   };
+  const sevenDaysAgo = addThailandDays(todayStart, -7);
+  const thirtyDaysAgo = addThailandDays(todayStart, -30);
 
-  const [count, rows] = await Promise.all([
-    db.customer.count({ where }),
-    db.customer.findMany({
+  const [summary, rows, withinSevenDays, eightToThirtyDays, overThirtyDays] = await Promise.all([
+    db.whtReceived.aggregate({
       where,
-      orderBy: [{ lineLinkedAt: "desc" }, { createdAt: "desc" }],
+      _count: { id: true },
+      _sum: { taxAmount: true },
+    }),
+    db.whtReceived.findMany({
+      where,
+      orderBy: [{ payDate: "asc" }, { createdAt: "asc" }],
       take: 5,
       select: {
         id: true,
-        code: true,
-        name: true,
-        phone: true,
-        shippingAddress: true,
-        lineLinkedAt: true,
+        customerNameSnapshot: true,
+        payDate: true,
+        taxAmount: true,
+        receipt: { select: { receiptNo: true } },
+        sale: { select: { saleNo: true } },
       },
     }),
+    db.whtReceived.count({ where: { ...where, payDate: { gte: sevenDaysAgo } } }),
+    db.whtReceived.count({
+      where: { ...where, payDate: { gte: thirtyDaysAgo, lt: sevenDaysAgo } },
+    }),
+    db.whtReceived.count({ where: { ...where, payDate: { lt: thirtyDaysAgo } } }),
   ]);
 
   return {
-    count,
+    count: summary._count.id,
+    totalTaxAmount: Number(summary._sum.taxAmount ?? 0),
+    buckets: { withinSevenDays, eightToThirtyDays, overThirtyDays },
     items: rows.map((row) => ({
       id: row.id,
-      code: row.code,
-      name: row.name,
-      phone: row.phone,
-      lineLinkedAt: row.lineLinkedAt,
-      missingShippingAddress: !row.shippingAddress,
+      documentNo: row.receipt?.receiptNo ?? row.sale?.saleNo ?? null,
+      customerName: row.customerNameSnapshot,
+      payDate: row.payDate,
+      taxAmount: Number(row.taxAmount),
+      daysWaiting: Math.max(0, getDayDiff(todayStart, row.payDate)),
     })),
   };
 }
 
 export async function getWorkboardData({
-  includeIncompleteLineCustomers = false,
+  includePendingWht = false,
 }: {
-  includeIncompleteLineCustomers?: boolean;
+  includePendingWht?: boolean;
 } = {}): Promise<WorkboardData> {
   const now = new Date();
   const todayKey = getThailandDateKey(now);
@@ -627,7 +647,7 @@ export async function getWorkboardData({
   const todayEnd = parseDateOnlyToEndOfDay(todayKey);
 
   const [
-    incompleteLineCustomers,
+    pendingWht,
     pendingDeliveries,
     codWaiting,
     overdueAr,
@@ -637,9 +657,14 @@ export async function getWorkboardData({
     expiringLots,
     cashBankBelow,
   ] = await Promise.all([
-    includeIncompleteLineCustomers
-      ? queryIncompleteLineCustomers()
-      : Promise.resolve({ count: 0, items: [] }),
+    includePendingWht
+      ? queryPendingWht(todayStart)
+      : Promise.resolve({
+          count: 0,
+          totalTaxAmount: 0,
+          buckets: { withinSevenDays: 0, eightToThirtyDays: 0, overThirtyDays: 0 },
+          items: [],
+        }),
     queryPendingDeliveries(todayEnd),
     queryCodWaiting(),
     queryOverdueAr(todayStart, todayEnd),
@@ -653,9 +678,9 @@ export async function getWorkboardData({
   return {
     generatedAt: now,
     todayStart,
-    incompleteLineCustomers: {
-      canView: includeIncompleteLineCustomers,
-      ...incompleteLineCustomers,
+    pendingWht: {
+      canView: includePendingWht,
+      ...pendingWht,
     },
     pendingDeliveries,
     codWaiting,
