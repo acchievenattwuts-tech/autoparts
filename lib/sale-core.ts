@@ -1,6 +1,7 @@
 import { PaymentMethod, Prisma } from "@/lib/generated/prisma";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import type { LotSubRow } from "@/lib/lot-control";
+import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 import { addThailandDays, startOfThailandDay } from "@/lib/th-date";
 
 /**
@@ -150,7 +151,12 @@ export async function assertLotBalanceAvailable(
   for (const lot of lots) {
     const qtyOnHand = balanceMap.get(lot.lotNo) ?? 0;
     if (qtyOnHand + 0.0001 < lot.qtyInBase) {
-      throw new Error(`Lot ${lot.lotNo} คงเหลือไม่พอ`);
+      throw new LotStockInsufficientError({
+        productId,
+        lotNo: lot.lotNo,
+        requestedQty: lot.qtyInBase,
+        availableQty: qtyOnHand,
+      });
     }
   }
 }

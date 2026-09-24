@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { defaultSiteConfig, mapTaxSiteConfig, type SiteConfig } from "@/lib/site-config";
 import Image from "next/image";
 import NavLink from "@/components/shared/NavLink";
-import { ChevronLeft, ExternalLink, Pencil } from "lucide-react";
+import { ChevronLeft, ExternalLink, History, Pencil } from "lucide-react";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
@@ -35,6 +35,7 @@ import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
 import TrackingLinkCopy from "./TrackingLinkCopy";
+import { parseSaleClaimCancelNotes } from "@/lib/warranty-claim-policy";
 
 const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteConfig => {
   const map = Object.fromEntries(contents.map((item) => [item.key, item.value]));
@@ -291,6 +292,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     qrAmount: transferDocumentState.qrAmount,
     verify,
   };
+  const claimCancelHistory = parseSaleClaimCancelNotes(sale.claimCancelNotes);
   const trackingHref = sale.trackingNo
     ? getShippingTrackingUrl(sale.shippingMethod ?? "NONE", sale.trackingNo)
     : null;
@@ -600,6 +602,33 @@ ${PRINT_COPY_VISIBILITY_CSS}
           </div>
         </div>
 
+        {/* Screen only (inside .no-print, outside #receipt) — never part of the printed invoice. */}
+        {claimCancelHistory.length > 0 ? (
+          <section
+            aria-labelledby="sale-claim-cancel-history"
+            className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm dark:border-amber-400/30 dark:bg-amber-500/10"
+          >
+            <h2
+              id="sale-claim-cancel-history"
+              className="mb-3 flex items-center gap-2 font-kanit text-base font-semibold text-amber-900 dark:text-amber-100"
+            >
+              <History size={16} /> ประวัติยกเลิกเคลม
+              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-400/20 dark:text-amber-100">
+                {claimCancelHistory.length.toLocaleString("th-TH")} รายการ
+              </span>
+            </h2>
+            <ol className="space-y-2">
+              {claimCancelHistory.map((line, index) => (
+                <li
+                  key={`${index}-${line}`}
+                  className="rounded-lg border border-amber-100 bg-white px-3 py-2 text-gray-800 dark:border-amber-400/20 dark:bg-slate-950/60 dark:text-slate-200"
+                >
+                  {line}
+                </li>
+              ))}
+            </ol>
+          </section>
+        ) : null}
       </div>
 
       {/* Activity history (30%) beside the print preview (70%) on wide screens.

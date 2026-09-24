@@ -6,7 +6,8 @@ import { Prisma } from "@/lib/generated/prisma";
 // createExpense / updateExpense: malformed dates return a Thai error instead of
 // throwing, cash/bank posting rules reach the user, and an expenseNo collision is retried.
 
-type FakeTx = Record<string, Record<string, (...args: unknown[]) => unknown>>;
+type FakeFn = (...args: unknown[]) => unknown;
+type FakeTx = Record<string, Record<string, FakeFn> | FakeFn>;
 
 class FakeCashBankPostingError extends Error {
   constructor(message: string) {
@@ -44,7 +45,13 @@ before(async () => {
     namedExports: { requirePermission: async () => ({ user: { id: "user-1" } }) },
   });
   await mock.module("@/lib/document-mutation-guard", {
-    namedExports: { getDocumentMutationBlockMessage: async () => null },
+    namedExports: {
+      getDocumentMutationBlockMessage: async () => null,
+      createDocumentMutationGuard: () => ({
+        check: async () => ({ blocked: false, reason: null, references: [] }),
+      }),
+      buildMutationBlockMessage: () => null,
+    },
   });
   await mock.module("@/lib/doc-number", {
     namedExports: {
@@ -96,6 +103,8 @@ before(async () => {
 });
 
 const baseTx = (expenseCreate: (args: unknown) => unknown = async () => ({ id: "exp-1" })): FakeTx => ({
+  // Row lock taken first by updateExpense / cancelExpense (see expense-row-lock.test.ts).
+  $queryRaw: async () => [{ status: "ACTIVE" }],
   expense: { create: expenseCreate, update: async () => ({}) },
   expenseItem: { deleteMany: async () => ({ count: 1 }), createMany: async () => ({ count: 1 }) },
   documentPayment: { deleteMany: async () => ({ count: 0 }), createMany: async () => ({ count: 1 }) },

@@ -11,17 +11,37 @@ interface CancelDocButtonProps {
   onSuccess?:  () => void;
   disabledReason?: string | null;
   description?: React.ReactNode;
+  /** When set, the cancel note must be filled in before confirming (the server re-checks). */
+  noteRequired?: boolean;
+  noteMaxLength?: number;
 }
 
-const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, disabledReason, description }: CancelDocButtonProps) => {
+const DEFAULT_NOTE_MAX_LENGTH = 200;
+
+const CancelDocButton = ({
+  docId,
+  docNo,
+  idFieldName,
+  cancelAction,
+  onSuccess,
+  disabledReason,
+  description,
+  noteRequired = false,
+  noteMaxLength = DEFAULT_NOTE_MAX_LENGTH,
+}: CancelDocButtonProps) => {
   const [isPending, startTransition] = useTransition();
   const [showModal, setShowModal]    = useState(false);
   const [cancelNote, setCancelNote]  = useState("");
   const [error, setError]            = useState("");
   const isDisabled = Boolean(disabledReason);
+  const isNoteMissing = noteRequired && !cancelNote.trim();
 
   const handleConfirm = () => {
     setError("");
+    if (isNoteMissing) {
+      setError("กรุณาระบุหมายเหตุการยกเลิก");
+      return;
+    }
     const formData = new FormData();
     formData.set(idFieldName, docId);
     if (cancelNote.trim()) formData.set("cancelNote", cancelNote.trim());
@@ -69,13 +89,19 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, d
 
             <div className="mb-4">
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300">
-                หมายเหตุการยกเลิก (ถ้ามี)
+                {noteRequired ? (
+                  <>หมายเหตุการยกเลิก <span className="text-red-500 dark:text-rose-400">*</span></>
+                ) : (
+                  "หมายเหตุการยกเลิก (ถ้ามี)"
+                )}
               </label>
               <input
                 type="text"
                 value={cancelNote}
                 onChange={(e) => setCancelNote(e.target.value)}
-                maxLength={200}
+                maxLength={noteMaxLength}
+                required={noteRequired}
+                aria-required={noteRequired}
                 placeholder="ระบุเหตุผลการยกเลิก..."
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300 dark:border-white/15 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-red-500/40"
               />
@@ -99,7 +125,7 @@ const CancelDocButton = ({ docId, docNo, idFieldName, cancelAction, onSuccess, d
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={isPending}
+                disabled={isPending || isNoteMissing}
                 className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-700"
               >
                 {isPending ? "กำลังยกเลิก..." : "ยืนยันยกเลิก"}

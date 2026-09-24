@@ -599,6 +599,109 @@ export async function createMarketplaceSettlement(payload: unknown) {
   }
 }
 
+const SETTLEMENT_NOT_FOUND_MESSAGE = "ไม่พบรอบรับเงิน";
+const SETTLEMENT_ALREADY_CANCELLED_MESSAGE = "รอบรับเงินนี้ถูกยกเลิกไปแล้ว";
+
+/** Raised inside the cancel transaction when the settlement is gone or no longer ACTIVE. */
+class MarketplaceSettlementNotActiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "MarketplaceSettlementNotActiveError";
+  }
+}
+
+type LockedMarketplaceSettlement = {
+  expenseId: string | null;
+  cashBankTransferId: string;
+  cashBankAdjustmentId: string | null;
+};
+
+/**
+ * Locks the settlement row for the rest of the transaction, re-checks that it
+ * is still ACTIVE, and returns the generated document ids read under the lock.
+ * The status check before the transaction is only a fast path: two cancel
+ * requests could both pass it and then both clear the transfer/expense/
+ * adjustment cash-bank movements and cancel those documents twice. With the row
+ * locked, the second request waits, sees CANCELLED, and stops before any write.
+ *
+ * Lock order: MarketplaceSettlement FIRST, then (via the writes that follow)
+ * CashBankMovement → CashBankTransfer → Expense → CashBankAdjustment →
+ * MarketplaceSettlementLine → FactProfit. createMarketplaceSettlement only
+ * inserts a new row, and the Expense / CashBankAdjustment mutation guards only
+ * READ the settlement. cancelExpense / updateExpense lock Expense first; if this
+ * cancel is in flight they still see the settlement ACTIVE (not committed yet)
+ * and throw before touching CashBankMovement, so the two never wait on each
+ * other in opposite order.
+ */
+async function lockActiveMarketplaceSettlement(
+  tx: Prisma.TransactionClient,
+  settlementId: string,
+): Promise<LockedMarketplaceSettlement> {
+  const rows = await tx.$queryRaw<({ status: string } & LockedMarketplaceSettlement)[]>(Prisma.sql`
+    SELECT "status"::text AS "status", "expenseId", "cashBankTransferId", "cashBankAdjustmentId"
+    FROM "MarketplaceSettlement"
+    WHERE id = ${settlementId}
+    FOR UPDATE
+  `);
+  if (rows.length === 0) throw new MarketplaceSettlementNotActiveError(SETTLEMENT_NOT_FOUND_MESSAGE);
+  if (rows[0].status !== DocStatus.ACTIVE) {
+    throw new MarketplaceSettlementNotActiveError(SETTLEMENT_ALREADY_CANCELLED_MESSAGE);
+  }
+  const { expenseId, cashBankTransferId, cashBankAdjustmentId } = rows[0];
+  return { expenseId, cashBankTransferId, cashBankAdjustmentId };
+}
+
+async function cancelLockedMarketplaceSettlement(
+  tx: Prisma.TransactionClient,
+  settlementId: string,
+  note: string,
+): Promise<void> {
+  const settlement = await lockActiveMarketplaceSettlement(tx, settlementId);
+  const cancelledAt = new Date();
+
+  await clearCashBankSourceMovements(
+    tx,
+    CashBankSourceType.TRANSFER,
+    settlement.cashBankTransferId,
+  );
+  await tx.cashBankTransfer.update({
+    where: { id: settlement.cashBankTransferId },
+    data: { status: CashBankTransferStatus.CANCELLED, cancelledAt, cancelNote: note },
+  });
+
+  if (settlement.expenseId) {
+    await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, settlement.expenseId);
+    await tx.expense.update({
+      where: { id: settlement.expenseId },
+      data: { status: DocStatus.CANCELLED, cancelledAt, cancelNote: note },
+    });
+  }
+
+  if (settlement.cashBankAdjustmentId) {
+    await clearCashBankSourceMovements(
+      tx,
+      CashBankSourceType.ADJUSTMENT,
+      settlement.cashBankAdjustmentId,
+    );
+    await tx.cashBankAdjustment.update({
+      where: { id: settlement.cashBankAdjustmentId },
+      data: { status: CashBankAdjustmentStatus.CANCELLED, cancelledAt, cancelNote: note },
+    });
+  }
+
+  // ปลดล็อกเอกสารให้กลับมาเลือกกระทบยอดรอบใหม่ได้ โดยยังเก็บประวัติว่าเคยอยู่รอบไหน
+  await tx.marketplaceSettlementLine.updateMany({
+    where: { settlementId },
+    data: { activeSaleId: null, activeCreditNoteId: null },
+  });
+  await tx.marketplaceSettlement.update({
+    where: { id: settlementId },
+    data: { status: DocStatus.CANCELLED, cancelledAt, cancelNote: note },
+  });
+
+  await rebuildMarketplaceSettlementProfitFacts(tx, settlementId);
+}
+
 export async function cancelMarketplaceSettlement(settlementId: string, cancelNote: string) {
   const note = cancelNote.trim();
   if (!note) return { error: "กรุณาระบุเหตุผลที่ยกเลิก" };
@@ -613,8 +716,9 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
       cashBankAdjustmentId: true,
     },
   });
-  if (!before) return { error: "ไม่พบรอบรับเงิน" };
-  if (before.status === DocStatus.CANCELLED) return { error: "รอบรับเงินนี้ถูกยกเลิกไปแล้ว" };
+  // Fast path only — the authoritative status check runs under the row lock below.
+  if (!before) return { error: SETTLEMENT_NOT_FOUND_MESSAGE };
+  if (before.status === DocStatus.CANCELLED) return { error: SETTLEMENT_ALREADY_CANCELLED_MESSAGE };
   if (!isManualMarketplaceChannel(before.channel)) return { error: "ช่องทางขายไม่รองรับ" };
   const channel = before.channel;
   const config = getMarketplaceChannelConfig(channel);
@@ -636,61 +740,7 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์ยกเลิกรอบรับเงิน" };
 
   try {
-    await dbTx(async (tx) => {
-      const settlement = await tx.marketplaceSettlement.findUnique({
-        where: { id: settlementId },
-        select: {
-          status: true,
-          expenseId: true,
-          cashBankTransferId: true,
-          cashBankAdjustmentId: true,
-        },
-      });
-      if (!settlement || settlement.status !== DocStatus.ACTIVE) throw new Error("NOT_ACTIVE");
-      const cancelledAt = new Date();
-
-      await clearCashBankSourceMovements(
-        tx,
-        CashBankSourceType.TRANSFER,
-        settlement.cashBankTransferId,
-      );
-      await tx.cashBankTransfer.update({
-        where: { id: settlement.cashBankTransferId },
-        data: { status: CashBankTransferStatus.CANCELLED, cancelledAt, cancelNote: note },
-      });
-
-      if (settlement.expenseId) {
-        await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, settlement.expenseId);
-        await tx.expense.update({
-          where: { id: settlement.expenseId },
-          data: { status: DocStatus.CANCELLED, cancelledAt, cancelNote: note },
-        });
-      }
-
-      if (settlement.cashBankAdjustmentId) {
-        await clearCashBankSourceMovements(
-          tx,
-          CashBankSourceType.ADJUSTMENT,
-          settlement.cashBankAdjustmentId,
-        );
-        await tx.cashBankAdjustment.update({
-          where: { id: settlement.cashBankAdjustmentId },
-          data: { status: CashBankAdjustmentStatus.CANCELLED, cancelledAt, cancelNote: note },
-        });
-      }
-
-      // ปลดล็อกเอกสารให้กลับมาเลือกกระทบยอดรอบใหม่ได้ โดยยังเก็บประวัติว่าเคยอยู่รอบไหน
-      await tx.marketplaceSettlementLine.updateMany({
-        where: { settlementId },
-        data: { activeSaleId: null, activeCreditNoteId: null },
-      });
-      await tx.marketplaceSettlement.update({
-        where: { id: settlementId },
-        data: { status: DocStatus.CANCELLED, cancelledAt, cancelNote: note },
-      });
-
-      await rebuildMarketplaceSettlementProfitFacts(tx, settlementId);
-    });
+    await dbTx((tx) => cancelLockedMarketplaceSettlement(tx, settlementId, note));
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -722,9 +772,7 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
     revalidatePath("/admin/cash-bank");
     return { success: true };
   } catch (error) {
-    if (error instanceof Error && error.message === "NOT_ACTIVE") {
-      return { error: "รอบรับเงินนี้ถูกยกเลิกไปแล้ว" };
-    }
+    if (error instanceof MarketplaceSettlementNotActiveError) return { error: error.message };
     console.error("[marketplace] SETTLEMENT_CANCEL_FAILED", error);
     return { error: "ยกเลิกรอบรับเงินไม่สำเร็จ" };
   }

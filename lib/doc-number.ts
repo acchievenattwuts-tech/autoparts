@@ -1,6 +1,7 @@
 import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { getThailandDateKey } from "@/lib/th-date";
+import { CLAIM_NO_PREFIX, type WarrantyClaimKind } from "@/lib/warranty-claim-policy";
 
 /**
  * Serialize allocation of one monthly sequence (e.g. "ADJ2609") until the
@@ -301,13 +302,19 @@ export async function generateAdjNo(
 
 /**
  * Generate warranty claim number using WarrantyClaim table
- * Format: WC{YYMM}{4-digit}
+ * Format: WC{YYMM}{4-digit} for claims on sale warranties, WCM{YYMM}{4-digit}
+ * for claims on on-site (manual) warranties. The two series never collide:
+ * "WCM2609…" does not start with "WC2609", so each lookup sees only its own.
+ * Sale claims are deleted on cancel, so a WC number may be reused; WCM never is.
  */
-export async function generateClaimNo(date?: Date): Promise<string> {
+export async function generateClaimNo(
+  kind: WarrantyClaimKind,
+  date?: Date,
+): Promise<string> {
   const [year, month] = getThailandDateKey(date ?? new Date()).split("-");
   const yy = year.slice(-2);
   const mm = month;
-  const pattern = `WC${yy}${mm}`;
+  const pattern = `${CLAIM_NO_PREFIX[kind]}${yy}${mm}`;
   const last = await db.warrantyClaim.findFirst({
     where: { claimNo: { startsWith: pattern } },
     orderBy: { claimNo: "desc" },

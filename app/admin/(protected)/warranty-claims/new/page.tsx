@@ -8,6 +8,7 @@ import { ChevronLeft } from "lucide-react";
 import NewClaimForm from "./NewClaimForm";
 import { autoAllocateLots, type LotAvailableJSON } from "@/lib/lot-control-client";
 import { formatDateOnlyForInput, formatDateThai } from "@/lib/th-date";
+import { CANCELLED_WARRANTY_CLAIM_ERROR, isWarrantyCancelled } from "@/lib/warranty-claim-policy";
 
 interface Props {
   searchParams: Promise<{ warrantyId?: string }>;
@@ -29,6 +30,7 @@ const NewClaimPage = async ({ searchParams }: Props) => {
         warrantyDays: true,
         startDate: true,
         endDate: true,
+        status: true,
         product: { select: { id: true, code: true, name: true, isLotControl: true } },
         customerName: true,
         customer: { select: { name: true } },
@@ -55,6 +57,30 @@ const NewClaimPage = async ({ searchParams }: Props) => {
   ]);
 
   if (!warranty) notFound();
+  if (isWarrantyCancelled(warranty)) {
+    // createClaim refuses this too; the page just does not offer the form.
+    return (
+      <div>
+        <div className="mb-6 flex items-center gap-2">
+          <Link
+            href="/admin/warranties"
+            className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300"
+          >
+            <ChevronLeft size={16} /> ประกันสินค้า
+          </Link>
+        </div>
+        <div
+          role="alert"
+          className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-100"
+        >
+          <p className="font-semibold">{CANCELLED_WARRANTY_CLAIM_ERROR}</p>
+          <p className="mt-1 text-rose-700 dark:text-rose-200">
+            {warranty.product.name} [{warranty.product.code}] ลำดับ #{warranty.unitSeq}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Pre-fill supplier from saleItem snapshot or product preferred supplier
   const defaultSupplierId   = warranty.saleItem?.supplierId

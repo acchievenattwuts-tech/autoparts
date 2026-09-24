@@ -194,11 +194,16 @@ export function createDocumentMutationGuard(database: GuardDb) {
             where: { saleId: entityId, receipt: { status: "ACTIVE" } },
             select: { receipt: { select: { id: true, receiptNo: true } } },
           }) ?? Promise.resolve([]),
-          database.warrantyClaim?.findMany({
-            where: { warranty: { saleId: entityId }, status: { not: "CANCELLED" },
-            },
-            select: { id: true, claimNo: true },
-          }) ?? Promise.resolve([]),
+          // Claims block cancelling the sale — any claim, whatever its status: claims on
+          // sale warranties are deleted when cancelled, and a kept (on-site) claim row
+          // would still hold the warranty the cancel deletes. They do NOT block an edit:
+          // updateSale locks only the claimed lines (see sale-claim-lock.ts).
+          action === "update"
+            ? Promise.resolve([])
+            : (database.warrantyClaim?.findMany({
+                where: { warranty: { saleId: entityId } },
+                select: { id: true, claimNo: true },
+              }) ?? Promise.resolve([])),
           database.marketplaceSettlementLine?.findMany({
             where: { saleId: entityId, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
             select: { settlement: { select: { id: true, settlementNo: true } } },

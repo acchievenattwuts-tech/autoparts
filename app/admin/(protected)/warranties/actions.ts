@@ -5,9 +5,11 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
+import { lockWarrantyRow } from "@/lib/warranty-claim-locks";
+import { WARRANTY_CANCEL_NOTE_MAX_LENGTH } from "@/lib/warranty-claim-policy";
 import {
   addThailandDays,
   parseDateOnlyToStartOfDay,
@@ -34,6 +36,10 @@ const noSaleSchema = z.object({
 });
 
 const warrantySchema = z.discriminatedUnion("mode", [withSaleSchema, noSaleSchema]);
+
+function buildWarrantyOpenClaimsError(claimNos: string[]): string {
+  return `ไม่สามารถยกเลิกได้ — ยังมีใบเคลมที่ active อ้างอิงอยู่: ${claimNos.join(", ")}`;
+}
 
 export async function createWarranty(
   formData: FormData
@@ -69,7 +75,14 @@ export async function createWarranty(
 
   try {
     if (d.mode === "WITH_SALE") {
-      const existing = await db.warranty.findFirst({ where: { saleItemId: d.saleItemId, unitSeq: 1 } });
+      const existing = await db.warranty.findFirst({
+        where: { saleItemId: d.saleItemId, unitSeq: 1 },
+        select: { status: true },
+      });
+      if (existing?.status === "CANCELLED") {
+        // Cancelled warranties are kept (not deleted), and [saleItemId, unitSeq] is unique.
+        return { error: "รายการสินค้านี้เคยบันทึกประกันและถูกยกเลิกไปแล้ว ไม่สามารถบันทึกซ้ำได้" };
+      }
       if (existing) return { error: "รายการสินค้านี้มีการบันทึกประกันไปแล้ว" };
 
       const saleItem = await db.saleItem.findUnique({
@@ -211,9 +224,13 @@ export async function cancelWarranty(
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์ยกเลิกประกัน" };
 
   const warrantyId = formData.get("warrantyId");
-  const cancelNote = formData.get("cancelNote");
   if (!warrantyId || typeof warrantyId !== "string") {
     return { error: "ข้อมูลไม่ถูกต้อง" };
+  }
+  const rawCancelNote = formData.get("cancelNote");
+  const cancelNote = typeof rawCancelNote === "string" && rawCancelNote.trim() ? rawCancelNote.trim() : null;
+  if (cancelNote && cancelNote.length > WARRANTY_CANCEL_NOTE_MAX_LENGTH) {
+    return { error: `หมายเหตุการยกเลิกต้องไม่เกิน ${WARRANTY_CANCEL_NOTE_MAX_LENGTH} ตัวอักษร` };
   }
 
   const requestContext = await getRequestContext();
@@ -223,6 +240,7 @@ export async function cancelWarranty(
       where: { id: warrantyId },
       select: {
         id: true,
+        status: true,
         createdVia: true,
         saleId: true,
         saleItemId: true,
@@ -243,6 +261,7 @@ export async function cancelWarranty(
     });
 
     if (!warranty) return { error: "ไม่พบรายการประกัน" };
+    if (warranty.status === "CANCELLED") return { error: "รายการประกันนี้ถูกยกเลิกไปแล้ว" };
 
     if (warranty.createdVia !== "MANUAL") {
       return {
@@ -252,13 +271,26 @@ export async function cancelWarranty(
     }
 
     if (warranty.claims.length > 0) {
-      const refList = warranty.claims.map((c) => c.claimNo).join(", ");
-      return {
-        error: `ไม่สามารถยกเลิกได้ — ยังมีใบเคลมที่ active อ้างอิงอยู่: ${refList}`,
-      };
+      return { error: buildWarrantyOpenClaimsError(warranty.claims.map((c) => c.claimNo)) };
     }
 
-    await db.warranty.delete({ where: { id: warrantyId } });
+    // Cancelled in place (never deleted): its cancelled claims keep pointing at it.
+    // Re-checked under a row lock so a claim opened meanwhile still blocks the cancel.
+    const cancelledAt = new Date();
+    const blockedBy = await dbTx(async (tx) => {
+      await lockWarrantyRow(tx, warrantyId);
+      const openClaims = await tx.warrantyClaim.findMany({
+        where: { warrantyId, status: { not: "CANCELLED" } },
+        select: { claimNo: true },
+      });
+      if (openClaims.length > 0) return openClaims.map((c) => c.claimNo);
+      await tx.warranty.update({
+        where: { id: warrantyId },
+        data: { status: "CANCELLED", cancelledAt, cancelNote },
+      });
+      return null;
+    });
+    if (blockedBy) return { error: buildWarrantyOpenClaimsError(blockedBy) };
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -283,8 +315,10 @@ export async function cancelWarranty(
         unitSeq: warranty.unitSeq,
         lotNo: warranty.lotNo,
         note: warranty.note,
+        status: warranty.status,
       },
-      after: typeof cancelNote === "string" && cancelNote.trim() ? { cancelNote: cancelNote.trim() } : undefined,
+      after: { status: "CANCELLED", cancelledAt, cancelNote },
+      meta: { cancelNote },
     });
 
     revalidatePath("/admin/warranties");

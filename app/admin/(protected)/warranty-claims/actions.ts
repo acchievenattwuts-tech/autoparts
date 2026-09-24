@@ -5,6 +5,7 @@ import {
   getAuditActorFromSession,
   getRequestContext,
   safeWriteAuditLog,
+  writeAuditLogTx,
 } from "@/lib/audit-log";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -37,15 +38,29 @@ import { recalculateStockCard, writeStockCard } from "@/lib/stock-card";
 import {
   buildMutationBlockMessage,
   checkDocumentMutation,
+  createDocumentMutationGuard,
   type DocumentMutationAction,
+  type GuardDb,
 } from "@/lib/document-mutation-guard";
 import {
   formatDateOnlyForInput,
+  formatDateTimeThai,
   getThailandDateKey,
   parseDateOnlyToDate,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
+import { lockSaleRowForClaim, lockWarrantyRow } from "@/lib/warranty-claim-locks";
+import {
+  appendSaleClaimCancelNote,
+  buildSaleClaimCancelHistoryLine,
+  CANCELLED_WARRANTY_CLAIM_ERROR,
+  getWarrantyClaimKind,
+  isWarrantyCancelled,
+  normalizeClaimCancelNote,
+  SALE_CLAIM_DELETED_AUDIT_EVENT,
+} from "@/lib/warranty-claim-policy";
 
 async function getWarrantyClaimMutationBlockError(
   id: string,
@@ -53,6 +68,42 @@ async function getWarrantyClaimMutationBlockError(
 ): Promise<string | null> {
   const result = await checkDocumentMutation("WarrantyClaim", id, action);
   return buildMutationBlockMessage(result);
+}
+
+/** An expected, user-facing refusal raised inside a transaction (not reported as a crash). */
+class ClaimFlowError extends Error {}
+
+function getOpenClaimError(claimNo: string): string {
+  return `รายการประกันนี้มีใบเคลม ${claimNo} ค้างอยู่แล้ว`;
+}
+
+/**
+ * Re-checks, under row locks, what createClaim verified before the transaction:
+ * the warranty still exists (a sale edit/cancel may have deleted it), is not
+ * cancelled, and has no open claim. Locks Sale → Warranty, the same order the
+ * sale flows use, so a claim cannot slip in while updateSale re-reads its lines.
+ */
+async function lockAndRecheckClaimableWarranty(
+  tx: TxClient,
+  warrantyId: string,
+  saleId: string | null,
+): Promise<void> {
+  if (saleId) await lockSaleRowForClaim(tx, saleId);
+  await lockWarrantyRow(tx, warrantyId);
+  const current = await tx.warranty.findUnique({
+    where: { id: warrantyId },
+    select: {
+      status: true,
+      claims: {
+        where: { status: { not: WarrantyClaimStatus.CANCELLED } },
+        select: { claimNo: true },
+        take: 1,
+      },
+    },
+  });
+  if (!current) throw new ClaimFlowError("ไม่พบข้อมูลประกัน");
+  if (isWarrantyCancelled(current)) throw new ClaimFlowError(CANCELLED_WARRANTY_CLAIM_ERROR);
+  if (current.claims[0]) throw new ClaimFlowError(getOpenClaimError(current.claims[0].claimNo));
 }
 
 const createClaimSchema = z.object({
@@ -206,8 +257,9 @@ async function writeWarrantyClaimAuditLog(params: {
   action: AuditAction;
   beforeSnapshot: Awaited<ReturnType<typeof getWarrantyClaimAuditSnapshot>>;
   afterSnapshot: Awaited<ReturnType<typeof getWarrantyClaimAuditSnapshot>>;
+  meta?: Record<string, unknown>;
 }) {
-  const { session, requestContext, action, beforeSnapshot, afterSnapshot } = params;
+  const { session, requestContext, action, beforeSnapshot, afterSnapshot, meta } = params;
   if (!beforeSnapshot || !afterSnapshot) return;
 
   const diff = diffEntity(beforeSnapshot, afterSnapshot);
@@ -220,6 +272,7 @@ async function writeWarrantyClaimAuditLog(params: {
     entityRef: afterSnapshot.claimNo,
     before: diff.before,
     after: diff.after,
+    ...(meta ? { meta } : {}),
   });
 }
 
@@ -259,6 +312,9 @@ export async function createClaim(
       endDate: true,
       lotNo: true,
       productId: true,
+      status: true,
+      createdVia: true,
+      saleId: true,
       product: { select: { inventoryTracking: true, isLotControl: true } },
       saleItem: { select: { supplierId: true, supplierName: true } },
       claims: {
@@ -268,6 +324,7 @@ export async function createClaim(
     },
   });
   if (!warranty) return { error: "ไม่พบข้อมูลประกัน" };
+  if (isWarrantyCancelled(warranty)) return { error: CANCELLED_WARRANTY_CLAIM_ERROR };
 
   const today = parseDateOnlyToStartOfDay(getThailandDateKey());
   const warrantyEndDate = parseDateOnlyToStartOfDay(formatDateOnlyForInput(warranty.endDate));
@@ -276,14 +333,15 @@ export async function createClaim(
   }
 
   if (warranty.claims.length > 0) {
-    return { error: `รายการประกันนี้มีใบเคลม ${warranty.claims[0].claimNo} ค้างอยู่แล้ว` };
+    return { error: getOpenClaimError(warranty.claims[0].claimNo) };
   }
 
   const claimDate = parseDateOnlyToDate(data.claimDate);
-  const claimNo = await generateClaimNo(claimDate);
+  const claimNo = await generateClaimNo(getWarrantyClaimKind(warranty), claimDate);
 
   try {
     await dbTx(async (tx) => {
+      await lockAndRecheckClaimableWarranty(tx, warranty.id, warranty.saleId);
       const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
       const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
       const isTracked = isInventoryTracked(warranty.product.inventoryTracking);
@@ -397,6 +455,7 @@ export async function createClaim(
     revalidatePath("/admin/warranty-claims");
     return { claimNo };
   } catch (error) {
+    if (error instanceof ClaimFlowError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.create", userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -962,37 +1021,93 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
 
 export async function cancelClaimAction(
   formData: FormData,
-): Promise<{ success?: boolean; error?: string }> {
-  const id = formData.get("claimId") as string;
-  const result = await cancelClaim(id);
-  return result.error ? { error: result.error } : { success: true };
+): Promise<{ success?: boolean; error?: string; deleted?: boolean }> {
+  const id = formData.get("claimId");
+  if (typeof id !== "string" || !id) return { error: "ข้อมูลไม่ถูกต้อง" };
+  const result = await cancelClaim(id, formData.get("cancelNote"));
+  return result.error ? { error: result.error } : { success: true, deleted: result.deleted === true };
 }
 
-export async function cancelClaim(id: string): Promise<{ error?: string }> {
-  let session: Awaited<ReturnType<typeof requirePermission>>;
+type ClaimSession = Awaited<ReturnType<typeof requirePermission>>;
+
+async function loadCancellableClaim(id: string) {
+  return db.warrantyClaim.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      claimNo: true,
+      status: true,
+      claimType: true,
+      symptom: true,
+      supplierName: true,
+      warranty: {
+        select: {
+          id: true,
+          productId: true,
+          createdVia: true,
+          saleId: true,
+          unitSeq: true,
+          lotNo: true,
+          product: { select: { name: true } },
+        },
+      },
+    },
+  });
+}
+
+type CancellableClaim = NonNullable<Awaited<ReturnType<typeof loadCancellableClaim>>>;
+
+/** Deletes every StockCard row the claim wrote (both current and legacy doc-number shapes). */
+async function deleteClaimStockCards(tx: TxClient, claimId: string, claimNo: string): Promise<void> {
+  await tx.stockCard.deleteMany({ where: { referenceId: claimId } });
+  await tx.stockCard.deleteMany({ where: { docNo: claimNo } });
+  await tx.stockCard.deleteMany({ where: { docNo: `${claimNo}${SEND_DOC_SUFFIX}` } });
+  await tx.stockCard.deleteMany({ where: { docNo: `${claimNo}${RECEIVE_DOC_SUFFIX}` } });
+  await tx.stockCard.deleteMany({ where: { docNo: `${claimNo}${RETURN_DOC_SUFFIX}` } });
+  await tx.stockCard.deleteMany({ where: { docNo: `${claimId}-SENT` } });
+  await tx.stockCard.deleteMany({ where: { docNo: `${claimId}-RECV` } });
+}
+
+/**
+ * Cancel a claim. A cancel note is required (trimmed, max 500).
+ * - Claim on a sale warranty: the claim is DELETED (stock reversed first) and one
+ *   history line is appended to Sale.claimCancelNotes; the audit entry is written
+ *   on the sale. The warranty is back to its pre-claim state and can be claimed again.
+ * - Claim on an on-site warranty: status CANCELLED, row kept, note in the audit meta.
+ */
+export async function cancelClaim(
+  id: string,
+  rawCancelNote?: unknown,
+): Promise<{ error?: string; deleted?: boolean }> {
+  let session: ClaimSession;
   try {
     session = await requirePermission("warranty_claims.update");
   } catch {
     return { error: "ไม่มีสิทธิ์เข้าถึง" };
   }
 
-  const claim = await db.warrantyClaim.findUnique({
-    where: { id },
-    select: {
-      claimNo: true,
-      status: true,
-      warranty: {
-        select: {
-          productId: true,
-        },
-      },
-    },
-  });
+  const noteResult = normalizeClaimCancelNote(rawCancelNote);
+  if (noteResult.error !== undefined) return { error: noteResult.error };
+
+  const claim = await loadCancellableClaim(id);
   if (!claim) return { error: "ไม่พบใบเคลม" };
   const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "cancel");
   if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status === WarrantyClaimStatus.CANCELLED) return { error: "ยกเลิกไปแล้ว" };
 
+  const saleId = claim.warranty.saleId;
+  if (getWarrantyClaimKind(claim.warranty) === "SALE" && saleId) {
+    return cancelSaleClaim(session, claim, saleId, noteResult.note);
+  }
+  return cancelOnsiteClaim(session, claim, noteResult.note);
+}
+
+async function cancelOnsiteClaim(
+  session: ClaimSession,
+  claim: CancellableClaim,
+  cancelNote: string,
+): Promise<{ error?: string }> {
+  const { id } = claim;
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
@@ -1005,13 +1120,7 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
         data: { status: WarrantyClaimStatus.CANCELLED, returnedAt: null },
       });
 
-      await tx.stockCard.deleteMany({ where: { referenceId: id } });
-      await tx.stockCard.deleteMany({ where: { docNo: claim.claimNo } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${SEND_DOC_SUFFIX}` } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RECEIVE_DOC_SUFFIX}` } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RETURN_DOC_SUFFIX}` } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${id}-SENT` } });
-      await tx.stockCard.deleteMany({ where: { docNo: `${id}-RECV` } });
+      await deleteClaimStockCards(tx, id, claim.claimNo);
 
       await recalculateStockCard(tx, claim.warranty.productId);
     });
@@ -1023,12 +1132,103 @@ export async function cancelClaim(id: string): Promise<{ error?: string }> {
       action: AuditAction.CANCEL,
       beforeSnapshot,
       afterSnapshot,
+      meta: { cancelNote },
     });
 
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
+    revalidatePath("/admin/warranties");
     return {};
   } catch (error) {
+    await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
+    return { error: "เกิดข้อผิดพลาด" };
+  }
+}
+
+async function cancelSaleClaim(
+  session: ClaimSession,
+  claim: CancellableClaim,
+  saleId: string,
+  cancelNote: string,
+): Promise<{ error?: string; deleted?: boolean }> {
+  const { id, warranty } = claim;
+  const actor = getAuditActorFromSession(session);
+  try {
+    const requestContext = await getRequestContext();
+    await dbTx(async (tx) => {
+      // Sale row first (same order as updateSale / createClaim), then re-check the
+      // claim and its downstream references under the lock.
+      await lockSaleRowForClaim(tx, saleId);
+      const current = await tx.warrantyClaim.findUnique({ where: { id }, select: { status: true } });
+      if (!current) throw new ClaimFlowError("ไม่พบใบเคลม");
+      if (current.status === WarrantyClaimStatus.CANCELLED) throw new ClaimFlowError("ยกเลิกไปแล้ว");
+      const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("WarrantyClaim", id, "cancel");
+      if (guard.blocked) throw new ClaimFlowError(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+
+      await reverseClaimStockMovements(tx, id);
+      await reverseClaimLotBalance(tx, id, warranty.productId);
+      await deleteClaimStockCards(tx, id, claim.claimNo);
+      await recalculateStockCard(tx, warranty.productId);
+
+      // ACTIVE purchase returns were refused above; cancelled ones only keep a pointer.
+      await tx.purchaseReturn.updateMany({
+        where: { claimId: id, status: "CANCELLED" },
+        data: { claimId: null },
+      });
+      // ClaimStockBalance / ClaimStockMovement / WarrantyClaimLot cascade with the claim.
+      await tx.warrantyClaim.delete({ where: { id } });
+
+      const sale = await tx.sale.findUnique({
+        where: { id: saleId },
+        select: { saleNo: true, claimCancelNotes: true },
+      });
+      if (!sale) throw new ClaimFlowError("ไม่พบใบขายของรายการประกันนี้");
+      const historyLine = buildSaleClaimCancelHistoryLine({
+        cancelledAtText: formatDateTimeThai(new Date()),
+        actorName: actor.userName ?? null,
+        productName: warranty.product.name,
+        unitSeq: warranty.unitSeq,
+        lotNo: warranty.lotNo,
+        claimType: claim.claimType,
+        symptom: claim.symptom,
+        note: cancelNote,
+      });
+      await tx.sale.update({
+        where: { id: saleId },
+        data: { claimCancelNotes: appendSaleClaimCancelNote(sale.claimCancelNotes, historyLine) },
+      });
+
+      await writeAuditLogTx(tx, {
+        ...actor,
+        ...requestContext,
+        action: AuditAction.CANCEL,
+        entityType: "Sale",
+        entityId: saleId,
+        entityRef: sale.saleNo,
+        meta: {
+          event: SALE_CLAIM_DELETED_AUDIT_EVENT,
+          warrantyId: warranty.id,
+          productId: warranty.productId,
+          productName: warranty.product.name,
+          unitSeq: warranty.unitSeq,
+          lotNo: warranty.lotNo,
+          claimType: claim.claimType,
+          claimTypeLabel: CLAIM_TYPE_LABEL[claim.claimType],
+          symptom: claim.symptom,
+          supplierName: claim.supplierName,
+          statusAtCancel: claim.status,
+          cancelNote,
+        },
+      });
+    });
+
+    revalidatePath("/admin/warranty-claims");
+    revalidatePath(`/admin/warranty-claims/${id}`);
+    revalidatePath(`/admin/sales/${saleId}`);
+    revalidatePath("/admin/warranties");
+    return { deleted: true };
+  } catch (error) {
+    if (error instanceof ClaimFlowError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };
   }

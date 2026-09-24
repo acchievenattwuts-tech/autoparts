@@ -1774,6 +1774,8 @@ export async function buildLineDailySummary(
     runSummaryStep("counts.openClaimCount", () => db.warrantyClaim.count({
       where: {
         status: { in: ["DRAFT", "SENT_TO_SUPPLIER"] },
+        // Claims on cancelled (on-site) warranties never count as open work.
+        warranty: { status: "ACTIVE" },
       },
     }),
     ),

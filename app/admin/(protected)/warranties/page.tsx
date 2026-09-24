@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/lib/generated/prisma";
 import Link from "next/link";
-import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus } from "lucide-react";
+import { ShieldCheck, Plus, AlertTriangle, CheckCircle, XCircle, FilePlus, Ban } from "lucide-react";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import Pagination from "@/components/shared/Pagination";
@@ -31,16 +31,21 @@ const buildWarrantyStatusWhere = (
   now: Date,
   soonDate: Date,
 ): Prisma.WarrantyWhereInput => {
+  // Cancelled (on-site) warranties have their own filter and never count as in cover.
+  if (status === "cancelled") {
+    return { status: "CANCELLED" };
+  }
+
   if (status === "expired") {
-    return { endDate: { lt: now } };
+    return { status: "ACTIVE", endDate: { lt: now } };
   }
 
   if (status === "soon") {
-    return { endDate: { gte: now, lte: soonDate } };
+    return { status: "ACTIVE", endDate: { gte: now, lte: soonDate } };
   }
 
   if (status === "active") {
-    return { endDate: { gt: soonDate } };
+    return { status: "ACTIVE", endDate: { gt: soonDate } };
   }
 
   return {};
@@ -101,6 +106,8 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         saleItemId: true,
         customerName: true,
         createdVia: true,
+        status: true,
+        cancelNote: true,
         product:  { select: { code: true, name: true } },
         sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
         customer: { select: { name: true } },
@@ -110,21 +117,23 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     db.warranty.count({ where: filteredWhere }),
     db.warranty.findMany({
       where: { AND: [dateWhere] },
-      select: { endDate: true },
+      select: { endDate: true, status: true },
     }),
   ]);
 
   const paginated = warrantyRows.map((w) => {
     const isExpired = w.endDate < now;
     const isSoon    = !isExpired && w.endDate <= soonDate;
-    const wStatus   = isExpired ? "expired" : isSoon ? "soon" : "active";
+    const wStatus   = w.status === "CANCELLED" ? "cancelled" : isExpired ? "expired" : isSoon ? "soon" : "active";
     return { ...w, wStatus };
   });
   const filtered = { length: filteredCount };
 
   const counts = summaryRows.reduce(
     (acc, row) => {
-      if (row.endDate < now) {
+      if (row.status === "CANCELLED") {
+        acc.cancelled += 1;
+      } else if (row.endDate < now) {
         acc.expired += 1;
       } else if (row.endDate <= soonDate) {
         acc.soon += 1;
@@ -133,7 +142,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
       }
       return acc;
     },
-    { active: 0, soon: 0, expired: 0 },
+    { active: 0, soon: 0, expired: 0, cancelled: 0 },
   );
 
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
@@ -163,11 +172,12 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
       </div>
 
       {/* Status summary cards */}
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         {[
           { key: "active",  label: "ยังมีประกัน",         count: counts.active,  icon: CheckCircle,    color: "text-green-600 bg-green-50 border-green-100" },
           { key: "soon",    label: "กำลังจะหมด (<30 วัน)", count: counts.soon,   icon: AlertTriangle,  color: "text-yellow-600 bg-yellow-50 border-yellow-100" },
           { key: "expired", label: "หมดประกันแล้ว",        count: counts.expired, icon: XCircle,       color: "text-red-500 bg-red-50 border-red-100" },
+          { key: "cancelled", label: "ยกเลิกแล้ว",         count: counts.cancelled, icon: Ban,         color: "text-slate-600 bg-slate-100 border-slate-200 dark:text-slate-200 dark:bg-slate-800/70 dark:border-white/10" },
         ].map(({ key, label, count, icon: Icon, color }) => (
           <Link
             key={key}
@@ -238,7 +248,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         <div className="px-5 py-3 border-b border-gray-100">
           <p className="text-sm text-gray-500">
             แสดง <span className="font-medium text-gray-700">{filtered.length} รายการ</span>
-            {status && <span className="ml-1 text-xs text-blue-600">(กรอง: {status === "active" ? "ยังมีประกัน" : status === "soon" ? "กำลังจะหมด" : "หมดแล้ว"})</span>}
+            {status && <span className="ml-1 text-xs text-blue-600">(กรอง: {status === "active" ? "ยังมีประกัน" : status === "soon" ? "กำลังจะหมด" : status === "cancelled" ? "ยกเลิกแล้ว" : "หมดแล้ว"})</span>}
           </p>
         </div>
 
@@ -312,6 +322,14 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                         {formatDateThai(w.endDate)}
                       </td>
                       <td className="py-2.5 px-4 text-center">
+                        {w.wStatus === "cancelled" && (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700 dark:bg-slate-500/25 dark:text-slate-100"
+                            title={w.cancelNote ? `หมายเหตุการยกเลิก: ${w.cancelNote}` : undefined}
+                          >
+                            <Ban size={11} /> ยกเลิก
+                          </span>
+                        )}
                         {w.wStatus === "expired" && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
                             <XCircle size={11} /> หมดประกัน
@@ -333,7 +351,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                       </td>
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2 justify-end">
-                          {w.wStatus !== "expired" && w._count.claims === 0 && (
+                          {w.wStatus !== "expired" && w.wStatus !== "cancelled" && w._count.claims === 0 && (
                             <Link
                               href={`/admin/warranty-claims/new?warrantyId=${w.id}`}
                               className="inline-flex items-center gap-1 px-2 py-1 text-xs text-[#1e3a5f] border border-[#1e3a5f]/30 rounded-lg hover:bg-[#1e3a5f]/5 transition-colors whitespace-nowrap"
@@ -345,7 +363,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                           {w._count.claims > 0 && (
                             <span className="text-xs text-orange-500 font-medium">เคลมแล้ว {w._count.claims}</span>
                           )}
-                          {canCancel && w.createdVia === "MANUAL" && w._count.claims === 0 && (
+                          {canCancel && w.createdVia === "MANUAL" && w.wStatus !== "cancelled" && w._count.claims === 0 && (
                             <CancelWarrantyButton
                               warrantyId={w.id}
                               warrantyLabel={`${w.product.name} (${w.product.code})`}

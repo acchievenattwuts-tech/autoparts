@@ -1,10 +1,12 @@
 import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { formatDateOnlyForInput } from "@/lib/th-date";
+import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 
 // Re-export client-safe types and pure functions
 export type { LotSubRow, LotAvailable } from "@/lib/lot-control-client";
 export { validateLotRows, autoAllocateLots } from "@/lib/lot-control-client";
+export { LotStockInsufficientError } from "@/lib/lot-stock-error";
 
 // Import types for internal use
 import type { LotAvailableJSON, LotSubRow } from "@/lib/lot-control-client";
@@ -103,7 +105,7 @@ async function ensureLotBalanceAvailable(
   for (const [lotNo, requestedQty] of requestedByLot.entries()) {
     const availableQty = balanceMap.get(lotNo) ?? 0;
     if (requestedQty > availableQty + 0.0001) {
-      throw new Error(`Lot ${lotNo} คงเหลือไม่พอสำหรับการตัดสต็อก`);
+      throw new LotStockInsufficientError({ productId, lotNo, requestedQty, availableQty });
     }
   }
 }

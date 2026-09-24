@@ -1668,6 +1668,8 @@ model Sale {
   vatType                    VatType                     @default(NO_VAT)
   cancelNote                 String?
   cancelledAt                DateTime?                   @db.Timestamptz(3)
+  /// Append-only history (one line per cancelled claim) of warranty claims deleted from this sale.
+  claimCancelNotes           String?
   status                     DocStatus                   @default(ACTIVE)
   channel                    SaleChannel                 @default(STORE)
   channelRefNo               String?
@@ -1800,6 +1802,10 @@ model Warranty {
   unitSeq      Int                    @default(1)
   lotNo        String?
   createdVia   WarrantyCreationSource @default(AUTO_FROM_SALE)
+  /// Only MANUAL (on-site) warranties are ever cancelled; AUTO_FROM_SALE rows stay ACTIVE.
+  status       WarrantyStatus         @default(ACTIVE)
+  cancelledAt  DateTime?              @db.Timestamptz(3)
+  cancelNote   String?
   product      Product                @relation(fields: [productId], references: [id])
   sale         Sale?                  @relation(fields: [saleId], references: [id])
   saleItem     SaleItem?              @relation(fields: [saleItemId], references: [id])
@@ -1812,11 +1818,17 @@ model Warranty {
   @@index([saleId, endDate])
   @@index([customerId])
   @@index([createdVia])
+  @@index([status, endDate])
 }
 
 enum WarrantyCreationSource {
   AUTO_FROM_SALE
   MANUAL
+}
+
+enum WarrantyStatus {
+  ACTIVE
+  CANCELLED
 }
 
 model WarrantyClaim {

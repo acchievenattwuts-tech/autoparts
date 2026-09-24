@@ -16,6 +16,7 @@ import { getSessionPermissionContext, requirePermission } from "@/lib/require-au
 import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
 import { formatDateThai } from "@/lib/th-date";
+import { getWarrantyClaimKind } from "@/lib/warranty-claim-policy";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -63,6 +64,8 @@ const ClaimDetailPage = async ({ params }: Props) => {
           select: {
             lotNo: true,
             unitSeq: true,
+            createdVia: true,
+            saleId: true,
             warrantyDays: true,
             startDate: true,
             endDate: true,
@@ -483,6 +486,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
               isLotControl={claim.warranty.product.isLotControl}
               mutationBlockedReason={mutationBlockMessage}
               mutationBlockReferences={mutationBlockReferences}
+              deletesClaimOnCancel={getWarrantyClaimKind(claim.warranty) === "SALE"}
             />
           </div>
         )}

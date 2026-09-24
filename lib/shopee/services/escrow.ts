@@ -161,6 +161,38 @@ export function buildShopeeFeeExpenseDraftFromOrderImport(
   };
 }
 
+/** Namespaces the advisory-lock key so it never shares a hash input with a doc-number sequence. */
+const FEE_EXPENSE_LOCK_KEY_PREFIX = "shopee-fee-expense:";
+
+type ExistingFeeExpense = { id: string; expenseNo: string };
+
+/**
+ * Serializes fee-expense creation per Shopee order import until the caller's
+ * transaction ends, then re-reads the linked expense under that lock. The draft
+ * check before the transaction is only a fast path: two requests for the same
+ * order (double click, two tabs, two admins) could both see no expense and both
+ * create one — the later link then overwrites escrowExpenseId and the earlier
+ * expense stays ACTIVE with its cash/bank OUT movement and profit facts, but
+ * unlinked. With the lock, the later request waits, sees the ACTIVE expense and
+ * reuses it. An advisory lock (not a row lock) is used so this flow takes no new
+ * row lock on ShopeeOrderImport ahead of the Expense/CashBankMovement writes.
+ */
+async function lockShopeeFeeExpenseOrder(
+  tx: ShopeeEscrowTx,
+  orderImportId: string,
+): Promise<ExistingFeeExpense | null> {
+  const lockKey = `${FEE_EXPENSE_LOCK_KEY_PREFIX}${orderImportId}`;
+  // $executeRaw, not $queryRaw: pg_advisory_xact_lock() returns void (see lib/doc-number.ts).
+  await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
+  const order = await tx.shopeeOrderImport.findUnique({
+    where: { id: orderImportId },
+    select: { escrowExpense: { select: { id: true, expenseNo: true, status: true } } },
+  });
+  const existing = order?.escrowExpense;
+  if (!existing || existing.status === "CANCELLED") return null;
+  return { id: existing.id, expenseNo: existing.expenseNo };
+}
+
 export async function createShopeeFeeExpense(params: {
   orderImportId: string;
   userId: string;
@@ -191,7 +223,10 @@ export async function createShopeeFeeExpense(params: {
   let createdExpenseId = "";
 
   try {
-    await dbTx(async (tx) => {
+    const reusedExpense = await dbTx(async (tx): Promise<ExistingFeeExpense | null> => {
+      const existingExpense = await lockShopeeFeeExpenseOrder(tx, draft.orderImportId);
+      if (existingExpense) return existingExpense;
+
       const expenseCodeIds = await ensureShopeeExpenseCodes(tx, draft.lines.map((line) => line.kind));
       const totalAmount = roundMoney(draft.totalAmount);
 
@@ -243,8 +278,12 @@ export async function createShopeeFeeExpense(params: {
           escrowLastError: null,
         },
       });
+      return null;
     });
 
+    if (reusedExpense) {
+      return { ok: true, expenseId: reusedExpense.id, expenseNo: reusedExpense.expenseNo, reused: true };
+    }
     return { ok: true, expenseId: createdExpenseId, expenseNo, reused: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : "สร้าง Expense ค่า Shopee ไม่สำเร็จ";

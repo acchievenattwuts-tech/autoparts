@@ -24,10 +24,52 @@ describe("document mutation guard", () => {
       },
     });
 
-    const result = await guard.check("Sale", "sale-1", "update");
+    const result = await guard.check("Sale", "sale-1", "cancel");
 
     assert.equal(result.blocked, true);
     assert.deepEqual(result.references.map((ref) => ref.refNo), ["CN-001", "RC-001", "WC-001"],
+    );
+  });
+
+  it("does not let warranty claims block a sale edit (claimed lines are locked instead)", async () => {
+    const claimQueries: unknown[] = [];
+    const guard = createDocumentMutationGuard({
+      creditNote: { findMany: async () => [{ id: "cn-1", cnNo: "CN-001" }] },
+      warrantyClaim: {
+        findMany: async (args) => {
+          claimQueries.push(args);
+          return [{ id: "claim-1", claimNo: "WC26090001" }];
+        },
+      },
+    });
+
+    const result = await guard.check("Sale", "sale-1", "update");
+
+    assert.deepEqual(claimQueries, [], "claims are not even queried for an edit");
+    assert.deepEqual(result.references.map((ref) => ref.refNo), ["CN-001"]);
+  });
+
+  it("blocks a sale cancel on ANY claim of its warranties, whatever the claim status, listing the numbers", async () => {
+    const claimQueries: Array<Record<string, unknown>> = [];
+    const guard = createDocumentMutationGuard({
+      warrantyClaim: {
+        findMany: async (args) => {
+          claimQueries.push(args);
+          return [
+            { id: "claim-1", claimNo: "WC26090001" },
+            { id: "claim-2", claimNo: "WCM26090003" },
+          ];
+        },
+      },
+    });
+
+    const result = await guard.check("Sale", "sale-1", "cancel");
+
+    assert.deepEqual(claimQueries[0]?.where, { warranty: { saleId: "sale-1" } }, "no status filter");
+    assert.equal(result.blocked, true);
+    assert.equal(
+      buildMutationBlockMessage(result),
+      "ไม่สามารถดำเนินการได้ เนื่องจากถูกนำไปใช้ที่เอกสารปลายทาง: WC26090001, WCM26090003",
     );
   });
 

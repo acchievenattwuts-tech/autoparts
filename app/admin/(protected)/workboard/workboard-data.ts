@@ -372,6 +372,8 @@ async function queryDueAp(todayStart: Date, todayEnd: Date) {
 async function querySupplierClaims() {
   const where = {
     status: "SENT_TO_SUPPLIER" as const,
+    // Cancelled (on-site) warranties are out of cover; they cannot hold an open claim.
+    warranty: { status: "ACTIVE" as const },
   };
 
   const [count, rows] = await Promise.all([

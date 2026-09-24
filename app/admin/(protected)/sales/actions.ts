@@ -45,7 +45,17 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateSaleAmountRemain } from "@/lib/amount-remain";
 import { getLotAvailability, writeSaleLots, writeStockMovementLots, reverseSaleLotBalance, type LotSubRow } from "@/lib/lot-control";
 import { getSaleLineLotError, SaleLotValidationError } from "./sale-lot-guard";
+import {
+  buildClaimLockedCustomerReason,
+  buildClaimLockedDateReason,
+  buildConcurrentClaimError,
+  buildLockedLineError,
+  groupClaimNosBySaleItem,
+  matchLockedSaleLines,
+  SaleClaimLockError,
+} from "./sale-claim-lock";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 import {
   getTransactionProductDetailRowsByIds,
   searchTransactionProductDetailRows,
@@ -957,7 +967,13 @@ export async function createSale(
     });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
-    if (err instanceof QuotationError || err instanceof SaleLotValidationError) return { error: err.message };
+    if (
+      err instanceof QuotationError ||
+      err instanceof SaleLotValidationError ||
+      err instanceof LotStockInsufficientError
+    ) {
+      return { error: err.message };
+    }
     await reportCriticalError(err, { scope: "sales.create" });
     if (
       isManualMarketplaceChannel(channel) &&
@@ -1001,12 +1017,13 @@ export async function cancelSale(
         include: { receipt: { select: { receiptNo: true, status: true } } },
       },
       warranties:  {
-        // Only warranties that still have a non-cancelled claim matter for the reference check.
-        where: { claims: { some: { status: { not: "CANCELLED" } } } },
+        // Any claim blocks the cancel: sale claims are deleted when cancelled, so a
+        // remaining claim row (whatever its status) still holds the warranty.
+        where: { claims: { some: {} } },
         select: {
           id: true,
           claims: {
-            where: { status: { not: "CANCELLED" } },
+            orderBy: { claimNo: "asc" },
             select: { claimNo: true },
           },
         },
@@ -1132,9 +1149,14 @@ export async function updateSale(
           productId:     true,
           quantity:      true,
           salePrice:     true,
+          unitListPrice: true,
           warrantyDays:  true,
           supplierId:    true,
           supplierName:  true,
+          moreDetail:    true,
+          showQty:       true,
+          showUnitName:  true,
+          product:       { select: { name: true } },
           lotItems: {
             orderBy: { id: "asc" },
             select: { lotNo: true, qty: true },
@@ -1145,17 +1167,6 @@ export async function updateSale(
       receipts:    {
         where:   { receipt: { status: "ACTIVE" } },
         include: { receipt: { select: { receiptNo: true, status: true } } },
-      },
-      warranties:  {
-        // Only warranties that still have a non-cancelled claim matter for the reference check.
-        where: { claims: { some: { status: { not: "CANCELLED" } } } },
-        select: {
-          id: true,
-          claims: {
-            where: { status: { not: "CANCELLED" } },
-            select: { claimNo: true },
-          },
-        },
       },
     },
   });
@@ -1172,11 +1183,36 @@ export async function updateSale(
     const nos = activeReceipts.map((ri) => ri.receipt.receiptNo).join(", ");
     return { error: `ไม่สามารถแก้ไขได้ มีใบเสร็จรับเงินที่อ้างอิงอยู่: ${nos}` };
   }
-  const activeClaims = existing.warranties.flatMap((w) => w.claims);
-  if (activeClaims.length > 0) {
-    const nos = activeClaims.map((c) => c.claimNo).join(", ");
-    return { error: `ไม่สามารถแก้ไขได้ มีใบเคลมที่อ้างอิงอยู่: ${nos} กรุณายกเลิกใบเคลมก่อน` };
-  }
+  // Claims no longer block the whole edit: the claimed lines are locked instead
+  // (sale-claim-lock.ts), and while any claim exists the date and customer are too.
+  const saleClaims = await db.warrantyClaim.findMany({
+    where: { warranty: { saleId: id } },
+    orderBy: { claimNo: "asc" },
+    select: { id: true, claimNo: true, warranty: { select: { saleItemId: true } } },
+  });
+  const knownClaimIds = new Set(saleClaims.map((claim) => claim.id));
+  const allSaleClaimNos = saleClaims.map((claim) => claim.claimNo);
+  const claimNosBySaleItem = groupClaimNosBySaleItem(saleClaims);
+  const lockedLines = existing.items
+    .filter((item) => claimNosBySaleItem.has(item.id))
+    .map((item) => ({
+      saleItemId: item.id,
+      productName: item.product.name,
+      claimNos: claimNosBySaleItem.get(item.id) ?? [],
+      stored: {
+        productId: item.productId,
+        quantity: Number(item.quantity),
+        showQty: item.showQty === null ? null : Number(item.showQty),
+        showUnitName: item.showUnitName,
+        salePrice: Number(item.salePrice),
+        unitListPrice: Number(item.unitListPrice),
+        warrantyDays: item.warrantyDays,
+        supplierId: item.supplierId,
+        supplierName: item.supplierName,
+        moreDetail: item.moreDetail,
+        lots: item.lotItems.map((lot) => ({ lotNo: lot.lotNo, qty: Number(lot.qty) })),
+      },
+    }));
 
   let items: z.infer<typeof saleItemSchema>[] = [];
   try {
@@ -1355,6 +1391,22 @@ export async function updateSale(
     ]),
   );
 
+  // ─── Claim lock (checked before any write) ────────────────────────────────
+  if (allSaleClaimNos.length > 0) {
+    if (saleDateChanged) return { error: buildClaimLockedDateReason(allSaleClaimNos) };
+    if ((customerId ?? null) !== (existing.customerId ?? null)) {
+      return { error: buildClaimLockedCustomerReason(allSaleClaimNos) };
+    }
+  }
+  const lockedMatch = matchLockedSaleLines(
+    lockedLines,
+    validItems,
+    (item) => newUnitScaleMap.get(getSaleUnitKey(item.productId, item.unitName)) ?? 1,
+  );
+  const lockedLineError = buildLockedLineError(lockedMatch.violations);
+  if (lockedLineError) return { error: lockedLineError };
+  const lockedSaleItemIds = new Set(lockedLines.map((line) => line.saleItemId));
+
   type ExistingSaleSig = {
     existingItemId: string;
     productId:      string;
@@ -1405,10 +1457,12 @@ export async function updateSale(
   });
 
   // Greedy multiset match: each existing line can be claimed by at most one
-  // new line with the same signature.
-  const matchedExistingIds = new Set<string>();
-  const matchedByNewIdx = new Map<number, string>();
+  // new line with the same signature. Claim-locked lines are paired first with
+  // the identical submitted line, so they are always kept untouched.
+  const matchedExistingIds = new Set<string>(lockedMatch.matchedByNewIdx.values());
+  const matchedByNewIdx = new Map<number, string>(lockedMatch.matchedByNewIdx);
   for (const n of newItemSigs) {
+    if (matchedByNewIdx.has(n.newIdx)) continue;
     const candidate = oldItemSigs.find(
       (o) =>
         !matchedExistingIds.has(o.existingItemId) && o.signature === n.signature,
@@ -1438,6 +1492,22 @@ export async function updateSale(
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
       const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", id, "update");
       if (guard.blocked) throw new Error(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      // The Sale row is locked now (prepareSaleQuotationReference) and createClaim
+      // takes the same lock, so this re-read is final: any claim not seen by the
+      // pre-check was opened meanwhile and may sit on a line about to be rebuilt.
+      const claimsNow = await tx.warrantyClaim.findMany({
+        where: { warranty: { saleId: id } },
+        orderBy: { claimNo: "asc" },
+        select: { id: true, claimNo: true, warranty: { select: { saleItemId: true } } },
+      });
+      const newClaims = claimsNow.filter(
+        (claim) =>
+          !knownClaimIds.has(claim.id) &&
+          !(claim.warranty.saleItemId && lockedSaleItemIds.has(claim.warranty.saleItemId)),
+      );
+      if (newClaims.length > 0) {
+        throw new SaleClaimLockError(buildConcurrentClaimError(newClaims.map((claim) => claim.claimNo)));
+      }
       await auditSaleQuotationReference(tx, getAuditActorFromSession(session), id, existing.saleNo, previousQuotationId, quotationId);
       const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
@@ -1766,7 +1836,13 @@ export async function updateSale(
     });
     return { success: true };
   } catch (err) {
-    if (err instanceof SaleLotValidationError) return { error: err.message };
+    if (
+      err instanceof SaleLotValidationError ||
+      err instanceof SaleClaimLockError ||
+      err instanceof LotStockInsufficientError
+    ) {
+      return { error: err.message };
+    }
     console.error("[updateSale]", err);
     if (
       marketplaceConfig &&

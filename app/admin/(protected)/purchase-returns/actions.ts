@@ -37,6 +37,7 @@ import {
 } from "@/lib/lot-control";
 import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 import {
   getTransactionProductDetailRowsByIds,
   searchTransactionProductDetailRows,
@@ -308,9 +309,8 @@ function assertRefundPaymentsMatchTotal(payments: DocumentPaymentRow[], netAmoun
 
 // lib/lot-control checks lot balances before deducting anything; surface that
 // shortage to the user. Any other error is rethrown unchanged.
-const LOT_SHORTAGE_MESSAGE = /^Lot .+ คงเหลือไม่พอสำหรับการตัดสต็อก$/;
 function rethrowLotShortageAsUserError(error: unknown): never {
-  if (error instanceof Error && LOT_SHORTAGE_MESSAGE.test(error.message)) {
+  if (error instanceof LotStockInsufficientError) {
     throw new PurchaseUserError(error.message);
   }
   throw error;

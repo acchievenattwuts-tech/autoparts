@@ -28,10 +28,12 @@ import LocationPinPickerSheet from "@/components/shared/LocationPinPickerSheet";
 import {
   buildSaleDraft,
   getSaleDraftKey,
+  mergeClaimLockedItems,
   parseSaleDraft,
   type SaleDraftPayload,
   type SaleFormLineItem,
 } from "../sale-form-data";
+import SaleLockedLineRow from "./SaleLockedLineRow";
 import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
 import { resolveScheduledPrice } from "@/lib/pricing/price-promotion";
 
@@ -112,6 +114,8 @@ interface LineItem extends Omit<SaleFormLineItem, "lotItems"> {
   supplierId:   string;
   supplierName: string;
   lotItems:     LotSubRow[];
+  /** Edit mode only: the line is held by warranty claims and is shown read-only. */
+  claimLock?:   { claimNos: string[]; reason: string };
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
@@ -195,6 +199,8 @@ interface InitialData {
   vatRate:         number;
   creditTerm:      number | null;
   items:           (LineItem & { lotItems: LotSubRow[] })[];
+  /** Set when warranty claims exist on the sale: date and customer are then locked. */
+  claimLock?:      { claimNos: string[]; dateReason: string; customerReason: string } | null;
 }
 
 const SaleForm = ({
@@ -302,6 +308,8 @@ const SaleForm = ({
   /** ลูกค้าและภาษีเป็นของ SQ ที่อ้างอิง — แก้ได้ก็ต่อเมื่อถอด SQ ออก (server ทับค่าจาก SQ ซ้ำอีกชั้น) */
   const quotationLocked = !isMarketplace && Boolean(quotationId);
   const quotationLockHint = "ล็อกตามใบเสนอราคาที่อ้างอิง — ถอด SQ ก่อนถ้าต้องการแก้";
+  /** Warranty claims on this sale lock its date, customer and the claimed lines (server re-checks). */
+  const headerClaimLock = initialData?.claimLock ?? null;
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const supplierMap = new Map(supplierOptions.map((supplier) => [supplier.id, supplier]));
   const customerMap = new Map(customerOptions.map((customer) => [customer.id, customer]));
@@ -362,8 +370,11 @@ const SaleForm = ({
         return [...merged.values()];
       });
     }
-    setSaleDate(draft.saleDate);
-    setSelectedCustomerId(draft.customerId);
+    // Claim-locked fields and lines always come from the server, never from a draft.
+    if (!headerClaimLock) {
+      setSaleDate(draft.saleDate);
+      setSelectedCustomerId(draft.customerId);
+    }
     setQuotationId(draft.quotationId ?? initialData?.quotationId ?? "");
     setQuotationNo(draft.quotationNo ?? initialData?.quotationNo ?? "");
     setCustomerNameOverride(draft.customerName);
@@ -388,7 +399,7 @@ const SaleForm = ({
     setVatType(draft.vatType);
     setVatRate(draft.vatRate);
     setCreditTerm(draft.creditTerm);
-    setItems((draft.items as LineItem[]).map(normalizeDraftItem));
+    setItems(mergeClaimLockedItems(draft.items as LineItem[], initialData?.items ?? []).map(normalizeDraftItem));
     setAvailableDraft(null);
     setDraftStatus("กู้คืน draft แล้ว");
   };
@@ -950,7 +961,7 @@ const SaleForm = ({
         </div>
       )}
 
-      {!isMarketplace && (canReferenceQuotation || Boolean(quotationId)) && <SaleQuotationPicker value={quotationId} label={quotationNo} saleId={persistedSaleId || undefined} initialLoadId={initialQuotationId} canSelect={canReferenceQuotation}
+      {!isMarketplace && (canReferenceQuotation || Boolean(quotationId)) && <SaleQuotationPicker value={quotationId} label={quotationNo} saleId={persistedSaleId || undefined} initialLoadId={initialQuotationId} canSelect={canReferenceQuotation && !headerClaimLock}
         onDetach={() => { setQuotationId(""); setQuotationNo(""); }}
         onLoad={(id, quote) => {
           quote.products.forEach(rememberProduct);
@@ -1008,8 +1019,13 @@ const SaleForm = ({
               required
               value={saleDate}
               onChange={(e) => handleSaleDateChange(e.target.value)}
-              className={inputCls}
+              disabled={Boolean(headerClaimLock)}
+              title={headerClaimLock?.dateReason}
+              className={`${inputCls} disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-slate-800/60`}
             />
+            {headerClaimLock && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{headerClaimLock.dateReason}</p>
+            )}
           </div>
           <div>
             <label className={labelCls}>ลูกค้า</label>
@@ -1037,9 +1053,12 @@ const SaleForm = ({
                   : null
               }
               placeholder="โปรดระบุลูกค้า"
-              disabled={quotationLocked}
+              disabled={quotationLocked || Boolean(headerClaimLock)}
             />}
             {quotationLocked && <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{quotationLockHint}</p>}
+            {headerClaimLock && !isMarketplace && (
+              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{headerClaimLock.customerReason}</p>
+            )}
             <input type="hidden" name="customerId" value={selectedCustomerId} />
           </div>
           <div>
@@ -1398,6 +1417,28 @@ const SaleForm = ({
             </thead>
             <tbody>
               {items.map((item, i) => {
+                if (item.claimLock) {
+                  const lockedProduct = productMap.get(item.productId);
+                  const lockedSupplier = item.supplierId ? supplierMap.get(item.supplierId) : undefined;
+                  return (
+                    <SaleLockedLineRow
+                      key={i}
+                      index={i}
+                      productLabel={lockedProduct ? `[${lockedProduct.code}] ${lockedProduct.name}` : item.productId}
+                      supplierLabel={lockedSupplier?.name ?? (item.supplierName || null)}
+                      moreDetail={item.moreDetail ?? ""}
+                      unitName={item.unitName}
+                      qty={item.qty}
+                      unitListPrice={item.unitListPrice}
+                      salePrice={item.salePrice}
+                      warrantyDays={item.warrantyDays}
+                      lotItems={item.lotItems}
+                      isLotControl={lockedProduct?.isLotControl ?? item.lotItems.length > 0}
+                      claimNos={item.claimLock.claimNos}
+                      reason={item.claimLock.reason}
+                    />
+                  );
+                }
                 const units = getUnits(item.productId);
                 const prod  = productMap.get(item.productId);
                 const isLot = prod?.isLotControl ?? false;

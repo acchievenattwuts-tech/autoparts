@@ -14,6 +14,11 @@ import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { buildMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
+  CLAIM_DELETED_SEARCH_PARAM,
+  CLAIM_DELETED_SUCCESS_MESSAGE,
+  getWarrantyClaimKind,
+} from "@/lib/warranty-claim-policy";
+import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
@@ -78,13 +83,15 @@ const STATUS_CARDS = [
 const ClaimListPage = async ({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; q?: string; from?: string; to?: string; page?: string }>;
+  searchParams: Promise<{ status?: string; q?: string; from?: string; to?: string; page?: string; [CLAIM_DELETED_SEARCH_PARAM]?: string }>;
 }) => {
   await requirePermission("warranty_claims.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "warranty_claims.update");
 
-  const { status, q, from: fromParam, to: toParam, page } = await searchParams;
+  const resolvedSearchParams = await searchParams;
+  const { status, q, from: fromParam, to: toParam, page } = resolvedSearchParams;
+  const showClaimDeletedNotice = resolvedSearchParams[CLAIM_DELETED_SEARCH_PARAM] === "1";
   const pageNum = Math.max(1, parseInt(page ?? "1", 10));
   const normalizedQuery = q?.trim() ?? "";
 
@@ -136,6 +143,8 @@ const ClaimListPage = async ({
         warranty: {
           select: {
             unitSeq: true,
+            createdVia: true,
+            saleId: true,
             customerName: true,
             product: { select: { code: true, name: true } },
             sale: { select: { saleNo: true, customerName: true } },
@@ -172,6 +181,16 @@ const ClaimListPage = async ({
           <h1 className="font-kanit text-2xl font-bold text-gray-900">ใบเคลมสินค้า</h1>
         </div>
       </div>
+
+      {showClaimDeletedNotice && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-100"
+        >
+          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+          <span>{CLAIM_DELETED_SUCCESS_MESSAGE}</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-5 gap-4 mb-4">
         {STATUS_CARDS.map(({ key, label, icon: Icon, color }) => (
@@ -326,6 +345,7 @@ const ClaimListPage = async ({
                             <CancelClaimButton
                               claimId={claim.id}
                               claimNo={claim.claimNo}
+                              deletesClaim={getWarrantyClaimKind(claim.warranty) === "SALE"}
                               disabledReason={buildMutationBlockMessage({
                                 blocked: claim.purchaseReturns.length > 0,
                                 reason: claim.purchaseReturns.length > 0 ? "ถูกนำไปใช้ที่ใบลดหนี้ซื้อ" : null,

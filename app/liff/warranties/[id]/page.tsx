@@ -28,6 +28,7 @@ export default async function LiffWarrantyDetailPage({
   const warranty = await db.warranty.findFirst({
     where: {
       id,
+      status: "ACTIVE",
       OR: [
         { sale: { customerId: customer.id, status: "ACTIVE" } },
         { customerId: customer.id, saleId: null },

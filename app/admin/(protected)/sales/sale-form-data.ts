@@ -49,6 +49,20 @@ export interface SaleDraftPayload {
   items: SaleFormLineItem[];
 }
 
+/**
+ * Restoring a draft onto a sale whose lines are held by warranty claims: the
+ * claim-locked lines always come from the server copy (a draft may hold a stale
+ * or edited version of them); the draft only contributes the unlocked lines.
+ */
+export function mergeClaimLockedItems<T extends { claimLock?: unknown }>(
+  draftItems: T[],
+  serverItems: T[],
+): T[] {
+  const lockedItems = serverItems.filter((item) => item.claimLock);
+  if (lockedItems.length === 0) return draftItems;
+  return [...lockedItems, ...draftItems.filter((item) => !item.claimLock)];
+}
+
 export function getSaleDraftKey(context: SaleDraftContext): string {
   return context.mode === "edit"
     ? `sale-draft:edit:${context.saleId}`

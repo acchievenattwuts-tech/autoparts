@@ -1,4 +1,8 @@
 import { AuditAction, type Prisma } from "@/lib/generated/prisma";
+import {
+  SALE_CLAIM_DELETED_ACTIVITY_TITLE,
+  SALE_CLAIM_DELETED_AUDIT_EVENT,
+} from "@/lib/warranty-claim-policy";
 
 export type DocumentActivityKind =
   "CREATE"
@@ -79,6 +83,56 @@ export function formatMoneyActivity(value: number | string): string {
   })} บาท`;
 }
 
+function metaText(meta: Prisma.JsonObject, key: string): string | null {
+  const value = meta[key];
+  if (typeof value === "number") return String(value);
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/** Sale timeline entry for a warranty claim that was cancelled (deleted) from the sale. */
+function buildSaleClaimDeletedActivityEvent(row: AuditActivityInput,
+): DocumentActivityEvent | null {
+  const meta = row.meta;
+  if (
+    row.action !== AuditAction.CANCEL ||
+    row.entityType !== "Sale" ||
+    !meta ||
+    typeof meta !== "object" ||
+    Array.isArray(meta) ||
+    meta.event !== SALE_CLAIM_DELETED_AUDIT_EVENT
+  ) {
+    return null;
+  }
+
+  const unitSeq = metaText(meta, "unitSeq");
+  const lotNo = metaText(meta, "lotNo");
+  const productName = metaText(meta, "productName");
+  const product = productName
+    ? `${productName}${unitSeq ? ` (ชิ้นที่ ${unitSeq}${lotNo ? `, Lot ${lotNo}` : ""})` : ""}`
+    : null;
+  const claimType = metaText(meta, "claimTypeLabel");
+  const symptom = metaText(meta, "symptom");
+  const supplier = metaText(meta, "supplierName");
+  const note = metaText(meta, "cancelNote");
+
+  return {
+    id: `audit-${row.id}`,
+    kind: "CANCEL",
+    occurredAt: row.createdAt,
+    title: SALE_CLAIM_DELETED_ACTIVITY_TITLE,
+    description: joinDescription([
+      row.userName ? `โดย ${row.userName}` : "โดย ระบบ",
+      product,
+      claimType ? `ประเภท: ${claimType}` : null,
+      symptom ? `อาการ: ${symptom}` : null,
+      supplier ? `ซัพพลายเออร์: ${supplier}` : null,
+      note ? `เหตุผล: ${note}` : null,
+    ]),
+    actorName: row.userName,
+    tone: "cancel",
+  };
+}
+
 export function buildAuditActivityEvent(row: AuditActivityInput,
 ): DocumentActivityEvent | null {
   if (row.action === AuditAction.CREATE) {
@@ -113,6 +167,9 @@ export function buildAuditActivityEvent(row: AuditActivityInput,
       tone: "update",
     };
   }
+
+  const saleClaimDeleted = buildSaleClaimDeletedActivityEvent(row);
+  if (saleClaimDeleted) return saleClaimDeleted;
 
   if (row.action === AuditAction.CANCEL) {
     const cancelNote = metaCancelNote(row.meta);

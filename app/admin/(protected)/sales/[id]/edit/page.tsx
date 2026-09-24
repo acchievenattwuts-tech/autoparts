@@ -18,6 +18,12 @@ import {
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SaleForm from "../../new/SaleForm";
+import {
+  buildClaimLockedCustomerReason,
+  buildClaimLockedDateReason,
+  buildClaimLockedRowReason,
+  groupClaimNosBySaleItem,
+} from "../../sale-claim-lock";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { getSaleProductOptionsByIds, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
@@ -61,7 +67,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     : null;
   if (marketplaceConfig && !canManageMarketplace) redirect(`/admin/sales/${id}`);
 
-  const [salePayments, saleWht, whtIncomeTypes, mutationBlock] = await Promise.all([
+  const [salePayments, saleWht, whtIncomeTypes, mutationBlock, saleClaims] = await Promise.all([
     db.documentPayment.findMany({
       where: { docType: "SALE", docId: id },
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
@@ -80,10 +86,25 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     }),
     getWhtReceivedIncomeTypeOptions(),
     checkDocumentMutation("Sale", id, "update"),
+    // Claimed lines are locked in the form; updateSale enforces the same rules.
+    db.warrantyClaim.findMany({
+      where: { warranty: { saleId: id } },
+      orderBy: { claimNo: "asc" },
+      select: { claimNo: true, warranty: { select: { saleItemId: true } } },
+    }),
   ]);
 
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const claimNosBySaleItem = groupClaimNosBySaleItem(saleClaims);
+  const allSaleClaimNos = saleClaims.map((claim) => claim.claimNo);
+  const headerClaimLock = allSaleClaimNos.length > 0
+    ? {
+        claimNos: allSaleClaimNos,
+        dateReason: buildClaimLockedDateReason(allSaleClaimNos),
+        customerReason: buildClaimLockedCustomerReason(allSaleClaimNos),
+      }
+    : null;
 
   const saleProductIds = [...new Set(sale.items.map((item) => item.productId))];
   const saleSupplierIds = [...new Set(sale.items.map((item) => item.supplierId).filter((supplierId): supplierId is string => !!supplierId))];
@@ -140,7 +161,11 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     // Legacy rows may have unitListPrice = 0 (pre-feature); fall back to the
     // net price so the "list price" never renders below the actual price.
     const displayListPrice = Math.max(Number(item.unitListPrice), displaySalePrice);
+    const lineClaimNos = claimNosBySaleItem.get(item.id);
     return {
+      ...(lineClaimNos
+        ? { claimLock: { claimNos: lineClaimNos, reason: buildClaimLockedRowReason(lineClaimNos) } }
+        : {}),
       productId:    item.productId,
       unitName:     displayUnitName,
       qty:          displayQty,
@@ -234,6 +259,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     destLatitude:    sale.destLatitude ?? null,
     destLongitude:   sale.destLongitude ?? null,
     items:           initialItems,
+    claimLock:       headerClaimLock,
   };
 
   return (

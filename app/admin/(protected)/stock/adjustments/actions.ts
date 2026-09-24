@@ -18,15 +18,16 @@ import {
   getLotAvailability,
   writeAdjustmentLots,
   reverseAdjustmentLotBalance,
-  validateLotRows,
   type LotSubRow,
 } from "@/lib/lot-control";
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
+import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import {
   searchAdjustmentProductOptions,
   type AdjustmentProductOption,
 } from "@/lib/adjustment-product-search";
+import { getAdjustmentLineLotError } from "./adjustment-lot-guard";
 
 const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
 
@@ -228,6 +229,18 @@ export async function createAdjustment(
         if (!unitScaleMap.has(`${item.productId}::${item.unitName}`)) {
           throw new AdjustmentUserError("ไม่พบหน่วยนับที่เลือก");
         }
+        // A lot-controlled line must name its lots — rejected here, before any write.
+        const lotError = product
+          ? getAdjustmentLineLotError({
+              isTracked: isInventoryTracked(product.inventoryTracking),
+              isLotControl: product.isLotControl,
+              requireExpiryDate: product.requireExpiryDate,
+              type: item.type,
+              lotItems: item.lotItems as LotSubRow[],
+              qty: item.qty,
+            })
+          : null;
+        if (lotError) throw new AdjustmentUserError(lotError);
       }
 
       const adjustment = await tx.adjustment.create({
@@ -271,28 +284,20 @@ export async function createAdjustment(
           referenceId: adjustment.id,
         });
 
-        if (inputItem.lotItems.length > 0) {
-          const product = productMap.get(adjustmentItem.productId);
-          if (product?.isLotControl) {
-            const lotError = validateLotRows(
-              inputItem.lotItems as LotSubRow[],
-              inputItem.qty,
-              source === "ADJUST_IN" && product.requireExpiryDate,
-            );
-            if (lotError) throw new Error(lotError);
+        // Lots were validated for every lot-controlled line before the header insert.
+        const product = productMap.get(adjustmentItem.productId);
+        if (product?.isLotControl) {
+          const scale = unitScaleMap.get(`${adjustmentItem.productId}::${inputItem.unitName}`) ?? 1;
+          const lotsInBase = inputItem.lotItems.map((lot) => ({
+            lotNo: lot.lotNo.trim(),
+            qtyInBase: lot.qty * scale,
+            unitCostBase: lot.unitCost > 0 ? lot.unitCost / scale : inputItem.price / scale || product.avgCost,
+            mfgDate: lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
+            expDate: lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
+          }));
 
-            const scale = unitScaleMap.get(`${adjustmentItem.productId}::${inputItem.unitName}`) ?? 1;
-            const lotsInBase = inputItem.lotItems.map((lot) => ({
-              lotNo: lot.lotNo.trim(),
-              qtyInBase: lot.qty * scale,
-              unitCostBase: lot.unitCost > 0 ? lot.unitCost / scale : inputItem.price / scale || product.avgCost,
-              mfgDate: lot.mfgDate ? parseDateOnlyToDate(lot.mfgDate) : null,
-              expDate: lot.expDate ? parseDateOnlyToDate(lot.expDate) : null,
-            }));
-
-            const direction = source === "ADJUST_IN" ? ("in" as const) : ("out" as const);
-            await writeAdjustmentLots(tx, stockCardId, adjustmentItem.productId, lotsInBase, direction);
-          }
+          const direction = source === "ADJUST_IN" ? ("in" as const) : ("out" as const);
+          await writeAdjustmentLots(tx, stockCardId, adjustmentItem.productId, lotsInBase, direction);
         }
       }
     });
@@ -316,7 +321,10 @@ export async function createAdjustment(
     return { success: true, adjustNo };
   } catch (error) {
     console.error("[createAdjustment]", error);
-    if (error instanceof AdjustmentUserError) return { error: error.message };
+    // An ADJUST_OUT lot short on stock (writeAdjustmentLots) is the user's to fix.
+    if (error instanceof AdjustmentUserError || error instanceof LotStockInsufficientError) {
+      return { error: error.message };
+    }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }

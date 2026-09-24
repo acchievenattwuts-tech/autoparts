@@ -893,6 +893,8 @@ export async function getReportsData(filters: ParsedReportFilters,
       `;
   const warrantiesPromise = db.warranty.findMany({
         where: {
+          // Cancelled (on-site) warranties are no longer in cover — never "expiring".
+          status: "ACTIVE",
           endDate: { lte: soonDate },
           ...(productCodeRange ? { product: { code: productCodeRange } } : {}),
           ...(customerCodeRange ? { sale: { customer: { code: customerCodeRange } } } : {}),

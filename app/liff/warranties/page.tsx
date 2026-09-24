@@ -37,6 +37,8 @@ export default async function LiffWarrantiesPage({
   const statusFilter = normalizeWarrantyStatusFilter((await searchParams).status);
   const today = parseDateOnlyToStartOfDay(getThailandDateKey());
   const baseWarrantyWhere: Prisma.WarrantyWhereInput = {
+    // A cancelled on-site warranty is not shown to the customer, nor counted.
+    status: "ACTIVE",
     OR: [
       { sale: { customerId: customer.id, status: "ACTIVE" } },
       { customerId: customer.id, saleId: null },

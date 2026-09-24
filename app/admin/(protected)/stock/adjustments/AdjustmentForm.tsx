@@ -1,17 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { createAdjustment, fetchAdjustmentProductLots, searchAdjustmentProducts } from "./actions";
 import { Plus, Trash2, CheckCircle, Zap } from "lucide-react";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import {
-  validateLotRows,
   autoAllocateLots,
   type LotSubRow,
   type LotAvailableJSON,
 } from "@/lib/lot-control-client";
+import { getAdjustmentLineLotError, NO_LOT_STOCK_MESSAGE } from "./adjustment-lot-guard";
+import {
+  createAdjustmentRowKey,
+  createRowRequestTracker,
+  omitRowState,
+  stripAdjustmentRowKeys,
+} from "./adjustment-row-state";
 
 interface ProductOption {
   id: string;
@@ -31,6 +37,8 @@ interface ProductOption {
 }
 
 interface AdjItem {
+  /** Client-only stable row id: React key and per-row lot state key. Never sent to the server. */
+  rowKey: string;
   productId: string;
   unitName: string;
   qty: number;
@@ -45,6 +53,7 @@ const inputCls =
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5";
 
 const emptyItem = (): AdjItem => ({
+  rowKey: createAdjustmentRowKey(),
   productId: "",
   unitName: "",
   qty: 1,
@@ -74,19 +83,49 @@ const AdjustmentForm = ({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [items, setItems] = useState<AdjItem[]>([emptyItem()]);
-  const [availableLots, setAvailableLots] = useState<Record<number, LotAvailableJSON[]>>({});
-  const [lotsLoading, setLotsLoading] = useState<Record<number, boolean>>({});
+  // Per-row lot state is keyed by AdjItem.rowKey, so removing a row never shifts
+  // another row's lots onto it.
+  const [availableLots, setAvailableLots] = useState<Record<string, LotAvailableJSON[]>>({});
+  const [lotsLoading, setLotsLoading] = useState<Record<string, boolean>>({});
+  // Latest lot request per row: a late response for a removed/changed row is dropped.
+  const lotRequests = useRef(createRowRequestTracker());
 
-  const loadLots = async (itemIdx: number, productId: string, lotIssueMethod: string) => {
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: true }));
-    const result = await fetchAdjustmentProductLots(productId, lotIssueMethod);
-    if (!("error" in result)) setAvailableLots((prev) => ({ ...prev, [itemIdx]: result }));
-    setLotsLoading((prev) => ({ ...prev, [itemIdx]: false }));
+  /** Row's lot state is stale (row removed, or product/type changed): drop it and any request in flight. */
+  const clearRowLots = (rowKey: string) => {
+    lotRequests.current.forget(rowKey);
+    setAvailableLots((prev) => omitRowState(prev, rowKey));
+    setLotsLoading((prev) => omitRowState(prev, rowKey));
+  };
+
+  /** Loads the row's available lots; returns null when it failed or the row moved on meanwhile. */
+  const loadLots = async (
+    rowKey: string,
+    productId: string,
+    lotIssueMethod: string,
+  ): Promise<LotAvailableJSON[] | null> => {
+    const token = lotRequests.current.begin(rowKey);
+    setLotsLoading((prev) => ({ ...prev, [rowKey]: true }));
+    try {
+      const result = await fetchAdjustmentProductLots(productId, lotIssueMethod);
+      if (!lotRequests.current.isCurrent(rowKey, token) || "error" in result) return null;
+      setAvailableLots((prev) => ({ ...prev, [rowKey]: result }));
+      return result;
+    } catch (loadError) {
+      console.error("[AdjustmentForm] load lots", loadError);
+      return null;
+    } finally {
+      if (lotRequests.current.isCurrent(rowKey, token)) {
+        setLotsLoading((prev) => ({ ...prev, [rowKey]: false }));
+      }
+    }
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
 
-  const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
+  const removeItem = (rowKey: string) => {
+    setItems((prev) => prev.filter((item) => item.rowKey !== rowKey));
+    clearRowLots(rowKey);
+  };
 
   const rememberProduct = (product: ProductOption) =>
     setProducts((prev) =>
@@ -112,11 +151,7 @@ const AdjustmentForm = ({
           updated.unitName = "";
           updated.price = getDefaultPrice(product, updated.type);
           updated.lotItems = [];
-          setAvailableLots((prevLots) => {
-            const next = { ...prevLots };
-            delete next[i];
-            return next;
-          });
+          clearRowLots(item.rowKey);
 
           if (product?.isLotControl) {
             updated.lotItems = [
@@ -128,7 +163,7 @@ const AdjustmentForm = ({
                 expDate: "",
               },
             ];
-            if (updated.type === "ADJUST_OUT") loadLots(i, product.id, product.lotIssueMethod);
+            if (updated.type === "ADJUST_OUT") void loadLots(item.rowKey, product.id, product.lotIssueMethod);
           }
         }
 
@@ -147,12 +182,8 @@ const AdjustmentForm = ({
                 expDate: "",
               },
             ];
-            setAvailableLots((prevLots) => {
-              const next = { ...prevLots };
-              delete next[i];
-              return next;
-            });
-            if (nextType === "ADJUST_OUT") loadLots(i, product.id, product.lotIssueMethod);
+            clearRowLots(item.rowKey);
+            if (nextType === "ADJUST_OUT") void loadLots(item.rowKey, product.id, product.lotIssueMethod);
           }
         }
 
@@ -179,7 +210,7 @@ const AdjustmentForm = ({
     const item = items[itemIdx];
     const product = products.find((p) => p.id === item.productId);
     const scale = product?.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    const availableLot = (availableLots[itemIdx] ?? []).find((lot) => lot.lotNo === lotNo);
+    const availableLot = (availableLots[item.rowKey] ?? []).find((lot) => lot.lotNo === lotNo);
     const usedQty = item.lotItems.reduce((sum, lot, rowIdx) => (rowIdx !== lotIdx ? sum + lot.qty : sum), 0);
     const remainingQty = Math.max(0, item.qty - usedQty);
     const availableQty = availableLot ? Math.round((availableLot.qtyOnHand / scale) * 10000) / 10000 : 0;
@@ -205,23 +236,22 @@ const AdjustmentForm = ({
     );
   };
 
-  const handleAutoAllocate = async (itemIdx: number) => {
-    const item = items[itemIdx];
+  const handleAutoAllocate = async (rowKey: string): Promise<void> => {
+    const item = items.find((row) => row.rowKey === rowKey);
+    if (!item) return;
     const product = products.find((p) => p.id === item.productId);
     if (!product?.isLotControl) return;
 
     const scale = product.units.find((u) => u.name === item.unitName)?.scale ?? 1;
-    let available = availableLots[itemIdx];
-    if (!available) {
-      const result = await fetchAdjustmentProductLots(item.productId, product.lotIssueMethod);
-      if ("error" in result) return;
-      available = result;
-      setAvailableLots((prev) => ({ ...prev, [itemIdx]: available }));
-    }
+    // Null when the load failed, or the row was removed / changed product meanwhile.
+    const available = availableLots[rowKey] ?? (await loadLots(rowKey, item.productId, product.lotIssueMethod));
+    if (!available) return;
 
     const allocated = autoAllocateLots(available, item.qty, scale);
+    // No lot stock at all: keep the rows as they are; the lot section shows NO_LOT_STOCK_MESSAGE.
+    if (allocated.length === 0) return;
     setItems((prev) =>
-      prev.map((current, idx) => (idx !== itemIdx ? current : { ...current, lotItems: allocated })),
+      prev.map((current) => (current.rowKey !== rowKey ? current : { ...current, lotItems: allocated })),
     );
   };
 
@@ -295,21 +325,25 @@ const AdjustmentForm = ({
       }
 
       const product = products.find((p) => p.id === item.productId);
-      if (product?.isLotControl && item.lotItems.length > 0) {
-        const lotError = validateLotRows(
-          item.lotItems,
-          item.qty,
-          item.type === "ADJUST_IN" && product.requireExpiryDate,
-        );
-        if (lotError) {
-          setError(lotError);
-          return;
-        }
+      // Same guard as createAdjustment. The product picker only offers stock-tracked products.
+      const lotError = product
+        ? getAdjustmentLineLotError({
+            isTracked: true,
+            isLotControl: product.isLotControl,
+            requireExpiryDate: product.requireExpiryDate,
+            type: item.type,
+            lotItems: item.lotItems,
+            qty: item.qty,
+          })
+        : null;
+      if (lotError) {
+        setError(lotError);
+        return;
       }
     }
 
     const formData = new FormData(e.currentTarget);
-    formData.set("items", JSON.stringify(items));
+    formData.set("items", JSON.stringify(stripAdjustmentRowKeys(items)));
 
     startTransition(async () => {
       const result = await createAdjustment(formData);
@@ -319,8 +353,10 @@ const AdjustmentForm = ({
       }
 
       setSuccess(`บันทึกสำเร็จ เลขที่เอกสาร: ${result.adjustNo}`);
+      lotRequests.current.reset();
       setItems([emptyItem()]);
       setAvailableLots({});
+      setLotsLoading({});
       (e.target as HTMLFormElement).reset();
     });
   };
@@ -376,7 +412,7 @@ const AdjustmentForm = ({
               const totalLotQty = item.lotItems.reduce((sum, lot) => sum + lot.qty, 0);
 
               return (
-                <div key={i} className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
+                <div key={item.rowKey} className="p-3 bg-white border border-gray-200 rounded-lg space-y-2">
                   <div className="grid grid-cols-12 gap-2 items-end">
                     <div className="col-span-12 md:col-span-3">
                       {i === 0 && <p className="text-xs text-gray-500 mb-1">สินค้า</p>}
@@ -456,7 +492,7 @@ const AdjustmentForm = ({
                       {items.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removeItem(i)}
+                          onClick={() => removeItem(item.rowKey)}
                           className="text-red-400 hover:text-red-600 transition-colors p-1"
                         >
                           <Trash2 size={15} />
@@ -465,7 +501,7 @@ const AdjustmentForm = ({
                     </div>
                   </div>
 
-                  {isLotControl && item.lotItems.length > 0 && (
+                  {isLotControl && (
                     <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 space-y-2 ml-1">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -481,12 +517,12 @@ const AdjustmentForm = ({
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleAutoAllocate(i)}
+                                onClick={() => handleAutoAllocate(item.rowKey)}
                                 className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 border border-indigo-200 bg-indigo-50 px-2 py-0.5 rounded transition-colors"
                               >
                                 <Zap size={11} /> Auto จัดสรร
                               </button>
-                              {lotsLoading[i] && (
+                              {lotsLoading[item.rowKey] && (
                                 <span className="text-xs text-gray-400 animate-pulse">กำลังโหลด...</span>
                               )}
                             </>
@@ -500,6 +536,10 @@ const AdjustmentForm = ({
                           </button>
                         </div>
                       </div>
+
+                      {item.type === "ADJUST_OUT" && !lotsLoading[item.rowKey] && availableLots[item.rowKey]?.length === 0 && (
+                        <p className="text-xs text-red-600">{NO_LOT_STOCK_MESSAGE}</p>
+                      )}
 
                       {item.type === "ADJUST_IN" && (
                         <div className="space-y-1.5">
@@ -589,7 +629,7 @@ const AdjustmentForm = ({
                             const selectedLotNos = item.lotItems
                               .filter((_, rowIdx) => rowIdx !== li)
                               .map((row) => row.lotNo);
-                            const lotOptions = (availableLots[i] ?? []).filter(
+                            const lotOptions = (availableLots[item.rowKey] ?? []).filter(
                               (availableLot) =>
                                 availableLot.lotNo === lot.lotNo || !selectedLotNos.includes(availableLot.lotNo),
                             );

@@ -3,11 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import CancelDocButton from "@/components/shared/CancelDocButton";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import { getThailandDateKey } from "@/lib/th-date";
+import CancelClaimButton from "../CancelClaimButton";
 import {
-  cancelClaimAction,
   closeClaim,
   reopenClaim,
   returnClaimToCustomer,
@@ -23,6 +22,8 @@ interface Props {
   isLotControl: boolean;
   mutationBlockedReason?: string | null;
   mutationBlockReferences?: Array<{ href: string; label: string }>;
+  /** Claim on a sale warranty: cancelling deletes it and returns to the claims list. */
+  deletesClaimOnCancel: boolean;
 }
 
 const inputCls =
@@ -38,6 +39,7 @@ const ClaimStatusActions = ({
   isLotControl,
   mutationBlockedReason,
   mutationBlockReferences = [],
+  deletesClaimOnCancel,
 }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -300,12 +302,10 @@ const ClaimStatusActions = ({
 
       {currentStatus !== "CANCELLED" && (
         <div className="pt-2 border-t border-gray-100 flex justify-center">
-          <CancelDocButton
-            docId={claimId}
-            docNo={claimNo}
-            idFieldName="claimId"
-            cancelAction={cancelClaimAction}
-            onSuccess={() => router.push("/admin/warranty-claims")}
+          <CancelClaimButton
+            claimId={claimId}
+            claimNo={claimNo}
+            deletesClaim={deletesClaimOnCancel}
             disabledReason={mutationBlockedReason}
           />
         </div>

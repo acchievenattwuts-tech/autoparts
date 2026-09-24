@@ -10,11 +10,25 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, VatType } from "@/lib/generated/prisma";
+import {
+  AuditAction,
+  CashBankDirection,
+  CashBankSourceType,
+  DocStatus,
+  DocumentPaymentDocType,
+  Prisma,
+  VatType,
+} from "@/lib/generated/prisma";
 import { calcVat } from "@/lib/vat";
 import { generateExpenseNo } from "@/lib/doc-number";
 import { withDocNumberRetry } from "@/lib/doc-number-retry";
-import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import {
+  buildMutationBlockMessage,
+  createDocumentMutationGuard,
+  getDocumentMutationBlockMessage,
+  type DocumentMutationAction,
+  type GuardDb,
+} from "@/lib/document-mutation-guard";
 import { clearCashBankSourceMovements, isCashBankPostingError, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import {
   assertPaymentsMatchTotal,
@@ -299,6 +313,74 @@ const cancelExpenseSchema = z.object({
   cancelNote: z.string().max(200).optional(),
 });
 
+type TxClient = Prisma.TransactionClient;
+
+const EXPENSE_NOT_FOUND_MESSAGE = "ไม่พบเอกสาร";
+const EXPENSE_ALREADY_CANCELLED_MESSAGE = "เอกสารถูกยกเลิกไปแล้ว";
+const EXPENSE_CANCELLED_NOT_EDITABLE_MESSAGE = "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้";
+
+/** Raised inside a transaction when the expense is gone or no longer ACTIVE. */
+class ExpenseNotActiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExpenseNotActiveError";
+  }
+}
+
+/** Raised inside a transaction when the mutation guard blocks the expense under the row lock. */
+class ExpenseMutationBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ExpenseMutationBlockedError";
+  }
+}
+
+const isExpenseUserError = (error: unknown): error is Error =>
+  error instanceof ExpenseNotActiveError || error instanceof ExpenseMutationBlockedError;
+
+/**
+ * Locks the expense row for the rest of the transaction, re-checks that it is
+ * still ACTIVE, then re-runs the Expense mutation guard (ACTIVE marketplace
+ * settlement / ACTIVE delivery commission run) with the transaction client. The
+ * checks before the transaction are only fast paths: an update could pass them,
+ * a concurrent cancel (from this menu, cancelDeliveryCommissionRun or
+ * cancelMarketplaceSettlement) could commit, and the update would then re-post
+ * cash/bank movements, document payments and profit facts for a CANCELLED
+ * expense. With the row locked, the later request waits, sees CANCELLED (or the
+ * blocking document), and stops before any write.
+ *
+ * Lock order: Expense FIRST, then the writes that follow (CashBankMovement →
+ * DocumentPayment → Expense → WhtCertificate → FactProfit). The guard only
+ * READS DeliveryCommissionRun / MarketplaceSettlement — this flow never locks
+ * them. cancelDeliveryCommissionRun locks Run → CashBankMovement → Expense; if
+ * it is in flight, the guard here still sees the run ACTIVE (its cancel is not
+ * committed) and throws before touching CashBankMovement, so the two never wait
+ * on each other in opposite order.
+ */
+async function lockMutableExpense(
+  tx: TxClient,
+  expenseId: string,
+  action: Extract<DocumentMutationAction, "update" | "cancel">,
+  notActiveMessage: string,
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`
+    SELECT "status"::text AS "status"
+    FROM "Expense"
+    WHERE id = ${expenseId}
+    FOR UPDATE
+  `);
+  if (rows.length === 0) throw new ExpenseNotActiveError(EXPENSE_NOT_FOUND_MESSAGE);
+  if (rows[0].status !== DocStatus.ACTIVE) throw new ExpenseNotActiveError(notActiveMessage);
+
+  const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check(
+    "Expense",
+    expenseId,
+    action,
+  );
+  const blockMessage = buildMutationBlockMessage(guard);
+  if (blockMessage) throw new ExpenseMutationBlockedError(blockMessage);
+}
+
 export async function cancelExpense(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
@@ -315,9 +397,10 @@ export async function cancelExpense(
   const { expenseId, cancelNote } = parsed.data;
 
   try {
+    // Fast paths only — the authoritative status and guard checks run under the row lock below.
     const expense = await db.expense.findUnique({ where: { id: expenseId } });
-    if (!expense)                        return { error: "ไม่พบเอกสาร" };
-    if (expense.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+    if (!expense)                        return { error: EXPENSE_NOT_FOUND_MESSAGE };
+    if (expense.status === "CANCELLED")  return { error: EXPENSE_ALREADY_CANCELLED_MESSAGE };
 
     const mutationBlockMessage = await getDocumentMutationBlockMessage(
       "Expense",
@@ -328,6 +411,7 @@ export async function cancelExpense(
 
     const beforeSnapshot = await getExpenseAuditSnapshot(expenseId);
     await dbTx(async (tx) => {
+      await lockMutableExpense(tx, expenseId, "cancel", EXPENSE_ALREADY_CANCELLED_MESSAGE);
       await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.EXPENSE, expenseId);
       await tx.expense.update({
@@ -359,6 +443,7 @@ export async function cancelExpense(
     revalidatePath(`/admin/expenses/${expenseId}`);
     return { success: true };
   } catch (err) {
+    if (isExpenseUserError(err)) return { error: err.message };
     console.error("[cancelExpense]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -381,9 +466,10 @@ export async function updateExpense(
     return { error: "รหัสเอกสารไม่ถูกต้อง" };
   }
 
+  // Fast paths only — the authoritative status and guard checks run under the row lock below.
   const existing = await db.expense.findUnique({ where: { id } });
-  if (!existing)                       return { error: "ไม่พบเอกสาร" };
-  if (existing.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  if (!existing)                       return { error: EXPENSE_NOT_FOUND_MESSAGE };
+  if (existing.status === "CANCELLED") return { error: EXPENSE_CANCELLED_NOT_EDITABLE_MESSAGE };
 
   // ใบค่าธรรมเนียมของรอบรับเงินช่องทางขายแก้ไขไม่ได้ — การบันทึกใหม่จะเรียก
   // rebuildExpenseProfitFacts() ซึ่งเขียนทับ FactProfit ที่รอบรับเงินปันไว้ตามวันขาย
@@ -440,6 +526,7 @@ export async function updateExpense(
   try {
     const beforeSnapshot = await getExpenseAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockMutableExpense(tx, id, "update", EXPENSE_CANCELLED_NOT_EDITABLE_MESSAGE);
       await tx.expenseItem.deleteMany({ where: { expenseId: id } });
       await tx.expense.update({
         where: { id },
@@ -533,6 +620,7 @@ export async function updateExpense(
     revalidatePath(`/admin/expenses/${id}`);
     return { success: true };
   } catch (err) {
+    if (isExpenseUserError(err)) return { error: err.message };
     console.error("[updateExpense]", err);
     if (isCashBankPostingError(err)) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

@@ -51,6 +51,35 @@ describe("document activity timeline", () => {
     assert.equal(cancelled?.description, "โดย นวพล | เหตุผล: คีย์ผิด");
   });
 
+  it("shows a cancelled (deleted) sale claim on the sale timeline with its details, not as a sale cancel", () => {
+    const event = buildAuditActivityEvent({
+      id: "log-claim-deleted",
+      action: AuditAction.CANCEL,
+      createdAt: new Date("2026-09-25T04:00:00.000Z"),
+      userName: "นวพล",
+      entityType: "Sale",
+      entityId: "sale-1",
+      entityRef: "SL-001",
+      meta: {
+        event: "WARRANTY_CLAIM_DELETED",
+        productName: "คอมเพรสเซอร์แอร์",
+        unitSeq: 2,
+        lotNo: "L-01",
+        claimTypeLabel: "ลูกค้ารอ",
+        symptom: "ไม่เย็น",
+        supplierName: "ซัพ A",
+        cancelNote: "ลูกค้าเปลี่ยนใจ",
+      },
+    });
+
+    assert.equal(event?.kind, "CANCEL");
+    assert.equal(event?.title, "ยกเลิกใบเคลม (ลบเอกสาร)");
+    assert.equal(
+      event?.description,
+      "โดย นวพล | คอมเพรสเซอร์แอร์ (ชิ้นที่ 2, Lot L-01) | ประเภท: ลูกค้ารอ | อาการ: ไม่เย็น | ซัพพลายเออร์: ซัพ A | เหตุผล: ลูกค้าเปลี่ยนใจ",
+    );
+  });
+
   it("creates clickable downstream relation events", () => {
     const event = buildRelationActivityEvent({
       id: "sale-receipt-receipt-1",
