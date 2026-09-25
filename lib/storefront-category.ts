@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
-import { db } from "@/lib/db";
+import { db, withDbRetry } from "@/lib/db";
 import {
   buildLegacyCategorySlugMap,
   extractCategoryIdFromSlug,
@@ -80,41 +80,43 @@ const fetchCategoryProductPage = unstable_cache(
   async (categoryId: string, page: number) => {
     const skip = (page - 1) * PAGE_SIZE;
     const where = { isActive: true, isStorefrontVisible: true, categoryId } as const;
-    const products = await db.product.findMany({
-      where,
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        code: true,
-        imageUrl: true,
-        retailPrice: true,
-        saleUnitName: true,
-        warrantyDays: true,
-        stock: true,
-        category: { select: { id: true, name: true, slug: true } },
-        brand: { select: { name: true } },
-        carModels: {
-          orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
-          where: { fitmentType: "DIRECT" },
-          select: {
-            yearStart: true,
-            yearEnd: true,
-            carModel: {
-              select: {
-                name: true,
-                carBrand: { select: { name: true } },
+    const products = await withDbRetry(() =>
+      db.product.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          code: true,
+          imageUrl: true,
+          retailPrice: true,
+          saleUnitName: true,
+          warrantyDays: true,
+          stock: true,
+          category: { select: { id: true, name: true, slug: true } },
+          brand: { select: { name: true } },
+          carModels: {
+            orderBy: [{ carModel: { name: "asc" } }, { yearStart: "asc" }, { id: "asc" }],
+            where: { fitmentType: "DIRECT" },
+            select: {
+              yearStart: true,
+              yearEnd: true,
+              carModel: {
+                select: {
+                  name: true,
+                  carBrand: { select: { name: true } },
+                },
               },
             },
+            take: 6,
           },
-          take: 6,
         },
-      },
-      orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
-      skip,
-      take: PAGE_SIZE,
-    });
-    const total = await db.product.count({ where });
+        orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
+        skip,
+        take: PAGE_SIZE,
+      }),
+    );
+    const total = await withDbRetry(() => db.product.count({ where }));
     // Serialize Decimal → string so the result can be passed from Server Component
     // to Client Component (Next.js 16 forbids Decimal across the boundary).
     // The cached rows keep `stock` (server-side only); the public card mapper

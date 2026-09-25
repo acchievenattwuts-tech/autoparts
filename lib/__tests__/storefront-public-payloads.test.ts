@@ -26,6 +26,8 @@ let rowStock = 3;
 const searchInputs: Array<Record<string, unknown>> = [];
 const cacheRegistrations = new Map<string, { revalidate?: number | false; tags?: string[] }>();
 const cacheCalls: string[] = [];
+let insideRetry = false;
+const productReads: Array<{ method: string; insideRetry: boolean }> = [];
 
 const legacyCachedRow = () => ({
   id: "p1",
@@ -70,11 +72,24 @@ before(async () => {
     namedExports: {
       db: {
         product: {
-          findMany: async () => [legacyCachedRow()],
-          count: async () => 1,
+          findMany: async () => {
+            productReads.push({ method: "findMany", insideRetry });
+            return [legacyCachedRow()];
+          },
+          count: async () => {
+            productReads.push({ method: "count", insideRetry });
+            return 1;
+          },
         },
       },
-      withDbRetry: <T>(fn: () => Promise<T>) => fn(),
+      withDbRetry: async <T>(fn: () => Promise<T>): Promise<T> => {
+        insideRetry = true;
+        try {
+          return await fn();
+        } finally {
+          insideRetry = false;
+        }
+      },
     },
   });
   await mock.module("@/lib/storefront-load-more-guard", {
@@ -106,9 +121,14 @@ const assertPublicCard = (item: object, expectedInStock: boolean) => {
 test("category grid payload (page + load-more) carries no salePrice / exact stock", async () => {
   const { getStorefrontCategoryProductPageById } = await import("@/lib/storefront-category");
   rowStock = 3;
+  productReads.length = 0;
   const page = await getStorefrontCategoryProductPageById("cat1", 1);
   assert.equal(page.total, 1);
   assertPublicCard(page.products[0], true);
+  assert.deepEqual(productReads, [
+    { method: "findMany", insideRetry: true },
+    { method: "count", insideRetry: true },
+  ]);
 });
 
 test("search page data (page render + search Server Action) carries no salePrice / exact stock", async () => {

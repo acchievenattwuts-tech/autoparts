@@ -872,6 +872,16 @@
 - [ ] ข้อสงสัยค้าง: error เกิดห่างจาก request start แค่ ~1s แต่ timeout ตั้ง 20s — ยืนยันค่า `DB_CONNECTION_TIMEOUT_MS` ใน Vercel (อาจเป็น instance ถูก freeze ระหว่าง connect แล้ว timer ยิงทันทีตอน thaw)
 - [ ] แยกเรื่อง (ไม่ใช่งานโค้ด): log เดียวกันยังเตือน `MESSENGER_APP_SECRET is not set` — Messenger webhook ยังตอบ 401 ทุกข้อความ (ค้างจากรอบ 2026-08-24)
 
+## Log noise — `timeout exceeded when trying to connect` ตอน revalidate สินค้าหน้าหมวด (2026-09-25)
+- บริบท: เจ้าของส่ง Vercel log เวลา 25/09 07:05 GMT+7 — request ตอบ **HTTP 200** และ Cache = `STALE` แต่ background revalidate key `storefront-category-products` ล้ม; timeline เห็นเหตุการณ์ประปราย 3 จุดในประมาณ 8 ชั่วโมง และ request ที่เลือกเป็น crawler `facebookexternalhit/1.1`
+- **สาเหตุ**: `pg-pool` รอ connection จาก pool ต่อ Fluid instance ไม่ทัน `connectionTimeoutMillis` 20 วินาที โดย query ยังไม่ถึง Postgres; error นี้ match `withDbRetry` อยู่แล้ว แต่ `db.product.findMany` และ `db.product.count` ใน [lib/storefront-category.ts](lib/storefront-category.ts) ไม่ได้เรียก helper ดังกล่าว ขณะที่ cache นี้เพิ่งเพิ่ม TTL 300 วินาทีเมื่อ 24/09 จึงถูก background refresh บ่อยขึ้น
+- [x] ครอบ `withDbRetry` แยกให้ `findMany` และ `count` โดยคงลำดับ sequential เดิม — ไม่เพิ่ม peak connection, ไม่รัน read ที่สำเร็จแล้วซ้ำเมื่ออีก read ล้ม, และ pool-acquire timeout ยังจำกัด 1 retry ตามเดิม
+- [x] เพิ่ม regression assertion ใน [lib/__tests__/storefront-public-payloads.test.ts](lib/__tests__/storefront-public-payloads.test.ts) ว่า read ทั้งสองเกิดภายใน retry และยังคงลำดับ `findMany` → `count`; targeted tests ผ่าน 14/14
+- [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, cache TTL/key/tag, query/filter/order, payload หรือ business logic — ผู้ใช้ยังได้ stale cache ระหว่าง refresh เหมือนเดิม ต่างเพียง transient refresh มีโอกาสสำเร็จใน retry
+- [x] ตรวจครบ: `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / 261 warnings เดิม, typecheck ผ่าน, tests 1,607 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
+- [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรอง `storefront-category-products` + `timeout exceeded when trying to connect`; ตรวจ Supabase Connection Pooling และ Vercel concurrency ช่วง error
+- [ ] ตรวจ deployment SHA/Request ID เพิ่มเติมหาก log ยังผูก cache key นี้กับ path `/` เพราะ [app/page.tsx](app/page.tsx) ปัจจุบันไม่ได้เรียก category-products โดยตรง
+
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
 - **ข้อสรุปที่เจ้าของยืนยัน** (ตัดขอบเขตงานลงมาก): ตัดแถวช่องล่างสุดทั้งแถว (ในรูปคือช่องรหัสไปรษณีย์ 5 หลัก) · **ไม่มี** เลขที่ใบขาย / วันที่ / ขนส่ง / เลขพัสดุ / ยอด COD (ร้านไม่ได้ส่งแบบ COD) · ไม่ต้องมีช่อง "กล่องที่" · ใบ Shopee / Lazada ไม่ต้องพิมพ์ · ไม่ต้องลง Audit Log (เป็นการอ่านอย่างเดียว เหมือนหน้าพิมพ์เดิมทุกหน้า)
