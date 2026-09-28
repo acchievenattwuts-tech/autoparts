@@ -96,3 +96,80 @@ test("withDbRetry allows only one retry for a pool-acquire timeout", async () =>
 
   assert.equal(attempts, 2);
 });
+
+const DB_RETRY_LOG_PREFIX = "[db-retry] ";
+
+const readDbRetryLines = (calls: ReadonlyArray<{ arguments: unknown[] }>) =>
+  calls.map((call) => {
+    const line = String(call.arguments[0]);
+    assert.ok(line.startsWith(DB_RETRY_LOG_PREFIX), line);
+    return JSON.parse(line.slice(DB_RETRY_LOG_PREFIX.length)) as Record<string, unknown>;
+  });
+
+test("withDbRetry logs a timing line per transient failure and one on recovery", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+  let attempts = 0;
+  const result = await withDbRetry(async () => {
+    attempts += 1;
+    if (attempts === 1) {
+      // Prisma wraps the pg-pool message; only the matched phrase may be logged.
+      throw Object.assign(new Error("Invalid `db.product.findMany()` invocation: secret-arg"), {
+        cause: { message: "timeout exceeded when trying to connect" },
+      });
+    }
+    return "ok";
+  });
+
+  assert.equal(result, "ok");
+  const [failure, recovery] = readDbRetryLines(warn.mock.calls);
+  assert.equal(warn.mock.callCount(), 2);
+
+  assert.equal(failure.outcome, "retrying");
+  assert.equal(failure.kind, "pool-acquire");
+  assert.equal(failure.error, "timeout exceeded when trying to connect");
+  assert.equal(failure.attempt, 1);
+  assert.equal(failure.maxAttempts, 2);
+  assert.equal(typeof failure.waitedMs, "number");
+  assert.equal(typeof failure.monoWaitedMs, "number");
+  assert.ok(Number(failure.timeoutMs) >= 5_000);
+  assert.equal(typeof failure.uptimeS, "number");
+  assert.match(String(failure.instance), /^[a-z0-9]+$/);
+  assert.ok(!Number.isNaN(Date.parse(String(failure.callStartedAt))));
+  assert.doesNotMatch(JSON.stringify(failure), /secret-arg|findMany/);
+
+  assert.equal(recovery.outcome, "recovered");
+  assert.equal(recovery.attempt, 2);
+  assert.equal(recovery.instance, failure.instance);
+  assert.equal(recovery.callStartedAt, failure.callStartedAt);
+});
+
+test("withDbRetry logs gave-up on the last transient attempt and nothing for other errors", async (t) => {
+  const warn = t.mock.method(console, "warn", () => {});
+
+  await assert.rejects(
+    withDbRetry(async () => {
+      throw new Error(CONNECT_TIMEOUT_MESSAGE);
+    }, 1),
+    /connection timeout/,
+  );
+  const lines = readDbRetryLines(warn.mock.calls);
+  assert.deepEqual(
+    lines.map((line) => [line.outcome, line.kind, line.attempt, line.maxAttempts]),
+    [
+      ["retrying", "connection", 1, 2],
+      ["gave-up", "connection", 2, 2],
+    ],
+  );
+
+  warn.mock.resetCalls();
+  await assert.rejects(
+    withDbRetry(async () => {
+      throw new Error("Unique constraint failed on the fields: (`code`)");
+    }),
+    /Unique constraint/,
+  );
+  assert.equal(warn.mock.callCount(), 0);
+
+  assert.equal(await withDbRetry(async () => "ok"), "ok");
+  assert.equal(warn.mock.callCount(), 0);
+});

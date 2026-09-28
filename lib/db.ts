@@ -3,6 +3,7 @@ import { PrismaClient, Prisma } from "./generated/prisma";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
+  dbRetryInstanceId: string | undefined;
 };
 
 // ─── Pool sizing ───────────────────────────────────────────────────────────
@@ -94,14 +95,13 @@ const normalizeDatabaseUrl = (rawUrl: string | undefined): string => {
   return parsedUrl.toString();
 };
 
+const resolveConnectionTimeoutMs = (): number =>
+  getPositiveNumber(process.env.DB_CONNECTION_TIMEOUT_MS, DEFAULT_DB_CONNECTION_TIMEOUT_MS, 5_000);
+
 function createPrismaClient() {
   const connectionLimit = getPositiveNumber(process.env.DB_POOL_MAX, DEFAULT_DB_POOL_MAX, 1);
   const idleTimeoutMillis = getPositiveNumber(process.env.DB_IDLE_TIMEOUT_MS, DEFAULT_DB_IDLE_TIMEOUT_MS, 1_000);
-  const connectionTimeoutMillis = getPositiveNumber(
-    process.env.DB_CONNECTION_TIMEOUT_MS,
-    DEFAULT_DB_CONNECTION_TIMEOUT_MS,
-    5_000,
-  );
+  const connectionTimeoutMillis = resolveConnectionTimeoutMs();
   const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
   // Pass PoolConfig directly to avoid type conflict between pg versions
@@ -220,6 +220,37 @@ const computeRetryDelayMs = (attempt: number, baseBackoffMs: number): number => 
   return exponential + jitter;
 };
 
+// ─── Retry diagnostics (temporary) ─────────────────────────────────────────
+// Production keeps showing "timeout exceeded when trying to connect" ~1s after
+// an unrelated request starts — once only ~1s after the instance's `[env]` boot
+// line — although node-postgres raises it only after a caller has waited the
+// full connectionTimeoutMillis (never under 5s). One `[db-retry]` line per
+// transient failure records how long the attempt really waited, so the logs
+// can tell a saturated pool (waited ≈ timeoutMs, call started inside the same
+// request) from work suspended with a frozen instance and resumed by the next
+// request (waited ≫ timeoutMs, or callStartedAt before that request began).
+// Wall and monotonic waits are both kept because a paused VM can advance one
+// clock and not the other; `instance` ties lines from different requests to
+// one process. `error` is the matched transient phrase only — never the raw
+// Prisma message, which can quote the query. Remove once the cause is settled
+// (PLAN.md, 2026-09-28).
+const getDbRetryInstanceId = (): string => {
+  globalForPrisma.dbRetryInstanceId ??= Math.random().toString(36).slice(2, 10);
+  return globalForPrisma.dbRetryInstanceId;
+};
+
+const logDbRetryDiagnostic = (fields: Record<string, unknown>): void => {
+  const uptimeS = typeof process.uptime === "function" ? Number(process.uptime().toFixed(1)) : null;
+  console.warn(
+    `[db-retry] ${JSON.stringify({
+      ...fields,
+      timeoutMs: resolveConnectionTimeoutMs(),
+      uptimeS,
+      instance: getDbRetryInstanceId(),
+    })}`,
+  );
+};
+
 /**
  * Run a read-only DB operation, retrying on a transient connection-level failure
  * with exponential backoff + jitter. Use ONLY for idempotent reads (counts,
@@ -231,16 +262,43 @@ export async function withDbRetry<T>(
   retries = DEFAULT_DB_RETRIES,
 ): Promise<T> {
   let lastError: unknown;
+  const callStartedAtMs = Date.now();
+  let hadTransientFailure = false;
   for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const attemptStartedAtMs = Date.now();
+    const attemptStartedMono = performance.now();
     try {
-      return await fn();
+      const result = await fn();
+      if (hadTransientFailure) {
+        logDbRetryDiagnostic({
+          outcome: "recovered",
+          attempt: attempt + 1,
+          totalMs: Date.now() - callStartedAtMs,
+          callStartedAt: new Date(callStartedAtMs).toISOString(),
+        });
+      }
+      return result;
     } catch (error) {
       lastError = error;
       const isPoolAcquireTimeout = isPoolAcquireTimeoutError(error);
       const maxRetriesForError = isPoolAcquireTimeout
         ? Math.min(retries, POOL_ACQUIRE_MAX_RETRIES)
         : retries;
-      if (attempt < maxRetriesForError && isTransientDbError(error)) {
+      const transientMatch = TRANSIENT_DB_ERROR_PATTERN.exec(collectErrorMessages(error));
+      if (transientMatch) {
+        hadTransientFailure = true;
+        logDbRetryDiagnostic({
+          outcome: attempt < maxRetriesForError ? "retrying" : "gave-up",
+          kind: isPoolAcquireTimeout ? "pool-acquire" : "connection",
+          error: transientMatch[0],
+          attempt: attempt + 1,
+          maxAttempts: maxRetriesForError + 1,
+          waitedMs: Date.now() - attemptStartedAtMs,
+          monoWaitedMs: Math.round(performance.now() - attemptStartedMono),
+          callStartedAt: new Date(callStartedAtMs).toISOString(),
+        });
+      }
+      if (attempt < maxRetriesForError && transientMatch) {
         const baseBackoffMs = isPoolAcquireTimeout
           ? POOL_ACQUIRE_RETRY_BASE_BACKOFF_MS
           : RETRY_BASE_BACKOFF_MS;

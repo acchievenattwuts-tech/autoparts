@@ -869,7 +869,7 @@
 - [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, query, cache config หรือ business logic — ผลลัพธ์เหมือนเดิม ต่างแค่ revalidate สำเร็จบ่อยขึ้น
 - [x] `npm run verify` ผ่าน (lint / typecheck / tests 998 ผ่าน 0 ล้ม)
 - [ ] เฝ้าดูหลัง deploy 3–5 วัน: กรอง `public-knowledge-articles` + `Connection terminated` ควรลดลงชัดเจน
-- [ ] ข้อสงสัยค้าง: error เกิดห่างจาก request start แค่ ~1s แต่ timeout ตั้ง 20s — ยืนยันค่า `DB_CONNECTION_TIMEOUT_MS` ใน Vercel (อาจเป็น instance ถูก freeze ระหว่าง connect แล้ว timer ยิงทันทีตอน thaw)
+- [ ] ข้อสงสัยค้าง: error เกิดห่างจาก request start แค่ ~1s แต่ timeout ตั้ง 20s — ยืนยันค่า `DB_CONNECTION_TIMEOUT_MS` ใน Vercel (อาจเป็น instance ถูก freeze ระหว่าง connect แล้ว timer ยิงทันทีตอน thaw) → ติดตามต่อด้วย log `[db-retry]` (field `timeoutMs` = ค่าที่ใช้จริง) ในหัวข้อ 2026-09-25 ด้านล่าง
 - [ ] แยกเรื่อง (ไม่ใช่งานโค้ด): log เดียวกันยังเตือน `MESSENGER_APP_SECRET is not set` — Messenger webhook ยังตอบ 401 ทุกข้อความ (ค้างจากรอบ 2026-08-24)
 
 ## Log noise — `timeout exceeded when trying to connect` ตอน revalidate สินค้าหน้าหมวด (2026-09-25)
@@ -879,8 +879,10 @@
 - [x] เพิ่ม regression assertion ใน [lib/__tests__/storefront-public-payloads.test.ts](lib/__tests__/storefront-public-payloads.test.ts) ว่า read ทั้งสองเกิดภายใน retry และยังคงลำดับ `findMany` → `count`; targeted tests ผ่าน 14/14
 - [x] ไม่แตะ `DB_POOL_MAX`, `connectionTimeoutMillis`, cache TTL/key/tag, query/filter/order, payload หรือ business logic — ผู้ใช้ยังได้ stale cache ระหว่าง refresh เหมือนเดิม ต่างเพียง transient refresh มีโอกาสสำเร็จใน retry
 - [x] ตรวจครบ: `npm run check:mojibake` ผ่าน · `npm run verify` ผ่าน (lint 0 errors / 261 warnings เดิม, typecheck ผ่าน, tests 1,607 ผ่าน 0 ล้ม) · `npm run build` ผ่านบน Next.js 16.3.1
-- [ ] หลัง deploy เฝ้าดู 3–5 วัน: กรอง `storefront-category-products` + `timeout exceeded when trying to connect`; ตรวจ Supabase Connection Pooling และ Vercel concurrency ช่วง error
-- [ ] ตรวจ deployment SHA/Request ID เพิ่มเติมหาก log ยังผูก cache key นี้กับ path `/` เพราะ [app/page.tsx](app/page.tsx) ปัจจุบันไม่ได้เรียก category-products โดยตรง
+- [x] หลัง deploy เฝ้าดู 3–5 วัน (ตรวจ 2026-09-28 ด้วย `npx vercel logs` ช่วง 21–28/09): revalidate key นี้ล้มลดจาก 4 ครั้งใน ~10 ชม. (deploy ก่อน fix) เหลือ 2 ครั้งใน ~2.5 วัน (25/09 23:49, 27/09 06:05) — ทั้งสองเป็น pool-acquire timeout ซึ่ง retry ได้แค่ 1 ครั้ง; connection error ระดับ info ยังเกิด ~2–4 ครั้ง/วันเท่าเดิม แต่ส่วนใหญ่ retry ผ่าน
+- [x] ตรวจ Request ID แล้ว (2026-09-28): key นี้ไปเกาะทั้ง `/` และ `/product/*` ซึ่งไม่ได้อ่าน category-products เลย · เคส 27/09: `POST /products/radiator-cmn4dwjst…` 06:04:11 มี prisma:error 2 บรรทัด → 99 วินาทีต่อมา key หมวดเดียวกันล้มใน request `/product/toyota-camry…` เพียง 0.66 วินาทีหลัง request เริ่ม · 25/09 23:49 error ขึ้น 1.07 วินาทีหลังบรรทัด `[env]` ตอน instance boot ทั้งที่ pg-pool ยิง error นี้ได้หลังรอครบ `connectionTimeoutMillis` (ขั้นต่ำ 5s) · traffic ช่วงนั้นเบามาก → สมมติฐานนำคืองาน DB ค้างข้าม instance freeze/thaw (แบบเดียวกับ 05/08) มากกว่า pool เต็มจริง — **ยังไม่พิสูจน์**
+- [x] เพิ่ม log วินิจฉัยชั่วคราว `[db-retry]` ใน `withDbRetry` ([lib/db.ts](lib/db.ts)) 1 บรรทัดต่อ transient failure + 1 บรรทัดเมื่อ retry สำเร็จ: `outcome` / `kind` / `error` (เฉพาะวลีที่ match ไม่ใช่ข้อความ Prisma ดิบ) / `attempt` / `maxAttempts` / `waitedMs` / `monoWaitedMs` / `callStartedAt` / `timeoutMs` / `uptimeS` / `instance` — ไม่เปลี่ยน retry, query, cache หรือ pool config · test ใหม่ 2 เคสใน [lib/__tests__/db-transient-error.test.ts](lib/__tests__/db-transient-error.test.ts) · `npm run verify` ผ่าน (lint 0 errors / 261 warnings เดิม, typecheck ผ่าน, tests 1,640 ผ่าน 0 ล้ม)
+- [ ] หลัง deploy เก็บ `[db-retry]` 2–3 วัน (`npx vercel logs --environment production --since <ISO> --query "db-retry" --json`) แล้วชี้ขาด: `waitedMs` ≈ `timeoutMs` และ `callStartedAt` อยู่ใน request เดียวกัน = pool เต็มจริง · `waitedMs` ≫ `timeoutMs` หรือ `callStartedAt` ก่อน request ที่ log เกาะ = freeze/thaw · `waitedMs` ≫ `monoWaitedMs` = VM ถูก pause · จากนั้นเลือกแนวแก้กับเจ้าของ แล้วถอด log นี้ออก
 
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
