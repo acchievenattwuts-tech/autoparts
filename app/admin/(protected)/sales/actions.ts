@@ -18,7 +18,7 @@ import { reportCriticalError } from "@/lib/error-reporting";
 import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { dispatchOutOfStockAlerts } from "@/lib/notifications";
+import { dispatchOutOfStockAlerts, findProductIdsWithStock } from "@/lib/notifications";
 import { generateSaleNo } from "@/lib/doc-number";
 import { isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
@@ -635,10 +635,16 @@ export async function createSale(
       : "SA";
   let saleNo = "";
   let createdSaleId = "";
-  const stockCrossedToZero: string[] = [];
 
   try {
     const requestContext = await getRequestContext();
+    // Real-time out-of-stock alert: note which products still have stock
+    // BEFORE the sale; after commit only those now at/below zero are alerted.
+    // Compared before/after (not writeStockCard's crossedToZero) so a
+    // backdated sale, which takes the full-recalculation path, is covered too.
+    const productIdsWithStockBeforeSale = await findProductIdsWithStock(
+      validItems.map((item) => item.productId),
+    );
     // If another save takes the same saleNo first, regenerate it and retry the
     // (fully rolled-back) transaction instead of failing the sale.
     await withDocNumberRetry({
@@ -647,7 +653,6 @@ export async function createSale(
       run: async (nextSaleNo) => {
         saleNo = nextSaleNo;
         createdSaleId = "";
-        stockCrossedToZero.length = 0;
         await dbTx(async (tx) => {
           await prepareSaleQuotationReference(tx, null, quotationId);
           const quotationRevision = quotationId ? (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
@@ -830,7 +835,7 @@ export async function createSale(
               priceIn:     0,
               detail:      `ขาย ${item.qty} ${item.unitName}`,
               referenceId: saleItem.id,
-            }, stockCrossedToZero) : null;
+            }) : null;
 
             // Lot Control - only if product has isLotControl=true (lot rows validated above)
             if (stockCardId && product.isLotControl) {
@@ -960,12 +965,12 @@ export async function createSale(
 
     // Real-time out-of-stock alert — AFTER commit, never blocks the sale.
     // Sent from after() so the bell/Telegram round-trips do not delay the response;
-    // the alert timestamp is still taken here, at commit time.
-    const outOfStockProductIds = [...stockCrossedToZero];
+    // the alert timestamp is still taken here, at commit time. The dispatcher
+    // re-reads stock and alerts only the products now at/below zero.
     const outOfStockAlertAt = new Date();
-    if (outOfStockProductIds.length > 0) {
+    if (productIdsWithStockBeforeSale.length > 0 && createdSaleId) {
       after(() =>
-        dispatchOutOfStockAlerts(outOfStockProductIds, outOfStockAlertAt).catch((err) =>
+        dispatchOutOfStockAlerts(productIdsWithStockBeforeSale, createdSaleId, outOfStockAlertAt).catch((err) =>
           console.warn("[createSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
         ),
       );
@@ -1502,10 +1507,19 @@ export async function updateSale(
   const affectedProductIds = new Set<string>();
   removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
   addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
+  // Only lines written anew deduct stock, so only their products can run out.
+  const stockDeductingProductIds = useDifferential
+    ? addedNewItems.map((a) => a.productId)
+    : validItems.map((item) => item.productId);
 
   try {
     const requestContext = await getRequestContext();
-    const beforeSnapshot = await getSaleAuditSnapshot(id);
+    // Real-time out-of-stock alert: note which products still have stock
+    // BEFORE the edit; after commit only those now at/below zero are alerted.
+    const [beforeSnapshot, productIdsWithStockBeforeEdit] = await Promise.all([
+      getSaleAuditSnapshot(id),
+      findProductIdsWithStock(stockDeductingProductIds),
+    ]);
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
@@ -1838,6 +1852,18 @@ export async function updateSale(
           source: `sale:${existing.saleNo}`,
         },
       });
+    }
+
+    // Real-time out-of-stock alert — AFTER commit, never blocks the edit.
+    // dispatchOutOfStockAlerts re-reads stock, so of the products that had
+    // stock before the edit only those now at/below zero are alerted.
+    const outOfStockAlertAt = new Date();
+    if (productIdsWithStockBeforeEdit.length > 0) {
+      after(() =>
+        dispatchOutOfStockAlerts(productIdsWithStockBeforeEdit, id, outOfStockAlertAt).catch((err) =>
+          console.warn("[updateSale] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
+        ),
+      );
     }
 
     // ล้างแคชแบบ deferred ด้วย after() — เหตุผลเดียวกับใน createSale

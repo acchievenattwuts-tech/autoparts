@@ -1,5 +1,5 @@
 import { db, dbTx } from "@/lib/db";
-import { dispatchOutOfStockAlerts } from "@/lib/notifications";
+import { dispatchOutOfStockAlerts, findProductIdsWithStock } from "@/lib/notifications";
 import { type AuditLogActor, safeWriteAuditLog } from "@/lib/audit-log";
 import { generateSaleNo } from "@/lib/doc-number";
 import {
@@ -331,9 +331,16 @@ export async function createSaleFromShopeeOrder(params: {
   const shippingMethod = mapShopeeCarrierToShippingMethod(extractShopeeCarrier(orderImport?.rawPayload ?? null));
   const shippingStatus = mapShopeeOrderStatusToShippingStatus(rawOrder?.order_status ?? orderImport?.shopeeStatus, trackingNo);
   let createdSaleId = "";
-  const stockCrossedToZero: string[] = [];
 
   try {
+    // Real-time out-of-stock alert: note which products still have stock BEFORE
+    // the sale; after commit only those now at/below zero are alerted. Compared
+    // before/after (not writeStockCard's crossedToZero) because the sale is dated
+    // on the Shopee order date, so an order approved later is often backdated.
+    const productIdsWithStockBeforeSale = await findProductIdsWithStock(
+      draft.lines.flatMap((line) => (line.isTracked && line.productId ? [line.productId] : [])),
+    );
+
     await dbTx(async (tx) => {
       const claimed = await tx.shopeeOrderImport.updateMany({
         where: {
@@ -440,7 +447,7 @@ export async function createSaleFromShopeeOrder(params: {
               priceIn: 0,
               detail: `ขาย Shopee ${line.qty} ${line.unitName}`,
               referenceId: saleItem.id,
-            }, stockCrossedToZero)
+            })
           : null;
 
         const selectedLots = lotSelections[lineKey(line.itemId, line.modelId)] ?? [];
@@ -499,9 +506,12 @@ export async function createSaleFromShopeeOrder(params: {
     });
 
     // Real-time out-of-stock alert — AFTER commit, never blocks the import.
-    await dispatchOutOfStockAlerts(stockCrossedToZero).catch((err) =>
-      console.warn("[shopee] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
-    );
+    // The dispatcher re-reads stock and alerts only the products now at/below zero.
+    if (productIdsWithStockBeforeSale.length > 0) {
+      await dispatchOutOfStockAlerts(productIdsWithStockBeforeSale, createdSaleId).catch((err) =>
+        console.warn("[shopee] out-of-stock alert skipped:", err instanceof Error ? err.message : "unknown"),
+      );
+    }
 
     return { ok: true, saleId: createdSaleId, saleNo };
   } catch (error) {

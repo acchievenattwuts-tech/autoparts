@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
+import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
@@ -590,6 +591,49 @@ export type OutOfStockRealtimeProduct = {
   categoryName: string;
 };
 
+/** The sale that drove the product out of stock, as shown in the alert. */
+export type OutOfStockAlertSource = {
+  docNo: string;
+  customerName: string;
+};
+
+const MISSING_ALERT_FIELD = "-";
+
+/**
+ * Customer name as the sales pages show it: marketplace sales keep the buyer
+ * name typed on the sale, other channels prefer the linked customer record.
+ */
+export function resolveSaleCustomerDisplayName(sale: {
+  channel: string;
+  customerName: string | null;
+  customer: { name: string } | null;
+}): string {
+  const name = isManualMarketplaceChannel(sale.channel)
+    ? sale.customerName ?? sale.customer?.name
+    : sale.customer?.name ?? sale.customerName;
+  return name?.trim() || MISSING_ALERT_FIELD;
+}
+
+/**
+ * Body of the real-time out-of-stock alert. Plain text + emoji only, like the
+ * daily digest (`sendTelegramMessage` sends without `parse_mode`). Kept separate
+ * from the sender so it can be unit-inspected.
+ */
+export function buildOutOfStockRealtimeBody(
+  product: OutOfStockRealtimeProduct,
+  source: OutOfStockAlertSource,
+  at: Date,
+): string {
+  return [
+    `📦 ${product.name} (${product.code})`,
+    `หมวด: ${product.categoryName}`,
+    "คงเหลือ: 0 ชิ้น",
+    `เลขที่เอกสาร: ${source.docNo}`,
+    `ลูกค้า: ${source.customerName}`,
+    `⏰ ${formatDateTimeThai(at)} น. · จากการขาย`,
+  ].join("\n");
+}
+
 /**
  * Real-time alert fired the moment a sale drives an ACTIVE product's stock
  * across zero (was > 0, now <= 0). One notification per product, routed through
@@ -603,13 +647,12 @@ export type OutOfStockRealtimeProduct = {
  * same product zeroing out repeatedly in one day only alerts once while the
  * previous alert is still unread.
  */
-export async function notifyProductOutOfStock(product: OutOfStockRealtimeProduct, at: Date = new Date()): Promise<number> {
-  const body = [
-    `📦 ${product.name} (${product.code})`,
-    `หมวด: ${product.categoryName}`,
-    "คงเหลือ: 0 ชิ้น",
-    `⏰ ${formatDateTimeThai(at)} น. · จากการขาย`,
-  ].join("\n");
+export async function notifyProductOutOfStock(
+  product: OutOfStockRealtimeProduct,
+  source: OutOfStockAlertSource,
+  at: Date = new Date(),
+): Promise<number> {
+  const body = buildOutOfStockRealtimeBody(product, source, at);
 
   return createNotification({
     type: NotificationType.STOCK_OUT_REALTIME,
@@ -624,13 +667,45 @@ export async function notifyProductOutOfStock(product: OutOfStockRealtimeProduct
 }
 
 /**
- * Post-commit dispatcher for real-time out-of-stock alerts. Given the productIds
- * that crossed zero during a just-committed sale, loads the display fields with a
- * single indexed `IN` query (only the crossed products — usually 0-1) and fires
- * one deduped alert per still-active product. No-op on an empty list. Safe to
- * call fire-and-forget; the caller should wrap in try/catch.
+ * Pre-sale half of the real-time out-of-stock check for every sale flow (admin
+ * sale form create/edit — store, Shopee and Lazada — and the Shopee order
+ * import). writeStockCard's `crossedToZero` flag does not fit there: it skips
+ * backdated rows, and on an edit a line that is reversed then re-deducted looks
+ * like a fresh crossing even when the stock did not change.
+ * Call this BEFORE the transaction to list the products that still have stock,
+ * then pass the result to `dispatchOutOfStockAlerts()` after commit — it
+ * re-reads and alerts only those now at or below zero.
+ * Never throws: a failed read skips the alert, never the sale.
  */
-export async function dispatchOutOfStockAlerts(productIds: string[], at: Date = new Date()): Promise<void> {
+export async function findProductIdsWithStock(productIds: string[]): Promise<string[]> {
+  const uniqueIds = Array.from(new Set(productIds));
+  if (uniqueIds.length === 0) return [];
+
+  try {
+    const products = await db.product.findMany({
+      where: { id: { in: uniqueIds }, stock: { gt: 0 } },
+      select: { id: true },
+    });
+    return products.map((product) => product.id);
+  } catch (err) {
+    console.warn("[out-of-stock] pre-sale stock read skipped:", err instanceof Error ? err.message : "unknown");
+    return [];
+  }
+}
+
+/**
+ * Post-commit dispatcher for real-time out-of-stock alerts. Given candidate
+ * productIds from a just-committed sale, loads the ones now out of stock with a
+ * single indexed `IN` query and fires one deduped alert per still-active product,
+ * naming the sale's document number and customer. The sale is only read when at
+ * least one product is out. No-op on an empty list. Safe to call
+ * fire-and-forget; the caller should wrap in try/catch.
+ */
+export async function dispatchOutOfStockAlerts(
+  productIds: string[],
+  saleId: string,
+  at: Date = new Date(),
+): Promise<void> {
   const uniqueIds = Array.from(new Set(productIds));
   if (uniqueIds.length === 0) return;
 
@@ -638,10 +713,21 @@ export async function dispatchOutOfStockAlerts(productIds: string[], at: Date = 
     where: { ...buildOutOfStockProductsWhere(), id: { in: uniqueIds } },
     select: { id: true, code: true, name: true, category: { select: { name: true } } },
   });
+  if (products.length === 0) return;
+
+  const sale = await db.sale.findUnique({
+    where: { id: saleId },
+    select: { saleNo: true, channel: true, customerName: true, customer: { select: { name: true } } },
+  });
+  const source: OutOfStockAlertSource = {
+    docNo: sale?.saleNo ?? MISSING_ALERT_FIELD,
+    customerName: sale ? resolveSaleCustomerDisplayName(sale) : MISSING_ALERT_FIELD,
+  };
 
   for (const product of products) {
     await notifyProductOutOfStock(
       { id: product.id, code: product.code, name: product.name, categoryName: product.category.name },
+      source,
       at,
     );
   }
