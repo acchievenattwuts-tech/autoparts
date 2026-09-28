@@ -1326,6 +1326,16 @@
 - [ ] **เฟส 4 — รายงาน**: สรุปเครดิตภาษีครึ่งปี/ทั้งปีสำหรับ ภ.ง.ด.94/90 · รายการที่ยังไม่ได้รับ 50 ทวิ · โครงสร้างเผื่อ ภ.ง.ด.1/2/54
 - [x] (2026-09-24) เพิ่มการ์ดติดตาม **ภาษีถูกหัก ณ ที่จ่าย** บนกระดานงานวันนี้ — แสดงจำนวนและยอดเครดิตภาษีที่ยังไม่ได้รับ 50 ทวิจากลูกค้า แบ่งอายุงาน 0–7 / 8–30 / มากกว่า 30 วัน เรียงรายการที่รอนานก่อน และเปิดทะเบียนพร้อมตัวกรองเอกสารได้โดยตรง · ถอดการ์ดและ query ลูกค้า LINE ข้อมูลไม่ครบออกจาก Workboard แล้ว
 
+## เปลี่ยนรหัสผ่านแล้ว ทุกอุปกรณ์ต้องเด้งไปหน้า login (2026-09-28)
+เจ้าของเคาะ: ทางเลือก A (เช็คทุก 30 วินาที) · เด้งทุกกรณีที่ `authVersion` เพิ่ม · ไม่แตะ schema
+- [x] เดิมมีครึ่งเดียว: เปลี่ยนรหัสเอง / แอดมินแก้รหัส-role-สิทธิ์ / ปิดบัญชี เพิ่ม `User.authVersion` อยู่แล้ว และ proxy เด้งไป login **เมื่อกดลิงก์ครั้งถัดไป** — แต่แท็บที่เปิดค้างไว้ไม่รู้ตัวเลย ข้อมูลยังค้างบนจอ
+- [x] `GET /api/admin/session-status` ([route.ts](app/api/admin/session-status/route.ts)) ตอบ 200 / 401 `{reason: "revoked"|"expired"}` / 503 เมื่อเช็คไม่ได้ · อ่าน session อย่างเดียว ไม่ต่ออายุ cookie 7 วัน
+- [x] [AdminSessionWatcher](components/shared/AdminSessionWatcher.tsx) ใน `AdminShell`: เช็คทุก 30 วินาทีเฉพาะตอนแท็บมองเห็น + เช็คทันทีเมื่อกลับมาที่แท็บ/focus/เน็ตกลับ · เด้งด้วย `window.location.replace` เฉพาะ 401 — เน็ตหลุด/5xx/503 ไม่เด้ง · เคสแย่สุดประมาณ 60 วินาที (รอบเช็ค 30 + memo revocation 30)
+- [x] `auth.config.ts` jwt(): เพิ่ม `sessionCheckFailed` แยก "DB ล่ม" ออกจาก "ถูกตัดสิทธิ์" — ยัง fail-closed (`sessionInvalid = true`) ทุกประตูเหมือนเดิม แค่ watcher ไม่เด้งทุกคนตอน DB สะดุด
+- [x] หน้า login แสดงเหตุผลตาม `?reason=` · หน้าเปลี่ยนรหัสแจ้งล่วงหน้าว่าทุกอุปกรณ์จะถูกออก + ข้อความสำเร็จใหม่ (หน่วงออกจากระบบ 0.8 → 2 วินาทีให้อ่านทัน) + ธีมมืดครบ
+- [x] เทสต์: [admin-session-watch.test.ts](lib/__tests__/admin-session-watch.test.ts) · [auth-session-check-failed.test.ts](lib/__tests__/auth-session-check-failed.test.ts) · [route.test.ts](app/api/admin/session-status/__tests__/route.test.ts)
+- [ ] ยังไม่ได้ลองจริงว่ากด Server Action (บันทึกฟอร์ม) หลังเซสชันถูกตัดแล้วขึ้นข้อความอะไร — watcher จะเด้งภายในรอบถัดไปอยู่ดี
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

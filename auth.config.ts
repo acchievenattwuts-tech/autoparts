@@ -65,11 +65,13 @@ export const authConfig: NextAuthConfig = {
         token.mustChangePassword = user.mustChangePassword ?? false;
         token.authVersion = user.authVersion ?? 0;
         token.sessionInvalid = false;
+        token.sessionCheckFailed = false;
         return token;
       }
 
       if (typeof token.id !== "string" || !token.id) {
         token.sessionInvalid = true;
+        token.sessionCheckFailed = false;
         return token;
       }
 
@@ -80,10 +82,14 @@ export const authConfig: NextAuthConfig = {
           tokenVersion: token.authVersion,
           load: loadUserAuthState,
         });
+        token.sessionCheckFailed = false;
       } catch (error) {
         // Authorization must fail closed when the revocation check cannot run.
+        // sessionCheckFailed only tells the idle-tab watcher (lib/admin-session-watch.ts)
+        // not to treat a DB blip as a revocation; every gate still sees sessionInvalid.
         console.error("[auth] session revocation check failed", error);
         token.sessionInvalid = true;
+        token.sessionCheckFailed = true;
       }
       return token;
     },
@@ -97,6 +103,7 @@ export const authConfig: NextAuthConfig = {
           : [];
         session.user.mustChangePassword = Boolean(token.mustChangePassword);
         session.user.sessionInvalid = Boolean(token.sessionInvalid);
+        session.user.sessionCheckFailed = Boolean(token.sessionCheckFailed);
       }
       return session;
     },

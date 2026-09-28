@@ -9,6 +9,7 @@ declare module "next-auth" {
       permissions: string[];
       mustChangePassword: boolean;
       sessionInvalid: boolean;
+      sessionCheckFailed?: boolean;
     } & DefaultSession["user"];
   }
 
@@ -30,5 +31,6 @@ declare module "next-auth/jwt" {
     mustChangePassword?: boolean;
     authVersion?: number;
     sessionInvalid?: boolean;
+    sessionCheckFailed?: boolean;
   }
 }

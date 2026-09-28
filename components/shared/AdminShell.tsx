@@ -6,6 +6,7 @@ import { AlertTriangle, Menu } from "lucide-react";
 
 import AdminSidebar from "@/components/shared/AdminSidebar";
 import AdminNotificationCenter from "@/components/shared/AdminNotificationCenter";
+import AdminSessionWatcher from "@/components/shared/AdminSessionWatcher";
 import AdminThemeProvider, { useAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminThemeToggle from "@/components/shared/AdminThemeToggle";
 import AdminUserMenu from "@/components/shared/AdminUserMenu";
@@ -54,6 +55,7 @@ const AdminShellContent = ({
         theme === "dark" && "dark",
       )}
     >
+      <AdminSessionWatcher />
       <div
         className={`hidden flex-shrink-0 overflow-hidden border-r border-slate-200/80 bg-slate-50 shadow-[0_0_0_1px_rgba(255,255,255,0.4)] transition-all duration-300 ease-in-out lg:flex dark:border-white/10 dark:bg-[#0b1424] dark:shadow-none ${
           sidebarOpen ? "w-72" : "w-0"

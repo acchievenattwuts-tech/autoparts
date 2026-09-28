@@ -34,6 +34,8 @@ interface LockoutData {
 interface LoginFormProps {
   shopName: string;
   shopLogoUrl: string;
+  /** Why an open admin tab was sent here (see lib/admin-session-watch.ts). */
+  sessionEndMessage?: string | null;
 }
 
 const getLockout = (): LockoutData => {
@@ -74,7 +76,7 @@ const getInitials = (shopName: string) =>
     .map((part) => part[0])
     .join("") || "ศว";
 
-const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
+const LoginForm = ({ shopName, shopLogoUrl, sessionEndMessage }: LoginFormProps) => {
   const router = useRouter();
   const shopLogoSrc = toPublicStorageCdnPath(shopLogoUrl) ?? shopLogoUrl ?? "";
   const [username, setUsername] = useState("");
@@ -213,6 +215,15 @@ const LoginForm = ({ shopName, shopLogoUrl }: LoginFormProps) => {
           <h1 className="font-kanit text-2xl font-bold text-gray-900">{shopName}</h1>
           <p className="mt-1 text-sm text-gray-500">ระบบจัดการหลังบ้าน</p>
         </div>
+
+        {sessionEndMessage && (
+          <div
+            role="status"
+            className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            {sessionEndMessage}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
