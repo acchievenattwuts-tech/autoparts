@@ -59,9 +59,6 @@ before(async () => {
             ];
           },
         },
-        shopeeProductMapping: { findMany: async () => [] },
-        shopeeSyncJob: { count: async () => 0 },
-        shopeeOrderImport: { count: async () => 0 },
       },
     },
   });
