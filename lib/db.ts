@@ -1,4 +1,4 @@
-import { PrismaPg } from "@prisma/adapter-pg";
+import { FluidPrismaPg } from "./db-pool";
 import { PrismaClient, Prisma } from "./generated/prisma";
 
 const globalForPrisma = globalThis as unknown as {
@@ -105,7 +105,7 @@ function createPrismaClient() {
   const connectionString = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
   // Pass PoolConfig directly to avoid type conflict between pg versions
-  const adapter = new PrismaPg({
+  const adapter = new FluidPrismaPg({
     connectionString,
     max: connectionLimit,
     idleTimeoutMillis,
