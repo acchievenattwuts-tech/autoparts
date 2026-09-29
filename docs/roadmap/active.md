@@ -7,7 +7,8 @@
 ## Active Now
 ### Supplier DN — Option B (2026-09-29)
 - Implemented: single-purchase DN, current aggregate SKU coverage, separate supplier payable/payment, inventory value-only MAVG entries, period cost variance, permissions and reference guards.
-- Complete: verify 1,776/1,776; 58 DN golden/SSR cases; build and mojibake passed; additive migration/14 indexes applied, RLS enabled and schema drift clean. Application deployment not requested. Separate legacy P&L VAT-base alignment remains a decision item in PLAN.md.
+- Complete: verify 1,776/1,776; 58 DN golden/SSR cases; build and mojibake passed; additive migration/14 indexes applied, RLS enabled and schema drift clean. DN pushed to main at 4d660a0d. Approved VAT Option A aligns revenue bases and document rounding; 16 new golden cases, verify 1,792/1,792 (zero fail/skip), build and mojibake passed in an isolated checkout containing only this patch.
+- VAT audit: 206 active sales have no SALE fact mismatches; no rebuild required. One stale purchase-item subtotal remains a separate correction review. Specification: [profit-vat-option-a.md](../specs/profit-vat-option-a.md).
 - Specification: [supplier-debit-note-option-b.md](../specs/supplier-debit-note-option-b.md).
 
 ### ตัวกรองหมวดหมู่แบบเลือกหลายหมวด (Multi-select Category Filter) — เสร็จแล้ว

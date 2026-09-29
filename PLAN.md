@@ -1364,7 +1364,10 @@
 - [x] Golden tests: VAT/หน่วยนับ/coverage SKU ซ้ำ/สต็อกศูนย์/รับใหม่/ลำดับวันเดียวกัน/rollback/ชำระ/กำไร/AP และ guard
 - [x] ตรวจพร้อมใช้งาน: additive migration และ concurrent indexes 14 รายการลงครบ, RLS ตาราง DN เปิดแล้ว, schema drift ผ่าน, `npm run verify` ผ่าน 1,776 tests (lint ไม่มี error), mojibake รวมไฟล์ใหม่ผ่าน และ build ผ่าน; ยังไม่ได้ deploy application
 - สเปก: [supplier-debit-note-option-b.md](docs/specs/supplier-debit-note-option-b.md); คืนซื้อคงราคาอ้างอิงใบซื้อเดิม ส่วน DN อยู่ใน pooled valuation
-- [ ] งานเดิมนอก scope DN: พิจารณาปรับฐาน VAT ของ P&L ใน `lib/reports.ts` ให้ตรงกับ FactProfit/dashboard (รายงานเดิมใช้ยอด netAmount รวม VAT); รออนุมัติแยกก่อนแก้ business logic นี้
+- [x] VAT Option A อนุมัติแล้ว: P&L ใช้รายได้/คืนขายก่อน VAT; แก้สูตร INCLUDING_VAT และ FactProfit ปันฐาน/ภาษีจากหัวเอกสารให้ตรงสตางค์ รวมส่วนลด/ค่าจัดส่ง; ยอดรับเงินและรายงานปฏิบัติการคงรวม VAT ตามเดิม — [สเปก](docs/specs/profit-vat-option-a.md)
+- [x] ตรวจข้อมูล VAT แบบอ่านอย่างเดียว: SALE 206 ใบตรงกับหัวเอกสาร ไม่มี facts ที่ต้อง rebuild หรือผลต่อ 2 งวดแบ่งกำไร; ไม่เขียนข้อมูลย้อนหลัง
+- [x] VAT Option A ผ่าน golden ใหม่ 16 กรณี และ verify 1,792/1,792 (ไม่มี fail/skip), build และ mojibake ใน checkout แยกเฉพาะแพตช์; ปันเศษสตางค์เดิมที่ถูกต้องคงไว้ ไม่ rewrite กำไรงวดเก่า
+- [ ] ติดตามนอก Option A: subtotal รายการซื้อเดิมแบบ INCLUDING_VAT ผิด 1 บรรทัด ต้องตรวจแก้ข้อมูลเอกสารแยก; นโยบายสิทธิภาษีซื้อค่าใช้จ่าย/MAVG เดิมและความต่าง scope marketplace ยังไม่เปลี่ยน
 
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ

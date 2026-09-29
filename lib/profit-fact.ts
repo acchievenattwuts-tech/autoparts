@@ -7,7 +7,7 @@ import {
   ProfitSourceType,
   SaleChannel,
 } from "@/lib/generated/prisma";
-import { calcItemSubtotal } from "@/lib/vat";
+import { allocateSaleProfitRevenue } from "@/lib/sale-profit-revenue";
 import {
   resolveReturnUnitCost,
   returnDispositionReversesStockCost,
@@ -260,6 +260,7 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
       customerName: true,
       subtotalAmount: true,
       vatAmount: true,
+      netAmount: true,
       customer: { select: { name: true } },
       discount: true,
       shippingFee: true,
@@ -297,21 +298,19 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE, saleId);
-  const itemGrossTotal = roundMoney(sale.items.reduce((sum, item) => sum + Number(item.totalAmount), 0));
-  const discount = roundMoney(Number(sale.discount));
-  const shippingFee = roundMoney(Number(sale.shippingFee));
-  const discountOnItems = Math.min(discount, itemGrossTotal);
-  const discountOnShipping = Math.min(Math.max(discount - discountOnItems, 0), shippingFee);
-  const productRevenueIncVat = roundMoney(Math.max(itemGrossTotal - discountOnItems, 0));
-  const shippingRevenueIncVat = roundMoney(Math.max(shippingFee - discountOnShipping, 0));
-  const itemWeights = sale.items.map((item) => Number(item.totalAmount));
-  const allocatedRevenueIncVat = allocateByWeights(productRevenueIncVat, itemWeights);
+  const revenue = allocateSaleProfitRevenue({
+    itemAmounts: sale.items.map((item) => Number(item.totalAmount)),
+    discount: Number(sale.discount),
+    shippingFee: Number(sale.shippingFee),
+    subtotalAmount: Number(sale.subtotalAmount),
+    netAmount: Number(sale.netAmount),
+  });
   const customerName = sale.customer?.name ?? sale.customerName ?? null;
 
   const rows: FactProfitRowInput[] = sale.items.map((item, index) => {
     const quantity = roundQty(Number(item.quantity));
-    const salesAmountIncVat = roundMoney(allocatedRevenueIncVat[index] ?? 0);
-    const salesAmountExVat = roundMoney(calcItemSubtotal(salesAmountIncVat, sale.vatType, Number(sale.vatRate)));
+    const salesAmountIncVat = revenue.items[index].incVat;
+    const salesAmountExVat = revenue.items[index].exVat;
     const salesAmount = salesAmountExVat;
     const costAmount = roundMoney(quantity * Number(item.costPrice));
     const grossProfit = roundMoney(salesAmountExVat - costAmount);
@@ -355,10 +354,9 @@ export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): 
     };
   });
 
-  if (shippingRevenueIncVat > 0) {
-    const shippingRevenueExVat = roundMoney(
-      calcItemSubtotal(shippingRevenueIncVat, sale.vatType, Number(sale.vatRate)),
-    );
+  if (revenue.shipping.incVat > 0) {
+    const shippingRevenueIncVat = revenue.shipping.incVat;
+    const shippingRevenueExVat = revenue.shipping.exVat;
     rows.push({
       businessDate: sale.saleDate,
       sourceType: ProfitSourceType.SALE,

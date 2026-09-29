@@ -21,7 +21,7 @@ before(async () => {
     purchaseReturn: { findMany: async () => [] }, supplierDebitNote: { findMany: async (args: { select: { varianceAmount?: unknown } }) =>
       args.select.varianceAmount ? [{ ...debit, netAmount: new Prisma.Decimal(535), vatAmount: new Prisma.Decimal(35) }] : [debit] },
     sale: { findMany: async (args: { select: { items?: unknown } }) => args.select.items ? [{ id: "sale-1", saleNo: "IV26090001",
-      saleDate: postingDate, netAmount: 1200, vatAmount: 0, amountRemain: 0, customer: null, customerName: "Customer A",
+      saleDate: postingDate, subtotalAmount: 1200, netAmount: 1200, vatAmount: 0, amountRemain: 0, customer: null, customerName: "Customer A",
       paymentType: "CASH_SALE", paymentMethod: "CASH", note: null, cashBankAccount: null,
       items: [{ quantity: 6, costPrice: 100, lineDiscount: 0 }] }] : [] },
     expense: { findMany: async () => [{ id: "expense-1", expenseNo: "OE26090001", expenseDate: postingDate,

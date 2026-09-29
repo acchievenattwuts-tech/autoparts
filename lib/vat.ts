@@ -50,7 +50,7 @@ export function calcItemSubtotal(
   vatRate: number
 ): number {
   if (vatType === "INCLUDING_VAT" && vatRate > 0) {
-    return Math.round(itemTotal * 100 / (100 + vatRate)) / 100;
+    return Math.round((itemTotal / (1 + vatRate / 100)) * 100) / 100;
   }
   return itemTotal; // NO_VAT or EXCLUDING_VAT: entered price is already pre-tax
 }
