@@ -8,6 +8,8 @@
  * Kept outside the "use server" action files because those may only export
  * async functions.
  */
+import { DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
+
 export class PurchaseUserError extends Error {
   constructor(message: string) {
     super(message);
@@ -17,4 +19,4 @@ export class PurchaseUserError extends Error {
 
 /** Returns the user-facing message when `error` is a PurchaseUserError, else null. */
 export const getPurchaseUserErrorMessage = (error: unknown): string | null =>
-  error instanceof PurchaseUserError ? error.message : null;
+  error instanceof PurchaseUserError || error instanceof DocumentMutationBlockedError ? error.message : null;

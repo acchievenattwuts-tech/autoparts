@@ -1355,6 +1355,17 @@
 - [x] เทสต์: [admin-session-watch.test.ts](lib/__tests__/admin-session-watch.test.ts) · [auth-session-check-failed.test.ts](lib/__tests__/auth-session-check-failed.test.ts) · [route.test.ts](app/api/admin/session-status/__tests__/route.test.ts)
 - [ ] ยังไม่ได้ลองจริงว่ากด Server Action (บันทึกฟอร์ม) หลังเซสชันถูกตัดแล้วขึ้นข้อความอะไร — watcher จะเด้งภายในรอบถัดไปอยู่ดี
 
+## Supplier DN — Option B (2026-09-29)
+- อนุมัติ workstream และ schema แล้ว: DN อ้างอิงใบซื้อ 1 ใบ รองรับใบซื้อจ่ายครบ; ใช้ stock coverage รวม SKU ปัจจุบัน รวมสต็อกรับรอบใหม่
+- [x] ข้อมูล/ต้นทุน: PER_UNIT/TOTAL, VAT ต่อเอกสาร, แยกภาษีซื้อ, value-only StockCard, ลำดับ DN ในวันเดียวกัน; ไม่เปลี่ยน quantity หรือ cost snapshot ใบขายเดิม
+- [x] เจ้าหนี้/ชำระ: DN เป็นเจ้าหนี้แยกใบ, ชำระเดี่ยว/ร่วมใบซื้อ/เครดิต/มัดจำ, ยอดค้างและยกเลิกชำระ; ไม่ขยับเงินตอนลง DN
+- [x] หน้าจอ/รายงาน: เมนู+permission+Quick Search, light/dark, MAVG แสดง DN กับมูลค่าสต็อก/ส่วนต่าง, AP/export, กำไรขั้นต้น/สุทธิและแบ่งกำไรใช้ส่วนต่างงวด DN
+- [x] Guard/audit/notification: ล็อก SKU ก่อนอ่านต้นทุนขาย, ห้ามแก้เอกสารก่อน DN, ห้ามยกเลิก DN ที่มีชำระหรือสต็อกหลัง DN; timeline และลิงก์เอกสาร, audit ใน transaction, bell+Telegram
+- [x] Golden tests: VAT/หน่วยนับ/coverage SKU ซ้ำ/สต็อกศูนย์/รับใหม่/ลำดับวันเดียวกัน/rollback/ชำระ/กำไร/AP และ guard
+- [x] ตรวจพร้อมใช้งาน: additive migration และ concurrent indexes 14 รายการลงครบ, RLS ตาราง DN เปิดแล้ว, schema drift ผ่าน, `npm run verify` ผ่าน 1,776 tests (lint ไม่มี error), mojibake รวมไฟล์ใหม่ผ่าน และ build ผ่าน; ยังไม่ได้ deploy application
+- สเปก: [supplier-debit-note-option-b.md](docs/specs/supplier-debit-note-option-b.md); คืนซื้อคงราคาอ้างอิงใบซื้อเดิม ส่วน DN อยู่ใน pooled valuation
+- [ ] งานเดิมนอก scope DN: พิจารณาปรับฐาน VAT ของ P&L ใน `lib/reports.ts` ให้ตรงกับ FactProfit/dashboard (รายงานเดิมใช้ยอด netAmount รวม VAT); รออนุมัติแยกก่อนแก้ business logic นี้
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

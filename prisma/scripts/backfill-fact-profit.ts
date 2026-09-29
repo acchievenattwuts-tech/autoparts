@@ -5,13 +5,15 @@ import {
   rebuildCreditNoteProfitFacts,
   rebuildExpenseProfitFacts,
   rebuildSaleProfitFacts,
+  rebuildSupplierDebitProfitFacts,
 } from "@/lib/profit-fact";
 
 async function main() {
-  const [sales, creditNotes, expenses] = await Promise.all([
+  const [sales, creditNotes, expenses, debits] = await Promise.all([
     db.sale.findMany({ select: { id: true }, orderBy: { saleDate: "asc" } }),
     db.creditNote.findMany({ select: { id: true }, orderBy: { cnDate: "asc" } }),
     db.expense.findMany({ select: { id: true }, orderBy: { expenseDate: "asc" } }),
+    db.supplierDebitNote.findMany({ select: { id: true }, orderBy: { postingDate: "asc" } }),
   ]);
 
   for (const sale of sales) {
@@ -32,6 +34,10 @@ async function main() {
     });
   }
 
+  for (const debit of debits) {
+    await dbTx(async (tx) => { await rebuildSupplierDebitProfitFacts(tx, debit.id); });
+  }
+
   await safeWriteAuditLog({
     userName: "SYSTEM",
     userRole: "SYSTEM",
@@ -44,11 +50,12 @@ async function main() {
       sales: sales.length,
       creditNotes: creditNotes.length,
       expenses: expenses.length,
+      supplierDebits: debits.length,
     },
   });
 
   console.log(
-    `Backfilled fact_profit for ${sales.length} sales, ${creditNotes.length} credit notes, ${expenses.length} expenses.`,
+    `Backfilled fact_profit for ${sales.length} sales, ${creditNotes.length} credit notes, ${expenses.length} expenses, ${debits.length} supplier debit notes.`,
   );
 }
 

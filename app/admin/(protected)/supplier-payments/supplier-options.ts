@@ -15,7 +15,7 @@ export type SupplierPaymentSupplierOption = {
 export const getSupplierPaymentSupplierOptions = async (
   currentSupplierId?: string,
 ): Promise<SupplierPaymentSupplierOption[]> => {
-  const [purchaseBalances, creditBalances, advanceBalances] = await Promise.all([
+  const [purchaseBalances, creditBalances, advanceBalances, debitBalances] = await Promise.all([
     db.purchase.groupBy({
       by: ["supplierId"],
       where: {
@@ -42,6 +42,8 @@ export const getSupplierPaymentSupplierOptions = async (
       },
       _sum: { amountRemain: true },
     }),
+    db.supplierDebitNote.groupBy({ by: ["supplierId"],
+      where: { status: "ACTIVE", amountRemain: { gt: 0 } }, _sum: { amountRemain: true } }),
   ]);
 
   const supplierIds = [
@@ -50,6 +52,7 @@ export const getSupplierPaymentSupplierOptions = async (
         ...purchaseBalances.map((balance) => balance.supplierId),
         ...creditBalances.map((balance) => balance.supplierId),
         ...advanceBalances.map((balance) => balance.supplierId),
+        ...debitBalances.map((balance) => balance.supplierId),
         currentSupplierId,
       ].filter((supplierId): supplierId is string => !!supplierId),
     ),
@@ -83,6 +86,7 @@ export const getSupplierPaymentSupplierOptions = async (
     },
   });
 
+  const debitBalanceMap = new Map(debitBalances.map((balance) => [balance.supplierId, Number(balance._sum.amountRemain ?? 0)]));
   const purchaseBalanceMap = new Map(
     purchaseBalances.map((balance) => [balance.supplierId, Number(balance._sum.amountRemain ?? 0)]),
   );
@@ -101,12 +105,13 @@ export const getSupplierPaymentSupplierOptions = async (
 
       return {
         ...supplier,
-        amountRemain: purchaseOutstanding - creditOutstanding - advanceOutstanding,
+        amountRemain: purchaseOutstanding + (debitBalanceMap.get(supplier.id) ?? 0) - creditOutstanding - advanceOutstanding,
       };
     })
     .filter(
       (supplier) =>
         supplier.id === currentSupplierId ||
+        debitBalanceMap.has(supplier.id) ||
         purchaseBalanceMap.has(supplier.id) ||
         creditBalanceMap.has(supplier.id) ||
         advanceBalanceMap.has(supplier.id),

@@ -37,6 +37,7 @@ import {
 } from "@/lib/shopee/logistics-utils";
 import { writeStockCard } from "@/lib/stock-card";
 import { calcItemSubtotal } from "@/lib/vat";
+import { lockStockMutationProducts } from "@/lib/document-mutation-guard";
 
 /**
  * Shopee order → internal Sale (Phase F).
@@ -398,6 +399,7 @@ export async function createSaleFromShopeeOrder(params: {
       const productIds = [
         ...new Set(draft.lines.map((l) => l.productId).filter((id): id is string => Boolean(id))),
       ];
+      await lockStockMutationProducts(tx, productIds);
       const productList = await tx.product.findMany({
         where: { id: { in: productIds } },
         select: { id: true, avgCost: true, costPrice: true, inventoryTracking: true, warrantyDays: true, isLotControl: true },

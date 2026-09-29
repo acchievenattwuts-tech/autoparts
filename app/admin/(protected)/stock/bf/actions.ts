@@ -1,5 +1,7 @@
 "use server";
 
+import { assertDocumentMutationAllowedInTx, lockStockMutationProducts, DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
+
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
@@ -12,7 +14,7 @@ import {
 } from "@/lib/audit-log";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
 import { generateBFNo } from "@/lib/doc-number";
-import { AuditAction } from "@/lib/generated/prisma";
+import { AuditAction, Prisma } from "@/lib/generated/prisma";
 import { writeBalanceForwardLots, writeStockMovementLots, reverseBalanceForwardLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
@@ -238,6 +240,7 @@ export async function createBF(
     return { success: true, docNo };
   } catch (err) {
     console.error("[createBF]", err);
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -269,6 +272,9 @@ export async function cancelBF(
   try {
     const beforeSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
     await dbTx(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "BalanceForward" WHERE "id" = ${bfId} FOR UPDATE`);
+      await lockStockMutationProducts(tx, [bf.productId]);
+      await assertDocumentMutationAllowedInTx(tx, "BalanceForward", bfId, "cancel");
       // Mark BalanceForward as CANCELLED first, conditionally: the update
       // row-locks the document, so a concurrent cancel of the same BF waits,
       // then matches 0 rows and stops — Lot balances are never reversed twice.
@@ -312,6 +318,7 @@ export async function cancelBF(
     revalidatePath("/admin/stock/bf");
     return { success: true };
   } catch (err) {
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     console.error("[cancelBF]", err);
     if (err instanceof BalanceForwardUserError) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

@@ -1,3 +1,4 @@
+import { ProfitSourceType } from "@/lib/generated/prisma";
 import type { ProfitDashboardData, ProfitProductRow } from "@/lib/profit-dashboard";
 import {
   PROFIT_EXPLANATION_MAX_ITEMS,
@@ -15,7 +16,9 @@ function productHref(productId: string): string {
   return `/admin/products/${productId}/edit`;
 }
 
-function invoiceHref(sourceId: string): string {
+function invoiceHref(sourceId: string, sourceType: ProfitSourceType): string {
+  if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) return `/admin/supplier-debit-notes/${sourceId}`;
+  if (sourceType === ProfitSourceType.SALE_RETURN) return `/admin/credit-notes/${sourceId}`;
   return `/admin/sales/${sourceId}`;
 }
 
@@ -82,7 +85,7 @@ export function buildProfitExplanationEvidence(data: ProfitDashboardData): Profi
     ...data.invoices.items.slice(0, PROFIT_EXPLANATION_MAX_ITEMS).map((invoice) => ({
       id: `invoice:${invoice.sourceId}`,
       label: invoice.sourceDocNo,
-      href: invoiceHref(invoice.sourceId),
+      href: invoiceHref(invoice.sourceId, invoice.sourceType),
     })),
   ];
 

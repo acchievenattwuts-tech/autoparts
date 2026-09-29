@@ -185,6 +185,10 @@ export default async function SalesLineProfitPage({
         exportHref={`/admin/reports/sales-line-profit/export?${query}`}
       />
 
+      <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900 dark:bg-sky-500/10 dark:text-sky-200">
+        กำไรต่อบิลใช้ต้นทุนที่บันทึกขณะขาย ใบเพิ่มหนี้ supplier จะลงส่วนต่างต้นทุนในงวดวันที่บันทึก DN
+        และแสดงในหน้าวิเคราะห์กำไร โดยไม่แก้ต้นทุนบิลขายเดิม
+      </p>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {[
           ["ยอดก่อนส่วนลดรายการ", optionalMoney(data.totals.amountBeforeLineDiscount)],

@@ -11,7 +11,7 @@ import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationB
 import { hasPermissionAccess } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
-import { buildMutationBlockMessage, checkDocumentMutation } from "@/lib/document-mutation-guard";
+import { buildMutationBlockMessage, buildMutationBlockReferenceLinks, checkDocumentMutation } from "@/lib/document-mutation-guard";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
@@ -148,10 +148,7 @@ const ClaimDetailPage = async ({ params }: Props) => {
     checkDocumentMutation("WarrantyClaim", claim.id, "update"),
   ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
-  const mutationBlockReferences = mutationBlock.references.map((ref) => ({
-    href: ref.entityType === "PurchaseReturn" ? `/admin/purchase-returns/${ref.id}` : "#",
-    label: ref.refNo,
-  }));
+  const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";

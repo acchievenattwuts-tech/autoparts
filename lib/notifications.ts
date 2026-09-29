@@ -747,3 +747,10 @@ export async function cleanupOldNotifications(daysOld = 30): Promise<number> {
   });
   return result.count;
 }
+export async function notifySupplierDebitNote(debit: { id: string; debitNo: string }, cancelled: boolean): Promise<void> {
+  try {
+    await createNotification({ type: NotificationType.SUPPLIER_DEBIT_NOTE,
+      title: `${cancelled ? "ยกเลิก" : "บันทึก"}ใบเพิ่มหนี้ ${debit.debitNo}`,
+      link: `/admin/supplier-debit-notes/${debit.id}`, entityType: "SupplierDebitNote", entityId: debit.id });
+  } catch (error) { console.error("[supplier-DN notification]", error); }
+}

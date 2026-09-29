@@ -87,7 +87,7 @@ async function getFactTotals(from: Date, to: Date): Promise<ReconciliationTotals
 }
 
 async function main() {
-  const [minSale, minCreditNote, minExpense, maxSale, maxCreditNote, maxExpense] = await Promise.all([
+  const [minSale, minCreditNote, minExpense, maxSale, maxCreditNote, maxExpense, minDebit, maxDebit] = await Promise.all([
     db.sale.findFirst({
       where: { status: "ACTIVE" },
       orderBy: { saleDate: "asc" },
@@ -118,17 +118,19 @@ async function main() {
       orderBy: { expenseDate: "desc" },
       select: { expenseDate: true },
     }),
+    db.supplierDebitNote.findFirst({ where: { status: "ACTIVE" }, orderBy: { postingDate: "asc" }, select: { postingDate: true } }),
+    db.supplierDebitNote.findFirst({ where: { status: "ACTIVE" }, orderBy: { postingDate: "desc" }, select: { postingDate: true } }),
   ]);
 
-  const minDate = [minSale?.saleDate, minCreditNote?.cnDate, minExpense?.expenseDate]
+  const minDate = [minSale?.saleDate, minCreditNote?.cnDate, minExpense?.expenseDate, minDebit?.postingDate]
     .filter((value): value is Date => value instanceof Date)
     .sort((left, right) => left.getTime() - right.getTime())[0];
-  const maxDate = [maxSale?.saleDate, maxCreditNote?.cnDate, maxExpense?.expenseDate]
+  const maxDate = [maxSale?.saleDate, maxCreditNote?.cnDate, maxExpense?.expenseDate, maxDebit?.postingDate]
     .filter((value): value is Date => value instanceof Date)
     .sort((left, right) => right.getTime() - left.getTime())[0];
 
   if (!minDate || !maxDate) {
-    console.log("No active sale / credit note return / expense data found to reconcile.");
+    console.log("No active sale / credit note return / expense / supplier debit data found to reconcile.");
     return;
   }
 

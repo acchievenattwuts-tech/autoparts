@@ -309,7 +309,7 @@ async function getProductSpotlights(
 ): Promise<{ topProducts: ProfitProductRow[]; lowProducts: ProfitProductRow[] }> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -362,7 +362,7 @@ async function getProductAnalysis(
 ): Promise<PaginatedSection<ProfitProductRow>> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -403,7 +403,7 @@ async function getProductAnalysis(
 async function getAllProductAnalysis(fromDate: Date, toDate: Date): Promise<ProfitProductRow[]> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -508,19 +508,19 @@ async function getInvoiceAnalysis(
 ): Promise<PaginatedSection<ProfitInvoiceRow>> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
     businessDate: { gte: fromDate, lte: toDate },
   };
 
   const totalItems = (
     await runAdminDashboardRead(() => db.factProfit.groupBy({
-      by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
+      by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName", "supplierName"],
       where,
     }))
   ).length;
   const pagination = buildPagination(page, totalItems);
   const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
-    by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName"],
+    by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName", "supplierName"],
     _sum: {
       salesAmountExVat: true,
       salesAmountIncVat: true,
@@ -543,7 +543,7 @@ async function getInvoiceAnalysis(
         sourceType: row.sourceType,
         sourceDocNo: row.sourceDocNo,
         businessDate: row.businessDate,
-        customerName: row.customerName ?? null,
+        customerName: row.customerName ?? row.supplierName ?? null,
         salesAmountExVat,
         salesAmountIncVat: asNumber(row._sum.salesAmountIncVat),
         costAmount: asNumber(row._sum.costAmount),

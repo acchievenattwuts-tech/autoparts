@@ -15,11 +15,13 @@ let claimCount = 1;
 let productIsLotControl = false;
 
 const tx = {
+  $queryRaw: async () => [],
   $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
     record("$executeRaw", query.strings?.join("?"), query.values);
     return 0;
   },
   balanceForward: {
+    findMany: async () => [{ docNo: "BF26090001" }],
     findFirst: async (args: unknown) => {
       record("balanceForward.findFirst", args);
       return lastDocNo ? { docNo: lastDocNo } : null;
@@ -34,6 +36,7 @@ const tx = {
     },
   },
   stockCard: {
+    findMany: async () => [],
     findFirst: async () => null,
     deleteMany: async (args: unknown) => {
       record("stockCard.deleteMany", args);

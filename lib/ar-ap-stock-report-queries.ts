@@ -245,7 +245,7 @@ export async function buildARExcel(rows: ARRow[], title: string): Promise<Blob> 
 // ─── AP ─────────────────────────────────────────────────────────────────────
 
 export type APData = {
-  purchases: { id: string; purchaseNo: string; purchaseDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
+  purchases: { kind?: "PURCHASE" | "SUPPLIER_DEBIT"; id: string; purchaseNo: string; purchaseDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
   advances: { id: string; advanceNo: string; advanceDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
   cnCredits: { id: string; returnNo: string; returnDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
 };
@@ -256,7 +256,7 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
   });
   const supplierWhere = filters.supplierId ? { supplierId: filters.supplierId } : {};
 
-  const [purchases, advances, cnCredits] = await Promise.all([
+  const [purchases, advances, cnCredits, debits] = await Promise.all([
     db.purchase.findMany({
       where: {
         purchaseType: "CREDIT_PURCHASE",
@@ -313,15 +313,25 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
         amountRemain: true,
       },
     }),
+    db.supplierDebitNote.findMany({
+      where: { status: "ACTIVE", amountRemain: { gt: 0 }, ...supplierWhere, ...dateWhere("postingDate") },
+      orderBy: { postingDate: "asc" }, take: 500,
+      select: { id: true, debitNo: true, postingDate: true, netAmount: true, amountRemain: true,
+        supplier: { select: { name: true } } },
+    }),
   ]);
 
   return {
-    purchases: purchases.map((r) => ({
+    purchases: [...purchases.map((r) => ({
       ...r,
+      kind: "PURCHASE" as const,
       supplierName: r.supplier?.name ?? "",
       totalAmount: Number(r.totalAmount),
       amountRemain: Number(r.amountRemain),
-    })),
+    })), ...debits.map((r) => ({
+      kind: "SUPPLIER_DEBIT" as const, id: r.id, purchaseNo: r.debitNo, purchaseDate: r.postingDate,
+      supplierName: r.supplier.name, totalAmount: Number(r.netAmount), amountRemain: Number(r.amountRemain),
+    }))].sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime()),
     advances: advances.map((r) => ({
       ...r,
       supplierName: r.supplier?.name ?? "",
@@ -340,8 +350,8 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
 export function buildAPCsv(data: APData): string {
   const sections: string[] = [];
 
-  sections.push(csvRow(["=== ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ) ==="]));
-  sections.push(csvRow(["เลขที่", "วันที่ซื้อ", "ซัพพลายเออร์", "ยอดซื้อ", "ค้างจ่าย"]));
+  sections.push(csvRow(["=== ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ / DN) ==="]));
+  sections.push(csvRow(["เลขที่", "วันที่เอกสาร", "ซัพพลายเออร์", "ยอดเอกสาร", "ค้างจ่าย"]));
   for (const r of data.purchases) {
     sections.push(csvRow([r.purchaseNo, fmtDate(r.purchaseDate), r.supplierName, r.totalAmount, r.amountRemain]));
   }
@@ -402,9 +412,9 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
     "ค้างจ่ายซัพพลายเออร์",
     [
       { header: "เลขที่", key: "purchaseNo", width: 16 },
-      { header: "วันที่ซื้อ", key: "purchaseDate", width: 12 },
+      { header: "วันที่เอกสาร", key: "purchaseDate", width: 12 },
       { header: "ซัพพลายเออร์", key: "supplierName", width: 28 },
-      { header: "ยอดซื้อ", key: "totalAmount", width: 14 },
+      { header: "ยอดเอกสาร", key: "totalAmount", width: 14 },
       { header: "ค้างจ่าย", key: "amountRemain", width: 14 },
     ],
     data.purchases.map((r) => ({ ...r, purchaseDate: fmtDate(r.purchaseDate) })),

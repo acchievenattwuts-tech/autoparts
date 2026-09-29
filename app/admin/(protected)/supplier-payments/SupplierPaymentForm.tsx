@@ -35,7 +35,7 @@ type CashBankAccountOption = {
 };
 
 type SelectedItem = {
-  kind: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE";
+  kind: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT";
   refId: string;
   docNo: string;
   outstanding: number;
@@ -91,13 +91,13 @@ const SupplierPaymentForm = ({
   const [note, setNote] = useState(initialData?.note ?? "");
   const [wht, setWht] = useState<WhtIssuedFormValue | null>(initialData?.wht ?? null);
   const [documents, setDocuments] = useState<SupplierSettlementDocumentBundle>(
-    initialDocuments ?? { purchases: [], credits: [], advances: [] },
+    initialDocuments ?? { debits: [], purchases: [], credits: [], advances: [] },
   );
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>(initialData?.items ?? []);
 
   const handleSupplierChange = (nextSupplierId: string) => {
     setSupplierId(nextSupplierId);
-    setDocuments({ purchases: [], credits: [], advances: [] });
+    setDocuments({ debits: [], purchases: [], credits: [], advances: [] });
     setSelectedItems([]);
     if (!nextSupplierId) return;
 
@@ -118,7 +118,7 @@ const SupplierPaymentForm = ({
         );
       })
       .catch(() => {
-        setDocuments({ purchases: [], credits: [], advances: [] });
+        setDocuments({ debits: [], purchases: [], credits: [], advances: [] });
         setSelectedItems([]);
       })
       .finally(() => setIsLoadingDocs(false));
@@ -172,7 +172,7 @@ const SupplierPaymentForm = ({
   };
 
   const purchaseTotal = selectedItems
-    .filter((item) => item.kind === "PURCHASE")
+    .filter((item) => (item.kind === "PURCHASE" || item.kind === "SUPPLIER_DEBIT"))
     .reduce((sum, item) => sum + item.paidAmount, 0);
   const creditTotal = selectedItems
     .filter((item) => item.kind === "SUPPLIER_CREDIT")
@@ -201,8 +201,8 @@ const SupplierPaymentForm = ({
       setError("กรุณาเลือกรายการอย่างน้อย 1 รายการ");
       return;
     }
-    if (!selectedItems.some((item) => item.kind === "PURCHASE")) {
-      setError("กรุณาเลือกใบซื้อเชื่ออย่างน้อย 1 รายการ");
+    if (!selectedItems.some((item) => (item.kind === "PURCHASE" || item.kind === "SUPPLIER_DEBIT"))) {
+      setError("กรุณาเลือกใบซื้อเชื่อหรือ DN อย่างน้อย 1 รายการ");
       return;
     }
     if (selectedItems.some((item) => item.paidAmount <= 0)) {
@@ -253,6 +253,7 @@ const SupplierPaymentForm = ({
       "items",
       JSON.stringify(
         selectedItems.map((item) => ({
+          debitNoteId: item.kind === "SUPPLIER_DEBIT" ? item.refId : undefined,
           purchaseId: item.kind === "PURCHASE" ? item.refId : undefined,
           purchaseReturnId: item.kind === "SUPPLIER_CREDIT" ? item.refId : undefined,
           advanceId: item.kind === "ADVANCE" ? item.refId : undefined,
@@ -458,6 +459,10 @@ const SupplierPaymentForm = ({
         </div>
       </div>
 
+      {supplierId ? renderTable({ kind: "SUPPLIER_DEBIT", title: "ใบเพิ่มหนี้ DN คงค้าง",
+        description: "เลือก DN ที่ต้องการชำระ รวมถึง DN ของใบซื้อที่จ่ายครบแล้ว",
+        documents: documents.debits, headClassName: "bg-sky-50 dark:bg-sky-950",
+        docLabel: "เลขที่ DN", amountColor: "text-sky-800 dark:text-sky-300" }) : null}
       {supplierId
         ? renderTable({
             kind: "PURCHASE",

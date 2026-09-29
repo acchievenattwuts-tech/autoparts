@@ -34,6 +34,7 @@ interface StockCardPageProps {
 const sourceLabel: Record<string, string> = {
   BF: "ยอดยกมา",
   PURCHASE: "ซื้อเข้า",
+  SUPPLIER_DEBIT: "ใบเพิ่มหนี้ซัพพลายเออร์ (DN)",
   SALE: "ขายออก",
   RETURN_IN: "รับคืน",
   RETURN_OUT: "คืนซัพพลายเออร์",
@@ -48,6 +49,7 @@ const sourceLabel: Record<string, string> = {
 const sourceBadge: Record<string, string> = {
   BF: "bg-blue-100 text-blue-700",
   PURCHASE: "bg-green-100 text-green-700",
+  SUPPLIER_DEBIT: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
   SALE: "bg-orange-100 text-orange-700",
   RETURN_IN: "bg-teal-100 text-teal-700",
   RETURN_OUT: "bg-yellow-100 text-yellow-700",
@@ -79,6 +81,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
   await requirePermission("stock.card.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
+  const canViewDebit = hasPermissionAccess(role, permissions, "supplier_debit_notes.view");
 
   const { productId, q, from, to } = await searchParams;
   const normalizedQuery = q?.trim() ?? "";
@@ -166,6 +169,8 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
           qtyBalance: true,
           priceIn: true,
           priceBalance: true,
+          valueAdjustment: true,
+          costVariance: true,
         },
       })
     : Promise.resolve([]);
@@ -187,6 +192,11 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
       : Promise.resolve(null);
 
   const [cards, openingRow] = await Promise.all([cardsPromise, openingPromise]);
+  const debitNumbers = [...new Set(cards.filter((card) => card.source === "SUPPLIER_DEBIT").map((card) => card.docNo))];
+  const debitDocuments = canViewDebit && debitNumbers.length > 0
+    ? await db.supplierDebitNote.findMany({ where: { debitNo: { in: debitNumbers } }, select: { id: true, debitNo: true } })
+    : [];
+  const debitHrefByNumber = new Map(debitDocuments.map((debit) => [debit.debitNo, `/admin/supplier-debit-notes/${debit.id}`]));
 
   const reportStock = selectedProduct && reportUnit
     ? toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale)
@@ -227,11 +237,11 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
         actions={canManage ? <RecalculateButton /> : null}
       />
 
-      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80">
+      <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80 dark:bg-slate-900 dark:border-slate-800">
         <AdminSearchForm method="GET" className="flex flex-wrap items-end gap-3">
           {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="min-w-48 flex-1">
-            <label className="mb-1 block text-xs text-gray-500">ค้นหาสินค้า</label>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-slate-400">ค้นหาสินค้า</label>
             <input
               type="text"
               name="q"
@@ -241,7 +251,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">จากวันที่</label>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-slate-400">จากวันที่</label>
             <input
               type="date"
               name="from"
@@ -250,7 +260,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-gray-500">ถึงวันที่</label>
+            <label className="mb-1 block text-xs text-gray-500 dark:text-slate-400">ถึงวันที่</label>
             <input
               type="date"
               name="to"
@@ -266,7 +276,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
           {(q || productId || fromKey || toKey) && (
             <Link
               href="/admin/stock/card"
-              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200"
+              className="rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-200 dark:text-slate-300"
             >
               ล้าง
             </Link>
@@ -274,10 +284,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
         </AdminSearchForm>
 
         {normalizedQuery && !selectedProduct && filteredProducts.length > 0 && (
-          <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
-              <p className="text-xs text-gray-500">
-                พบ <span className="font-medium text-gray-700">{filteredProducts.length} รายการ</span>
+          <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-slate-700">
+            <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 dark:bg-slate-800 dark:border-slate-700">
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                พบ <span className="font-medium text-gray-700 dark:text-slate-200">{filteredProducts.length} รายการ</span>
                 {" "}คลิกเพื่อเลือกสินค้า
               </p>
             </div>
@@ -294,10 +304,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                       className="flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-blue-50"
                     >
                       <div>
-                        <span className="mr-2 font-mono text-xs text-gray-500">[{product.code}]</span>
+                        <span className="mr-2 font-mono text-xs text-gray-500 dark:text-slate-400">[{product.code}]</span>
                         <span className="text-sm text-gray-800">{product.name}</span>
                       </div>
-                      <span className="ml-4 whitespace-nowrap text-xs text-gray-400">
+                      <span className="ml-4 whitespace-nowrap text-xs text-gray-400 dark:text-slate-500">
                         คงเหลือ {fmtQty(toReportUnitQty(Number(product.stock), unit.scale))} {unit.unitName}
                       </span>
                     </Link>
@@ -309,19 +319,19 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
         )}
 
         {normalizedQuery && !selectedProduct && filteredProducts.length === 0 && (
-          <p className="mt-3 text-sm text-gray-400">ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;</p>
+          <p className="mt-3 text-sm text-gray-400 dark:text-slate-500">ไม่พบสินค้าที่ตรงกับ &quot;{q}&quot;</p>
         )}
       </div>
 
       {selectedProduct && reportUnit && (
         <>
-          <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <div className="mb-4 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:bg-slate-900 dark:border-slate-800">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="font-kanit text-lg font-semibold text-gray-900">
+                <p className="font-kanit text-lg font-semibold text-gray-900 dark:text-slate-100">
                   [{selectedProduct.code}] {selectedProduct.name}
                 </p>
-                <p className="mt-0.5 text-sm text-gray-500">
+                <p className="mt-0.5 text-sm text-gray-500 dark:text-slate-400">
                   Stock คงเหลือ:{" "}
                   <span className="font-medium text-gray-800">
                     {fmtQty(reportStock)} {reportUnit.unitName}
@@ -332,21 +342,24 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                   </span>
                 </p>
               </div>
-              <div className="rounded-lg bg-[#1e3a5f]/5 px-3 py-2 text-xs text-[#1e3a5f]">
+              <div className="rounded-lg bg-[#1e3a5f]/5 px-3 py-2 text-xs text-[#1e3a5f] dark:text-sky-300">
                 หน่วยนับรายงาน: <span className="font-semibold">{reportUnit.unitName}</span>
               </div>
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
-              <p className="text-sm text-gray-500">
-                ทั้งหมด <span className="font-medium text-gray-700">{cards.length} รายการ</span>
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm dark:bg-slate-900 dark:border-slate-800">
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3 dark:border-slate-800">
+              <p className="text-sm text-gray-500 dark:text-slate-400">
+                ทั้งหมด <span className="font-medium text-gray-700 dark:text-slate-200">{cards.length} รายการ</span>
               </p>
             </div>
+            {debitNumbers.length > 0 && <p className="border-b border-indigo-100 bg-indigo-50 px-5 py-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+              DN ไม่เปลี่ยนจำนวนสินค้า: ส่วนเพิ่มมูลค่าสต็อกปรับ MAVG ส่วนต่างต้นทุนลงในงวด DN และไม่เปลี่ยนต้นทุนใบขายเดิม
+            </p>}
 
             {cards.length === 0 && !openingRow ? (
-              <div className="py-12 text-center text-sm text-gray-400">
+              <div className="py-12 text-center text-sm text-gray-400 dark:text-slate-500">
                 {hasDateFilter
                   ? "ไม่พบการเคลื่อนไหวสต็อกในช่วงวันที่ที่เลือก และไม่มียอดยกมา"
                   : "ยังไม่มีการเคลื่อนไหวสต็อกของสินค้านี้"}
@@ -354,51 +367,55 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-slate-800">
                     <tr>
-                      <th className="w-8 px-3 py-3 text-left font-medium text-gray-600">#</th>
-                      <th className="px-3 py-3 text-left font-medium text-gray-600">วันที่</th>
-                      <th className="px-3 py-3 text-left font-medium text-gray-600">เลขที่</th>
-                      <th className="px-3 py-3 text-left font-medium text-gray-600">แหล่งที่มา</th>
-                      <th className="px-3 py-3 text-left font-medium text-gray-600">รายละเอียด</th>
-                      <th className="px-3 py-3 text-left font-medium text-gray-600">หน่วยนับ</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">จำนวนเข้า</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">จำนวนออก</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">คงเหลือ</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">ราคาเข้า/หน่วย</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">avgCost/หน่วย</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600">มูลค่าคงเหลือ</th>
+                      <th className="w-8 px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">#</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">วันที่</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">เลขที่</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">แหล่งที่มา</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">รายละเอียด</th>
+                      <th className="px-3 py-3 text-left font-medium text-gray-600 dark:text-slate-300">หน่วยนับ</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนเข้า</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">จำนวนออก</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">คงเหลือ</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ราคาเข้า/หน่วย</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">เพิ่มมูลค่าสต็อก (บาท)</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ส่วนต่างต้นทุนงวด DN (บาท)</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">avgCost/หน่วย</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">มูลค่าคงเหลือ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {hasDateFilter && (
-                      <tr className="border-t border-gray-50 bg-blue-50/40">
-                        <td className="px-3 py-2.5 text-xs text-gray-400">-</td>
-                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                      <tr className="border-t border-gray-50 bg-blue-50/40 dark:border-slate-800">
+                        <td className="px-3 py-2.5 text-xs text-gray-400 dark:text-slate-500">-</td>
+                        <td className="whitespace-nowrap px-3 py-2.5 text-gray-600 dark:text-slate-300">
                           {fromKey ? formatDateThai(parseDateOnlyToStartOfDay(fromKey)) : "-"}
                         </td>
-                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400">-</td>
+                        <td className="px-3 py-2.5 font-mono text-xs text-gray-400 dark:text-slate-500">-</td>
                         <td className="px-3 py-2.5">
                           <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                             ยอดยกมา
                           </span>
                         </td>
-                        <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500">
+                        <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500 dark:text-slate-400">
                           {openingRow
                             ? `ยอดสะสมก่อน ${formatDateThai(parseDateOnlyToStartOfDay(fromKey))}`
                             : "ไม่มียอดสะสมก่อนช่วงวันที่นี้"}
                         </td>
-                        <td className="px-3 py-2.5 text-gray-500">{reportUnit.unitName}</td>
-                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
-                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
-                        <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                        <td className="px-3 py-2.5 text-gray-500 dark:text-slate-400">{reportUnit.unitName}</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 dark:text-slate-600">-</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 dark:text-slate-600">-</td>
+                        <td className="px-3 py-2.5 text-right font-semibold text-gray-900 dark:text-slate-100">
                           {fmtQty(openingQty)}
                         </td>
-                        <td className="px-3 py-2.5 text-right text-gray-300">-</td>
-                        <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f]">
+                        <td className="px-3 py-2.5 text-right text-gray-300 dark:text-slate-600">-</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 dark:text-slate-600">-</td>
+                        <td className="px-3 py-2.5 text-right text-gray-300 dark:text-slate-600">-</td>
+                        <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f] dark:text-sky-300">
                           {fmtPrice(openingPriceBalance)}
                         </td>
-                        <td className="px-3 py-2.5 text-right font-medium text-gray-700">
+                        <td className="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-slate-200">
                           {openingQty * openingPriceBalance > 0
                             ? (openingQty * openingPriceBalance).toLocaleString("th-TH", {
                                 minimumFractionDigits: 2,
@@ -421,15 +438,18 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                         reportUnit.scale,
                       );
                       const totalValue = qtyBalance * priceBalance;
+                      const debitHref = debitHrefByNumber.get(card.docNo);
 
                       return (
-                        <tr key={card.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50">
-                          <td className="px-3 py-2.5 text-xs text-gray-400">{index + 1}</td>
-                          <td className="whitespace-nowrap px-3 py-2.5 text-gray-600">
+                        <tr key={card.id} className="border-t border-gray-50 transition-colors hover:bg-gray-50 dark:border-slate-800 dark:hover:bg-slate-800">
+                          <td className="px-3 py-2.5 text-xs text-gray-400 dark:text-slate-500">{index + 1}</td>
+                          <td className="whitespace-nowrap px-3 py-2.5 text-gray-600 dark:text-slate-300">
                     {formatDateThai(card.docDate)}
                           </td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-[#1e3a5f]">
-                            {card.docNo}
+                          <td className="px-3 py-2.5 font-mono text-xs text-[#1e3a5f] dark:text-sky-300">
+                            {debitHref
+                              ? <Link href={debitHref} className="underline underline-offset-2 dark:text-sky-300">{card.docNo}</Link>
+                              : card.docNo}
                           </td>
                           <td className="px-3 py-2.5">
                             <span
@@ -440,26 +460,32 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                               {sourceLabel[card.source] ?? card.source}
                             </span>
                           </td>
-                          <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500">
+                          <td className="max-w-40 px-3 py-2.5 text-xs text-gray-500 dark:text-slate-400">
                             <span className="line-clamp-2">{card.detail ?? "-"}</span>
                           </td>
-                          <td className="px-3 py-2.5 text-gray-500">{reportUnit.unitName}</td>
+                          <td className="px-3 py-2.5 text-gray-500 dark:text-slate-400">{reportUnit.unitName}</td>
                           <td className="px-3 py-2.5 text-right font-medium text-green-700">
-                            {qtyIn > 0 ? fmtQty(qtyIn) : <span className="text-gray-300">-</span>}
+                            {card.source === "SUPPLIER_DEBIT" ? "0" : qtyIn > 0 ? fmtQty(qtyIn) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-red-600">
-                            {qtyOut > 0 ? fmtQty(qtyOut) : <span className="text-gray-300">-</span>}
+                            {card.source === "SUPPLIER_DEBIT" ? "0" : qtyOut > 0 ? fmtQty(qtyOut) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900">
+                          <td className="px-3 py-2.5 text-right font-semibold text-gray-900 dark:text-slate-100">
                             {fmtQty(qtyBalance)}
                           </td>
-                          <td className="px-3 py-2.5 text-right text-gray-600">
-                            {priceIn > 0 ? fmtPrice(priceIn) : <span className="text-gray-300">-</span>}
+                          <td className="px-3 py-2.5 text-right text-gray-600 dark:text-slate-300">
+                            {priceIn > 0 ? fmtPrice(priceIn) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f]">
+                          <td className="px-3 py-2.5 text-right font-medium text-indigo-700 dark:text-indigo-300">
+                            {card.source === "SUPPLIER_DEBIT" ? Number(card.valueAdjustment).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-medium text-amber-700 dark:text-amber-300">
+                            {card.source === "SUPPLIER_DEBIT" ? Number(card.costVariance).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f] dark:text-sky-300">
                             {fmtPrice(priceBalance)}
                           </td>
-                          <td className="px-3 py-2.5 text-right font-medium text-gray-700">
+                          <td className="px-3 py-2.5 text-right font-medium text-gray-700 dark:text-slate-200">
                             {totalValue > 0
                               ? totalValue.toLocaleString("th-TH", {
                                   minimumFractionDigits: 2,
@@ -471,21 +497,27 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                       );
                     })}
                   </tbody>
-                  <tfoot className="border-t-2 border-gray-200 bg-gray-50">
+                  <tfoot className="border-t-2 border-gray-200 bg-gray-50 dark:bg-slate-800 dark:border-slate-700">
                     <tr>
-                      <td colSpan={8} className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
+                      <td colSpan={8} className="px-3 py-3 text-right text-sm font-semibold text-gray-700 dark:text-slate-200">
                         {footerLabel}
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-gray-900">
+                      <td className="px-3 py-3 text-right font-bold text-gray-900 dark:text-slate-100">
                         {fmtQty(footerQty)}
                       </td>
-                      <td className="px-3 py-3 text-right text-sm font-semibold text-gray-700">
+                      <td className="px-3 py-3 text-right text-sm font-semibold text-gray-700 dark:text-slate-200">
                         ต้นทุนเฉลี่ย
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-[#1e3a5f]">
+                      <td className="px-3 py-3 text-right text-sm text-indigo-700 dark:text-indigo-300">
+                        {cards.reduce((sum, card) => sum + Number(card.valueAdjustment), 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-right text-sm text-amber-700 dark:text-amber-300">
+                        {cards.reduce((sum, card) => sum + Number(card.costVariance), 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-3 py-3 text-right font-bold text-[#1e3a5f] dark:text-sky-300">
                         {fmtPrice(footerPriceBalance)}
                       </td>
-                      <td className="px-3 py-3 text-right font-bold text-gray-900">
+                      <td className="px-3 py-3 text-right font-bold text-gray-900 dark:text-slate-100">
                         {(footerQty * footerPriceBalance).toLocaleString("th-TH", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
@@ -501,9 +533,9 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
       )}
 
       {!selectedProduct && (
-        <div className="rounded-xl border border-gray-100 bg-white p-16 text-center shadow-sm">
+        <div className="rounded-xl border border-gray-100 bg-white p-16 text-center shadow-sm dark:bg-slate-900 dark:border-slate-800">
           <ClipboardList size={40} className="mx-auto mb-3 text-gray-200" />
-          <p className="text-sm text-gray-400">
+          <p className="text-sm text-gray-400 dark:text-slate-500">
             ค้นหาสินค้าด้วยรหัสหรือชื่อเพื่อดู Stock Card MAVG
           </p>
         </div>

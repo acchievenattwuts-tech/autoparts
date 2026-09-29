@@ -12,11 +12,14 @@ import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
-import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
+import { writeStockCard, recalculateStockCardMany, getStockValuationEpoch } from "@/lib/stock-card";
 import { enqueueStorefrontStockInvalidation } from "@/lib/storefront-sync-queue";
 import { generatePurchaseNo } from "@/lib/doc-number";
 import { withDocNumberRetry } from "@/lib/doc-number-retry";
-import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import {
+  getDocumentMutationBlockMessage, assertDocumentMutationAllowedInTx,
+  lockStockMutationProducts, assertStockWriteDateAllowed, DocumentMutationBlockedError,
+} from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   PaymentMethod,
@@ -323,6 +326,12 @@ async function refreshLatestPurchaseStockCardBalance(
   tx: PurchaseTxClient,
   row: PurchaseLandedStockCardSnapshot,
 ): Promise<boolean> {
+  // The optimized legacy loop has no value-adjustment branch; use the shared replay
+  // whenever the SKU has a DN boundary, including a DN earlier than this receipt.
+  const debitBoundary = await tx.stockCard.findFirst({
+    where: { productId: row.productId, source: "SUPPLIER_DEBIT" }, select: { id: true },
+  });
+  if (debitBoundary) return false;
   const laterRow = await tx.stockCard.findFirst({
     where: {
       productId: row.productId,
@@ -815,6 +824,10 @@ export async function cancelPurchase(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseAuditSnapshot(purchaseId);
     await dbTx(async (tx) => {
+      const locked = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`SELECT "status"::text AS "status" FROM "Purchase" WHERE "id" = ${purchaseId} FOR UPDATE`);
+      if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
+      await lockStockMutationProducts(tx, affectedProductIds);
+      await assertDocumentMutationAllowedInTx(tx, "Purchase", purchaseId, "cancel");
       await clearCashBankSourceMovements(tx, CashBankSourceType.PURCHASE, purchaseId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.PURCHASE, purchaseId);
       // Reverse Lot balances before deleting StockCard rows — batched; same result
@@ -847,6 +860,9 @@ export async function cancelPurchase(
     revalidatePath("/admin/purchases");
     return { success: true };
   } catch (err) {
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
+    const userMessage = getPurchaseUserErrorMessage(err);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(err, { scope: "purchases.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -956,6 +972,7 @@ export async function updatePurchase(
     try {
       assertPaymentsMatchTotal(payments, netAmount);
     } catch (err) {
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
       return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
     }
   }
@@ -1094,6 +1111,12 @@ export async function updatePurchase(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseAuditSnapshot(id);
     await dbTx(async (tx) => {
+      const locked = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`SELECT "status"::text AS "status" FROM "Purchase" WHERE "id" = ${id} FOR UPDATE`);
+      if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
+      const mutationProductIds = [...existing.items.map((item) => item.productId), ...validItems.map((item) => item.productId)];
+      await lockStockMutationProducts(tx, mutationProductIds);
+      await assertDocumentMutationAllowedInTx(tx, "Purchase", id, "update");
+      await assertStockWriteDateAllowed(tx, validItems.map((item) => item.productId), parseDateOnlyToDate(purchaseDate));
       const resolvedPaymentMethod = await resolvePurchasePaymentMethod(
         tx,
         purchaseType,
@@ -1417,12 +1440,17 @@ export async function updatePurchase(
         // 3b. Create all StockCard draft rows (tracked lines) in one statement.
         const trackedLines = prepared.filter((p) => p.isTracked && p.sorder !== null);
         if (trackedLines.length > 0) {
+          const epochByProduct = new Map<string, number>();
+          for (const productId of [...new Set(trackedLines.map((line) => line.productId))]) {
+            epochByProduct.set(productId, await getStockValuationEpoch(tx, productId, docDateForStock));
+          }
           await tx.stockCard.createMany({
             data: trackedLines.map((p) => ({
               productId:   p.productId,
               docNo:       existing.purchaseNo,
               docDate:     docDateForStock,
               source:      "PURCHASE" as const,
+              valuationEpoch: epochByProduct.get(p.productId) ?? 0,
               sorder:      p.sorder as number,
               qtyIn:       new Prisma.Decimal(p.qtyInBase),
               qtyOut:      new Prisma.Decimal(0),

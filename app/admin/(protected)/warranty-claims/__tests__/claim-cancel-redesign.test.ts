@@ -67,6 +67,7 @@ const fakeDb = {
     },
   },
   warrantyClaim: {
+    findMany: async ({ where }: { where: Where }) => claims.filter((claim) => claim.id === where.id),
     findUnique: async ({ where }: { where: Where }) => {
       const claim = claims.find((c) => c.id === where.id);
       return claim ? claimView(claim) : null;
@@ -126,6 +127,7 @@ const fakeDb = {
     },
   },
   stockCard: {
+    findMany: async () => [],
     deleteMany: async () => ({ count: 0 }),
     findFirst: async () => null,
   },
@@ -269,6 +271,7 @@ test("sale claim cancel: stock reversed, cancelled PR detached, claim deleted, h
   assert.equal(purchaseReturns[0].claimId, null, "cancelled purchase return no longer points at it");
   assert.deepEqual(calls, [
     "lock:Sale:sale-1",
+    "lock:Product:prod-1",
     "claimStock.reverse",
     "lot.reverse",
     "stockCard.recalc",

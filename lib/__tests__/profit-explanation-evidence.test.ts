@@ -146,3 +146,18 @@ test("buildProfitExplanationEvidence limits noisy lists to top five", async () =
 
   assert.equal(evidence.topPositiveDrivers.length, 5);
 });
+
+test("DN variance evidence links to the supplier document and preserves period loss", async () => {
+  const { buildProfitExplanationEvidence } = await import("@/lib/profit-explanation/evidence");
+  const data = buildData();
+  data.selectedRange = { ...emptySummary, costAmount: 300, grossProfit: -300, netProfitAmount: -300 };
+  data.previousRange = emptySummary;
+  data.invoices.items = [{ ...data.invoices.items[0], sourceId: "dn-1", sourceType: ProfitSourceType.PURCHASE_COST_VARIANCE,
+    sourceDocNo: "SDN26090001", salesAmountExVat: 0, salesAmountIncVat: 0, costAmount: 300,
+    grossProfit: -300, marginPct: 0, customerName: null }];
+  const evidence = buildProfitExplanationEvidence(data);
+  assert.equal(evidence.deltas.costAmount, 300);
+  assert.equal(evidence.deltas.grossProfit, -300);
+  assert.equal(evidence.deltas.netProfitAmount, -300);
+  assert.equal(evidence.evidenceLinks.find((link) => link.id === "invoice:dn-1")?.href, "/admin/supplier-debit-notes/dn-1");
+});

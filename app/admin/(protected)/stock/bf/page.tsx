@@ -8,6 +8,7 @@ import BfHistoryTable from "./BfHistoryTable";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { INVENTORY_TRACKING_TRACKED } from "@/lib/inventory-tracking";
+import { getStockDocumentDebitBlocks, buildMutationBlockMessage, buildMutationBlockReferenceLinks, type GuardDb } from "@/lib/document-mutation-guard";
 
 const BfPage = async () => {
   await requirePermission("stock.bf.view");
@@ -61,8 +62,11 @@ const BfPage = async () => {
     requireExpiryDate: p.requireExpiryDate,
   }));
 
+  const debitBlocks = await getStockDocumentDebitBlocks(db as unknown as GuardDb, bfDocs.filter((d) => d.status === "ACTIVE").map((d) => d.docNo));
   const serialized = bfDocs.map((d) => ({
     ...d,
+    disabledReason: debitBlocks.has(d.docNo) ? buildMutationBlockMessage(debitBlocks.get(d.docNo)!) : null,
+    blockReferences: debitBlocks.has(d.docNo) ? buildMutationBlockReferenceLinks(debitBlocks.get(d.docNo)!) : [],
     docDate:         d.docDate.toISOString(),
     cancelledAt:     d.cancelledAt?.toISOString() ?? null,
     qtyInBase:       Number(d.qtyInBase),

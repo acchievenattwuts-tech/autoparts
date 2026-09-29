@@ -25,6 +25,7 @@ const EditSupplierPaymentPage = async ({
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
+          debitNote: { select: { debitNo: true, amountRemain: true } },
           purchase: { select: { purchaseNo: true, amountRemain: true } },
           purchaseReturn: { select: { returnNo: true, amountRemain: true } },
           advance: { select: { advanceNo: true, amountRemain: true } },
@@ -112,19 +113,20 @@ const EditSupplierPaymentPage = async ({
           })),
           note: payment.note ?? "",
           items: payment.items.map((item) => ({
-            kind: item.purchaseId
+            kind: item.debitNoteId ? "SUPPLIER_DEBIT" : item.purchaseId
               ? "PURCHASE"
               : item.purchaseReturnId
                 ? "SUPPLIER_CREDIT"
                 : "ADVANCE",
-            refId: item.purchaseId ?? item.purchaseReturnId ?? item.advanceId ?? "",
+            refId: item.debitNoteId ?? item.purchaseId ?? item.purchaseReturnId ?? item.advanceId ?? "",
             docNo:
+              item.debitNote?.debitNo ??
               item.purchase?.purchaseNo ??
               item.purchaseReturn?.returnNo ??
               item.advance?.advanceNo ??
               "-",
             outstanding:
-              item.purchaseId
+              item.debitNoteId ? Number(item.debitNote?.amountRemain ?? 0) + Number(item.paidAmount) : item.purchaseId
                 ? Number(item.purchase?.amountRemain ?? 0) + Number(item.paidAmount)
                 : item.purchaseReturnId
                   ? Number(item.purchaseReturn?.amountRemain ?? 0) + Number(item.paidAmount)

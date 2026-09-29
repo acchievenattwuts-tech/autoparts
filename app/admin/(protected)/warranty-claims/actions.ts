@@ -39,6 +39,9 @@ import {
   buildMutationBlockMessage,
   checkDocumentMutation,
   createDocumentMutationGuard,
+  assertDocumentMutationAllowedInTx,
+  lockStockMutationProducts,
+  DocumentMutationBlockedError,
   type DocumentMutationAction,
   type GuardDb,
 } from "@/lib/document-mutation-guard";
@@ -948,6 +951,8 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockStockMutationProducts(tx, [claim.warranty.productId]);
+      await assertDocumentMutationAllowedInTx(tx, "WarrantyClaim", id, "reopen");
       if (claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER) {
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
           docNos: [`${claim.claimNo}${RETURN_DOC_SUFFIX}`],
@@ -1013,6 +1018,7 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.reopen", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
@@ -1112,6 +1118,8 @@ async function cancelOnsiteClaim(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await lockStockMutationProducts(tx, [claim.warranty.productId]);
+      await assertDocumentMutationAllowedInTx(tx, "WarrantyClaim", id, "cancel");
       await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, claim.warranty.productId);
 
@@ -1140,6 +1148,7 @@ async function cancelOnsiteClaim(
     revalidatePath("/admin/warranties");
     return {};
   } catch (error) {
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };
   }
@@ -1162,6 +1171,7 @@ async function cancelSaleClaim(
       const current = await tx.warrantyClaim.findUnique({ where: { id }, select: { status: true } });
       if (!current) throw new ClaimFlowError("ไม่พบใบเคลม");
       if (current.status === WarrantyClaimStatus.CANCELLED) throw new ClaimFlowError("ยกเลิกไปแล้ว");
+      await lockStockMutationProducts(tx, [warranty.productId]);
       const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("WarrantyClaim", id, "cancel");
       if (guard.blocked) throw new ClaimFlowError(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
 

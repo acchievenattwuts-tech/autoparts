@@ -1,7 +1,13 @@
+import { Prisma } from "@/lib/generated/prisma";
+
 export type MutableDocumentEntityType =
   | "SalesQuotation"
   | "Sale"
   | "Purchase"
+  | "SupplierDebitNote"
+  | "Adjustment"
+  | "BalanceForward"
+  | "StockCard"
   | "Receipt"
   | "CreditNote"
   | "PurchaseReturn"
@@ -35,6 +41,11 @@ type FindManyArgs = Record<string, unknown>;
 type FindManyResult = Promise<Array<Record<string, unknown>>>;
 
 export type GuardDb = {
+  stockCard?: { findMany(args: FindManyArgs): FindManyResult };
+  purchase?: { findMany(args: FindManyArgs): FindManyResult };
+  supplierDebitNote?: { findMany(args: FindManyArgs): FindManyResult };
+  adjustment?: { findMany(args: FindManyArgs): FindManyResult };
+  balanceForward?: { findMany(args: FindManyArgs): FindManyResult };
   sale?: { findMany(args: FindManyArgs): FindManyResult };
   creditNote?: { findMany(args: FindManyArgs): FindManyResult };
   receiptItem?: { findMany(args: FindManyArgs): FindManyResult };
@@ -141,6 +152,10 @@ const ENTITY_ROUTE: Record<MutableDocumentEntityType, string> = {
   SalesQuotation: "/admin/sales-quotations",
   Sale: "/admin/sales",
   Purchase: "/admin/purchases",
+  SupplierDebitNote: "/admin/supplier-debit-notes",
+  Adjustment: "/admin/stock/adjustments",
+  BalanceForward: "/admin/stock/bf",
+  StockCard: "/admin/stock/card",
   Receipt: "/admin/receipts",
   CreditNote: "/admin/credit-notes",
   PurchaseReturn: "/admin/purchase-returns",
@@ -166,9 +181,168 @@ export function buildMutationBlockReferenceLinks(
   result: MutationBlockResult,
 ): MutationBlockReferenceLink[] {
   return result.references.map((ref) => ({
-    href: `${ENTITY_ROUTE[ref.entityType]}/${ref.id}`,
+    href: ref.entityType === "StockCard"
+      ? `${ENTITY_ROUTE.StockCard}?productId=${encodeURIComponent(ref.id)}`
+      : ref.entityType === "Adjustment" || ref.entityType === "BalanceForward"
+        ? `${ENTITY_ROUTE[ref.entityType]}#document-${encodeURIComponent(ref.id)}`
+      : `${ENTITY_ROUTE[ref.entityType]}/${ref.id}`,
     label: ref.refNo,
   }));
+}
+
+const STOCK_BOUNDARY_REASON = "รายการสต็อกถูกใช้คำนวณใบเพิ่มหนี้แล้ว กรุณายกเลิกเอกสารปลายทางก่อน";
+const DEBIT_LATER_STOCK_REASON = "มีรายการสต็อกหลังใบเพิ่มหนี้ กรุณายกเลิกเอกสารปลายทางก่อน";
+
+type StockBoundaryRow = {
+  productId: string;
+  docNo: string;
+  docDate: Date;
+  sorder: number;
+  valuationEpoch: number;
+};
+
+function stockBoundaryRow(row: Record<string, unknown>): StockBoundaryRow | null {
+  const productId = stringValue(row.productId);
+  const docNo = stringValue(row.docNo);
+  return productId && docNo && row.docDate instanceof Date && typeof row.sorder === "number"
+    ? { productId, docNo, docDate: row.docDate, sorder: row.sorder,
+        valuationEpoch: typeof row.valuationEpoch === "number" ? row.valuationEpoch : 0 }
+    : null;
+}
+
+const stockBoundarySelect = {
+  productId: true, docNo: true, docDate: true, sorder: true, valuationEpoch: true,
+};
+
+/** Batch list-page reasons from the same persisted DN boundary used by server guards. */
+export async function getStockDocumentDebitBlocks(database: GuardDb, docNos: string[]): Promise<Map<string, MutationBlockResult>> {
+  const results = new Map<string, MutationBlockResult>();
+  if (!database.stockCard || docNos.length === 0) return results;
+  try {
+    const ownRows = (await database.stockCard.findMany({ where: { docNo: { in: docNos } }, select: stockBoundarySelect }))
+      .map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row));
+    if (ownRows.length === 0) return results;
+    const laterRows = (await database.stockCard.findMany({ where: {
+      source: "SUPPLIER_DEBIT", OR: ownRows.map(laterStockWhere),
+    }, select: stockBoundarySelect })).map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row));
+    const debitRefs = mapDirectRefs(await database.supplierDebitNote?.findMany({
+      where: { debitNo: { in: [...new Set(laterRows.map((row) => row.docNo))] }, status: "ACTIVE" },
+      select: { id: true, debitNo: true },
+    }) ?? [], "SupplierDebitNote", "debitNo");
+    const refByNo = new Map(debitRefs.map((ref) => [ref.refNo, ref]));
+    for (const docNo of docNos) {
+      const refs = laterRows.filter((later) => ownRows.some((own) => own.docNo === docNo && own.productId === later.productId &&
+        (later.docDate > own.docDate || (later.docDate.getTime() === own.docDate.getTime() &&
+          (later.valuationEpoch > own.valuationEpoch || (later.valuationEpoch === own.valuationEpoch && later.sorder > own.sorder))))))
+        .map((row) => refByNo.get(row.docNo)).filter((ref): ref is MutationBlockReference => Boolean(ref));
+      results.set(docNo, block(STOCK_BOUNDARY_REASON, uniqueRefs(refs)));
+    }
+    return results;
+  } catch (error) { console.error("[getStockDocumentDebitBlocks]", error); throw error; }
+}
+
+/** The persisted epoch preserves posting order even when source precedence differs. */
+function laterStockWhere(row: StockBoundaryRow): Record<string, unknown> {
+  return { productId: row.productId, OR: [
+    { docDate: { gt: row.docDate } },
+    { docDate: row.docDate, valuationEpoch: { gt: row.valuationEpoch } },
+    { docDate: row.docDate, valuationEpoch: row.valuationEpoch, sorder: { gt: row.sorder } },
+  ] };
+}
+
+async function checkStockRowsBoundary(database: GuardDb, ownRows: StockBoundaryRow[],
+  debitCancellation: boolean): Promise<MutationBlockResult> {
+  if (!database.stockCard || ownRows.length === 0) return allow();
+  const ownDocNos = [...new Set(ownRows.map((row) => row.docNo))];
+  const later = await database.stockCard.findMany({
+    where: { docNo: { notIn: ownDocNos }, ...(debitCancellation ? {} : { source: "SUPPLIER_DEBIT" }),
+      OR: ownRows.map(laterStockWhere) },
+    select: stockBoundarySelect,
+  });
+  const docNos = [...new Set(later.map((row) => stringValue(row.docNo)).filter((value): value is string => Boolean(value)))];
+  if (docNos.length === 0) return allow();
+  if (!debitCancellation) {
+    const debits = await database.supplierDebitNote?.findMany({
+      where: { debitNo: { in: docNos }, status: "ACTIVE" }, select: { id: true, debitNo: true },
+    }) ?? [];
+    return block(STOCK_BOUNDARY_REASON, uniqueRefs(mapDirectRefs(debits, "SupplierDebitNote", "debitNo")));
+  }
+  // All retained StockCard rows represent active stock effects. Link known source documents;
+  // legacy claim rows without an exact source match remain reachable through the product card.
+  const sources: Array<[MutableDocumentEntityType, GuardDb[keyof GuardDb], string]> = [
+    ["SupplierDebitNote", database.supplierDebitNote, "debitNo"],
+    ["Purchase", database.purchase, "purchaseNo"], ["Sale", database.sale, "saleNo"],
+    ["CreditNote", database.creditNote, "cnNo"], ["PurchaseReturn", database.purchaseReturn, "returnNo"],
+    ["Adjustment", database.adjustment, "adjustNo"], ["BalanceForward", database.balanceForward, "docNo"],
+  ];
+  const references: MutationBlockReference[] = [];
+  for (const [entityType, delegate, refField] of sources) {
+    if (!delegate) continue;
+    const rows = await delegate.findMany({ where: { [refField]: { in: docNos } }, select: { id: true, [refField]: true } });
+    references.push(...mapDirectRefs(rows, entityType, refField));
+  }
+  const matched = new Set(references.map((ref) => ref.refNo));
+  for (const row of later) {
+    const productId = stringValue(row.productId);
+    const docNo = stringValue(row.docNo);
+    if (productId && docNo && !matched.has(docNo)) references.push({ entityType: "StockCard", id: productId, refNo: docNo });
+  }
+  return block(DEBIT_LATER_STOCK_REASON, uniqueRefs(references));
+}
+
+async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDocumentEntityType,
+  entityId: string): Promise<MutationBlockResult> {
+  if (!database.stockCard) return allow();
+  const source: Partial<Record<MutableDocumentEntityType, [GuardDb[keyof GuardDb], string]>> = {
+    Purchase: [database.purchase, "purchaseNo"], Sale: [database.sale, "saleNo"],
+    SupplierDebitNote: [database.supplierDebitNote, "debitNo"], CreditNote: [database.creditNote, "cnNo"],
+    PurchaseReturn: [database.purchaseReturn, "returnNo"], Adjustment: [database.adjustment, "adjustNo"],
+    BalanceForward: [database.balanceForward, "docNo"], WarrantyClaim: [database.warrantyClaim, "claimNo"],
+  };
+  const spec = source[entityType];
+  if (!spec?.[0]) return allow();
+  const docs = await spec[0].findMany({ where: { id: entityId }, select: { [spec[1]]: true } });
+  const docNo = stringValue(docs[0]?.[spec[1]]);
+  if (!docNo) return allow();
+  const rows = await database.stockCard.findMany({
+    where: entityType === "WarrantyClaim" ? { OR: [{ referenceId: entityId }, { docNo: { startsWith: docNo } }] } : { docNo },
+    select: stockBoundarySelect,
+  });
+  return checkStockRowsBoundary(database, rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)), entityType === "SupplierDebitNote");
+}
+
+export class DocumentMutationBlockedError extends Error {
+  constructor(message: string) { super(message); this.name = "DocumentMutationBlockedError"; }
+}
+
+/** Acquire the same sorted SKU locks as DN posting before checking frozen stock coverage. */
+export async function lockStockMutationProducts(tx: Prisma.TransactionClient, productIds: readonly string[]): Promise<void> {
+  const ids = [...new Set(productIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Product" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`);
+}
+
+export async function assertDocumentMutationAllowedInTx(tx: Prisma.TransactionClient,
+  entityType: MutableDocumentEntityType, entityId: string, action: DocumentMutationAction): Promise<void> {
+  const result = await createDocumentMutationGuard(tx as unknown as GuardDb).check(entityType, entityId, action);
+  const message = buildMutationBlockMessage(result);
+  if (message) throw new DocumentMutationBlockedError(message);
+}
+
+/** Bulk purchase insertion must obey the same backdating boundary as writeStockCard. */
+export async function assertStockWriteDateAllowed(tx: Prisma.TransactionClient,
+  productIds: readonly string[], docDate: Date): Promise<void> {
+  const rows = await tx.stockCard.findMany({
+    where: { productId: { in: [...new Set(productIds)] }, source: "SUPPLIER_DEBIT", docDate: { gt: docDate } },
+    select: { docNo: true },
+  });
+  if (rows.length === 0) return;
+  const debits = await tx.supplierDebitNote.findMany({
+    where: { debitNo: { in: rows.map((row) => row.docNo) }, status: "ACTIVE" }, select: { id: true, debitNo: true },
+  });
+  const result = block(STOCK_BOUNDARY_REASON, mapDirectRefs(debits, "SupplierDebitNote", "debitNo"));
+  const message = buildMutationBlockMessage(result);
+  if (message) throw new DocumentMutationBlockedError(message);
 }
 
 export function createDocumentMutationGuard(database: GuardDb) {
@@ -179,6 +353,17 @@ export function createDocumentMutationGuard(database: GuardDb) {
       action: DocumentMutationAction,
     ): Promise<MutationBlockResult> {
       if (!entityId) return allow();
+
+      const stockBoundary = await checkEntityStockBoundary(database, entityType, entityId);
+      if (stockBoundary.blocked) return stockBoundary;
+
+      if (entityType === "SupplierDebitNote") {
+        const payments = await database.supplierPaymentItem?.findMany({
+          where: { debitNoteId: entityId, payment: { status: "ACTIVE" } },
+          select: { payment: { select: { id: true, paymentNo: true } } },
+        }) ?? [];
+        return block("ถูกนำไปใช้ที่เอกสารจ่ายชำระ", uniqueRefs(mapNestedRefs(payments, "payment", "SupplierPayment", "paymentNo")));
+      }
 
       if (entityType === "SalesQuotation") {
         const sales = await database.sale?.findMany({ where: { activeQuotationId: entityId, status: "ACTIVE" }, select: { id: true, saleNo: true } }) ?? [];
@@ -232,7 +417,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
       }
 
       if (entityType === "Purchase") {
-        const [returns, payments] = await Promise.all([
+        const [returns, payments, debits] = await Promise.all([
           database.purchaseReturn?.findMany({
             where: { purchaseId: entityId, status: "ACTIVE" },
             select: { id: true, returnNo: true },
@@ -241,9 +426,14 @@ export function createDocumentMutationGuard(database: GuardDb) {
             where: { purchaseId: entityId, payment: { status: "ACTIVE" } },
             select: { payment: { select: { id: true, paymentNo: true } } },
           }) ?? Promise.resolve([]),
+          database.supplierDebitNote?.findMany({
+            where: { purchaseId: entityId, status: "ACTIVE" },
+            select: { id: true, debitNo: true },
+          }) ?? Promise.resolve([]),
         ]);
         return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
           ...mapDirectRefs(returns, "PurchaseReturn", "returnNo"),
+          ...mapDirectRefs(debits, "SupplierDebitNote", "debitNo"),
           ...mapNestedRefs(payments, "payment", "SupplierPayment", "paymentNo"),
         ]);
       }

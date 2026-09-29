@@ -37,6 +37,7 @@ const SupplierPaymentDetailPage = async ({
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
+            debitNote: { select: { id: true, debitNo: true, postingDate: true } },
             purchase: { select: { id: true, purchaseNo: true, purchaseDate: true } },
             purchaseReturn: { select: { id: true, returnNo: true, returnDate: true } },
             advance: { select: { id: true, advanceNo: true, advanceDate: true } },
@@ -63,7 +64,7 @@ const SupplierPaymentDetailPage = async ({
   }
 
   const activityEvents = await getDocumentActivityTimeline("SupplierPayment", payment.id);
-  const purchaseItems = payment.items.filter((item) => !!item.purchaseId);
+  const purchaseItems = payment.items.filter((item) => !!item.purchaseId || !!item.debitNoteId);
   const creditItems = payment.items.filter((item) => !!item.purchaseReturnId);
   const advanceItems = payment.items.filter((item) => !!item.advanceId);
   const creditTotal = creditItems.reduce((sum, item) => sum + Number(item.paidAmount), 0);
@@ -156,7 +157,7 @@ const SupplierPaymentDetailPage = async ({
 
         <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-4">
           <div className="rounded-lg border border-gray-100 bg-white p-4 dark:border-white/10 dark:bg-white/5">
-            <p className="text-sm text-gray-500 dark:text-slate-400">ยอดซื้อเชื่อที่ชำระ</p>
+            <p className="text-sm text-gray-500 dark:text-slate-400">ยอดซื้อเชื่อ / DN ที่ชำระ</p>
             <p className="mt-2 font-kanit text-2xl font-bold text-[#1e3a5f] dark:text-sky-300">
               {purchaseItems
                 .reduce((sum, item) => sum + Number(item.paidAmount), 0)
@@ -202,7 +203,7 @@ const SupplierPaymentDetailPage = async ({
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800 dark:text-slate-100">ใบซื้อเชื่อที่ชำระ</h2>
+          <h2 className="mb-4 font-kanit text-lg font-semibold text-gray-800 dark:text-slate-100">ใบซื้อเชื่อ / DN ที่ชำระ</h2>
           {purchaseItems.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-slate-500">ไม่มีรายการ</p>
           ) : (
@@ -210,15 +211,15 @@ const SupplierPaymentDetailPage = async ({
               {purchaseItems.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/admin/purchases/${item.purchase?.id}`}
+                  href={item.debitNote ? `/admin/supplier-debit-notes/${item.debitNote.id}` : `/admin/purchases/${item.purchase?.id}`}
                   className="block rounded-lg border border-gray-100 p-4 transition-colors hover:border-[#1e3a5f]/30 hover:bg-gray-50 dark:border-white/10 dark:hover:border-sky-400/30 dark:hover:bg-white/5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{item.purchase?.purchaseNo ?? "-"}</p>
+                      <p className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{item.debitNote?.debitNo ?? item.purchase?.purchaseNo ?? "-"}</p>
                       <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                        {item.purchase?.purchaseDate
-                          ? formatDateThai(item.purchase.purchaseDate)
+                        {(item.debitNote?.postingDate ?? item.purchase?.purchaseDate)
+                          ? formatDateThai(item.debitNote?.postingDate ?? item.purchase!.purchaseDate)
                           : "-"}
                       </p>
                     </div>

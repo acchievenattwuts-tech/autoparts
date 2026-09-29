@@ -3,6 +3,7 @@ import { isInventoryTracked } from "@/lib/inventory-tracking";
 import type { LotSubRow } from "@/lib/lot-control";
 import { LotStockInsufficientError } from "@/lib/lot-stock-error";
 import { addThailandDays, startOfThailandDay } from "@/lib/th-date";
+import { lockStockMutationProducts } from "@/lib/document-mutation-guard";
 
 /**
  * Shared Sale building blocks (extracted verbatim from sales/actions.ts so both
@@ -50,6 +51,9 @@ export async function preloadSaleDependencies(
   productMap: Map<string, SaleProductSnapshot>;
 }> {
   const productIds = [...new Set(items.map((item) => item.productId))];
+  // DN posting takes these locks before changing MAVG. Hold them before reading
+  // the cost snapshots, so a sale cannot persist a pre-DN cost after DN commits.
+  await lockStockMutationProducts(tx, productIds);
   const uniquePairs = [
     ...new Map(items.map((item) => [getSaleUnitKey(item.productId, item.unitName), item])).values(),
   ];

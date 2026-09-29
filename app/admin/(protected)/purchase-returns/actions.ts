@@ -13,9 +13,13 @@ import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { generatePurchaseReturnNo } from "@/lib/doc-number";
 import { withDocNumberRetry } from "@/lib/doc-number-retry";
-import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import {
+  getDocumentMutationBlockMessage, assertDocumentMutationAllowedInTx,
+  lockStockMutationProducts, DocumentMutationBlockedError,
+} from "@/lib/document-mutation-guard";
 import {
   AuditAction,
+  Prisma,
   CashBankDirection,
   CashBankSourceType,
   ClaimStockMovementType,
@@ -901,6 +905,9 @@ export async function cancelPurchaseReturn(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
     await dbTx(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReturn" WHERE "id" = ${ret.id} FOR UPDATE`);
+      await lockStockMutationProducts(tx, affectedProductIds);
+      await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", ret.id, "cancel");
       if (ret.claimId) {
         await reverseClaimStockMovements(tx, ret.claimId, {
           movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
@@ -955,6 +962,7 @@ export async function cancelPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "purchase_returns.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -1075,6 +1083,9 @@ export async function updatePurchaseReturn(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReturn" WHERE "id" = ${id} FOR UPDATE`);
+      await lockStockMutationProducts(tx, [...existing.items.map((item) => item.productId), ...validItems.map((item) => item.productId)]);
+      await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", id, "update");
       await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
       const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
 
@@ -1319,6 +1330,7 @@ export async function updatePurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.update" });

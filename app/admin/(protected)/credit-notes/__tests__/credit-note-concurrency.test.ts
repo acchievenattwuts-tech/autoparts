@@ -85,6 +85,7 @@ const fakeTx: FakeTx = {
     findFirst: async () => ({ id: "acc-ship" }),
   },
   creditNote: {
+    findMany: async () => [{ cnNo: "CN26090001" }],
     create: async (args: unknown) => {
       const { data } = args as { data: { cnNo: string } };
       record(`creditNote.create:${data.cnNo}`);
@@ -135,6 +136,7 @@ const fakeTx: FakeTx = {
   },
   auditLog: { create: async () => ({}) },
   stockCard: {
+    findMany: async () => [],
     deleteMany: async () => {
       record("stockCard.deleteMany");
       return { count: 0 };

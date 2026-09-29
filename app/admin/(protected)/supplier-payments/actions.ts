@@ -9,6 +9,7 @@ import {
   safeWriteAuditLog,
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
+import { recalculateSupplierDebitRemain } from "@/lib/supplier-debit-note";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { generateSupplierPaymentNo } from "@/lib/doc-number";
 import {
@@ -49,9 +50,9 @@ import { cancelWhtCertificateForSource, persistWhtCertificate } from "@/lib/wht-
 type TxClient = Prisma.TransactionClient;
 type SupplierDocumentClient = Pick<
   typeof db,
-  "purchase" | "purchaseReturn" | "supplierAdvance"
+  "purchase" | "purchaseReturn" | "supplierAdvance" | "supplierDebitNote"
 > &
-  Pick<TxClient, "purchase" | "purchaseReturn" | "supplierAdvance">;
+  Pick<TxClient, "purchase" | "purchaseReturn" | "supplierAdvance" | "supplierDebitNote">;
 
 export type SupplierSettlementDocument = {
   id: string;
@@ -60,10 +61,11 @@ export type SupplierSettlementDocument = {
   totalAmount: number;
   usedAmount: number;
   outstanding: number;
-  type: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE";
+  type: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT";
 };
 
 export type SupplierSettlementDocumentBundle = {
+  debits: SupplierSettlementDocument[];
   purchases: SupplierSettlementDocument[];
   credits: SupplierSettlementDocument[];
   advances: SupplierSettlementDocument[];
@@ -79,6 +81,7 @@ type AvailableDocument = {
 };
 
 type AvailableDocumentBundle = {
+  debits: AvailableDocument[];
   purchases: AvailableDocument[];
   credits: AvailableDocument[];
   advances: AvailableDocument[];
@@ -86,13 +89,14 @@ type AvailableDocumentBundle = {
 
 const supplierPaymentItemSchema = z
   .object({
+    debitNoteId: z.string().optional(),
     purchaseId: z.string().optional(),
     purchaseReturnId: z.string().optional(),
     advanceId: z.string().optional(),
     paidAmount: z.coerce.number().positive("ยอดที่นำมาชำระต้องมากกว่า 0"),
   })
   .superRefine((data, ctx) => {
-    const refCount = [data.purchaseId, data.purchaseReturnId, data.advanceId,
+    const refCount = [data.debitNoteId, data.purchaseId, data.purchaseReturnId, data.advanceId,
     ].filter(Boolean).length;
     if (refCount !== 1) {
       ctx.addIssue({
@@ -221,7 +225,21 @@ async function getAvailableSupplierDocuments(
       },
   });
 
+  const debits = await tx.supplierDebitNote.findMany({
+    where: { supplierId, status: "ACTIVE", OR: [
+      { amountRemain: { gt: 0 } },
+      ...(excludePaymentId ? [{ supplierPaymentItems: { some: { paymentId: excludePaymentId } } }] : []),
+    ] }, orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }],
+    select: { id: true, debitNo: true, postingDate: true, netAmount: true, amountRemain: true,
+      supplierPaymentItems: { where: { paymentId: excludePaymentId ?? "__never__" }, select: { paidAmount: true } } },
+  });
   return {
+    debits: debits.map((debit) => {
+      const currentUsage = sumPaidAmount(debit.supplierPaymentItems);
+      return { id: debit.id, docNo: debit.debitNo, docDate: debit.postingDate,
+        totalAmount: Number(debit.netAmount), outstanding: Number(debit.amountRemain) + currentUsage,
+        usedAmount: Number(debit.netAmount) - Number(debit.amountRemain) - currentUsage };
+    }),
     purchases: purchases.map((purchase) => {
       const currentUsage = sumPaidAmount(purchase.supplierPaymentItems);
       return {
@@ -261,6 +279,7 @@ async function getAvailableSupplierDocuments(
 function serializeDocuments(bundle: AvailableDocumentBundle,
 ): SupplierSettlementDocumentBundle {
   return {
+    debits: bundle.debits.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "SUPPLIER_DEBIT" })),
     purchases: bundle.purchases.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "PURCHASE",
     })),
     credits: bundle.credits.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "SUPPLIER_CREDIT",
@@ -296,22 +315,25 @@ function parseSupplierPaymentForm(
 
 function calculateCashPaid(items: ParsedSupplierPayment["items"]): number {
   return items.reduce((sum, item) => {
-    if (item.purchaseId) return sum + item.paidAmount;
+    if (item.purchaseId || item.debitNoteId) return sum + item.paidAmount;
     return sum - item.paidAmount;
   }, 0);
 }
 
 function collectAffectedIds(items: Array<{
+  debitNoteId?: string | null | undefined;
   purchaseId?: string | null | undefined;
   purchaseReturnId?: string | null | undefined;
   advanceId?: string | null | undefined;
 }>,
 ): {
+  debitNoteIds: string[];
   purchaseIds: string[];
   purchaseReturnIds: string[];
   advanceIds: string[];
 } {
   return {
+    debitNoteIds: [...new Set(items.map((item) => item.debitNoteId).filter((id): id is string => !!id))],
     purchaseIds: [...new Set(items.map((item) => item.purchaseId).filter((id): id is string => !!id),
       ),
     ],
@@ -339,10 +361,31 @@ async function lockSupplierAdvancesForPayment(
   `);
 }
 
+async function lockSupplierDebitNotesForPayment(tx: TxClient, debitNoteIds: string[]): Promise<void> {
+  const ids = [...new Set(debitNoteIds)].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw`SELECT id FROM "SupplierDebitNote" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+}
+
+async function assertSupplierPaymentUnchanged(tx: TxClient, id: string,
+  originalItems: Array<{ debitNoteId?: string | null; purchaseId: string | null; purchaseReturnId: string | null; advanceId: string | null }>,
+): Promise<void> {
+  await tx.$queryRaw`SELECT id FROM "SupplierPayment" WHERE id = ${id} FOR UPDATE`;
+  const current = await tx.supplierPayment.findUnique({ where: { id }, select: {
+    status: true, items: { orderBy: { lineNo: "asc" }, select: {
+      debitNoteId: true, purchaseId: true, purchaseReturnId: true, advanceId: true,
+    } },
+  } });
+  if (!current || current.status !== "ACTIVE" || JSON.stringify(current.items) !== JSON.stringify(originalItems)) {
+    throw new Error("เอกสารจ่ายชำระเปลี่ยนระหว่างทำรายการ กรุณาโหลดเอกสารใหม่");
+  }
+}
+
 function validatePaymentItemsAgainstAvailable(
   items: ParsedSupplierPayment["items"],
   available: AvailableDocumentBundle,
 ): string | null {
+  const debitMap = new Map(available.debits.map((item) => [item.id, item]));
   const purchaseMap = new Map(available.purchases.map((item) => [item.id, item]),
   );
   const creditMap = new Map(available.credits.map((item) => [item.id, item]));
@@ -356,6 +399,14 @@ function validatePaymentItemsAgainstAvailable(
   };
 
   for (const item of items) {
+    if (item.debitNoteId) {
+      const debit = debitMap.get(item.debitNoteId);
+      if (!debit) return "พบ DN ที่ไม่สามารถใช้ชำระได้";
+      if (registerAmount(`debit:${item.debitNoteId}`, item.paidAmount) > debit.outstanding + 0.0001) {
+        return `ยอดชำระของ ${debit.docNo} มากกว่ายอดคงเหลือ`;
+      }
+      continue;
+    }
     if (item.purchaseId) {
       const purchase = purchaseMap.get(item.purchaseId);
       if (!purchase) return "พบเอกสารซื้อเชื่อที่เลือกไม่ถูกต้องหรือไม่สามารถใช้งานได้แล้ว";
@@ -383,8 +434,8 @@ function validatePaymentItemsAgainstAvailable(
     }
   }
 
-  if (!items.some((item) => !!item.purchaseId)) {
-    return "กรุณาเลือกใบซื้อเชื่ออย่างน้อย 1 รายการ";
+  if (!items.some((item) => !!item.purchaseId || !!item.debitNoteId)) {
+    return "กรุณาเลือกใบซื้อเชื่อหรือ DN อย่างน้อย 1 รายการ";
   }
 
   return null;
@@ -394,6 +445,7 @@ async function recalculateAffectedDocuments(
   tx: TxClient,
   affectedIds: ReturnType<typeof collectAffectedIds>,
 ): Promise<void> {
+  for (const debitNoteId of affectedIds.debitNoteIds) await recalculateSupplierDebitRemain(tx, debitNoteId);
   for (const purchaseId of affectedIds.purchaseIds) {
     await recalculatePurchaseAmountRemain(tx, purchaseId);
   }
@@ -419,6 +471,7 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         select: {
+          debitNoteId: true,
           purchaseId: true,
           purchaseReturnId: true,
           advanceId: true,
@@ -466,6 +519,7 @@ async function getSupplierPaymentAuditSnapshot(paymentId: string) {
     cancelNote: payment.cancelNote,
     cancelledAt: payment.cancelledAt,
     items: payment.items.map((item) => ({
+      debitNoteId: item.debitNoteId,
       purchaseId: item.purchaseId,
       purchaseNo: item.purchase?.purchaseNo ?? null,
       purchaseReturnId: item.purchaseReturnId,
@@ -491,7 +545,7 @@ export async function getOutstandingSupplierDocuments(
     "supplier_payments.update",
   ]).catch(() => null);
   if (!session?.user?.id || !supplierId) {
-    return { purchases: [], credits: [], advances: [] };
+    return { debits: [], purchases: [], credits: [], advances: [] };
   }
 
   const available = await getAvailableSupplierDocuments(db, supplierId, excludePaymentId,
@@ -549,6 +603,7 @@ export async function createSupplierPayment(
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
+      await lockSupplierDebitNotesForPayment(tx, collectAffectedIds(parsed.items).debitNoteIds);
       await lockSupplierAdvancesForPayment(
         tx,
         collectAffectedIds(parsed.items).advanceIds,
@@ -580,6 +635,7 @@ export async function createSupplierPayment(
         data: parsed.items.map((item, idx) => ({
           paymentId: payment.id,
           lineNo:    idx + 1,
+          debitNoteId: item.debitNoteId ?? null,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,
@@ -645,6 +701,8 @@ export async function createSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/supplier-debit-notes");
+    for (const debitNoteId of collectAffectedIds(parsed.items).debitNoteIds) revalidatePath(`/admin/supplier-debit-notes/${debitNoteId}`);
     revalidatePath("/admin/wht/certificates");
     revalidatePath("/admin/purchases");
     revalidatePath("/admin/purchase-returns");
@@ -678,6 +736,7 @@ export async function updateSupplierPayment(
       items: {
         orderBy: { lineNo: "asc" },
         select: {
+          debitNoteId: true,
           purchaseId: true,
           purchaseReturnId: true,
           advanceId: true,
@@ -727,6 +786,7 @@ export async function updateSupplierPayment(
   const oldAffectedIds = collectAffectedIds(existing.items);
   const newAffectedIds = collectAffectedIds(parsed.items);
   const allAffectedIds = {
+    debitNoteIds: [...new Set([...oldAffectedIds.debitNoteIds, ...newAffectedIds.debitNoteIds])],
     purchaseIds: [...new Set([...oldAffectedIds.purchaseIds, ...newAffectedIds.purchaseIds,
       ]),
     ],
@@ -742,6 +802,8 @@ export async function updateSupplierPayment(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierPaymentAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await assertSupplierPaymentUnchanged(tx, id, existing.items);
+      await lockSupplierDebitNotesForPayment(tx, allAffectedIds.debitNoteIds);
       await lockSupplierAdvancesForPayment(tx, allAffectedIds.advanceIds);
       const available = await getAvailableSupplierDocuments(tx, parsed.supplierId, id,
       );
@@ -770,6 +832,7 @@ export async function updateSupplierPayment(
         data: parsed.items.map((item, idx) => ({
           paymentId: id,
           lineNo:    idx + 1,
+          debitNoteId: item.debitNoteId ?? null,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,
@@ -835,6 +898,8 @@ export async function updateSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/supplier-debit-notes");
+    for (const debitNoteId of allAffectedIds.debitNoteIds) revalidatePath(`/admin/supplier-debit-notes/${debitNoteId}`);
     revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/supplier-payments/${id}`);
     revalidatePath("/admin/purchases");
@@ -877,6 +942,7 @@ export async function cancelSupplierPayment(
       items: {
         orderBy: { lineNo: "asc" },
         select: {
+          debitNoteId: true,
           purchaseId: true,
           purchaseReturnId: true,
           advanceId: true,
@@ -892,6 +958,8 @@ export async function cancelSupplierPayment(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getSupplierPaymentAuditSnapshot(payment.id);
     await dbTx(async (tx) => {
+      await assertSupplierPaymentUnchanged(tx, payment.id, payment.items);
+      await lockSupplierDebitNotesForPayment(tx, collectAffectedIds(payment.items).debitNoteIds);
       await lockSupplierAdvancesForPayment(
         tx,
         collectAffectedIds(payment.items).advanceIds,
@@ -934,6 +1002,8 @@ export async function cancelSupplierPayment(
     }
 
     revalidatePath("/admin/supplier-payments");
+    revalidatePath("/admin/supplier-debit-notes");
+    for (const debitNoteId of collectAffectedIds(payment.items).debitNoteIds) revalidatePath(`/admin/supplier-debit-notes/${debitNoteId}`);
     revalidatePath("/admin/wht/certificates");
     revalidatePath(`/admin/supplier-payments/${payment.id}`);
     revalidatePath("/admin/purchases");

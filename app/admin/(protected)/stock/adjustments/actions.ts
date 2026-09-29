@@ -1,5 +1,7 @@
 "use server";
 
+import { assertDocumentMutationAllowedInTx, lockStockMutationProducts, DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
+
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { revalidatePath } from "next/cache";
@@ -12,7 +14,7 @@ import {
 } from "@/lib/audit-log";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateAdjNo } from "@/lib/doc-number";
-import { AuditAction } from "@/lib/generated/prisma";
+import { AuditAction, Prisma } from "@/lib/generated/prisma";
 import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   getLotAvailability,
@@ -322,7 +324,7 @@ export async function createAdjustment(
   } catch (error) {
     console.error("[createAdjustment]", error);
     // An ADJUST_OUT lot short on stock (writeAdjustmentLots) is the user's to fix.
-    if (error instanceof AdjustmentUserError || error instanceof LotStockInsufficientError) {
+    if (error instanceof AdjustmentUserError || error instanceof LotStockInsufficientError || error instanceof DocumentMutationBlockedError) {
       return { error: error.message };
     }
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -409,6 +411,9 @@ export async function cancelAdjustment(
   try {
     const beforeSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
     await dbTx(async (tx) => {
+      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Adjustment" WHERE "id" = ${adjustmentId} FOR UPDATE`);
+      await lockStockMutationProducts(tx, affectedProductIds);
+      await assertDocumentMutationAllowedInTx(tx, "Adjustment", adjustmentId, "cancel");
       // Claim the document first: the conditional update row-locks it, so a
       // concurrent cancel of the same document waits, then matches 0 rows and
       // stops here — LotBalance is never reversed twice.
@@ -450,6 +455,7 @@ export async function cancelAdjustment(
     revalidatePath("/admin/stock/adjustments");
     return { success: true };
   } catch (error) {
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     console.error("[cancelAdjustment]", error);
     if (error instanceof AdjustmentUserError) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

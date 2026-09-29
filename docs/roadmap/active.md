@@ -5,6 +5,11 @@
 - งานที่เสร็จแล้วแบบสรุปอยู่ที่ [completed.md](/D:/autoparts/docs/roadmap/completed.md)
 
 ## Active Now
+### Supplier DN — Option B (2026-09-29)
+- Implemented: single-purchase DN, current aggregate SKU coverage, separate supplier payable/payment, inventory value-only MAVG entries, period cost variance, permissions and reference guards.
+- Complete: verify 1,776/1,776; 58 DN golden/SSR cases; build and mojibake passed; additive migration/14 indexes applied, RLS enabled and schema drift clean. Application deployment not requested. Separate legacy P&L VAT-base alignment remains a decision item in PLAN.md.
+- Specification: [supplier-debit-note-option-b.md](../specs/supplier-debit-note-option-b.md).
+
 ### ตัวกรองหมวดหมู่แบบเลือกหลายหมวด (Multi-select Category Filter) — เสร็จแล้ว
 - สถานะ: **DONE** — หน้าแรก + `/admin/products` + `/admin/products/search` เลือกหมวดหมู่ได้มากกว่า 1
 - สิ่งที่ทำเสร็จ:

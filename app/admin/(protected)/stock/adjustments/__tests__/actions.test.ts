@@ -15,6 +15,7 @@ let lastAdjustNo: string | null = null;
 let claimCount = 1;
 
 const tx = {
+  $queryRaw: async () => [],
   $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
     record("$executeRaw", query.strings?.join("?"), query.values);
     return 0;
@@ -26,6 +27,7 @@ const tx = {
     ],
   },
   adjustment: {
+    findMany: async () => [{ adjustNo: "ADJ26090001" }],
     findFirst: async (args: unknown) => {
       record("adjustment.findFirst", args);
       return lastAdjustNo ? { adjustNo: lastAdjustNo } : null;
@@ -43,6 +45,7 @@ const tx = {
     },
   },
   stockCard: {
+    findMany: async () => [],
     deleteMany: async (args: unknown) => {
       record("stockCard.deleteMany", args);
       return { count: 1 };

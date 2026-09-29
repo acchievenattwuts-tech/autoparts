@@ -109,7 +109,7 @@ Security headers in `next.config.ts`:
 
 - Every stock-affecting transaction calls `writeStockCard()` inside `db.$transaction()`.
 - **Never update `Product.stock` or `Product.avgCost` directly** — always through `writeStockCard()`.
-- `avgCost` changes only when stock comes in (`qtyIn > 0`). Outgoing transactions never change it.
+- `avgCost` changes on stock-in (`qtyIn > 0`) and approved Supplier DN value-only postings (`SUPPLIER_DEBIT`, quantity zero). DN capitalizes current aggregate SKU coverage; uncovered cost is current-period variance. DN never rewrites historical SaleItem costs. Ordinary outgoing transactions preserve the existing valuation policy.
 - Neutral stock-in sources (`RETURN_IN`, `CLAIM_RETURN_IN`, `CLAIM_RECV_IN`) use the current running `avgCost` as `priceIn` so they do not distort the average.
 - Document numbers are `{PREFIX}{YYYYMMDD}{4-digit}` and always come from `generateDocNo()` — never hardcoded.
 - `StockCard` queries must use the `[productId, docDate, sorder]` index — no full scans.

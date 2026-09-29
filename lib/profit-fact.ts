@@ -215,6 +215,38 @@ function buildWeightedSaleCostMap(
   );
 }
 
+/** Rebuild from the posted allocation snapshot; never allocate DN costs again. */
+export async function rebuildSupplierDebitProfitFacts(tx: ProfitFactTx, debitNoteId: string): Promise<void> {
+  try {
+    const debit = await tx.supplierDebitNote.findUnique({
+      where: { id: debitNoteId },
+      select: { id: true, debitNo: true, postingDate: true, status: true, supplierId: true,
+        supplier: { select: { name: true } }, purchase: { select: { purchaseNo: true } },
+        items: { orderBy: { lineNo: "asc" }, select: { id: true, varianceAmount: true,
+          productId: true, product: { select: { code: true, name: true } } } } },
+    });
+    if (!debit) return;
+    await deactivateCurrentFacts(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, debitNoteId);
+    if (debit.status !== DocStatus.ACTIVE) return;
+    const versionNo = await getNextVersion(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, debitNoteId);
+    const rows: FactProfitRowInput[] = debit.items.map((item) => {
+      const variance = Number(item.varianceAmount);
+      return { businessDate: debit.postingDate, sourceType: ProfitSourceType.PURCHASE_COST_VARIANCE,
+        sourceSubtype: "SUPPLIER_DN", sourceId: debit.id, sourceLineId: item.id, sourceDocNo: debit.debitNo,
+        referenceDocNo: debit.purchase.purchaseNo, sourceStatus: debit.status, versionNo,
+        productId: item.productId, productCode: item.product.code, productName: item.product.name,
+        supplierId: debit.supplierId, supplierName: debit.supplier.name, lineLabel: "Supplier DN cost variance",
+        quantity: 0, salesAmountExVat: 0, salesAmountIncVat: 0, salesAmount: 0, costAmount: variance,
+        expenseAmount: 0, grossProfit: -variance, netProfitAmount: -variance,
+        unitSalePriceExVat: 0, unitSalePriceIncVat: 0, unitSalePrice: 0, unitCostPrice: 0, unitProfit: 0, marginPct: 0 };
+    });
+    await createFactProfitRows(tx, rows);
+  } catch (error) {
+    console.error("[rebuildSupplierDebitProfitFacts]", error);
+    throw error;
+  }
+}
+
 export async function rebuildSaleProfitFacts(tx: ProfitFactTx, saleId: string): Promise<void> {
   const sale = await tx.sale.findUnique({
     where: { id: saleId },

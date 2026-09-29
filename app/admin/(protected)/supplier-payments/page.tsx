@@ -66,6 +66,7 @@ const SupplierPaymentsPage = async ({
       { supplier: { name: { contains: q, mode: "insensitive" } } },
       { note: { contains: q, mode: "insensitive" } },
       { cashBankAccount: { name: { contains: q, mode: "insensitive" } } },
+      { items: { some: { debitNote: { debitNo: { contains: q, mode: "insensitive" } } } } },
       { items: { some: { purchase: { purchaseNo: { contains: q, mode: "insensitive" } } } } },
       { items: { some: { purchaseReturn: { returnNo: { contains: q, mode: "insensitive" } } } } },
       { items: { some: { advance: { advanceNo: { contains: q, mode: "insensitive" } } } } },

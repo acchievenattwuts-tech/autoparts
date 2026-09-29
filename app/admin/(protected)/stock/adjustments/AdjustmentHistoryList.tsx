@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import CancelDocButton from "@/components/shared/CancelDocButton";
 import { cancelAdjustment } from "./actions";
 import { formatDateThai } from "@/lib/th-date";
+import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 
 interface AdjItem {
   id:        string;
@@ -22,6 +23,8 @@ interface AdjDoc {
   cancelNote:  string | null;
   user:        { name: string };
   items:       AdjItem[];
+  disabledReason?: string | null;
+  blockReferences?: Array<{ href: string; label: string }>;
 }
 
 const AdjustmentHistoryList = ({
@@ -35,7 +38,7 @@ const AdjustmentHistoryList = ({
 
   if (adjustments.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-10 text-center text-gray-400">
+      <div className="bg-white dark:bg-[#101b2e] rounded-xl shadow-sm border border-gray-100 dark:border-white/10 p-10 text-center text-gray-400 dark:text-slate-400">
         ยังไม่มีประวัติการปรับสต็อก
       </div>
     );
@@ -46,32 +49,34 @@ const AdjustmentHistoryList = ({
       {adjustments.map((adj) => (
         <div
           key={adj.id}
-          className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
-            adj.status === "CANCELLED" ? "border-red-200 opacity-60" : "border-gray-100"
+          id={`document-${adj.id}`}
+          className={`bg-white dark:bg-[#101b2e] rounded-xl shadow-sm border overflow-hidden ${
+            adj.status === "CANCELLED" ? "border-red-200 opacity-60" : "border-gray-100 dark:border-white/10"
           }`}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 border-b border-gray-100">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/5 border-b border-gray-100 dark:border-white/10">
             <div className="flex items-center gap-4">
-              <span className="font-mono text-sm font-semibold text-[#1e3a5f]">{adj.adjustNo}</span>
-              <span className="text-sm text-gray-500">
+              <span className="font-mono text-sm font-semibold text-[#1e3a5f] dark:text-sky-200">{adj.adjustNo}</span>
+              <span className="text-sm text-gray-500 dark:text-slate-400">
                 {formatDateThai(adj.adjustDate)}
               </span>
               {adj.status === "CANCELLED" ? (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-300">
                   ยกเลิกแล้ว{adj.cancelNote ? ` — ${adj.cancelNote}` : ""}
                 </span>
               ) : (
-                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 dark:bg-green-950/40 text-green-700 dark:text-green-300">
                   ใช้งาน
                 </span>
               )}
-              {adj.note && <span className="text-sm text-gray-400">— {adj.note}</span>}
+              {adj.note && <span className="text-sm text-gray-400 dark:text-slate-400">— {adj.note}</span>}
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-xs text-gray-400">โดย {adj.user.name}</span>
+              <span className="text-xs text-gray-400 dark:text-slate-400">โดย {adj.user.name}</span>
               {adj.status === "ACTIVE" && canCancel && (
                 <CancelDocButton
+                  disabledReason={adj.disabledReason ?? undefined}
                   docId={adj.id}
                   docNo={adj.adjustNo}
                   idFieldName="adjustmentId"
@@ -83,19 +88,20 @@ const AdjustmentHistoryList = ({
           </div>
 
           {/* Items */}
-          <div className="divide-y divide-gray-50">
+          {adj.disabledReason && <DocumentMutationBlockedNotice compact message={adj.disabledReason} references={adj.blockReferences} />}
+          <div className="divide-y divide-gray-50 dark:divide-white/5">
             {adj.items.map((item) => {
               const isIn = item.qtyAdjust > 0;
               return (
                 <div key={item.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-gray-400">[{item.product.code}]</span>
-                    <span className="text-gray-700">{item.product.name}</span>
+                    <span className="font-mono text-xs text-gray-400 dark:text-slate-400">[{item.product.code}]</span>
+                    <span className="text-gray-700 dark:text-slate-300">{item.product.name}</span>
                     {item.reason && (
-                      <span className="text-gray-400 text-xs">— {item.reason}</span>
+                      <span className="text-gray-400 dark:text-slate-400 text-xs">— {item.reason}</span>
                     )}
                   </div>
-                  <span className={`font-medium ${isIn ? "text-green-600" : "text-red-500"}`}>
+                  <span className={`font-medium ${isIn ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>
                     {isIn ? "+" : ""}
                     {item.qtyAdjust.toLocaleString("th-TH", { minimumFractionDigits: 4, maximumFractionDigits: 4 })} หน่วยหลัก
                   </span>

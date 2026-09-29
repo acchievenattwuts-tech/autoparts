@@ -73,7 +73,7 @@ const makeClient = (overrides: () => ModelOverrides, calls: string[]) =>
     {
       get: (_target, modelName: string) => {
         if (modelName === "$executeRaw") return async () => 0;
-        if (modelName === "$queryRaw") return async () => [];
+        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE" }];
         return new Proxy(
           {},
           {

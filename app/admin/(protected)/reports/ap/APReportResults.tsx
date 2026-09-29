@@ -38,6 +38,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 function apDocLink(row: APRegisterRow): string {
+  if (row.kind === "SUPPLIER_DEBIT") return `/admin/supplier-debit-notes/${row.id}`;
   if (row.kind === "PURCHASE") return `/admin/purchases/${row.id}`;
   if (row.kind === "ADVANCE") return `/admin/supplier-advances/${row.id}`;
   return `/admin/purchase-returns/${row.id}`;
@@ -55,7 +56,7 @@ async function APRegisterView({ filters }: { filters: ARAPStockFilters }) {
           <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">{registerSummary.count}</p>
         </div>
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
-          <p className="text-xs text-gray-500 dark:text-slate-400">ยอดซื้อรวม</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">ยอดเอกสารรวม</p>
           <p className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">฿{formatCurrency(registerSummary.totalNet)}</p>
         </div>
         <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm dark:border-emerald-400/20 dark:bg-emerald-500/10">
@@ -170,16 +171,16 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
       {/* AP Outstanding - Purchases */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/40">
         <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
-          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ)</h2>
+          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ / DN)</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#1e3a5f] text-white dark:bg-slate-900">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
-                <th className="px-3 py-2.5 text-left font-medium">วันที่ซื้อ</th>
+                <th className="px-3 py-2.5 text-left font-medium">วันที่เอกสาร</th>
                 <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
-                <th className="px-3 py-2.5 text-right font-medium">ยอดซื้อ</th>
+                <th className="px-3 py-2.5 text-right font-medium">ยอดเอกสาร</th>
                 <th className="px-3 py-2.5 text-right font-medium">ค้างจ่าย</th>
                 <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
               </tr>
@@ -198,7 +199,7 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(row.totalAmount)}</td>
                     <td className="px-3 py-2 text-right font-medium text-rose-700 dark:text-rose-200">{formatCurrency(row.amountRemain)}</td>
                     <td className="px-3 py-2 text-center">
-                      <Link href={`/admin/purchases/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline dark:text-sky-200">เปิด</Link>
+                      <Link href={row.kind === "SUPPLIER_DEBIT" ? `/admin/supplier-debit-notes/${row.id}` : `/admin/purchases/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline dark:text-sky-200">เปิด</Link>
                     </td>
                   </tr>
                 ))

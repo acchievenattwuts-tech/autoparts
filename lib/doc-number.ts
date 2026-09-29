@@ -40,6 +40,17 @@ export async function generateDocNo(prefix: string, date?: Date,
   return `${pattern}${String(seq).padStart(4, "0")}`;
 }
 
+export async function generateSupplierDebitNo(tx: Prisma.TransactionClient, date: Date): Promise<string> {
+  const [year, month] = getThailandDateKey(date).split("-");
+  const pattern = `SDN${year.slice(-2)}${month}`;
+  await lockDocNumberSequence(tx, pattern);
+  const last = await tx.supplierDebitNote.findFirst({
+    where: { debitNo: { startsWith: pattern } }, orderBy: { debitNo: "desc" }, select: { debitNo: true },
+  });
+  const next = last ? Number(last.debitNo.slice(pattern.length)) + 1 : 1;
+  return `${pattern}${String(next).padStart(4, "0")}`;
+}
+
 /**
  * Generate BF number using BalanceForward table (not StockCard)
  * Because cancelled BFs delete their StockCard rows but keep the BalanceForward record.
@@ -434,4 +445,3 @@ export async function generateSalesQuotationNo(tx: Prisma.TransactionClient, dat
   const next = Number(rows[0]?.lastNo ?? 0) + 1;
   return `${prefix}${String(next).padStart(4, "0")}`;
 }
-

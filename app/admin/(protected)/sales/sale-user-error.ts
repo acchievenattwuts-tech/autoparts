@@ -2,6 +2,7 @@ import type { Prisma } from "@/lib/generated/prisma";
 import {
   buildMutationBlockMessage,
   createDocumentMutationGuard,
+  lockStockMutationProducts,
   type DocumentMutationAction,
   type GuardDb,
 } from "@/lib/document-mutation-guard";
@@ -43,6 +44,11 @@ export async function assertSaleMutationAllowedInTx(
   saleId: string,
   action: Extract<DocumentMutationAction, "update" | "cancel">,
 ): Promise<void> {
+  const stockProducts = await tx.stockCard.findMany({
+    where: { docNo: { in: (await tx.sale.findMany({ where: { id: saleId }, select: { saleNo: true } })).map((row) => row.saleNo) } },
+    select: { productId: true }, distinct: ["productId"],
+  });
+  await lockStockMutationProducts(tx, stockProducts.map((row) => row.productId));
   const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("Sale", saleId, action);
   if (!guard.blocked) return;
   throw new SaleMutationBlockedError(

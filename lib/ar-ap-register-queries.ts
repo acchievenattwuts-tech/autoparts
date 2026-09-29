@@ -315,14 +315,14 @@ export async function buildARRegisterExcel(
 // ─── AP Register ─────────────────────────────────────────────────────────────
 
 export type APRegisterRow = {
-  kind: "PURCHASE" | "ADVANCE" | "RETURN";
+  kind: "PURCHASE" | "ADVANCE" | "RETURN" | "SUPPLIER_DEBIT";
   id: string;
   docNo: string;
   docDate: Date;
   dueDate: Date | null;
   supplierId: string | null;
   supplierName: string;
-  rowType: "CREDIT_PURCHASE" | "ADVANCE" | "PR_CREDIT";
+  rowType: "CREDIT_PURCHASE" | "ADVANCE" | "PR_CREDIT" | "SUPPLIER_DEBIT";
   netAmount: number;
   paidAmount: number;
   amountRemain: number;
@@ -333,6 +333,7 @@ export type APRegisterRow = {
 
 const AP_TYPE_LABEL: Record<APRegisterRow["rowType"], string> = {
   CREDIT_PURCHASE: "ซื้อเชื่อ",
+  SUPPLIER_DEBIT: "ใบเพิ่มหนี้ (DN)",
   ADVANCE: "เงินมัดจำ",
   PR_CREDIT: "คืนซื้อ (เครดิต)",
 };
@@ -344,7 +345,7 @@ export async function queryAPRegisterRows(
     ? { supplierId: filters.supplierId }
     : {};
 
-  const [purchases, advances, prCredits] = await Promise.all([
+  const [purchases, advances, prCredits, debits] = await Promise.all([
     db.purchase.findMany({
       where: {
         ...supplierWhere,
@@ -402,6 +403,12 @@ export async function queryAPRegisterRows(
         amountRemain: true,
       },
     }),
+    db.supplierDebitNote.findMany({
+      where: { ...supplierWhere, postingDate: { gte: filters.from, lte: filters.to } },
+      orderBy: [{ supplierId: "asc" }, { postingDate: "asc" }], take: 2000,
+      select: { id: true, debitNo: true, postingDate: true, dueDate: true, status: true,
+        supplierId: true, netAmount: true, amountRemain: true, supplier: { select: { name: true } } },
+    }),
   ]);
 
   const today = parseDateOnlyToDate(getThailandDateKey());
@@ -438,6 +445,18 @@ export async function queryAPRegisterRows(
       daysOverdue,
       status,
     });
+  }
+
+  for (const debit of debits) {
+    const netAmount = Number(debit.netAmount);
+    const amountRemain = Number(debit.amountRemain);
+    const cancelled = debit.status === "CANCELLED";
+    const { status, daysOverdue } = deriveSaleStatus({ cancelled, paymentType: "CREDIT_SALE",
+      netAmount, amountRemain, dueDate: debit.dueDate, today });
+    rows.push({ kind: "SUPPLIER_DEBIT", id: debit.id, docNo: debit.debitNo, docDate: debit.postingDate,
+      dueDate: debit.dueDate, supplierId: debit.supplierId, supplierName: debit.supplier.name,
+      rowType: "SUPPLIER_DEBIT", netAmount, paidAmount: cancelled ? 0 : Math.max(0, netAmount - amountRemain),
+      amountRemain: cancelled ? 0 : amountRemain, creditTerm: null, daysOverdue, status });
   }
 
   for (const a of advances) {

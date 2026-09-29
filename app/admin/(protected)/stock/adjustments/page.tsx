@@ -9,6 +9,7 @@ import DateRangeFilter from "@/components/shared/DateRangeFilter";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import { getStockDocumentDebitBlocks, buildMutationBlockMessage, buildMutationBlockReferenceLinks, type GuardDb } from "@/lib/document-mutation-guard";
 
 const AdjustmentsPage = async ({
   searchParams,
@@ -60,8 +61,11 @@ const AdjustmentsPage = async ({
     }),
   ]);
 
+  const debitBlocks = await getStockDocumentDebitBlocks(db as unknown as GuardDb, adjustments.filter((a) => a.status === "ACTIVE").map((a) => a.adjustNo));
   const serialized = adjustments.map((a) => ({
     ...a,
+    disabledReason: debitBlocks.has(a.adjustNo) ? buildMutationBlockMessage(debitBlocks.get(a.adjustNo)!) : null,
+    blockReferences: debitBlocks.has(a.adjustNo) ? buildMutationBlockReferenceLinks(debitBlocks.get(a.adjustNo)!) : [],
     adjustDate:  a.adjustDate.toISOString(),
     cancelledAt: a.cancelledAt?.toISOString() ?? null,
     items:       a.items.map((i) => ({ ...i, qtyAdjust: Number(i.qtyAdjust) })),

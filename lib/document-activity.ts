@@ -30,6 +30,7 @@ export type DocumentActivityEntityType =
   | "SalesQuotation"
   | "Sale"
   | "Purchase"
+  | "SupplierDebitNote"
   | "Receipt"
   | "CreditNote"
   | "PurchaseReturn"
@@ -357,7 +358,18 @@ async function getPurchaseRelationEvents(id: string,
     },
   });
 
+  const debits = await db.supplierDebitNote.findMany({
+    where: { purchaseId: id, status: "ACTIVE" },
+    select: { id: true, debitNo: true, createdAt: true, netAmount: true },
+  });
+
   return [
+    ...debits.map((debit) => buildRelationActivityEvent({
+      id: `purchase-${id}-supplier-debit-${debit.id}`, kind: "USED_BY",
+      occurredAt: debit.createdAt, title: "ถูกนำไปใช้ที่ใบเพิ่มหนี้เจ้าหนี้",
+      description: `มูลค่า ${formatMoneyActivity(String(debit.netAmount))}`,
+      href: `/admin/supplier-debit-notes/${debit.id}`, hrefLabel: debit.debitNo, tone: "used",
+    })),
     ...returns.map((ret) => buildRelationActivityEvent({
       id: `purchase-${id}-return-${ret.id}`,
       kind: "USED_BY",
@@ -560,6 +572,31 @@ async function getPurchaseReturnRelationEvents(id: string,
   ];
 }
 
+async function getSupplierDebitRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
+  const db = await getDb();
+  const debit = await db.supplierDebitNote.findUnique({
+    where: { id }, select: { purchase: { select: { id: true, purchaseNo: true, createdAt: true } } },
+  });
+  if (!debit) return [];
+  const payments = await db.supplierPaymentItem.findMany({
+    where: { debitNoteId: id, payment: { status: "ACTIVE" } },
+    select: { paidAmount: true, payment: { select: { id: true, paymentNo: true, createdAt: true } } },
+  });
+  return [
+    buildRelationActivityEvent({
+      id: `supplier-debit-${id}-purchase-${debit.purchase.id}`, kind: "USES_SOURCE",
+      occurredAt: debit.purchase.createdAt, title: "อ้างอิงใบซื้อ",
+      href: `/admin/purchases/${debit.purchase.id}`, hrefLabel: debit.purchase.purchaseNo, tone: "used",
+    }),
+    ...payments.map((item) => buildRelationActivityEvent({
+      id: `supplier-debit-${id}-payment-${item.payment.id}`, kind: "USED_BY",
+      occurredAt: item.payment.createdAt, title: "ถูกนำไปใช้ที่จ่ายชำระเจ้าหนี้",
+      description: `จ่ายชำระ ${formatMoneyActivity(String(item.paidAmount))}`,
+      href: `/admin/supplier-payments/${item.payment.id}`, hrefLabel: item.payment.paymentNo, tone: "used",
+    })),
+  ];
+}
+
 async function getSupplierPaymentRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
@@ -567,6 +604,7 @@ async function getSupplierPaymentRelationEvents(id: string,
     where: { paymentId: id },
     select: {
       paidAmount: true,
+      debitNote: { select: { id: true, debitNo: true, postingDate: true, createdAt: true } },
       purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true,
         },
       },
@@ -580,6 +618,14 @@ async function getSupplierPaymentRelationEvents(id: string,
 
   return items.flatMap((item) => {
     const events: DocumentActivityEvent[] = [];
+    if (item.debitNote) {
+      events.push(buildRelationActivityEvent({
+        id: `supplier-payment-${id}-debit-${item.debitNote.id}`, kind: "USES_SOURCE",
+        occurredAt: item.debitNote.createdAt, title: "จ่ายชำระใบเพิ่มหนี้เจ้าหนี้",
+        description: `ยอดจ่าย ${formatMoneyActivity(String(item.paidAmount))}`,
+        href: `/admin/supplier-debit-notes/${item.debitNote.id}`, hrefLabel: item.debitNote.debitNo, tone: "used",
+      }));
+    }
     if (item.purchase) {
       events.push(buildRelationActivityEvent({
         id: `supplier-payment-${id}-purchase-${item.purchase.id}`,
@@ -884,6 +930,7 @@ async function getRelationEvents(
     return events;
   }
   if (entityType === "Purchase") return getPurchaseRelationEvents(id);
+  if (entityType === "SupplierDebitNote") return getSupplierDebitRelationEvents(id);
   if (entityType === "Receipt") return getReceiptRelationEvents(id);
   if (entityType === "CreditNote") return getCreditNoteRelationEvents(id);
   if (entityType === "PurchaseReturn") return getPurchaseReturnRelationEvents(id);

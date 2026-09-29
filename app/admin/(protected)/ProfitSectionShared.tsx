@@ -37,6 +37,9 @@ export function formatPercent(value: number): string {
   })}%`;
 }
 export function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string): string {
+  if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) {
+    return `/admin/supplier-debit-notes/${sourceId}`;
+  }
   if (sourceType === ProfitSourceType.SALE_RETURN) {
     return `/admin/credit-notes/${sourceId}`;
   }

@@ -148,7 +148,7 @@ const ProfitDashboard = async ({
       icon: Banknote,
     },
     {
-      label: "ต้นทุนขายวันนี้",
+      label: "ต้นทุนขายและส่วนต่าง DN วันนี้",
       value: `${formatMoney(data.today.costAmount)} บาท`,
       helper: "อิงต้นทุน snapshot ตอนขายจริง",
       tone: "amber",
@@ -307,12 +307,12 @@ const ProfitDashboard = async ({
           </div>
           <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ชั้นข้อมูล</p>
-            <p className="mt-1 text-gray-900">อ่านจาก `fact_profit` และรวม SALE, SALE_RETURN, EXPENSE</p>
+            <p className="mt-1 text-gray-900 dark:text-slate-100">รวมยอดขาย คืนขาย ค่าใช้จ่าย และส่วนต่างต้นทุน DN ในวันที่บันทึก</p>
           </div>
-          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-900">
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
             <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Helper</p>
             <p className="mt-1">
-              dropdown นี้เปลี่ยนเฉพาะยอดขายและกราฟหรือตารางที่อิงยอดขาย ส่วนกำไรและ % Margin ยังใช้ฐานก่อน VAT
+              ยอดต้นทุนรวมส่วนต่าง DN ที่ลงกำไรงวดนี้แล้ว ส่วนที่เพิ่มมูลค่าสต็อกจะเป็นต้นทุนเมื่อขาย กำไรและ % Margin ใช้ฐานก่อน VAT
             </p>
           </div>
         </div>
@@ -498,4 +498,3 @@ const ProfitDashboard = async ({
 };
 
 export default ProfitDashboard;
-

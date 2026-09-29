@@ -12,6 +12,7 @@ const TELEGRAM_RETRY_DELAYS_MS = [250, 750] as const;
  * instead of the raw enum name.
  */
 const notificationTypeThaiLabel: Record<NotificationType, string> = {
+  SUPPLIER_DEBIT_NOTE: "ใบเพิ่มหนี้ซัพพลายเออร์",
   GENERAL: "แจ้งเตือนทั่วไป",
   SHOPEE_ORDER_IMPORTED: "นำเข้าออเดอร์ Shopee สำเร็จ",
   SHOPEE_ORDER_FAILED: "นำเข้าออเดอร์ Shopee ล้มเหลว",
@@ -89,6 +90,7 @@ const TELEGRAM_DIVIDER = "━━━━━━━━━━━━━━━";
 /** Emoji that fronts each notification type's header line, so admins can tell
  *  the category apart at a glance in the Telegram feed. */
 const notificationTypeEmoji: Record<NotificationType, string> = {
+  SUPPLIER_DEBIT_NOTE: "🧾",
   GENERAL: "📢",
   SHOPEE_ORDER_IMPORTED: "🛒",
   SHOPEE_ORDER_FAILED: "❌",

@@ -46,7 +46,7 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
             <tr className="border-b border-gray-100 dark:border-white/10">
               <th className="pb-3">เลขที่เอกสาร</th>
               <th className="pb-3">วันที่</th>
-              <th className="pb-3">ลูกค้า</th>
+              <th className="pb-3">คู่ค้า</th>
               <th className="pb-3 text-right">ยอดขาย ({basisLabel})</th>
               <th className="pb-3 text-right">ต้นทุน</th>
               <th className="pb-3 text-right">กำไร</th>
@@ -64,7 +64,7 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
                     {row.sourceDocNo}
                   </IntentPrefetchLink>
                   <p className="text-xs text-gray-400">
-                    {row.sourceType === ProfitSourceType.SALE ? "Sale" : "Credit Note Return"}
+                    {row.sourceType === ProfitSourceType.SALE ? "Sale" : row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE ? "Supplier DN" : "Credit Note Return"}
                   </p>
                 </td>
                 <td className="py-3 text-gray-500">{formatDateThai(row.businessDate)}</td>

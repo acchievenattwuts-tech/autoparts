@@ -2,6 +2,7 @@ import type { dbTx } from "@/lib/db";
 import {
   buildMutationBlockMessage,
   createDocumentMutationGuard,
+  lockStockMutationProducts,
   type DocumentMutationAction,
   type GuardDb,
 } from "@/lib/document-mutation-guard";
@@ -115,6 +116,11 @@ export async function lockMutableCreditNote(
   action: Extract<DocumentMutationAction, "update" | "cancel">,
 ): Promise<void> {
   await lockActiveCreditNote(tx, creditNoteId);
+  const stockProducts = await tx.stockCard.findMany({
+    where: { docNo: { in: (await tx.creditNote.findMany({ where: { id: creditNoteId }, select: { cnNo: true } })).map((row) => row.cnNo) } },
+    select: { productId: true }, distinct: ["productId"],
+  });
+  await lockStockMutationProducts(tx, stockProducts.map((row) => row.productId));
   const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check(
     "CreditNote",
     creditNoteId,

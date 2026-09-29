@@ -109,6 +109,8 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       },
       { label: "คืนสินค้าซัพพลายเออร์", href: "/admin/purchase-returns", icon: RotateCcw, permission: "purchase_returns.view", keywords: "purchase return คืนซื้อ",
       },
+      { label: "ใบเพิ่มหนี้ซัพพลายเออร์ (DN)", href: "/admin/supplier-debit-notes", icon: FileCheck, permission: "supplier_debit_notes.view", keywords: "supplier debit note dn เพิ่มหนี้ เพิ่มต้นทุน ซื้อ",
+      },
       { label: "เงินมัดจำซัพพลายเออร์", href: "/admin/supplier-advances", icon: Wallet, permission: "supplier_advances.view", keywords: "supplier advance มัดจำ",
       },
       { label: "รับคืนเงินมัดจำซัพพลายเออร์",

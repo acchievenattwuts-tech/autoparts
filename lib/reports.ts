@@ -197,6 +197,7 @@ export type ReportsData = {
     salesReturns: number;
     netRevenue: number;
     costOfGoodsSold: number;
+    purchaseCostVariance?: number;
     grossProfit: number;
     expenseTotal: number;
     netProfit: number;
@@ -700,6 +701,13 @@ export async function getReportsData(filters: ParsedReportFilters,
           },
         },
       });
+  const supplierDebitsPromise = db.supplierDebitNote.findMany({
+    where: { status: "ACTIVE", postingDate: { gte: filters.from, lte: filters.to },
+      ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
+      ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
+    },
+    select: { varianceAmount: true, vatAmount: true, vatRecoverable: true },
+  });
   const purchasesPromise = db.purchase.findMany({
         where: purchaseWhere,
         orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
@@ -1001,6 +1009,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     customerAdvances,
     supplierAdvanceRefunds,
     customerAdvanceRefunds,
+    supplierDebits,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise,
     ],
@@ -1014,6 +1023,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     [outstandingSalesPromise, receiptsPromise, customerAdvancesPromise,
       supplierAdvanceRefundsPromise,
       customerAdvanceRefundsPromise,
+      supplierDebitsPromise,
     ],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -1031,6 +1041,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     Awaited<typeof customerAdvancesPromise>,
     Awaited<typeof supplierAdvanceRefundsPromise>,
     Awaited<typeof customerAdvanceRefundsPromise>,
+    Awaited<typeof supplierDebitsPromise>,
   ];
 
   const normalizedSales = sales.map((sale) => ({
@@ -1153,8 +1164,9 @@ export async function getReportsData(filters: ParsedReportFilters,
     (sum, creditNote) => sum + creditNote.cogsReversal,
     0,
   );
+  const purchaseCostVariance = supplierDebits.reduce((sum, debit) => sum + toNumber(debit.varianceAmount), 0);
   const costOfGoodsSold =
-    normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal;
+    normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal + purchaseCostVariance;
   const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0,
   );
   const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmount, 0,
@@ -1162,7 +1174,7 @@ export async function getReportsData(filters: ParsedReportFilters,
   const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0,
   );
   const purchaseVat = purchases.reduce((sum, purchase) => sum + toNumber(purchase.vatAmount), 0,
-  );
+  ) + supplierDebits.reduce((sum, debit) => sum + (debit.vatRecoverable ? toNumber(debit.vatAmount) : 0), 0);
   const expenseTotal = expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
   );
   const expenseVat = expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
@@ -1519,6 +1531,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       salesReturns,
       netRevenue,
       costOfGoodsSold,
+      purchaseCostVariance,
       grossProfit,
       expenseTotal,
       netProfit,
@@ -1658,7 +1671,8 @@ export function buildReportsCsv(data: ReportsData): string {
   pushRow(["ยอดขายรวม", data.profitLoss.grossSales.toFixed(2)]);
   pushRow(["ยอดคืนขาย", data.profitLoss.salesReturns.toFixed(2)]);
   pushRow(["รายได้สุทธิ", data.profitLoss.netRevenue.toFixed(2)]);
-  pushRow(["ต้นทุนขาย", data.profitLoss.costOfGoodsSold.toFixed(2)]);
+  pushRow(["ต้นทุนขายรวมส่วนต่าง DN", data.profitLoss.costOfGoodsSold.toFixed(2)]);
+  pushRow(["ส่วนต่างต้นทุน DN (รวมในต้นทุนด้านบน)", (data.profitLoss.purchaseCostVariance ?? 0).toFixed(2)]);
   pushRow(["กำไรขั้นต้น", data.profitLoss.grossProfit.toFixed(2)]);
   pushRow(["ค่าใช้จ่าย", data.profitLoss.expenseTotal.toFixed(2)]);
   pushRow(["กำไรสุทธิ", data.profitLoss.netProfit.toFixed(2)]);

@@ -16,6 +16,7 @@
 
 import { Prisma, StockCardSource } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
+import { DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
 import {
   enqueueStorefrontStockInvalidation,
   enqueueStorefrontStockInvalidations,
@@ -23,6 +24,16 @@ import {
 
 // Type for Prisma transaction client
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+export async function getStockValuationEpoch(
+  tx: Pick<TxClient, "stockCard">, productId: string, docDate: Date,
+): Promise<number> {
+  const latest = await tx.stockCard.findFirst({
+    where: { productId, docDate }, orderBy: { valuationEpoch: "desc" },
+    select: { valuationEpoch: true },
+  });
+  return latest?.valuationEpoch ?? 0;
+}
 
 export async function lockProductForStockMutation(
   tx: Pick<TxClient, "$queryRaw">,
@@ -74,6 +85,9 @@ export interface StockCardInput {
    * Default false → existing behaviour is preserved for callers that don't set it.
    */
   usesReferenceCost?: boolean;
+  valueAdjustment?: number;
+  costVariance?: number;
+  valuationEpoch?: number;
 }
 
 // Sources where stock comes IN but carries no independent cost — the entry
@@ -102,6 +116,7 @@ const NEUTRAL_IN_SOURCES: string[] = [
  * source ใหม่ใน enum แล้วลืมกำหนดกลุ่ม TypeScript จะ error ทันที
  */
 const STOCK_SOURCE_SEQUENCE_GROUP: Record<StockCardSource, number> = {
+  SUPPLIER_DEBIT: -1,
   BF: 0,
   PURCHASE: 1,
   RETURN_IN: 1,
@@ -135,6 +150,7 @@ export type StockSequenceRow = {
   docDate: Date;
   sorder: number;
   source: string;
+  valuationEpoch?: number;
 };
 
 export type SorderUpdate = { id: string; sorder: number };
@@ -147,6 +163,8 @@ export function sortRowsForReplay<T extends StockSequenceRow>(rows: T[]): T[] {
   return [...rows].sort((a, b) => {
     const dateDiff = a.docDate.getTime() - b.docDate.getTime();
     if (dateDiff !== 0) return dateDiff;
+    const epochDiff = (a.valuationEpoch ?? 0) - (b.valuationEpoch ?? 0);
+    if (epochDiff !== 0) return epochDiff;
     const groupDiff = getStockSourceGroup(a.source) - getStockSourceGroup(b.source);
     if (groupDiff !== 0) return groupDiff;
     return a.sorder - b.sorder;
@@ -177,6 +195,7 @@ export type StockReplayRow = StockSequenceRow & {
   qtyBalance: Prisma.Decimal;
   priceBalance: Prisma.Decimal;
   priceOut: Prisma.Decimal;
+  valueAdjustment?: Prisma.Decimal;
 };
 
 /**
@@ -199,6 +218,8 @@ export const STOCK_REPLAY_SELECT = {
   qtyBalance: true,
   priceBalance: true,
   priceOut: true,
+  valueAdjustment: true,
+  valuationEpoch: true,
 } as const satisfies Record<keyof StockReplayRow | "productId", true>;
 
 type StockBalanceUpdate = {
@@ -240,7 +261,13 @@ export function replayStockCardMavg(rows: StockReplayRow[]): {
     let newBaTotal = 0;
     let priceOut   = baPrice;
 
-    if (qIn > 0) {
+    if (row.source === "SUPPLIER_DEBIT") {
+      if (qIn !== 0 || qOut !== 0) throw new Error("DN must not change stock quantity");
+      const adjustment = Number(row.valueAdjustment ?? 0);
+      if (baQty <= 0 && adjustment !== 0) throw new Error("DN inventory adjustment requires positive stock");
+      newBaTotal = baQty > 0 ? baTotal + adjustment : 0;
+      newBaPrice = baQty > 0 ? newBaTotal / baQty : baPrice;
+    } else if (qIn > 0) {
       if (newBaQty > 0) {
         if (baQty > 0) {
           newBaTotal = baTotal + (qIn * pIn) - (qOut * baPrice) + lc;
@@ -495,6 +522,14 @@ export async function writeStockCard(
   const pIn = input.priceIn;
   const lc  = input.landedCost ?? 0;
   const usesRef = input.usesReferenceCost === true;
+  const valuationEpoch = input.valuationEpoch ?? await getStockValuationEpoch(tx, input.productId, input.docDate);
+  if (input.source !== "SUPPLIER_DEBIT") {
+    const laterDebit = await tx.stockCard.findFirst({
+      where: { productId: input.productId, source: "SUPPLIER_DEBIT", docDate: { gt: input.docDate } },
+      select: { docNo: true },
+    });
+    if (laterDebit) throw new DocumentMutationBlockedError(`ไม่สามารถลงสต็อกย้อนหลังข้ามใบเพิ่มหนี้ ${laterDebit.docNo} กรุณายกเลิก DN ที่เกี่ยวข้องก่อน`);
+  }
 
   // Get max sorder and check whether any existing row must sort AFTER this one.
   // Sequential awaits on the single transaction connection — Promise.all here
@@ -518,7 +553,7 @@ export async function writeStockCard(
       OR: [
         { docDate: { gt: input.docDate } },
         ...(laterGroupSources.length > 0
-          ? [{ docDate: input.docDate, source: { in: laterGroupSources } }]
+          ? [{ docDate: input.docDate, valuationEpoch, source: { in: laterGroupSources } }]
           : []),
       ],
     },
@@ -544,11 +579,14 @@ export async function writeStockCard(
       detail:       input.detail,
       referenceId:  input.referenceId,
       usesReferenceCost: usesRef,
+      valuationEpoch,
+      valueAdjustment: input.valueAdjustment ?? 0,
+      costVariance: input.costVariance ?? 0,
     },
     select: { id: true },
   });
 
-  if (needsFullRecalc) {
+  if (needsFullRecalc || input.source === "SUPPLIER_DEBIT") {
     // แถวใหม่ไม่ได้อยู่ท้ายสุด (ลงย้อนหลัง หรือวันเดียวกันแต่ต้องมาก่อนแถวเดิม)
     // → จัดลำดับใหม่ทั้งใบแล้วรีเพลย์ MAVG ตั้งแต่ต้น
     await recalculateStockCard(tx, input.productId);
@@ -559,7 +597,17 @@ export async function writeStockCard(
       select: { stock: true, avgCost: true },
     });
     const baQty   = product ? product.stock : 0;
-    const baPrice = product ? Number(product.avgCost) : 0;
+    const debitBoundary = await tx.stockCard.findFirst({
+      where: { productId: input.productId, source: "SUPPLIER_DEBIT" },
+      select: { id: true },
+    });
+    // Preserve the four-decimal running valuation after a value-only posting.
+    const priorBalance = debitBoundary ? await tx.stockCard.findFirst({
+      where: { productId: input.productId, id: { not: createdRow.id } },
+      orderBy: [{ docDate: "desc" }, { sorder: "desc" }],
+      select: { priceBalance: true },
+    }) : null;
+    const baPrice = priorBalance ? Number(priorBalance.priceBalance) : product ? Number(product.avgCost) : 0;
     const baTotal = baQty * baPrice;
 
     // Use baPrice for neutral stock-in sources, unless an explicit reference cost is provided

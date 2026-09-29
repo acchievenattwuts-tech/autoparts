@@ -1,5 +1,6 @@
 import { isCashBankPostingError } from "@/lib/cash-bank";
 import { WhtReceivedUserError } from "@/lib/wht-received";
+import { DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
 
 /**
  * User-fixable conditions raised by the helpers several document Server Actions
@@ -8,5 +9,5 @@ import { WhtReceivedUserError } from "@/lib/wht-received";
  * which is reserved for system failures.
  */
 export function isUserFacingDocumentError(err: unknown): err is Error {
-  return isCashBankPostingError(err) || err instanceof WhtReceivedUserError;
+  return isCashBankPostingError(err) || err instanceof WhtReceivedUserError || err instanceof DocumentMutationBlockedError;
 }

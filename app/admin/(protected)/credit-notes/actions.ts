@@ -14,7 +14,7 @@ import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
 import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
-import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { getDocumentMutationBlockMessage, DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CNRefundMethod,
@@ -1042,6 +1042,7 @@ export async function createCreditNote(
     }
     return { success: true, cnNo: savedCnNo };
   } catch (err) {
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.create" });
     // Checked before getCreditNoteReturnError, which maps every other P2002 to the
     // duplicate marketplace-return-case message.
@@ -1169,6 +1170,7 @@ export async function cancelCreditNote(
   } catch (err) {
     if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };
     if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }

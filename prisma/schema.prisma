@@ -48,6 +48,7 @@ model User {
   paymentSlipsReviewed           PaymentSlip[]              @relation("PaymentSlipReviewer")
   profitExplanationHistories     ProfitExplanationHistory[]
   purchases                      Purchase[]
+  supplierDebitNotes             SupplierDebitNote[]
   purchaseReturns                PurchaseReturn[]
   receipts                       Receipt[]
   deliverySales                  Sale[]                     @relation("SaleDeliveryStaff")
@@ -1037,6 +1038,7 @@ model Supplier {
   creditTerm        Int?
   preferredProducts Product[]         @relation("ProductPreferredSupplier")
   purchases         Purchase[]
+  supplierDebitNotes SupplierDebitNote[]
   purchaseItems     PurchaseItem[]
   purchaseReturns   PurchaseReturn[]
   supplierAdvances  SupplierAdvance[]
@@ -1056,6 +1058,7 @@ model PartsBrand {
 }
 
 model Product {
+  supplierDebitNoteItems SupplierDebitNoteItem[]
   quotationItems      SalesQuotationItem[]
   id                  String                              @id @default(cuid())
   code                String                              @unique
@@ -1340,6 +1343,9 @@ model StockCard {
   referenceId         String?
   createdAt           DateTime             @default(now()) @db.Timestamptz(3)
   landedCost          Decimal              @default(0) @db.Decimal(10, 2)
+  valueAdjustment     Decimal              @default(0) @db.Decimal(10, 2)
+  costVariance        Decimal              @default(0) @db.Decimal(10, 2)
+  valuationEpoch      Int                  @default(0)
   usesReferenceCost   Boolean              @default(false)
   claimStockMovements ClaimStockMovement[]
   product             Product              @relation(fields: [productId], references: [id])
@@ -1372,6 +1378,7 @@ model BalanceForward {
 }
 
 model Purchase {
+  supplierDebitNotes   SupplierDebitNote[]
   id                   String                @id @default(cuid())
   purchaseNo           String                @unique
   supplierId           String?
@@ -1412,6 +1419,7 @@ model Purchase {
 }
 
 model PurchaseItem {
+  supplierDebitNoteItems SupplierDebitNoteItem[]
   id               String            @id @default(cuid())
   purchaseId       String
   lineNo           Int               @default(0)
@@ -2776,6 +2784,8 @@ model SupplierPaymentItem {
   purchaseId       String?
   purchaseReturnId String?
   advanceId        String?
+  debitNoteId      String?
+  debitNote        SupplierDebitNote? @relation(fields: [debitNoteId], references: [id])
   paidAmount       Decimal          @db.Decimal(10, 2)
   advance          SupplierAdvance? @relation(fields: [advanceId], references: [id])
   payment          SupplierPayment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
@@ -2786,6 +2796,89 @@ model SupplierPaymentItem {
   @@index([purchaseId])
   @@index([purchaseReturnId])
   @@index([advanceId])
+  @@index([debitNoteId])
+}
+
+model SupplierDebitNote {
+  id                  String   @id @default(cuid())
+  debitNo             String   @unique
+  supplierReferenceNo String
+  purchaseId          String
+  supplierId          String
+  userId              String
+  debitDate           DateTime @db.Timestamptz(3)
+  receivedDate        DateTime @db.Timestamptz(3)
+  postingDate         DateTime @db.Timestamptz(3)
+  dueDate             DateTime @db.Timestamptz(3)
+  reason              String
+  note                String?
+  vatType             VatType
+  vatRate             Decimal @db.Decimal(5, 2)
+  vatRecoverable      Boolean @default(true)
+  subtotalAmount      Decimal @db.Decimal(10, 2)
+  vatAmount           Decimal @db.Decimal(10, 2)
+  netAmount           Decimal @db.Decimal(10, 2)
+  inventoryAmount     Decimal @db.Decimal(10, 2)
+  varianceAmount      Decimal @db.Decimal(10, 2)
+  amountRemain        Decimal @db.Decimal(10, 2)
+  status              DocStatus @default(ACTIVE)
+  cancelledAt         DateTime? @db.Timestamptz(3)
+  cancelNote          String?
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @db.Timestamptz(3)
+  purchase            Purchase @relation(fields: [purchaseId], references: [id])
+  supplier            Supplier @relation(fields: [supplierId], references: [id])
+  user                User @relation(fields: [userId], references: [id])
+  items               SupplierDebitNoteItem[]
+  supplierPaymentItems SupplierPaymentItem[]
+
+  @@unique([supplierId, supplierReferenceNo])
+  @@index([purchaseId, status])
+  @@index([supplierId, status])
+  @@index([userId])
+  @@index([postingDate, status])
+  @@index([receivedDate])
+  @@index([debitDate])
+  @@index([dueDate, status])
+}
+
+model SupplierDebitNoteItem {
+  id                   String @id @default(cuid())
+  debitNoteId          String
+  purchaseItemId       String
+  productId            String
+  lineNo               Int
+  amountMode           SupplierDebitAmountMode
+  increaseAmount       Decimal @db.Decimal(10, 2)
+  affectedQuantity     Decimal @db.Decimal(12, 4)
+  affectedBaseQuantity Decimal @db.Decimal(12, 4)
+  showUnitName         String
+  unitScale            Decimal @db.Decimal(12, 4)
+  originalUnitPrice    Decimal @db.Decimal(10, 2)
+  subtotalAmount       Decimal @db.Decimal(10, 2)
+  vatAmount            Decimal @db.Decimal(10, 2)
+  netAmount            Decimal @db.Decimal(10, 2)
+  costAdjustmentAmount Decimal @db.Decimal(10, 2)
+  eligibleBaseQuantity Decimal @db.Decimal(12, 4)
+  inventoryAmount      Decimal @db.Decimal(10, 2)
+  varianceAmount       Decimal @db.Decimal(10, 2)
+  stockBefore          Decimal @db.Decimal(12, 4)
+  avgCostBefore        Decimal @db.Decimal(10, 4)
+  avgCostAfter         Decimal @db.Decimal(10, 4)
+  stockCardId          String?
+  debitNote            SupplierDebitNote @relation(fields: [debitNoteId], references: [id])
+  purchaseItem         PurchaseItem @relation(fields: [purchaseItemId], references: [id])
+  product              Product @relation(fields: [productId], references: [id])
+
+  @@index([debitNoteId, lineNo])
+  @@index([purchaseItemId])
+  @@index([productId])
+  @@index([stockCardId])
+}
+
+enum SupplierDebitAmountMode {
+  PER_UNIT
+  TOTAL
 }
 
 model ProductLot {
@@ -3219,6 +3312,7 @@ enum InventoryTracking {
 }
 
 enum StockCardSource {
+  SUPPLIER_DEBIT
   BF
   PURCHASE
   SALE
@@ -3432,6 +3526,7 @@ enum VatType {
 }
 
 enum ProfitSourceType {
+  PURCHASE_COST_VARIANCE
   SALE
   SALE_RETURN
   EXPENSE
@@ -3758,6 +3853,7 @@ enum ShopeeSyncJobStatus {
 }
 
 enum NotificationType {
+  SUPPLIER_DEBIT_NOTE
   GENERAL
   SHOPEE_ORDER_IMPORTED
   SHOPEE_ORDER_FAILED
