@@ -212,3 +212,15 @@ test("a failed Shopee import sends no alert", { skip: moduleMocksUnavailable }, 
   assert.deepEqual(result, { ok: false, error: "ออเดอร์นี้ถูกสร้างบิลหรือถูกส่งเข้า review แล้ว" });
   assert.deepEqual(dispatches, []);
 });
+
+test("a Shopee sale is posted on the approval date as a date-only Thai start of day", { skip: moduleMocksUnavailable }, async () => {
+  const { getThailandDateKey, parseDateOnlyToDate } = await import("@/lib/th-date");
+  const { createSaleFromShopeeOrder } = await import("../services/create-sale");
+
+  const result = await createSaleFromShopeeOrder({ orderImportId: "import-1", approverUserId: "user-1" });
+
+  assert.equal(result.ok, true);
+  const saleCreate = txCalls.find((call) => call.method === "sale.create")?.args as { data: { saleDate: Date } };
+  // A time-of-day saleDate would sort after same-day stock rows and block a same-day Supplier DN.
+  assert.equal(saleCreate.data.saleDate.getTime(), parseDateOnlyToDate(getThailandDateKey()).getTime());
+});

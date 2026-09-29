@@ -3,7 +3,7 @@ import { before, beforeEach, describe, it, mock } from "node:test";
 import { Prisma } from "@/lib/generated/prisma";
 import { getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 
-type MoneyRow = { id: string; debitNo: string; status: string; netAmount: number; amountRemain: number; supplierId: string };
+type MoneyRow = { id: string; debitNo: string; status: string; netAmount: number; amountRemain: number; supplierId: string; supplierReferenceNo?: string };
 type LineRow = { id: string; debitNoteId: string; productId: string; stockCardId?: string; inventoryAmount: number; varianceAmount: number };
 type Store = { heads: MoneyRow[]; lines: LineRow[]; stock: number; average: number; stockWrites: number;
   audits: string[]; notifications: number; factCost: number; paid: number; failAudit: boolean; failFact: boolean; locks: string[] };
@@ -17,6 +17,7 @@ const originalPurchase = { id: "purchase", supplierId: "supplier", status: "ACTI
 const tx = {
   $queryRaw: async (parts: TemplateStringsArray) => { store.locks.push(parts.join("?")); return []; },
   purchase: { findUnique: async () => originalPurchase },
+  purchaseItem: { findMany: async () => originalPurchase.items.map((item) => ({ productId: item.productId })) },
   product: { findMany: async () => [{ id: "sku", stock: store.stock, inventoryTracking: "TRACKED" }] },
   stockCard: {
     findFirst: async (args: { where: { docDate?: { gt?: Date } } }) => args.where.docDate?.gt ? null
@@ -28,7 +29,7 @@ const tx = {
     create: async ({ data }: { data: Omit<MoneyRow, "id" | "status"> }) => {
       const head = { ...data, id: "dn", status: "ACTIVE" }; store.heads.push(head); return head;
     },
-    findUnique: async () => store.heads[0] ?? null,
+    findUnique: async () => store.heads[0] ? { ...store.heads[0], items: store.lines.map((line) => ({ ...line })) } : null,
     findUniqueOrThrow: async () => ({ ...store.heads[0], netAmount: new Prisma.Decimal(store.heads[0].netAmount),
       items: store.lines, supplierPaymentItems: [{ paidAmount: store.paid }] }),
     update: async ({ data }: { data: Partial<MoneyRow> }) => { Object.assign(store.heads[0], data); return store.heads[0]; },
@@ -36,6 +37,7 @@ const tx = {
   supplierDebitNoteItem: {
     create: async ({ data }: { data: Omit<LineRow, "id"> }) => { const line = { ...data, id: "dn-line" }; store.lines.push(line); return line; },
     update: async ({ data }: { data: Partial<LineRow> }) => { Object.assign(store.lines[0], data); return store.lines[0]; },
+    deleteMany: async () => { const count = store.lines.length; store.lines = []; return { count }; },
   },
   factProfit: { updateMany: async () => { store.factCost = 0; return { count: 1 }; } },
 };
@@ -146,5 +148,42 @@ describe("supplier DN: service golden orchestration with isolated transactional 
     assert.equal(store.heads[0].status, "CANCELLED"); assert.equal(store.heads[0].amountRemain, 0);
     assert.equal(store.factCost, 0); assert.equal(store.average, 100);
     assert.deepEqual(store.audits, ["CREATE", "CANCEL"]); assert.equal(store.notifications, 2);
+  });
+  it("header-only edit keeps stock, AP and cost untouched even after payment", async () => {
+    await service.postSupplierDebitNote(input(), { userId: "actor" }); store.paid = 100;
+    const result = await service.updateSupplierDebitNote("dn", { ...input(), supplierReferenceNo: "SUP-DN-1A", note: "corrected ref",
+      expectedInventoryAmount: undefined, expectedVarianceAmount: undefined }, { userId: "actor" });
+    assert.deepEqual(result, { id: "dn", debitNo: "SDN26090001", reposted: false });
+    assert.equal(store.heads[0].supplierReferenceNo, "SUP-DN-1A");
+    assert.equal(store.average, 150); assert.equal(store.factCost, 300); assert.equal(store.heads[0].amountRemain, 500);
+    assert.deepEqual(store.audits, ["CREATE", "UPDATE"]); assert.equal(store.notifications, 2);
+  });
+  it("line edit reverses the posted value and reposts under the same DN number", async () => {
+    await service.postSupplierDebitNote(input(), { userId: "actor" });
+    const edited = { ...input(), expectedInventoryAmount: 120, expectedVarianceAmount: 180,
+      items: [{ ...input().items[0], increaseAmount: 30 }] };
+    const result = await service.updateSupplierDebitNote("dn", edited, { userId: "actor" });
+    assert.deepEqual(result, { id: "dn", debitNo: "SDN26090001", reposted: true });
+    assert.equal(store.heads[0].netAmount, 300); assert.equal(store.heads[0].amountRemain, 300);
+    assert.equal(store.lines.length, 1); assert.equal(store.average, 130); assert.equal(store.factCost, 180);
+    assert.deepEqual(store.audits, ["CREATE", "UPDATE"]); assert.equal(store.notifications, 2);
+  });
+  it("line edit on a paid DN is blocked with no reversal side effects", async () => {
+    await service.postSupplierDebitNote(input(), { userId: "actor" }); store.paid = 100;
+    const edited = { ...input(), expectedInventoryAmount: 120, expectedVarianceAmount: 180, items: [{ ...input().items[0], increaseAmount: 30 }] };
+    await assert.rejects(service.updateSupplierDebitNote("dn", edited, { userId: "actor" }), /paid DN blocked/);
+    assert.equal(store.heads[0].netAmount, 500); assert.equal(store.lines.length, 1);
+    assert.equal(store.average, 150); assert.equal(store.factCost, 300); assert.deepEqual(store.audits, ["CREATE"]);
+  });
+  it("line edit without a fresh preview and a changed source purchase are both rejected", async () => {
+    await service.postSupplierDebitNote(input(), { userId: "actor" });
+    await assert.rejects(service.updateSupplierDebitNote("dn", { ...input(), items: [{ ...input().items[0], increaseAmount: 30 }] }, { userId: "actor" }), /ตรวจยอด/);
+    await assert.rejects(service.updateSupplierDebitNote("dn", { ...input(), purchaseId: "other" }, { userId: "actor" }), /เปลี่ยนใบซื้อ/);
+    assert.equal(store.heads[0].netAmount, 500); assert.equal(store.average, 150); assert.deepEqual(store.audits, ["CREATE"]);
+  });
+  it("cancelled DN cannot be edited", async () => {
+    await service.postSupplierDebitNote(input(), { userId: "actor" });
+    await service.cancelSupplierDebitNote("dn", "cancel", { userId: "actor" });
+    await assert.rejects(service.updateSupplierDebitNote("dn", input(), { userId: "actor" }), /เฉพาะ DN ที่ใช้งาน/);
   });
 });

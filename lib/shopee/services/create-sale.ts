@@ -24,6 +24,7 @@ import {
   type LotSubRow,
 } from "@/lib/lot-control";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
+import { getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   assertLotBalanceAvailable,
   createWarrantySnapshots,
@@ -312,7 +313,9 @@ export async function createSaleFromShopeeOrder(params: {
   // chronological order). The Shopee order date (draft.docDate) is kept as a
   // reference only (channelRefNo + ShopeeOrderImport.orderCreatedAt) — never
   // used as the stock/doc-number/accounting date to avoid backdated movements.
-  const docDate = new Date();
+  // saleDate is date-only (Thai start of day) like manual sales: a time-of-day
+  // StockCard row would sort after same-day rows and block same-day Supplier DN.
+  const docDate = parseDateOnlyToDate(getThailandDateKey());
   const lotSelections = params.lotSelections ?? {};
 
   const totalAmount = draft.totalAmount;

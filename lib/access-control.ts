@@ -111,6 +111,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "supplier_payments.cancel", group: "ระบบงาน", label: "ยกเลิกจ่ายชำระซัพพลายเออร์" },
   { key: "supplier_debit_notes.view", group: "ระบบงาน", label: "ดูใบเพิ่มหนี้ซัพพลายเออร์" },
   { key: "supplier_debit_notes.create", group: "ระบบงาน", label: "เพิ่มใบเพิ่มหนี้ซัพพลายเออร์" },
+  { key: "supplier_debit_notes.update", group: "ระบบงาน", label: "แก้ไขใบเพิ่มหนี้ซัพพลายเออร์" },
   { key: "supplier_debit_notes.cancel", group: "ระบบงาน", label: "ยกเลิกใบเพิ่มหนี้ซัพพลายเออร์" },
 
   { key: "warranties.view", group: "ระบบงาน", label: "ดูประกัน" },
@@ -310,6 +311,7 @@ const STAFF_OPERATIONS_PERMISSIONS: PermissionKey[] = [
   "supplier_payments.update",
   "supplier_debit_notes.view",
   "supplier_debit_notes.create",
+  "supplier_debit_notes.update",
   "warranties.view",
   "warranty_claims.view",
   "warranty_claims.create",
@@ -680,6 +682,7 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (/^\/admin\/supplier-advance-refunds\/[^/]+\/edit$/.test(pathname)) return "supplier_advance_refunds.update";
   if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";
   if (pathname === "/admin/supplier-debit-notes/new") return "supplier_debit_notes.create";
+  if (/^\/admin\/supplier-debit-notes\/[^/]+\/edit$/.test(pathname)) return "supplier_debit_notes.update";
   if (/^\/admin\/supplier-payments\/[^/]+\/edit$/.test(pathname)) return "supplier_payments.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";
   if (pathname === "/admin/profit-distributions/new") return "profit_distributions.create";

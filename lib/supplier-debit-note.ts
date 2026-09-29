@@ -46,6 +46,31 @@ type PreparedDebit = {
 
 const sumMoney = (values: number[]): number => values.reduce((sum, value) => sum.plus(value), new Prisma.Decimal(0)).toNumber();
 
+function assertDebitDates(input: Pick<SupplierDebitNoteInput, "debitDate" | "receivedDate">, today: Date): void {
+  if (input.debitDate > input.receivedDate || input.receivedDate > getThailandDateKey(today)) {
+    throw new Error("วันที่ออกต้องไม่เกินวันที่ได้รับ และวันที่ได้รับต้องไม่เกินวันนี้");
+  }
+}
+
+function summarizeDebitLines(lines: PreparedDebitLine[]): {
+  subtotalAmount: number; vatAmount: number; netAmount: number; inventoryAmount: number; varianceAmount: number;
+} {
+  const netAmount = sumMoney(lines.map((line) => line.netAmount));
+  if (netAmount > MAX_MONEY) throw new Error("ยอดรวม DN เกินขอบเขตจำนวนเงินที่ระบบรองรับ");
+  return { subtotalAmount: sumMoney(lines.map((line) => line.subtotalAmount)),
+    vatAmount: sumMoney(lines.map((line) => line.vatAmount)), netAmount,
+    inventoryAmount: sumMoney(lines.map((line) => line.inventoryAmount)),
+    varianceAmount: sumMoney(lines.map((line) => line.varianceAmount)) };
+}
+
+function assertPreviewedAllocation(input: SupplierDebitNoteInput, lines: PreparedDebitLine[]): void {
+  if (input.expectedInventoryAmount === undefined || input.expectedVarianceAmount === undefined ||
+    input.expectedInventoryAmount !== sumMoney(lines.map((line) => line.inventoryAmount)) ||
+    input.expectedVarianceAmount !== sumMoney(lines.map((line) => line.varianceAmount))) {
+    throw new Error("ยอดจัดสรรต้นทุนเปลี่ยนหรือยังไม่ได้ตรวจยอด กรุณาตรวจยอดอีกครั้งก่อนบันทึก");
+  }
+}
+
 async function lockDebitProducts(tx: Tx, productIds: string[]): Promise<void> {
   try {
     if (productIds.length === 0) return;
@@ -64,9 +89,7 @@ async function prepareDebitLines(tx: Tx, input: SupplierDebitNoteInput, today: D
     });
     if (!purchase || purchase.status !== "ACTIVE" || !purchase.supplierId) throw new Error("ไม่พบใบซื้อที่ใช้งานได้และมี supplier");
     if (purchase.purchaseDate > today) throw new Error("ไม่สามารถอ้างอิงใบซื้อวันที่ในอนาคต");
-    if (input.debitDate > input.receivedDate || input.receivedDate > getThailandDateKey(today)) {
-      throw new Error("วันที่ออกต้องไม่เกินวันที่ได้รับ และวันที่ได้รับต้องไม่เกินวันนี้");
-    }
+    assertDebitDates(input, today);
     const ids = input.items.map((item) => item.purchaseItemId);
     if (new Set(ids).size !== ids.length) throw new Error("กรุณารวมส่วนต่างของรายการซื้อเดียวกันไว้ในแถวเดียว");
     const sourceById = new Map(purchase.items.map((item) => [item.id, item]));
@@ -140,24 +163,15 @@ export async function postSupplierDebitNote(rawInput: unknown, actor: Actor): Pr
     const postingDate = parseDateOnlyToDate(getThailandDateKey());
     const debit = await dbTx(async (tx) => {
       const { purchase, lines } = await prepareDebitLines(tx, input, postingDate);
-      if (input.expectedInventoryAmount === undefined || input.expectedVarianceAmount === undefined ||
-        input.expectedInventoryAmount !== sumMoney(lines.map((line) => line.inventoryAmount)) ||
-        input.expectedVarianceAmount !== sumMoney(lines.map((line) => line.varianceAmount))) {
-        throw new Error("ยอดจัดสรรต้นทุนเปลี่ยนหรือยังไม่ได้ตรวจยอด กรุณาตรวจยอดอีกครั้งก่อนบันทึก");
-      }
+      assertPreviewedAllocation(input, lines);
       const debitNo = await generateSupplierDebitNo(tx, postingDate);
-      const subtotalAmount = sumMoney(lines.map((line) => line.subtotalAmount));
-      const vatAmount = sumMoney(lines.map((line) => line.vatAmount));
-      const netAmount = sumMoney(lines.map((line) => line.netAmount));
-      if (netAmount > MAX_MONEY) throw new Error("ยอดรวม DN เกินขอบเขตจำนวนเงินที่ระบบรองรับ");
+      const totals = summarizeDebitLines(lines);
       const created = await tx.supplierDebitNote.create({ data: {
         debitNo, purchaseId: purchase.id, supplierId: purchase.supplierId!, userId: actor.userId,
         supplierReferenceNo: input.supplierReferenceNo, debitDate: parseDateOnlyToDate(input.debitDate),
         receivedDate: parseDateOnlyToDate(input.receivedDate), postingDate, dueDate: parseDateOnlyToDate(input.dueDate),
         reason: input.reason, note: input.note, vatType: input.vatType, vatRate: input.vatRate,
-        vatRecoverable: input.vatRecoverable, subtotalAmount, vatAmount, netAmount, amountRemain: netAmount,
-        inventoryAmount: sumMoney(lines.map((line) => line.inventoryAmount)),
-        varianceAmount: sumMoney(lines.map((line) => line.varianceAmount)),
+        vatRecoverable: input.vatRecoverable, ...totals, amountRemain: totals.netAmount,
       } });
       await postDebitLines(tx, created, postingDate, lines);
       await rebuildSupplierDebitProfitFacts(tx, created.id);
@@ -165,7 +179,7 @@ export async function postSupplierDebitNote(rawInput: unknown, actor: Actor): Pr
         entityId: created.id, entityRef: created.debitNo, after: { ...created, lines } });
       return { id: created.id, debitNo: created.debitNo };
     });
-    await notifySupplierDebitNote(debit, false);
+    await notifySupplierDebitNote(debit, "created");
     revalidateProfitDashboardCache();
     return debit;
   } catch (error) {
@@ -181,16 +195,103 @@ export async function previewSupplierDebitNote(rawInput: unknown): Promise<{
     const input = supplierDebitNoteSchema.parse(rawInput);
     return dbTx(async (tx) => {
       const { lines } = await prepareDebitLines(tx, input, parseDateOnlyToDate(getThailandDateKey()));
-      return {
-        subtotalAmount: sumMoney(lines.map((line) => line.subtotalAmount)),
-        vatAmount: sumMoney(lines.map((line) => line.vatAmount)),
-        netAmount: sumMoney(lines.map((line) => line.netAmount)),
-        inventoryAmount: sumMoney(lines.map((line) => line.inventoryAmount)),
-        varianceAmount: sumMoney(lines.map((line) => line.varianceAmount)),
-      };
+      return summarizeDebitLines(lines);
     });
   } catch (error) {
     console.error("[previewSupplierDebitNote]", error);
+    throw error;
+  }
+}
+
+type DebitWithItems = Prisma.SupplierDebitNoteGetPayload<{ include: { items: true } }>;
+type DebitHeaderData = Pick<Prisma.SupplierDebitNoteUncheckedUpdateInput,
+  "supplierReferenceNo" | "debitDate" | "receivedDate" | "dueDate" | "reason" | "note">;
+
+/** True when VAT settings and every line match the posted DN, so only header fields changed. */
+export function isSameSupplierDebitPosting(current: DebitWithItems, input: SupplierDebitNoteInput): boolean {
+  if (current.vatType !== input.vatType || Number(current.vatRate) !== input.vatRate ||
+    current.vatRecoverable !== input.vatRecoverable || current.items.length !== input.items.length) return false;
+  const postedBySource = new Map(current.items.map((line) => [line.purchaseItemId, line]));
+  return input.items.every((next) => {
+    const posted = postedBySource.get(next.purchaseItemId);
+    return Boolean(posted) && posted!.amountMode === next.amountMode &&
+      Number(posted!.increaseAmount) === next.increaseAmount && Number(posted!.affectedQuantity) === next.affectedQuantity;
+  });
+}
+
+export async function getSupplierDebitRepostReason(tx: Tx, id: string): Promise<string | null> {
+  try {
+    return buildMutationBlockMessage(await createDocumentMutationGuard(tx as unknown as GuardDb).check("SupplierDebitNote", id, "update"));
+  } catch (error) {
+    console.error("[getSupplierDebitRepostReason]", error);
+    throw error;
+  }
+}
+
+/** Reverse the posted value-only stock rows and post the edited lines at today's business date under the same DN number. */
+async function repostSupplierDebitNote(tx: Tx, current: DebitWithItems, input: SupplierDebitNoteInput,
+  postingDate: Date, header: DebitHeaderData): Promise<{ lines: PreparedDebitLine[] }> {
+  try {
+    await tx.$queryRaw`SELECT id FROM "Purchase" WHERE id = ${current.purchaseId} FOR UPDATE`;
+    const sources = await tx.purchaseItem.findMany({ where: { purchaseId: current.purchaseId,
+      id: { in: input.items.map((item) => item.purchaseItemId) } }, select: { productId: true } });
+    const postedProductIds = current.items.map((item) => item.productId);
+    await lockDebitProducts(tx, [...postedProductIds, ...sources.map((source) => source.productId)]);
+    const reason = await getSupplierDebitRepostReason(tx, current.id);
+    if (reason) throw new Error(reason);
+    await tx.stockCard.deleteMany({ where: { docNo: current.debitNo, source: "SUPPLIER_DEBIT" } });
+    await tx.supplierDebitNoteItem.deleteMany({ where: { debitNoteId: current.id } });
+    await recalculateStockCardMany(tx, postedProductIds);
+    const { lines } = await prepareDebitLines(tx, input, postingDate);
+    assertPreviewedAllocation(input, lines);
+    const totals = summarizeDebitLines(lines);
+    await tx.supplierDebitNote.update({ where: { id: current.id }, data: { ...header, postingDate,
+      vatType: input.vatType, vatRate: input.vatRate, vatRecoverable: input.vatRecoverable,
+      ...totals, amountRemain: totals.netAmount } });
+    await postDebitLines(tx, current, postingDate, lines);
+    await rebuildSupplierDebitProfitFacts(tx, current.id);
+    return { lines };
+  } catch (error) {
+    console.error("[repostSupplierDebitNote]", error);
+    throw error;
+  }
+}
+
+/**
+ * Header fields (supplier reference, dates, reason, note) may change while the DN is ACTIVE.
+ * VAT or line changes repost the DN and require the same guard as cancellation: no active payment
+ * and no later stock movement on the affected SKUs.
+ */
+export async function updateSupplierDebitNote(id: string, rawInput: unknown, actor: Actor): Promise<{
+  id: string; debitNo: string; reposted: boolean;
+}> {
+  try {
+    const parsedId = z.string().min(1).parse(id);
+    const input = supplierDebitNoteSchema.parse(rawInput);
+    const today = parseDateOnlyToDate(getThailandDateKey());
+    const result = await dbTx(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "SupplierDebitNote" WHERE id = ${parsedId} FOR UPDATE`;
+      const current = await tx.supplierDebitNote.findUnique({ where: { id: parsedId }, include: { items: true } });
+      if (!current || current.status !== "ACTIVE") throw new Error("แก้ไขได้เฉพาะ DN ที่ใช้งานอยู่");
+      if (current.purchaseId !== input.purchaseId) throw new Error("ไม่สามารถเปลี่ยนใบซื้ออ้างอิงของ DN ได้ กรุณายกเลิกแล้วบันทึกใหม่");
+      assertDebitDates(input, today);
+      const header: DebitHeaderData = { supplierReferenceNo: input.supplierReferenceNo,
+        debitDate: parseDateOnlyToDate(input.debitDate), receivedDate: parseDateOnlyToDate(input.receivedDate),
+        dueDate: parseDateOnlyToDate(input.dueDate), reason: input.reason, note: input.note };
+      const reposted = !isSameSupplierDebitPosting(current, input);
+      const repost = reposted ? await repostSupplierDebitNote(tx, current, input, today, header) : null;
+      if (!reposted) await tx.supplierDebitNote.update({ where: { id: parsedId }, data: header });
+      const after = await tx.supplierDebitNote.findUnique({ where: { id: parsedId }, include: { items: true } });
+      await writeAuditLogTx(tx, { ...actor, action: AuditAction.UPDATE, entityType: "SupplierDebitNote",
+        entityId: parsedId, entityRef: current.debitNo, before: current,
+        after: { ...after, reposted, ...(repost ? { lines: repost.lines } : {}) } });
+      return { id: parsedId, debitNo: current.debitNo, reposted };
+    });
+    await notifySupplierDebitNote(result, "updated");
+    if (result.reposted) revalidateProfitDashboardCache();
+    return result;
+  } catch (error) {
+    console.error("[updateSupplierDebitNote]", error);
     throw error;
   }
 }
@@ -245,7 +346,7 @@ export async function cancelSupplierDebitNote(id: string, cancelNote: string, ac
         after: { status: "CANCELLED", cancelNote: parsedNote, amountRemain: 0 } });
       return { id: parsedId, debitNo: current.debitNo };
     });
-    await notifySupplierDebitNote(debit, true);
+    await notifySupplierDebitNote(debit, "cancelled");
     revalidateProfitDashboardCache();
   } catch (error) {
     console.error("[cancelSupplierDebitNote]", error);
