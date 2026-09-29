@@ -35,6 +35,8 @@ import {
   VatType,
 } from "@/lib/generated/prisma";
 import { generateTrackingToken, TRACKING_LINK_TTL_MS } from "@/lib/delivery-tracking";
+import { enqueueSaleDeliveryLineNotification } from "@/lib/line-delivery-outbox";
+import { processSaleDeliveryLineDispatch } from "@/lib/line-delivery-worker";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   getMarketplaceChannelConfig,
@@ -2214,116 +2216,126 @@ export async function updateShippingStatus(
     if (!existingSnapshot) {
       return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
     }
-    const sale = await db.sale.findUnique({
-      where: { id: saleId },
-      select: {
-        id: true,
-        status: true,
-        fulfillmentType: true,
-        shippingStatus: true,
-        shippingMethod: true,
-        trackingNo: true,
-        trackingToken: true,
-        deliveryStaffId: true,
-        deliveryCommissionItems: {
-          where: {
-            activeSaleId: saleId,
-            run: { status: "ACTIVE" },
+    const shippingResult = await dbTx(async (tx): Promise<{ error: string } | { dispatchId: string | null }> => {
+      const sale = await tx.sale.findUnique({
+        where: { id: saleId },
+        select: {
+          id: true,
+          status: true,
+          fulfillmentType: true,
+          shippingStatus: true,
+          shippingMethod: true,
+          trackingNo: true,
+          trackingToken: true,
+          deliveryStaffId: true,
+          updatedAt: true,
+          deliveryCommissionItems: {
+            where: {
+              activeSaleId: saleId,
+              run: { status: "ACTIVE" },
+            },
+            orderBy: { createdAt: "desc" },
+            select: { id: true },
+            take: 1,
           },
-          orderBy: { createdAt: "desc" },
-          select: { id: true },
-          take: 1,
         },
-      },
-    });
+      });
 
-    if (!sale || sale.status !== "ACTIVE") {
-      return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
-    }
+      if (!sale || sale.status !== "ACTIVE") {
+        return { error: "ไม่พบใบขาย หรือเอกสารถูกยกเลิกแล้ว" };
+      }
 
-    if (sale.fulfillmentType !== FulfillmentType.DELIVERY) {
-      return { error: "ใบขายนี้ไม่ได้เป็นรายการจัดส่ง" };
-    }
+      if (sale.fulfillmentType !== FulfillmentType.DELIVERY) {
+        return { error: "ใบขายนี้ไม่ได้เป็นรายการจัดส่ง" };
+      }
 
-    if (
-      sale.deliveryCommissionItems.length > 0 &&
-      parsed.data.shippingStatus !== sale.shippingStatus
-    ) {
-      return {
-        error:
-          "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนสถานะ กรุณายกเลิกเอกสารทำจ่ายก่อน",
-      };
-    }
-
-    const nextShippingMethod = parsed.data.shippingMethod ?? sale.shippingMethod;
-    const nextTrackingNo = parsed.data.trackingNo ?? sale.trackingNo ?? undefined;
-    const requiresTrackingNo =
-      nextShippingMethod !== ShippingMethod.NONE && nextShippingMethod !== ShippingMethod.SELF;
-
-    if (requiresTrackingNo && !nextTrackingNo?.trim()) {
-      return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
-    }
-
-    // Explicit pick from the delivery queue popup wins over the auto-stamp below.
-    const selectedStaffId = parsed.data.deliveryStaffId;
-    if (selectedStaffId && selectedStaffId !== sale.deliveryStaffId) {
-      if (sale.deliveryCommissionItems.length > 0) {
+      if (
+        sale.deliveryCommissionItems.length > 0 &&
+        parsed.data.shippingStatus !== sale.shippingStatus
+      ) {
         return {
           error:
-            "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนผู้ส่ง กรุณายกเลิกเอกสารทำจ่ายก่อน",
+            "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนสถานะ กรุณายกเลิกเอกสารทำจ่ายก่อน",
         };
       }
 
-      const staff = await db.user.findFirst({
-        where:  { id: selectedStaffId, isActive: true },
-        select: { id: true },
+      const nextShippingMethod = parsed.data.shippingMethod ?? sale.shippingMethod;
+      const nextTrackingNo = parsed.data.trackingNo ?? sale.trackingNo ?? undefined;
+      const requiresTrackingNo =
+        nextShippingMethod !== ShippingMethod.NONE && nextShippingMethod !== ShippingMethod.SELF;
+
+      if (requiresTrackingNo && !nextTrackingNo?.trim()) {
+        return { error: "กรุณาระบุเลขติดตามสำหรับการจัดส่งผ่านขนส่งภายนอก" };
+      }
+
+      // Explicit pick from the delivery queue popup wins over the auto-stamp below.
+      const selectedStaffId = parsed.data.deliveryStaffId;
+      if (selectedStaffId && selectedStaffId !== sale.deliveryStaffId) {
+        if (sale.deliveryCommissionItems.length > 0) {
+          return {
+            error:
+              "บิลนี้ถูกทำจ่ายค่าส่งแล้ว หากต้องการเปลี่ยนผู้ส่ง กรุณายกเลิกเอกสารทำจ่ายก่อน",
+          };
+        }
+
+        const staff = await tx.user.findFirst({
+          where:  { id: selectedStaffId, isActive: true },
+          select: { id: true },
+        });
+        if (!staff) return { error: "ไม่พบผู้ส่งที่เลือก หรือบัญชีถูกปิดใช้งานแล้ว" };
+      }
+
+      const shouldStampDeliveryStaff =
+        !selectedStaffId &&
+        (parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY ||
+          (parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId));
+
+      // Auto-generate tracking token when sale first moves to OUT_FOR_DELIVERY
+      const shouldGenerateToken =
+        parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
+        sale.shippingStatus !== ShippingStatus.OUT_FOR_DELIVERY &&
+        !sale.trackingToken;
+
+      // Issuing or renewing a link (OUT_FOR_DELIVERY) gives it TRACKING_LINK_TTL_MS
+      // (7 days) — a link never lives forever.
+      const shouldRenewTrackingExpiry =
+        parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
+        Boolean(sale.trackingToken || shouldGenerateToken);
+
+      // Expire token 48 hours after delivery is marked done
+      const shouldExpireToken =
+        parsed.data.shippingStatus === ShippingStatus.DELIVERED && sale.trackingToken;
+
+      const eventAt = new Date();
+      const updated = await tx.sale.updateMany({
+        where: { id: saleId, status: "ACTIVE", shippingStatus: sale.shippingStatus, updatedAt: sale.updatedAt },
+        data: {
+          shippingStatus: parsed.data.shippingStatus,
+          ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
+          ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
+          ...(selectedStaffId ? { deliveryStaffId: selectedStaffId } : {}),
+          ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
+          ...(shouldGenerateToken
+            ? {
+                trackingToken: generateTrackingToken(),
+              }
+            : {}),
+          ...(shouldRenewTrackingExpiry
+            ? { trackingExpiry: new Date(Date.now() + TRACKING_LINK_TTL_MS) }
+            : {}),
+          ...(shouldExpireToken
+            ? { trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS) }
+            : {}),
+        },
       });
-      if (!staff) return { error: "ไม่พบผู้ส่งที่เลือก หรือบัญชีถูกปิดใช้งานแล้ว" };
-    }
-
-    const shouldStampDeliveryStaff =
-      !selectedStaffId &&
-      (parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY ||
-        (parsed.data.shippingStatus === ShippingStatus.DELIVERED && !sale.deliveryStaffId));
-
-    // Auto-generate tracking token when sale first moves to OUT_FOR_DELIVERY
-    const shouldGenerateToken =
-      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
-      sale.shippingStatus !== ShippingStatus.OUT_FOR_DELIVERY &&
-      !sale.trackingToken;
-
-    // Issuing or renewing a link (OUT_FOR_DELIVERY) gives it TRACKING_LINK_TTL_MS
-    // (7 days) — a link never lives forever.
-    const shouldRenewTrackingExpiry =
-      parsed.data.shippingStatus === ShippingStatus.OUT_FOR_DELIVERY &&
-      Boolean(sale.trackingToken || shouldGenerateToken);
-
-    // Expire token 48 hours after delivery is marked done
-    const shouldExpireToken =
-      parsed.data.shippingStatus === ShippingStatus.DELIVERED && sale.trackingToken;
+      if (updated.count === 0) {
+        return { error: "บิลนี้มีการเปลี่ยนแปลงแล้ว กรุณารีเฟรชและลองใหม่อีกครั้ง" };
+      }
+      return { dispatchId: await enqueueSaleDeliveryLineNotification(tx, saleId, sale.shippingStatus, eventAt) };
+    });
+    if ("error" in shippingResult) return shippingResult;
 
     const beforeSnapshot = existingSnapshot;
-    await db.sale.update({
-      where: { id: saleId },
-      data: {
-        shippingStatus: parsed.data.shippingStatus,
-        ...(parsed.data.trackingNo !== undefined ? { trackingNo: parsed.data.trackingNo } : {}),
-        ...(parsed.data.shippingMethod !== undefined ? { shippingMethod: parsed.data.shippingMethod } : {}),
-        ...(selectedStaffId ? { deliveryStaffId: selectedStaffId } : {}),
-        ...(shouldStampDeliveryStaff ? { deliveryStaffId: session.user.id } : {}),
-        ...(shouldGenerateToken
-          ? {
-              trackingToken: generateTrackingToken(),
-            }
-          : {}),
-        ...(shouldRenewTrackingExpiry
-          ? { trackingExpiry: new Date(Date.now() + TRACKING_LINK_TTL_MS) }
-          : {}),
-        ...(shouldExpireToken
-          ? { trackingExpiry: new Date(Date.now() + TRACKING_TOKEN_TTL_MS) }
-          : {}),
-      },
-    });
 
     const afterSnapshot = await getSaleDeliveryAuditSnapshot(saleId);
     if (beforeSnapshot && afterSnapshot) {
@@ -2337,13 +2349,21 @@ export async function updateShippingStatus(
         entityRef: afterSnapshot.saleNo,
         before: diff.before,
         after: diff.after,
-        meta: { source: "delivery.update" },
+        meta: { source: "delivery.update", lineDeliveryDispatchId: shippingResult.dispatchId },
       });
     }
     revalidatePath("/admin/delivery");
     revalidatePath("/admin/delivery/update");
     revalidatePath("/admin/delivery-commissions");
     revalidatePath(`/admin/sales/${saleId}`);
+    if (shippingResult.dispatchId) {
+      const dispatchId = shippingResult.dispatchId;
+      try {
+        after(() => processSaleDeliveryLineDispatch(dispatchId));
+      } catch {
+        console.warn("[line-delivery] immediate processing deferred to cron");
+      }
+    }
     return { success: true };
   } catch (err) {
     console.error("[updateShippingStatus]", err);

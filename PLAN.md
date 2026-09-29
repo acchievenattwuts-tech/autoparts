@@ -930,6 +930,12 @@
     - [x] AuditLog: `getSaleDeliveryAuditSnapshot()` เก็บ `deliveryStaffId` อยู่แล้ว → diff before/after บันทึกการเปลี่ยนผู้ส่งโดยไม่ต้องแก้เพิ่ม
 - [x] `npm run build` ผ่าน + `npx eslint` ไฟล์ที่แก้ 0 error — 5 error เดิมใน `lib/__tests__/category-alias-resolver.test.ts` มีมาก่อนรอบนี้
 - [x] ลบ `app/admin/(protected)/delivery/DeliveryStaffPicker.tsx` (dead code ไม่มีใคร import มาตั้งแต่ก่อนรอบนี้ — เจ้าของสั่งลบ 2026-07-30) + ปรับรายการใน [docs/admin-ui-ux-refresh-checklist.md](docs/admin-ui-ux-refresh-checklist.md) ให้ชี้ `DeliveryStaffDialog.tsx` แทน
+- [x] 2026-09-29: LINE OA แจ้งลูกค้าเมื่อร้านจัดส่งเอง (`SELF + DELIVERY`) — ออกส่ง/ส่งแล้วอย่างละไม่เกิน 1 ครั้งต่อบิล, ข้ามตรงไปส่งแล้วส่งเฉพาะข้อความส่งแล้ว, ย้อนสถานะ/กดซ้ำไม่ส่งซ้ำ; ต้องเลือก `customerId` ที่ใช้งานและผูกเบอร์กับ LINE แล้ว ไม่จับคู่เบอร์บนบิลเอง
+  - [x] Card แบบ 3: หัวและปุ่มไล่เฉดฟ้าเมื่อออกส่ง/เขียวเมื่อส่งแล้ว, ชื่อร้านจาก `shop_name`, ข้อความ “ทางร้านกำลังนำสินค้าไปจัดส่งให้คุณ”; ทั้งสองปุ่มเปิด `/liff/orders/{id}` ที่มี GPS และรายการสินค้า พร้อมตรวจเจ้าของบิลเดิม
+  - [x] สวิตช์ตั้งค่าร้านค้าเริ่มปิด รองรับ light/dark และสิทธิ์/audit เดิม; ไม่ส่งย้อนหลัง, ปิดสวิตช์ข้ามงานค้างและเก็บ cutoff ป้องกัน replay หลังเปิดใหม่
+  - [x] `SaleLineDeliveryDispatch` แบบ additive + unique `(saleId,eventStatus)` บันทึกใน transaction เดียวกับสถานะ; freeze ผู้รับ/card/retry key, claim ด้วย lease/CAS, ตรวจผู้รับ/สถานะซ้ำ, `after()` ส่งทันที + cron มี `CRON_SECRET` กู้คืนงานค้าง; retry ภายใน 24 ชั่วโมงด้วย `X-Line-Retry-Key` เดิม โดย `ACCEPTED` หมายถึง LINE รับคำขอ ไม่รับรองว่าลูกค้าอ่าน
+  - [x] ตรวจสอบ 2026-09-29: `npm run verify` ผ่าน (1,717 tests; lint 0 errors / 261 warnings เดิม), `npm run build`, `npm run check:mojibake` และ schema drift ผ่าน; ตารางเปิด RLS, สวิตช์ยังปิดและคิวส่ง 0 รายการ
+  - [ ] หลัง deploy: ทดสอบ card และลิงก์จริงบน LINE ของบัญชีลูกค้าทดสอบที่ผูกแล้ว พร้อมยืนยัน cron recovery; ยังไม่ส่งข้อความจริงหาลูกค้าในรอบพัฒนา
 
 ## หน้าค้นหาสินค้าแอดมิน `/admin/products/search` — search ตามคำสั่ง + bug fix (2026-07-29)
 - บริบท: ตรวจบัคตามที่เจ้าของแจ้ง ("กดล้างแล้ว filter ไม่เคลียร์") + เปลี่ยน logic การค้นหาให้ตัวกรองไม่ยิงค้นหาเอง

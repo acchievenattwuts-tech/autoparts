@@ -109,6 +109,7 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
   const [lineAiAutoReplyEnabled, setLineAiAutoReplyEnabled] = useState(config.lineAiAutoReplyEnabled);
   const [lineAiDryRun, setLineAiDryRun] = useState(config.lineAiDryRun);
   const [lineAiImageSearchEnabled, setLineAiImageSearchEnabled] = useState(config.lineAiImageSearchEnabled);
+  const [lineDeliveryNotificationsEnabled, setLineDeliveryNotificationsEnabled] = useState(config.lineDeliveryNotificationsEnabled);
 
   const handleLogoChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -432,6 +433,23 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
             onChange={setProductSearchAutoApplySynonymsEnabled}
             label={productSearchAutoApplySynonymsEnabled ? "เปิด" : "ปิด"}
           />
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+        <h2 className="mb-2 border-b border-gray-100 pb-3 font-kanit text-lg font-semibold text-[#1e3a5f] dark:border-white/10 dark:text-sky-200">
+          แจ้งสถานะจัดส่งผ่าน LINE OA
+        </h2>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl space-y-1">
+            <p className="text-sm font-medium text-gray-800 dark:text-slate-100">แจ้งสถานะจัดส่งที่ร้านจัดส่งเอง</p>
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              ส่งเมื่อออกส่งและส่งแล้วอย่างละ 1 ครั้งต่อบิล เฉพาะบิลที่เลือกบัญชีลูกค้าและลูกค้าผูกเบอร์กับ LINE OA แล้ว
+              เปิดภายหลังไม่ส่งย้อนหลัง และย้อนสถานะไม่ส่งซ้ำ
+            </p>
+          </div>
+          <Toggle name="line_delivery_notifications_enabled" checked={lineDeliveryNotificationsEnabled}
+            onChange={setLineDeliveryNotificationsEnabled} label={lineDeliveryNotificationsEnabled ? "เปิด" : "ปิด"} />
         </div>
       </div>
 

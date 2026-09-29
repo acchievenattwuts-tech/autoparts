@@ -1691,6 +1691,7 @@ model Sale {
   creditNotes                CreditNote[]
   deliveryCommissionItems    DeliveryCommissionItem[]
   deliveryProofs             DeliveryProof[]
+  lineDeliveryDispatches      SaleLineDeliveryDispatch[]
   deliveryTracking           DeliveryTracking?
   receipts                   ReceiptItem[]
   cashBankAccount            CashBankAccount?            @relation(fields: [cashBankAccountId], references: [id])
@@ -1717,6 +1718,33 @@ model Sale {
   @@index([customerId, paymentType, status, amountRemain])
   @@index([saleDate(sort: Desc), status])
   @@index([channel, status, saleDate])
+}
+
+model SaleLineDeliveryDispatch {
+  id                  String         @id @default(cuid())
+  saleId              String
+  eventStatus         ShippingStatus
+  customerId          String?
+  recipientLineUserId String?
+  payload             Json
+  retryKey            String         @unique @db.Uuid
+  state               String         @default("PENDING")
+  attemptCount        Int            @default(0)
+  lastErrorCode       String?
+  lineRequestId       String?
+  eventAt             DateTime       @db.Timestamptz(3)
+  firstAttemptAt      DateTime?      @db.Timestamptz(3)
+  nextAttemptAt       DateTime?      @db.Timestamptz(3)
+  leaseUntil          DateTime?      @db.Timestamptz(3)
+  acceptedAt          DateTime?      @db.Timestamptz(3)
+  createdAt           DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime       @updatedAt @db.Timestamptz(3)
+  sale                Sale           @relation(fields: [saleId], references: [id])
+
+  @@unique([saleId, eventStatus])
+  @@index([state, nextAttemptAt])
+  @@index([state, leaseUntil])
+  @@index([customerId])
 }
 
 model DeliveryProof {

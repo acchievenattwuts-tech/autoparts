@@ -133,6 +133,43 @@ const activeSale = {
   warranties: [],
 };
 
+const deliverySale = {
+  ...activeSale, fulfillmentType: "DELIVERY", shippingMethod: "SELF", shippingStatus: "PENDING",
+  trackingNo: null, deliveryStaffId: null, deliveryCommissionItems: [],
+};
+
+test("shipping update preserves commission guard before mutation or dispatch", { skip: moduleMocksUnavailable }, async () => {
+  txOverrides.sale = { findUnique: async () => ({ ...deliverySale, deliveryCommissionItems: [{ id: "active-commission" }] }) };
+  const { updateShippingStatus } = await import("../actions");
+  const result = await updateShippingStatus("sale-1", { shippingStatus: "OUT_FOR_DELIVERY" });
+  assert.ok(result.error?.includes("ถูกทำจ่ายค่าส่งแล้ว"));
+  assert.ok(!txCalls.some(call => call.method.endsWith("updateMany") || call.method.endsWith("createMany")));
+});
+
+test("concurrent shipping update fails before enqueuing when the Sale CAS loses", { skip: moduleMocksUnavailable }, async () => {
+  txOverrides.sale = { findUnique: async () => deliverySale, updateMany: async () => ({ count: 0 }) };
+  const { updateShippingStatus } = await import("../actions");
+  const result = await updateShippingStatus("sale-1", { shippingStatus: "OUT_FOR_DELIVERY" });
+  assert.ok(result.error?.includes("มีการเปลี่ยนแปลงแล้ว"));
+  assert.ok(!txCalls.some(call => call.method === "saleLineDeliveryDispatch.createMany"));
+});
+
+test("shipping status and its dispatch are written through the same transaction client", { skip: moduleMocksUnavailable }, async () => {
+  let shippingStatus = "PENDING";
+  txOverrides.sale = {
+    findUnique: async () => ({ ...deliverySale, shippingStatus, customerId: null, customer: null }),
+    updateMany: async () => { shippingStatus = "OUT_FOR_DELIVERY"; return { count: 1 }; },
+  };
+  txOverrides.siteContent = { findMany: async () => [] };
+  txOverrides.saleLineDeliveryDispatch = { createMany: async () => ({ count: 1 }) };
+  const { updateShippingStatus } = await import("../actions");
+  assert.deepEqual(await updateShippingStatus("sale-1", { shippingStatus: "OUT_FOR_DELIVERY" }), { success: true });
+  const methods = txCalls.map(call => call.method);
+  assert.ok(methods.indexOf("sale.updateMany") < methods.indexOf("saleLineDeliveryDispatch.createMany"));
+  assert.ok(methods.includes("saleLineDeliveryDispatch.createMany"));
+  assert.ok(!dbCalls.some(call => call.method === "sale.updateMany" || call.method === "saleLineDeliveryDispatch.createMany"));
+});
+
 beforeEach(() => {
   dbCalls.length = 0;
   txCalls.length = 0;

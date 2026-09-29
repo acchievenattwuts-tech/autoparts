@@ -75,6 +75,7 @@ const mapSiteConfig = (contents: Array<{ key: string; value: string }>): SiteCon
     lineAiAutoReplyEnabled: defaultSiteConfig.lineAiAutoReplyEnabled,
     lineAiDryRun: defaultSiteConfig.lineAiDryRun,
     lineAiImageSearchEnabled: defaultSiteConfig.lineAiImageSearchEnabled,
+    lineDeliveryNotificationsEnabled: defaultSiteConfig.lineDeliveryNotificationsEnabled,
   };
 };
 

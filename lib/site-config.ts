@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { unstable_cache } from "next/cache";
 import { cache } from "react";
+import { LINE_DELIVERY_NOTIFICATIONS_KEY, parseLineDeliveryNotificationsEnabled } from "@/lib/line-delivery-settings";
 import {
   PRODUCT_SEARCH_AUTO_APPLY_SYNONYMS_ENABLED_KEY,
   parseProductSearchAutoApplyEnabledSetting,
@@ -48,6 +49,7 @@ export interface SiteConfig {
   lineAiAutoReplyEnabled: boolean;
   lineAiDryRun: boolean;
   lineAiImageSearchEnabled: boolean;
+  lineDeliveryNotificationsEnabled: boolean;
   /// เลขประจำตัวผู้เสียภาษี 13 หลัก — บุคคลธรรมดาที่ไม่เสีย VAT ใช้เลขประจำตัวประชาชนแทน
   taxPayerId: string;
   /// ลำดับที่สาขา 6 หลัก (สำนักงานใหญ่ = 000000)
@@ -97,6 +99,7 @@ export const defaultSiteConfig: SiteConfig = {
   lineAiAutoReplyEnabled: LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled,
   lineAiDryRun: LINE_AI_SETTINGS_DEFAULTS.dryRun,
   lineAiImageSearchEnabled: LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
+  lineDeliveryNotificationsEnabled: false,
   taxPayerId: "",
   taxBranchNo: "000000",
   taxAddrNo: "",
@@ -185,6 +188,7 @@ export const getSiteConfig = unstable_cache(
         LINE_AI_SETTINGS_DEFAULTS.imageSearchEnabled,
       ),
       ...mapTaxSiteConfig(map),
+      lineDeliveryNotificationsEnabled: parseLineDeliveryNotificationsEnabled(map[LINE_DELIVERY_NOTIFICATIONS_KEY]),
     };
   },
   ["site-config"],

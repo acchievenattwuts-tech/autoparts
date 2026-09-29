@@ -7,7 +7,8 @@ import {
   getRequestContext,
   safeWriteAuditLog,
 } from "@/lib/audit-log";
-import { db } from "@/lib/db";
+import { db, dbTx } from "@/lib/db";
+import { LINE_DELIVERY_NOTIFICATIONS_DISABLED_AT_KEY } from "@/lib/line-delivery-settings";
 import { AuditAction } from "@/lib/generated/prisma";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
@@ -138,6 +139,7 @@ const companySchema = z.object({
   line_ai_auto_reply_enabled: z.enum(["true", "false"]),
   line_ai_dry_run: z.enum(["true", "false"]),
   line_ai_image_search_enabled: z.enum(["true", "false"]),
+  line_delivery_notifications_enabled: z.enum(["true", "false"]).default("false"),
   tax_payer_id: taxPayerIdSchema,
   tax_branch_no: taxBranchNoSchema,
   tax_addr_no: z.string().max(100),
@@ -178,13 +180,30 @@ export async function updateCompanySettings(formData: FormData) {
     );
 
     const entries = Object.entries(parsed.data) as [string, string][];
-    for (const [key, value] of entries) {
-      await db.siteContent.upsert({
-        where: { key },
-        update: { value },
-        create: { key, value },
-      });
-    }
+    const lineDispatchesSkipped = await dbTx(async (tx): Promise<number> => {
+      for (const [key, value] of entries) {
+        await tx.siteContent.upsert({
+          where: { key },
+          update: { value },
+          create: { key, value },
+        });
+      }
+      if (parsed.data.line_delivery_notifications_enabled === "false") {
+        const disabledAt = new Date();
+        // Record every shutdown inside the transaction, including concurrent saves.
+        await tx.siteContent.upsert({
+          where: { key: LINE_DELIVERY_NOTIFICATIONS_DISABLED_AT_KEY },
+          create: { key: LINE_DELIVERY_NOTIFICATIONS_DISABLED_AT_KEY, value: disabledAt.toISOString() },
+          update: { value: disabledAt.toISOString() },
+        });
+        const skipped = await tx.saleLineDeliveryDispatch.updateMany({
+          where: { state: "PENDING" },
+          data: { state: "SKIPPED", lastErrorCode: "SETTING_DISABLED", nextAttemptAt: null },
+        });
+        return skipped.count;
+      }
+      return 0;
+    });
 
     const diff = diffEntity(beforeState, parsed.data);
 
@@ -196,6 +215,7 @@ export async function updateCompanySettings(formData: FormData) {
       entityRef: "site-config",
       before: diff.before,
       after: diff.after,
+      meta: { lineDeliveryDispatchesSkipped: lineDispatchesSkipped },
     });
   } catch (error) {
     console.error("Failed to update company settings", error);
