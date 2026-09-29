@@ -738,14 +738,20 @@
 **ตรวจแล้วตัดสินใจ "ไม่ทำ" (พร้อมเหตุผล)**
 - ตัด `revalidatePath("/")` ใน `master/categories/actions.ts` — ซ้ำซ้อนกับ `updateTag()` จริง แต่การแก้หมวดหมู่เกิดเดือนละไม่กี่ครั้ง ประหยัดแทบไม่มี ขณะที่ถ้าเข้าใจ route-cache tag inheritance ของ Next 16 คลาดเคลื่อน หน้าแรกจะค้าง 1 ชม. — **ไม่คุ้ม**
 - เปลี่ยน `where: { OR: keys }` (≤300 คู่) ใน `lots/expiry` เป็น `productId: { in: [...] }` — มีขอบเขตชัดด้วย `take: 300` อยู่แล้ว และเสี่ยงดึงแถวมากกว่าเดิมถ้าสินค้าตัวหนึ่งมีหลายร้อย lot
-- อัปเกรด `sharp` / `next` / `prisma` — เจ้าของร้านเลือกแยก deploy ต่างหาก
+- อัปเกรด `prisma` — เจ้าของร้านเลือกแยก deploy ต่างหาก; `sharp` / `next` ยืนยันและอัปเกรดแล้วในรอบ 2026-09-29 ตามรายการด้านล่าง
 - Sentry / log drain — เลือกไม่ใช้ (ดูหัวข้อ Error monitoring ด้านล่าง): Sentry ต้องแก้ CSP `connect-src` เพิ่ม domain ภายนอก + เพิ่ม client bundle ~30KB gz ซึ่งขัดกับงาน Core Web Vitals ที่ลงแรงไว้ · ปัญหาจริงคือ "ไม่รู้ว่ามี error" ไม่ใช่ "วิเคราะห์ error ไม่ลึกพอ"
 
 **ค้างไว้ (ยืนยันแล้วว่าเลื่อน)**
 - [ ] ข้อ 11 — รวบ `upsert` ทีละ lot ใน [lib/lot-control.ts](lib/lot-control.ts) (ใบซื้อ 20 lot = 60 round-trip เรียงกันขณะถือ `FOR UPDATE` + `lock_timeout` 8 วิ) · **ต้องเขียน golden test คลุม `writePurchaseLots`/`writeAdjustmentLots` ก่อน** เพราะกระทบต้นทุนสินค้าโดยตรง
 - [ ] ข้อ 18 — แตกไฟล์ >800 บรรทัด 28 ไฟล์ (`line-webhook-processor.ts` 4,414) · ทำแบบ opportunistic ตอนแก้ไฟล์นั้นอยู่แล้ว
-- [ ] อัปเกรด `sharp` (CVE libvips บน path ที่รับ upload จากลูกค้า) — ควรทำเป็นลำดับถัดไป
+- [x] (2026-09-29) อัปเกรด `sharp` เป็น 0.35.5 และ Next.js/tooling เป็น 16.3.6 ปิด advisory ที่พบในเวอร์ชันเดิม; golden fixture จาก Next 16.3.1 / sharp 0.35.3 เทียบ HTML Image และพิกเซล PNG/JPEG/WebP/AVIF ผ่าน โดยไม่เปลี่ยนสูตรหรือธุรกรรม
 - [ ] ตรวจหลัง deploy: cron `/api/notifications/cron/cleanup` รอบแรกจะลบ notification ที่อ่านแล้ว + เก่ากว่า 30 วัน **ที่สะสมมาตั้งแต่ 9 มิ.ย. ในครั้งเดียว**
+
+- [x] (2026-09-29) LIFF ป้องกันการผูก LINE พร้อมกันเขียนทับกันด้วย conditional atomic update (active + owner ที่อนุญาต); conflict คืน BLOCKED เดิมและเขียน audit/throttle โดยแจ้งผลสำเร็จเฉพาะผู้ชนะ พร้อม golden flow และ concurrent regression tests; การผูกแบบไม่ใช้ OTP คงเดิม
+- [x] (2026-09-29) รายงาน slow-moving อ่านประวัติขายเฉพาะคู่ productId/lotNo จริงแทนคู่ไขว้; คงขอบเขต 500 lot, วันขายล่าสุด, ตัวกรอง, หน่วยและผลแสดงเดิม พร้อม golden markup จากโค้ดก่อนแก้
+- [x] (2026-09-29) รายงาน expiry option B ใช้ parameterized SELECT join/filter/count/page ในฐานข้อมูลตามข้อยกเว้นที่เจ้าของอนุมัติเฉพาะรายงานนี้; ไม่แก้ schema/ข้อมูล และคงยอดรวม/threshold/UTF-16 ordering/ผลแบ่งหน้าเดิม พร้อม SQL golden บน PostgreSQL จำลองและ golden markup; ลดข้อมูลส่งเข้าแอป แต่ฐานข้อมูลยังต้องนับรายการที่เข้าเงื่อนไขทั้งหมด
+
+- [x] ตรวจรอบ 2026-09-29: golden/regression เพิ่ม 51 เคส; `npm run verify` ผ่าน 1,695/1,695 tests (0 fail/skip), lint 0 errors/261 warnings และ typecheck ผ่าน; `npm run build` ผ่าน 71/71 static pages; mojibake ผ่าน; production audit critical 0 และไม่พบรายการ Next/sharp แต่ยังเหลือ high 9 ใน dependency อื่นนอกขอบเขตรอบนี้
 
 ## Error monitoring — เตือนผ่าน Telegram ที่มีอยู่แล้ว (2026-08-07)
 

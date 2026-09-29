@@ -2,7 +2,7 @@ import { getRequestContext, getRequestContextFromHeaders, safeWriteAuditLog } fr
 import { buildCustomerPhoneLookupValues, normalizeCustomerPhone } from "@/lib/customer-phone";
 import { db } from "@/lib/db";
 import { generateCustomerCode } from "@/lib/entity-code";
-import { AuditAction } from "@/lib/generated/prisma";
+import { AuditAction, Prisma } from "@/lib/generated/prisma";
 import { notifyLineCustomerLinked, type LineCustomerLinkKind } from "@/lib/notifications";
 
 /**
@@ -203,6 +203,47 @@ export async function resolveCustomerByLineUserId(lineUserId: string) {
   });
 }
 
+async function claimCustomerLineLink(
+  customerId: string,
+  lineUserId: string,
+  phone: string,
+): Promise<{ id: string; code: string | null; name: string } | null> {
+  try {
+    return await db.customer.update({
+      // Recheck the guard in the write itself: another LINE identity or an
+      // admin deactivation can win after the phone lookup has completed.
+      where: {
+        id: customerId,
+        isActive: true,
+        OR: [{ lineUserId: null }, { lineUserId: "" }, { lineUserId }],
+      },
+      data: { phone, lineUserId, lineLinkedAt: new Date() },
+      select: { id: true, code: true, name: true },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function blockCustomerLineLink(input: {
+  customer: { id: string; code: string | null; name: string };
+  lineUserId: string;
+  phone: string;
+  throttleKeys: string[];
+}): Promise<LiffLinkResult> {
+  await writeCustomerLineAudit({
+    action: AuditAction.LINE_LINK_BLOCKED,
+    customerId: input.customer.id,
+    customerRef: input.customer.code ?? input.customer.name,
+    meta: { lineUserId: input.lineUserId, phone: input.phone },
+  });
+  await recordLiffPhoneLookupFailure(input.throttleKeys);
+  return { status: "BLOCKED", message: LINE_ALREADY_LINKED_MESSAGE };
+}
+
 export async function resolveLiffCustomerFromPhone(input: {
   lineUserId: string;
   displayName: string | null;
@@ -257,17 +298,12 @@ export async function resolveLiffCustomerFromPhone(input: {
   const matchedCustomer = matchedCustomers[0];
 
   if (matchedCustomer?.lineUserId && matchedCustomer.lineUserId !== input.lineUserId) {
-    await writeCustomerLineAudit({
-      action: AuditAction.LINE_LINK_BLOCKED,
-      customerId: matchedCustomer.id,
-      customerRef: matchedCustomer.code ?? matchedCustomer.name,
-      meta: { lineUserId: input.lineUserId, phone: normalizedPhone },
+    return blockCustomerLineLink({
+      customer: matchedCustomer,
+      lineUserId: input.lineUserId,
+      phone: normalizedPhone,
+      throttleKeys: input.throttleKeys,
     });
-    await recordLiffPhoneLookupFailure(input.throttleKeys);
-    return {
-      status: "BLOCKED",
-      message: LINE_ALREADY_LINKED_MESSAGE,
-    };
   }
 
   if (matchedCustomer) {
@@ -275,15 +311,15 @@ export async function resolveLiffCustomerFromPhone(input: {
     // pre-existing admin-unlink history (not the link we're about to create).
     const wasUnlinkedByAdmin = await isCustomerPreviouslyUnlinkedByAdmin(matchedCustomer.id);
 
-    const customer = await db.customer.update({
-      where: { id: matchedCustomer.id },
-      data: {
-        phone: normalizedPhone,
+    const customer = await claimCustomerLineLink(matchedCustomer.id, input.lineUserId, normalizedPhone);
+    if (!customer) {
+      return blockCustomerLineLink({
+        customer: matchedCustomer,
         lineUserId: input.lineUserId,
-        lineLinkedAt: new Date(),
-      },
-      select: { id: true, code: true, name: true },
-    });
+        phone: normalizedPhone,
+        throttleKeys: input.throttleKeys,
+      });
+    }
 
     await writeCustomerLineAudit({
       action: AuditAction.LINE_LINK,

@@ -5,7 +5,13 @@ import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { addThailandDays, getThailandDateKey, parseDateOnlyToDate, formatDateThai } from "@/lib/th-date";
 import Pagination from "@/components/shared/Pagination";
-import { getLotExpiryPage } from "../lot-expiry-query";
+import {
+  chunkLotKeys,
+  compareLotsByExpiry,
+  groupLotKeysByProduct,
+  lotKeyOf,
+  pageSlice,
+} from "../lot-report-query";
 
 const LOT_PAGE_SIZE = 50;
 
@@ -57,8 +63,40 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
           return addThailandDays(today, parseInt(days, 10));
         })();
 
-  const { totalRows, lots: pagedLots } = await getLotExpiryPage(thresholdDate, page, LOT_PAGE_SIZE);
+  // Start from lots that still have stock, THEN look up their expiry. Filtering
+  // ProductLot first (with a row cap) let sold-out lots — which are never
+  // deleted — use up the cap and silently hide lots that still have stock.
+  const lotBalances = await db.lotBalance.findMany({
+    where: { qtyOnHand: { gt: 0 } },
+    select: { productId: true, lotNo: true, qtyOnHand: true },
+  });
+  const lotBalanceMap = new Map(
+    lotBalances.map((lotBalance) => [lotKeyOf(lotBalance), Number(lotBalance.qtyOnHand)]),
+  );
+
+  const matchedLots: { productId: string; lotNo: string; expDate: Date }[] = [];
+  for (const keyChunk of chunkLotKeys(lotBalances)) {
+    const chunkLots = await db.productLot.findMany({
+      where: {
+        OR: groupLotKeysByProduct(keyChunk),
+        expDate: {
+          not: null,
+          ...(thresholdDate ? { lte: thresholdDate } : {}),
+        },
+      },
+      select: { productId: true, lotNo: true, expDate: true },
+    });
+    for (const productLot of chunkLots) {
+      if (productLot.expDate) {
+        matchedLots.push({ productId: productLot.productId, lotNo: productLot.lotNo, expDate: productLot.expDate });
+      }
+    }
+  }
+  matchedLots.sort(compareLotsByExpiry);
+
+  const totalRows = matchedLots.length;
   const totalPages = Math.ceil(totalRows / LOT_PAGE_SIZE);
+  const pagedLots = pageSlice(matchedLots, page, LOT_PAGE_SIZE);
 
   const pageProductIds = [...new Set(pagedLots.map((lot) => lot.productId))];
   const pageProducts =
@@ -78,8 +116,8 @@ export default async function LotExpiryPage({ searchParams }: PageProps) {
 
   const pagedRows = pagedLots.flatMap((lot) => {
     const product = productMap.get(lot.productId);
-    const balance = lot.qtyOnHand;
-    if (!product || balance <= 0) {
+    const balance = lotBalanceMap.get(lotKeyOf(lot));
+    if (!product || balance == null || balance <= 0) {
       return [];
     }
 

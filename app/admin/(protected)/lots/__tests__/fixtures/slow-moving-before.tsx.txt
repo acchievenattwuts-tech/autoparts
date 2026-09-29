@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai, getThailandDateKey, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
-import { groupLotKeysByProduct } from "../lot-report-query";
 
 interface PageProps {
   searchParams: Promise<{ days?: string }>;
@@ -55,15 +54,17 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
     );
   }
 
-  const keys = balances.map((balance) => ({ productId: balance.productId, lotNo: balance.lotNo }));
-  // Match the actual pairs, rather than the Cartesian product of both lists.
+  const lotNos = [...new Set(balances.map((balance) => balance.lotNo))];
+  const balanceProductIds = [...new Set(balances.map((balance) => balance.productId))];
+  // productId narrows the scan: lot numbers such as LOT-001 repeat across
+  // products, and only (productId, lotNo) pairs present in `balances` are read.
   const saleLots = await db.saleItemLot.findMany({
     where: {
-      OR: groupLotKeysByProduct(keys).map(({ productId, lotNo }) => ({
-        lotNo,
-        saleItem: { productId },
-      })),
-      saleItem: { sale: { status: { not: "CANCELLED" } } },
+      lotNo: { in: lotNos },
+      saleItem: {
+        productId: { in: balanceProductIds },
+        sale: { status: { not: "CANCELLED" } },
+      },
     },
     select: {
       lotNo: true,
@@ -86,6 +87,7 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
     }
   }
 
+  const keys = balances.map((balance) => ({ productId: balance.productId, lotNo: balance.lotNo }));
   const productLots =
     keys.length > 0
       ? await db.productLot.findMany({

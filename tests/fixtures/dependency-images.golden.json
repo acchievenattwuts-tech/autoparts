@@ -1,0 +1,238 @@
+{
+  "baseline": {
+    "next": "16.3.1",
+    "sharp": "0.35.3"
+  },
+  "images": [
+    {
+      "name": "responsive product image with escaped alt",
+      "props": {
+        "src": "/products/part.png",
+        "alt": "Part <filter> & oil",
+        "width": 320,
+        "height": 180,
+        "sizes": "(max-width: 640px) 50vw, 20vw"
+      },
+      "html": "<img alt=\"Part &lt;filter&gt; &amp; oil\" loading=\"lazy\" width=\"320\" height=\"180\" decoding=\"async\" data-nimg=\"1\" style=\"color:transparent\" sizes=\"(max-width: 640px) 50vw, 20vw\" srcSet=\"/_next/image?url=%2Fproducts%2Fpart.png&amp;w=128&amp;q=75 128w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=256&amp;q=75 256w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=384&amp;q=75 384w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=640&amp;q=75 640w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=750&amp;q=75 750w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=828&amp;q=75 828w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1080&amp;q=75 1080w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1200&amp;q=75 1200w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1920&amp;q=75 1920w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=2048&amp;q=75 2048w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=3840&amp;q=75 3840w\" src=\"/_next/image?url=%2Fproducts%2Fpart.png&amp;w=3840&amp;q=75\"/>"
+    },
+    {
+      "name": "fill product rail image",
+      "props": {
+        "src": "/products/part.png",
+        "alt": "Product card",
+        "fill": true,
+        "sizes": "(max-width: 640px) 158px, 178px",
+        "className": "object-cover"
+      },
+      "html": "<img alt=\"Product card\" loading=\"lazy\" decoding=\"async\" data-nimg=\"fill\" class=\"object-cover\" style=\"position:absolute;height:100%;width:100%;left:0;top:0;right:0;bottom:0;color:transparent\" sizes=\"(max-width: 640px) 158px, 178px\" srcSet=\"/_next/image?url=%2Fproducts%2Fpart.png&amp;w=32&amp;q=75 32w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=48&amp;q=75 48w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=64&amp;q=75 64w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=96&amp;q=75 96w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=128&amp;q=75 128w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=256&amp;q=75 256w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=384&amp;q=75 384w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=640&amp;q=75 640w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=750&amp;q=75 750w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=828&amp;q=75 828w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1080&amp;q=75 1080w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1200&amp;q=75 1200w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=1920&amp;q=75 1920w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=2048&amp;q=75 2048w, /_next/image?url=%2Fproducts%2Fpart.png&amp;w=3840&amp;q=75 3840w\" src=\"/_next/image?url=%2Fproducts%2Fpart.png&amp;w=3840&amp;q=75\"/>"
+    },
+    {
+      "name": "unoptimized attachment image",
+      "props": {
+        "src": "/uploads/slip.png",
+        "alt": "Payment slip",
+        "width": 640,
+        "height": 320,
+        "unoptimized": true
+      },
+      "html": "<img alt=\"Payment slip\" loading=\"lazy\" width=\"640\" height=\"320\" decoding=\"async\" data-nimg=\"1\" style=\"color:transparent\" src=\"/uploads/slip.png\"/>"
+    },
+    {
+      "name": "preloaded logo",
+      "props": {
+        "src": "/logo.png",
+        "alt": "Logo",
+        "width": 180,
+        "height": 60,
+        "preload": true
+      },
+      "html": "<link rel=\"preload\" as=\"image\" imageSrcSet=\"/_next/image?url=%2Flogo.png&amp;w=256&amp;q=75 1x, /_next/image?url=%2Flogo.png&amp;w=384&amp;q=75 2x\"/><img alt=\"Logo\" width=\"180\" height=\"60\" decoding=\"async\" data-nimg=\"1\" style=\"color:transparent\" srcSet=\"/_next/image?url=%2Flogo.png&amp;w=256&amp;q=75 1x, /_next/image?url=%2Flogo.png&amp;w=384&amp;q=75 2x\" src=\"/_next/image?url=%2Flogo.png&amp;w=384&amp;q=75\"/>"
+    }
+  ],
+  "inputs": {
+    "png": "iVBORw0KGgoAAAANSUhEUgAAAAQAAAADCAYAAAC09K7GAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAL0lEQVQImWP4z8Dwn+E/QwMDw38QYGDgUbL4f2lL1IL/IOH//x3AZJSb0QEGqBIAi/kbI+ULK0gAAAAASUVORK5CYII=",
+    "avif": "AAAAHGZ0eXBhdmlmAAAAAG1pZjFhdmlmbWlhZgAAAXRtZXRhAAAAAAAAACFoZGxyAAAAAAAAAABwaWN0AAAAAAAAAAAAAAAAAAAAADRpbG9jAAAAAERAAAIAAQAAAAABmAABAAAAAAAAAG0AAgAAAAACBQABAAAAAAAAACgAAAA4aWluZgAAAAAAAgAAABVpbmZlAgAAAAABAABhdjAxAAAAABVpbmZlAgAAAAACAABhdjAxAAAAAA5waXRtAAAAAAABAAAAs2lwcnAAAACNaXBjbwAAAAxhdjFDgSACAAAAABNjb2xybmNseAABAA0AAIAAAAAUaXNwZQAAAAAAAAAEAAAAAwAAAA5waXhpAAAAAAEIAAAADGF2MUOBABwAAAAAOGF1eEMAAAAAdXJuOm1wZWc6bXBlZ0I6Y2ljcDpzeXN0ZW1zOmF1eGlsaWFyeTphbHBoYQAAAAAeaXBtYQAAAAAAAAACAAEEgQIDBAACBIUDBIYAAAAaaXJlZgAAAAAAAAAOYXV4bAACAAEAAQAAAJ1tZGF0EgAKCDgEeYQENACAMl8QAACMgafE2P/+9kQo4xGEh6JkGd3vyz7Ekc1TStk3dVNHqIv////////xJZb+/hQXDNd4LdwiSl0p0NXj0472IwPjGAQg//56QYW5PeQ0sLVTqu/kCGOhuNCFXabOqBIACgUYBHmFQDIdEACIagaLZOQ4PirWKWMGUbq1Qif51ooe6/tVFMA="
+  },
+  "transforms": [
+    {
+      "name": "PNG resized with alpha",
+      "input": "png",
+      "width": 2,
+      "height": 2,
+      "format": "png",
+      "expected": {
+        "width": 2,
+        "height": 2,
+        "channels": 4,
+        "pixels": [
+          135,
+          83,
+          39,
+          221,
+          55,
+          120,
+          201,
+          114,
+          140,
+          31,
+          119,
+          228,
+          145,
+          168,
+          108,
+          224
+        ]
+      }
+    },
+    {
+      "name": "PNG without enlargement",
+      "input": "png",
+      "width": 8,
+      "height": 8,
+      "format": "png",
+      "expected": {
+        "width": 4,
+        "height": 3,
+        "channels": 4,
+        "pixels": [
+          255,
+          0,
+          0,
+          255,
+          0,
+          255,
+          0,
+          128,
+          0,
+          0,
+          255,
+          255,
+          255,
+          255,
+          255,
+          0,
+          12,
+          34,
+          56,
+          255,
+          210,
+          180,
+          90,
+          160,
+          255,
+          255,
+          0,
+          255,
+          0,
+          255,
+          255,
+          64,
+          255,
+          0,
+          255,
+          255,
+          90,
+          70,
+          50,
+          192,
+          0,
+          0,
+          0,
+          255,
+          255,
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "name": "JPEG chat preview",
+      "input": "png",
+      "width": 2,
+      "height": 2,
+      "format": "jpeg",
+      "quality": 70,
+      "expected": {
+        "width": 2,
+        "height": 2,
+        "channels": 3,
+        "pixels": [
+          68,
+          56,
+          60,
+          84,
+          72,
+          76,
+          90,
+          78,
+          82,
+          132,
+          120,
+          124
+        ]
+      }
+    },
+    {
+      "name": "WebP attachment",
+      "input": "png",
+      "width": 2,
+      "height": 2,
+      "format": "webp",
+      "quality": 80,
+      "expected": {
+        "width": 2,
+        "height": 2,
+        "channels": 4,
+        "pixels": [
+          119,
+          88,
+          96,
+          221,
+          131,
+          100,
+          109,
+          114,
+          91,
+          60,
+          68,
+          228,
+          176,
+          145,
+          153,
+          224
+        ]
+      }
+    },
+    {
+      "name": "AVIF decode and resize with alpha",
+      "input": "avif",
+      "width": 2,
+      "height": 2,
+      "format": "png",
+      "expected": {
+        "width": 2,
+        "height": 2,
+        "channels": 4,
+        "pixels": [
+          135,
+          83,
+          39,
+          221,
+          55,
+          120,
+          201,
+          114,
+          140,
+          31,
+          119,
+          228,
+          145,
+          168,
+          108,
+          224
+        ]
+      }
+    }
+  ]
+}
