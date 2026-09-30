@@ -102,6 +102,13 @@ const ProfitDashboard = async ({
     data.selectedRange.netProfitAmount,
     data.previousRange.netProfitAmount,
   );
+  // % กำไรสุทธิยึดรายได้ก่อน VAT เสมอ ไม่ตามสวิตช์ basis เหมือน % Margin; รายได้ 0 ไม่แสดง %
+  const rangeNetMarginSuffix =
+    Math.abs(data.selectedRange.salesAmountExVat) > 0.0001
+      ? ` (${formatPercent(
+          (data.selectedRange.netProfitAmount / data.selectedRange.salesAmountExVat) * 100,
+        )})`
+      : "";
   const rangeSalesDelta = calcChange(selectedRangeSales, previousRangeSales);
   const rangeExpenseDelta = calcChange(
     data.selectedRange.expenseAmount,
@@ -187,7 +194,7 @@ const ProfitDashboard = async ({
     },
     {
       label: "กำไรสุทธิช่วงนี้",
-      value: `${formatMoney(data.selectedRange.netProfitAmount)} บาท`,
+      value: `${formatMoney(data.selectedRange.netProfitAmount)} บาท${rangeNetMarginSuffix}`,
       helper: `${rangeNetDelta >= 0 ? "+" : ""}${formatPercent(rangeNetDelta)} เทียบช่วงก่อนหน้าความยาวเท่ากัน`,
       positive: data.selectedRange.netProfitAmount >= data.previousRange.netProfitAmount,
     },
