@@ -72,9 +72,15 @@ function makeSale(mode: VatType, itemAmounts = [mode === "INCLUDING_VAT" ? 1070 
 }
 
 let sale = makeSale("NO_VAT");
-const expense = { id: "expense-1", expenseNo: "OE-1", expenseDate: date, status: "ACTIVE", channel: null,
-  netAmount: 107, totalAmount: 100, vatAmount: 7, cashBankAccount: null, note: null,
+/** 100 + 7% VAT; without a tax-invoice date the VAT is never recoverable (V7), so the expense is 107. */
+const baseExpense = { id: "expense-1", expenseNo: "OE-1", expenseDate: date, status: "ACTIVE", channel: null,
+  netAmount: 107, totalAmount: 100, subtotalAmount: 100, vatAmount: 7, vatType: "EXCLUDING_VAT", vatRate: 7,
+  taxInvoiceDate: null as Date | null, cashBankAccount: null, note: null,
   items: [{ id: "expense-item", amount: 100, description: "Test", expenseCode: { code: "OE", name: "Test" } }] };
+let expense = baseExpense;
+/** The vat_registered_from setting read through SiteContent (lib/input-vat.ts). */
+let registeredFrom: string | null = null;
+const siteContent = { findUnique: async () => (registeredFrom ? { value: registeredFrom } : null) };
 let creditNotes: ReturnType<typeof makeCreditNote>[] = [];
 let debits: { varianceAmount: number; vatAmount: number; vatRecoverable: boolean }[] = [];
 let rows: Prisma.FactProfitCreateInput[] = [];
@@ -100,14 +106,14 @@ before(async () => {
     expense: { findMany: async () => [expense] }, creditNote: { findMany: async () => creditNotes },
     supplierDebitNote: { findMany: async () => debits }, purchase: empty, purchaseReturn: empty,
     supplierAdvance: empty, customerAdvance: empty, supplierAdvanceRefund: empty, customerAdvanceRefund: empty,
-    supplierPayment: empty, warranty: empty, warrantyClaim: empty, receipt: empty, $queryRaw: async () => [],
+    supplierPayment: empty, warranty: empty, warrantyClaim: empty, receipt: empty, $queryRaw: async () => [], siteContent,
   } } });
   facts = await import("@/lib/profit-fact");
   reports = await import("@/lib/reports");
 });
 
 function fakeTx(): Parameters<typeof facts.rebuildSaleProfitFacts>[0] {
-  return { sale: { findUnique: async () => sale }, expense: { findUnique: async () => expense },
+  return { siteContent, sale: { findUnique: async () => sale }, expense: { findUnique: async () => expense },
     creditNote: { findUnique: async () => creditNotes[0] },
     factProfit: { updateMany: async () => { rows = []; return { count: 0 }; },
       aggregate: async () => ({ _max: { versionNo: 1 } }),
@@ -160,6 +166,30 @@ test("golden return excludes output VAT once, reverses historic cost, DN varianc
   assert.equal(report.profitLoss.creditNoteVat, 14);
   assert.equal(report.salesSummary.returnAmount, 214);
   assert.equal(report.salesSummary.netSaleAmount, 856);
+});
+
+test("V7 golden: a VAT expense with a tax invoice on/after registration is 100 in the fact and the P&L; VAT 7 is input tax", { skip: mocksUnavailable }, async () => {
+  sale = makeSale("NO_VAT"); creditNotes = []; debits = [];
+  expense = { ...baseExpense, taxInvoiceDate: date };
+  try {
+    registeredFrom = null;
+    await facts.rebuildExpenseProfitFacts(fakeTx(), expense.id);
+    assert.equal(Number(rows[0].expenseAmount), 107);
+    let report = await getReport();
+    assert.deepEqual([report.profitLoss.expenseTotal, report.profitLoss.expenseVat, report.profitLoss.netProfit], [107, 0, 293]);
+    registeredFrom = "2026-09-29";
+    await facts.rebuildExpenseProfitFacts(fakeTx(), expense.id);
+    assert.equal(Number(rows[0].expenseAmount), 100);
+    assert.equal(Number(rows[0].netProfitAmount), -100);
+    report = await getReport();
+    assert.deepEqual([report.profitLoss.expenseTotal, report.profitLoss.expenseVat, report.profitLoss.netProfit], [100, 7, 300]);
+    assert.equal(report.profitLoss.vatPayable, -7);
+    registeredFrom = "2026-09-30";
+    await facts.rebuildExpenseProfitFacts(fakeTx(), expense.id);
+    assert.equal(Number(rows[0].expenseAmount), 107, "a tax invoice dated before registration stays expense");
+  } finally {
+    expense = baseExpense; registeredFrom = null;
+  }
 });
 
 test("golden rebuilt sale includes shipping and discount and exactly matches posted header", { skip: mocksUnavailable }, async () => {

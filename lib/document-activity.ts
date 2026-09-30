@@ -572,27 +572,59 @@ async function getPurchaseReturnRelationEvents(id: string,
   ];
 }
 
+/**
+ * Purchase -> DN -> SupplierPayment, plus the "ปรับยอด DN" chain (R5-D): a parent lists its adjustments, an adjustment
+ * points back at its parent, and a reduction shows the payments that used its credit or the cash the supplier refunded.
+ */
 async function getSupplierDebitRelationEvents(id: string): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
   const debit = await db.supplierDebitNote.findUnique({
-    where: { id }, select: { purchase: { select: { id: true, purchaseNo: true, createdAt: true } } },
+    where: { id }, select: { netAmount: true, cashBankAccount: { select: { name: true } },
+      purchase: { select: { id: true, purchaseNo: true, createdAt: true } },
+      adjustsDebitNote: { select: { id: true, debitNo: true, createdAt: true } } },
   });
   if (!debit) return [];
+  // Sequential reads — see getSaleRelationEvents.
   const payments = await db.supplierPaymentItem.findMany({
     where: { debitNoteId: id, payment: { status: "ACTIVE" } },
     select: { paidAmount: true, payment: { select: { id: true, paymentNo: true, createdAt: true } } },
   });
+  const adjustments = await db.supplierDebitNote.findMany({
+    where: { adjustsDebitNoteId: id, status: "ACTIVE" }, orderBy: { createdAt: "asc" },
+    select: { id: true, debitNo: true, createdAt: true, netAmount: true },
+  });
+  const refunds = debit.adjustsDebitNote ? await db.documentPayment.findMany({
+    where: { docType: "SUPPLIER_DEBIT_REFUND", docId: id }, select: { id: true, amount: true, createdAt: true },
+  }) : [];
+  const credit = Number(debit.netAmount) < 0;
   return [
     buildRelationActivityEvent({
       id: `supplier-debit-${id}-purchase-${debit.purchase.id}`, kind: "USES_SOURCE",
       occurredAt: debit.purchase.createdAt, title: "อ้างอิงใบซื้อ",
       href: `/admin/purchases/${debit.purchase.id}`, hrefLabel: debit.purchase.purchaseNo, tone: "used",
     }),
+    ...(debit.adjustsDebitNote ? [buildRelationActivityEvent({
+      id: `supplier-debit-${id}-parent-${debit.adjustsDebitNote.id}`, kind: "USES_SOURCE",
+      occurredAt: debit.adjustsDebitNote.createdAt, title: "ปรับยอดจากใบเพิ่มหนี้",
+      href: `/admin/supplier-debit-notes/${debit.adjustsDebitNote.id}`, hrefLabel: debit.adjustsDebitNote.debitNo, tone: "used",
+    })] : []),
+    ...adjustments.map((adjustment) => buildRelationActivityEvent({
+      id: `supplier-debit-${id}-adjustment-${adjustment.id}`, kind: "USED_BY",
+      occurredAt: adjustment.createdAt, title: "ถูกปรับยอดโดยเอกสารปรับยอด DN",
+      description: `ยอดปรับ ${formatMoneyActivity(String(adjustment.netAmount))}`,
+      href: `/admin/supplier-debit-notes/${adjustment.id}`, hrefLabel: adjustment.debitNo, tone: "used",
+    })),
     ...payments.map((item) => buildRelationActivityEvent({
       id: `supplier-debit-${id}-payment-${item.payment.id}`, kind: "USED_BY",
-      occurredAt: item.payment.createdAt, title: "ถูกนำไปใช้ที่จ่ายชำระเจ้าหนี้",
-      description: `จ่ายชำระ ${formatMoneyActivity(String(item.paidAmount))}`,
+      occurredAt: item.payment.createdAt, title: credit ? "เครดิตถูกนำไปหักที่จ่ายชำระเจ้าหนี้" : "ถูกนำไปใช้ที่จ่ายชำระเจ้าหนี้",
+      description: `${credit ? "ใช้เครดิต" : "จ่ายชำระ"} ${formatMoneyActivity(String(item.paidAmount))}`,
       href: `/admin/supplier-payments/${item.payment.id}`, hrefLabel: item.payment.paymentNo, tone: "used",
+    })),
+    ...refunds.map((refund) => buildRelationActivityEvent({
+      id: `supplier-debit-${id}-refund-${refund.id}`, kind: "USED_BY",
+      occurredAt: refund.createdAt, title: "รับเงินคืนจากซัพพลายเออร์",
+      description: `${formatMoneyActivity(String(refund.amount))}${debit.cashBankAccount ? ` เข้าบัญชี ${debit.cashBankAccount.name}` : ""}`,
+      tone: "used",
     })),
   ];
 }
@@ -604,7 +636,7 @@ async function getSupplierPaymentRelationEvents(id: string,
     where: { paymentId: id },
     select: {
       paidAmount: true,
-      debitNote: { select: { id: true, debitNo: true, postingDate: true, createdAt: true } },
+      debitNote: { select: { id: true, debitNo: true, postingDate: true, createdAt: true, netAmount: true } },
       purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true,
         },
       },
@@ -619,10 +651,12 @@ async function getSupplierPaymentRelationEvents(id: string,
   return items.flatMap((item) => {
     const events: DocumentActivityEvent[] = [];
     if (item.debitNote) {
+      // A negative "ปรับยอด DN" line is supplier credit consumed by this payment, not a payable settled.
+      const credit = Number(item.debitNote.netAmount) < 0;
       events.push(buildRelationActivityEvent({
         id: `supplier-payment-${id}-debit-${item.debitNote.id}`, kind: "USES_SOURCE",
-        occurredAt: item.debitNote.createdAt, title: "จ่ายชำระใบเพิ่มหนี้เจ้าหนี้",
-        description: `ยอดจ่าย ${formatMoneyActivity(String(item.paidAmount))}`,
+        occurredAt: item.debitNote.createdAt, title: credit ? "ใช้เครดิตจากเอกสารปรับยอด DN" : "จ่ายชำระใบเพิ่มหนี้เจ้าหนี้",
+        description: `${credit ? "ใช้เครดิต" : "ยอดจ่าย"} ${formatMoneyActivity(String(item.paidAmount))}`,
         href: `/admin/supplier-debit-notes/${item.debitNote.id}`, hrefLabel: item.debitNote.debitNo, tone: "used",
       }));
     }

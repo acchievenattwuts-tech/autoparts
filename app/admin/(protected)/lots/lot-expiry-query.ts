@@ -16,19 +16,10 @@ type QueryRow = {
   qtyOnHand: Prisma.Decimal | null;
 };
 
-// JavaScript's previous comparator orders UTF-16 code units. Database locale
-// collations (and even UTF-8 byte order for supplementary characters) differ.
-const utf16SortKey = (column: Prisma.Sql): Prisma.Sql => Prisma.sql`
-  ARRAY(
-    SELECT unit
-    FROM regexp_split_to_table(${column}, '') WITH ORDINALITY AS chars(ch, pos)
-    CROSS JOIN LATERAL unnest(
-      CASE WHEN ascii(ch) > 65535 THEN
-        ARRAY[55296 + ((ascii(ch) - 65536) >> 10), 56320 + ((ascii(ch) - 65536) & 1023)]
-      ELSE ARRAY[ascii(ch)] END
-    ) WITH ORDINALITY AS units(unit, unitpos)
-    ORDER BY pos, unitpos
-  )`;
+// Ties on expDate sort by byte order (COLLATE "C") so paging is stable and
+// independent of the database locale. This matches the previous JavaScript
+// UTF-16 comparator for every BMP string; only supplementary characters
+// (e.g. emoji) vs U+E000-U+FFFF may order differently, which is accepted.
 
 /** Read-only SQL exception approved for this report; no schema changes. */
 export async function getLotExpiryPage(
@@ -45,9 +36,7 @@ export async function getLotExpiryPage(
       : Prisma.empty;
     const rows = await db.$queryRaw<QueryRow[]>(Prisma.sql`
       WITH matching AS NOT MATERIALIZED (
-        SELECT pl."productId", pl."lotNo", pl."expDate", lb."qtyOnHand",
-          ${utf16SortKey(Prisma.sql`pl."productId"`)} AS "productSort",
-          ${utf16SortKey(Prisma.sql`pl."lotNo"`)} AS "lotSort"
+        SELECT pl."productId", pl."lotNo", pl."expDate", lb."qtyOnHand"
         FROM "ProductLot" pl
         JOIN "LotBalance" lb
           ON lb."productId" = pl."productId" AND lb."lotNo" = pl."lotNo"
@@ -56,12 +45,12 @@ export async function getLotExpiryPage(
         SELECT count(*)::int AS "totalRows" FROM matching
       ), paged AS (
         SELECT * FROM matching
-        ORDER BY "expDate", "productSort", "lotSort"
+        ORDER BY "expDate", "productId" COLLATE "C", "lotNo" COLLATE "C"
         LIMIT ${validOffset ? pageSize : 0} OFFSET ${validOffset ? offset : 0}
       )
       SELECT total."totalRows", paged."productId", paged."lotNo", paged."expDate", paged."qtyOnHand"
       FROM total LEFT JOIN paged ON true
-      ORDER BY paged."expDate", paged."productSort", paged."lotSort"
+      ORDER BY paged."expDate", paged."productId" COLLATE "C", paged."lotNo" COLLATE "C"
     `);
     const lots = rows.flatMap((row): LotExpiryRow[] =>
       row.productId !== null && row.lotNo !== null && row.expDate !== null && row.qtyOnHand !== null

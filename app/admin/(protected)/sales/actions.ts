@@ -37,7 +37,8 @@ import {
 import { generateTrackingToken, TRACKING_LINK_TTL_MS } from "@/lib/delivery-tracking";
 import { enqueueSaleDeliveryLineNotification } from "@/lib/line-delivery-outbox";
 import { processSaleDeliveryLineDispatch } from "@/lib/line-delivery-worker";
-import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { buildRewrittenStockRowsWhere, getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { roundStoredMoney, SaleRevenueAllocationError, sumSaleLineTotals } from "@/lib/sale-profit-revenue";
 import {
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
@@ -77,6 +78,16 @@ import {
 } from "@/lib/document-payments";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  collectLineRemarkUpdates,
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+  resolveDocumentPeriodLock,
+} from "@/lib/period-lock-document";
+import { isSaleNonFinancialChange, loadSaleMoneyState } from "./sale-period-lock";
 import { formatDateOnlyForInput, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   parseWhtReceivedField,
@@ -96,6 +107,12 @@ import {
   resolveSalePaymentMethodFromAccounts,
   SaleCoreUserError,
 } from "@/lib/sale-core";
+import {
+  findSaleQuantityInputError,
+  formatSaleQuantity,
+  resolveSaleBaseQuantity,
+  SALE_BASE_QUANTITY_DECIMALS_ERROR,
+} from "@/lib/sale-quantity";
 
 const TRACKING_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 
@@ -358,7 +375,8 @@ async function getSaleAuditSnapshot(saleId: string) {
     creditTerm: sale.creditTerm,
     items: sale.items.map((item) => ({
       productId: item.productId,
-      quantity: item.quantity,
+      // A plain number keeps the audit JSON of integer quantities identical to the Int era.
+      quantity: Number(item.quantity),
       salePrice: item.salePrice,
       unitListPrice: item.unitListPrice,
       lineDiscount: item.lineDiscount,
@@ -491,6 +509,9 @@ export async function createSale(
     creditTerm,
     items: validItems,
   } = parsed.data;
+  // Every line of a new sale is new: at most 2 decimals (E7).
+  const quantityInputError = findSaleQuantityInputError(validItems);
+  if (quantityInputError) return { error: quantityInputError };
   // สามตัวนี้ถูก SQ ที่อ้างอิงทับค่าด้านล่าง จึงแยกออกมาเป็น let
   let customerId = parsed.data.customerId;
   let vatType = parsed.data.vatType;
@@ -572,7 +593,8 @@ export async function createSale(
   }
 
   // Calculate totals
-  const totalAmount = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
+  // Header product total = Σ stored (2-decimal) line totals, so it always reconciles with the lines.
+  const totalAmount = sumSaleLineTotals(validItems.map((item) => item.qty * item.salePrice));
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const deliveryValidationError = validateDeliveryFields({
@@ -657,6 +679,8 @@ export async function createSale(
         createdSaleId = "";
         await dbTx(async (tx) => {
           await prepareSaleQuotationReference(tx, null, quotationId);
+          // A new sale dated in a month whose profit was distributed is refused (no override on create).
+          await assertPeriodsUnlocked(tx, [docDate]);
           const quotationRevision = quotationId ? (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
           const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
             tx,
@@ -762,7 +786,8 @@ export async function createSale(
             if (!unit) throw new SaleUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
             const scale      = unit.scale;
-            const qtyInBase  = item.qty * scale;
+            const qtyInBase  = resolveSaleBaseQuantity(item.qty, scale, false);
+            if (qtyInBase === null) throw new SaleUserError(SALE_BASE_QUANTITY_DECIMALS_ERROR);
 
             const isTracked = isInventoryTracked(product.inventoryTracking);
             const costPerBase = resolveSaleUnitCost(product);
@@ -800,12 +825,12 @@ export async function createSale(
                 saleId:        sale.id,
                 lineNo:        itemIndex + 1,
                 productId:     item.productId,
-                quantity:      Math.round(qtyInBase),
+                quantity:      qtyInBase,
                 salePrice:     item.salePrice,
                 unitListPrice: item.unitListPrice,
                 lineDiscount:  item.lineDiscount,
                 costPrice:     costPerBase,
-                totalAmount:   itemTotal,
+                totalAmount:   roundStoredMoney(itemTotal),
                 subtotalAmount: itemSubtotal,
                 showQty:       item.qty,
                 showUnitName:  item.unitName,
@@ -835,7 +860,7 @@ export async function createSale(
               qtyIn:       0,
               qtyOut:      qtyInBase,
               priceIn:     0,
-              detail:      `ขาย ${item.qty} ${item.unitName}`,
+              detail:      `ขาย ${formatSaleQuantity(item.qty, { useGrouping: false })} ${item.unitName}`,
               referenceId: saleItem.id,
             }) : null;
 
@@ -992,6 +1017,7 @@ export async function createSale(
     });
     return { success: true, saleId: createdSaleId, saleNo };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (
       err instanceof QuotationError ||
       err instanceof SaleLotValidationError ||
@@ -1001,6 +1027,7 @@ export async function createSale(
     ) {
       return { error: err.message };
     }
+    if (err instanceof SaleRevenueAllocationError) return { error: err.userMessage };
     await reportCriticalError(err, { scope: "sales.create" });
     if (
       isManualMarketplaceChannel(channel) &&
@@ -1085,6 +1112,8 @@ export async function cancelSale(
   }
 
   const affectedProductIds = [...new Set(sale.items.map((i) => i.productId))];
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
@@ -1093,6 +1122,8 @@ export async function cancelSale(
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, saleId, null, sale.updatedAt);
       await assertSaleMutationAllowedInTx(tx, saleId, "cancel");
+      // Month lock: the Sale row is locked and unchanged since the read above (updatedAt checked).
+      periodLock = await assertPeriodsUnlocked(tx, [sale.saleDate], lockOverride);
       await auditSaleQuotationReference(tx, getAuditActorFromSession(session), saleId, sale.saleNo, previousQuotationId, null, true);
       await clearCashBankSourceMovements(tx, CashBankSourceType.SALE, saleId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.SALE, saleId);
@@ -1134,9 +1165,19 @@ export async function cancelSale(
         entityRef: afterSnapshot.saleNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null },
+        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "Sale",
+      entityId: saleId,
+      docNo: sale.saleNo,
+      action: "ยกเลิกใบขาย",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/sales/${saleId}`,
+    });
 
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
@@ -1145,6 +1186,7 @@ export async function cancelSale(
     if (sale.quotationId) revalidatePath(`/admin/sales-quotations/${sale.quotationId}`);
     return { success: true };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof QuotationError || err instanceof SaleUserError) return { error: err.message };
     await reportCriticalError(err, { scope: "sales.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -1326,7 +1368,8 @@ export async function updateSale(
     vatRate = Number(quotation.vatRate);
   }
 
-  const totalAmount     = validItems.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
+  // Header product total = Σ stored (2-decimal) line totals, so it always reconciles with the lines.
+  const totalAmount     = sumSaleLineTotals(validItems.map((item) => item.qty * item.salePrice));
   const discountedTotal = Math.max(0, totalAmount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType, vatRate);
   const deliveryValidationError = validateDeliveryFields({
@@ -1504,8 +1547,17 @@ export async function updateSale(
   const addedNewItems = newItemSigs.filter(
     (n) => !matchedByNewIdx.has(n.newIdx),
   );
+  // Only lines the user added or changed must have at most 2 decimals; a saved line
+  // that comes back unchanged never blocks the edit (E7).
+  const quantityInputError = findSaleQuantityInputError(validItems, (index) => matchedByNewIdx.has(index));
+  if (quantityInputError) return { error: quantityInputError };
 
   const useDifferential = !saleDateChanged;
+  // The StockCard rows step 1 deletes: only these are checked against a later supplier DN.
+  const rewrittenStockRows = buildRewrittenStockRowsWhere(
+    existing.saleNo,
+    useDifferential ? removedExistingItems.map((r) => r.existingItemId) : "ALL",
+  );
   const affectedProductIds = new Set<string>();
   removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
   addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
@@ -1513,6 +1565,91 @@ export async function updateSale(
   const stockDeductingProductIds = useDifferential
     ? addedNewItems.map((a) => a.productId)
     : validItems.map((item) => item.productId);
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
+  const storedSaleLines = existing.items.map((item) => ({
+    productId: item.productId,
+    quantity: Number(item.quantity),
+    showQty: item.showQty === null ? null : Number(item.showQty),
+    showUnitName: item.showUnitName,
+    salePrice: Number(item.salePrice),
+    unitListPrice: Number(item.unitListPrice),
+    warrantyDays: item.warrantyDays,
+    supplierId: item.supplierId,
+    supplierName: item.supplierName,
+    moreDetail: item.moreDetail,
+    lots: item.lotItems.map((lot) => ({ lotNo: lot.lotNo, qty: Number(lot.qty) })),
+  }));
+  // ก2/P4: true when the edit touches only note / customer display text / delivery info / line
+  // detail text (and the customer on a settled sale). Asked only when the month is locked.
+  const isNonFinancialSaleEdit = async (tx: Prisma.TransactionClient): Promise<boolean> => {
+    const money = await loadSaleMoneyState(tx, id);
+    return isSaleNonFinancialChange(
+      {
+        saleDate: existing.saleDate,
+        customerId: existing.customerId,
+        saleType: existing.saleType,
+        paymentType: existing.paymentType,
+        fulfillmentType: existing.fulfillmentType,
+        shippingMethod: existing.shippingMethod,
+        shippingFee: existing.shippingFee,
+        discount: existing.discount,
+        vatType: existing.vatType,
+        vatRate: existing.vatRate,
+        creditTerm: existing.creditTerm,
+        channelRefNo: existing.channelRefNo,
+        quotationId: existing.quotationId,
+        amountRemain: existing.amountRemain,
+        lines: storedSaleLines,
+        ...money,
+      },
+      {
+        saleDate: docDate,
+        customerId: customerId ?? null,
+        saleType,
+        paymentType,
+        fulfillmentType,
+        shippingMethod,
+        shippingFee,
+        discount,
+        vatType,
+        vatRate,
+        creditTerm: creditTerm ?? null,
+        channelRefNo: marketplaceConfig ? channelRefNo ?? null : existing.channelRefNo,
+        quotationId,
+        lines: validItems,
+        payments,
+        wht: wht
+          ? {
+              incomeTypeId: wht.incomeTypeId,
+              baseAmount: wht.baseAmount,
+              rate: wht.rate,
+              taxAmount: wht.taxAmount,
+              certNo: wht.certNo,
+              certDateKey: wht.certDate,
+            }
+          : null,
+      },
+      (line) => newUnitScaleMap.get(getSaleUnitKey(line.productId, line.unitName)) ?? 1,
+    );
+  };
+  const saveCustomerDefaultLocation = async (tx: Prisma.TransactionClient): Promise<void> => {
+    if (
+      saveAsCustomerDefault === "1" &&
+      customerId &&
+      fulfillmentType === FulfillmentType.DELIVERY &&
+      destLatitude !== undefined &&
+      destLongitude !== undefined
+    ) {
+      await tx.customer.update({
+        where: { id: customerId },
+        data: {
+          defaultLatitude:  destLatitude,
+          defaultLongitude: destLongitude,
+        },
+      });
+    }
+  };
 
   try {
     const requestContext = await getRequestContext();
@@ -1525,7 +1662,8 @@ export async function updateSale(
     await dbTx(async (tx) => {
       const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
-      await assertSaleMutationAllowedInTx(tx, id, "update");
+      // Old + new line products are locked in one sorted batch with the Sale's stock products.
+      await assertSaleMutationAllowedInTx(tx, id, "update", [...oldProductIds, ...validItems.map((item) => item.productId)], rewrittenStockRows);
       // The Sale row is locked now (prepareSaleQuotationReference) and createClaim
       // takes the same lock, so this re-read is final: any claim not seen by the
       // pre-check was opened meanwhile and may sit on a line about to be rebuilt.
@@ -1542,6 +1680,34 @@ export async function updateSale(
       if (newClaims.length > 0) {
         throw new SaleClaimLockError(buildConcurrentClaimError(newClaims.map((claim) => claim.claimNo)));
       }
+      // Month lock (owner decisions T2/ก1/ก2) — under the Sale row lock, before any write,
+      // on the stored and the new date. `existing` is current: its updatedAt was re-checked above.
+      const periodDecision = await resolveDocumentPeriodLock(tx, [existing.saleDate, docDate], {
+        override: lockOverride,
+        isNonFinancialOnly: () => isNonFinancialSaleEdit(tx),
+      });
+      if (periodDecision.kind === "non-financial") {
+        // Locked month, text-only edit: stock, receivable, payments, WHT and profit facts stay untouched.
+        await tx.sale.update({
+          where: { id },
+          data: {
+            customerId:      customerId      ?? null,
+            customerName:    customerName    ?? null,
+            customerPhone:   customerPhone   ?? null,
+            shippingAddress: shippingAddress ?? null,
+            destLatitude:    destLatitude    ?? null,
+            destLongitude:   destLongitude   ?? null,
+            note:            note            ?? null,
+          },
+        });
+        // Line detail text (P4): the lines matched one to one, so only their remark is saved.
+        for (const remark of collectLineRemarkUpdates(existing.items, validItems, ["moreDetail"])) {
+          await tx.saleItem.update({ where: { id: remark.id }, data: remark.data });
+        }
+        await saveCustomerDefaultLocation(tx);
+        return;
+      }
+      periodLock = periodDecision.result;
       await auditSaleQuotationReference(tx, getAuditActorFromSession(session), id, existing.saleNo, previousQuotationId, quotationId);
       const resolvedPaymentMethod = await resolveSalePaymentMethodFromAccounts(
         tx,
@@ -1632,12 +1798,10 @@ export async function updateSale(
       });
       // 2b. Sync header-derived fields on items we kept untouched in the
       //     differential path. subtotalAmount = calcItemSubtotal(itemTotal,
-      //     vatType, vatRate) lives on SaleItem, so it must follow the
-      //     header when VAT basis changes.
+      //     vatType, vatRate) lives on SaleItem; it is always recomputed so it
+      //     follows the header VAT and replaces values stored by the former
+      //     calcItemSubtotal bug.
       if (useDifferential && matchedByNewIdx.size > 0) {
-        const taxBasisChanged =
-          existing.vatType !== vatType ||
-          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const item = validItems[newIdx];
           const displayScale =
@@ -1655,7 +1819,7 @@ export async function updateSale(
               lineDiscount: item.lineDiscount,
               unitScale: displayScale,
               moreDetail: item.moreDetail || null,
-              ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
+              subtotalAmount: itemSubtotal,
             },
           });
         }
@@ -1679,7 +1843,9 @@ export async function updateSale(
         if (!unit) throw new SaleUserError(`ไม่พบหน่วยนับ ${item.unitName} ของสินค้า`);
 
         const scale     = unit.scale;
-        const qtyInBase = item.qty * scale;
+        // A date change rebuilds unchanged lines too; those are never refused.
+        const qtyInBase = resolveSaleBaseQuantity(item.qty, scale, matchedByNewIdx.has(newIdx));
+        if (qtyInBase === null) throw new SaleUserError(SALE_BASE_QUANTITY_DECIMALS_ERROR);
         const isTracked = isInventoryTracked(product.inventoryTracking);
         const costPerBase  = resolveSaleUnitCost(product);
 
@@ -1700,12 +1866,12 @@ export async function updateSale(
             saleId: id,
             lineNo: newIdx + 1,
             productId: item.productId,
-            quantity: Math.round(qtyInBase),
+            quantity: qtyInBase,
             salePrice: item.salePrice,
             unitListPrice: item.unitListPrice,
             lineDiscount: item.lineDiscount,
             costPrice: costPerBase,
-            totalAmount: itemTotal,
+            totalAmount: roundStoredMoney(itemTotal),
             subtotalAmount: itemSubtotal,
             showQty: item.qty,
             showUnitName: item.unitName,
@@ -1726,7 +1892,7 @@ export async function updateSale(
           qtyIn:       0,
           qtyOut:      qtyInBase,
           priceIn:     0,
-          detail:      `ขาย ${item.qty} ${item.unitName}`,
+          detail:      `ขาย ${formatSaleQuantity(item.qty, { useGrouping: false })} ${item.unitName}`,
           referenceId: saleItem.id,
         }) : null;
 
@@ -1791,21 +1957,7 @@ export async function updateSale(
         userId: session.user!.id!,
       });
 
-      if (
-        saveAsCustomerDefault === "1" &&
-        customerId &&
-        fulfillmentType === FulfillmentType.DELIVERY &&
-        destLatitude !== undefined &&
-        destLongitude !== undefined
-      ) {
-        await tx.customer.update({
-          where: { id: customerId },
-          data: {
-            defaultLatitude:  destLatitude,
-            defaultLongitude: destLongitude,
-          },
-        });
-      }
+      await saveCustomerDefaultLocation(tx);
     }, { timeout: 180_000 });
 
     // Customer default lat/long feeds the cached transaction dropdown options.
@@ -1831,8 +1983,19 @@ export async function updateSale(
         entityRef: afterSnapshot.saleNo,
         before: diff.before,
         after: diff.after,
+        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "Sale",
+      entityId: id,
+      docNo: existing.saleNo,
+      action: "แก้ไขใบขาย",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/sales/${id}`,
+    });
 
     if (
       saveAsCustomerDefault === "1" &&
@@ -1882,6 +2045,7 @@ export async function updateSale(
     });
     return { success: true };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (
       // QuotationError also carries the in-transaction concurrent-edit and
       // sale-status checks from prepareSaleQuotationReference.
@@ -1894,6 +2058,7 @@ export async function updateSale(
     ) {
       return { error: err.message };
     }
+    if (err instanceof SaleRevenueAllocationError) return { error: err.userMessage };
     await reportCriticalError(err, { scope: "sales.update", entityId: id, userId: session.user.id });
     if (
       marketplaceConfig &&

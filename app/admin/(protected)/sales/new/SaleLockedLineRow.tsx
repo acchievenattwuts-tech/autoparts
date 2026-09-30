@@ -3,6 +3,7 @@
 import { Lock } from "lucide-react";
 import type { LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 
 type SaleLockedLineRowProps = {
   index: number;
@@ -67,7 +68,7 @@ const SaleLockedLineRow = ({
           </p>
         </td>
         <td className={cellCls}>{unitName}</td>
-        <td className={cellCls}>{qty.toLocaleString("th-TH", { maximumFractionDigits: 4 })}</td>
+        <td className={cellCls}>{formatSaleQuantity(qty)}</td>
         <td className={cellCls}>{money(unitListPrice)}</td>
         <td className={`${cellCls} ${discountPerUnit > 0 ? "text-amber-700 dark:text-amber-300" : ""}`}>{money(discountPerUnit)}</td>
         <td className={`${cellCls} font-medium`}>{money(salePrice)}</td>

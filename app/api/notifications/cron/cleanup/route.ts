@@ -4,6 +4,10 @@ import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { reportCriticalError } from "@/lib/error-reporting";
+import {
+  deleteExpiredSaleDeliveryDispatches,
+  LINE_DELIVERY_DISPATCH_RETENTION_DAYS,
+} from "@/lib/line-delivery-worker";
 
 import { cleanupOldNotifications } from "@/lib/notifications";
 
@@ -22,6 +26,11 @@ import { cleanupOldNotifications } from "@/lib/notifications";
  *
  * Only rows that are BOTH already read AND past the window are removed, so an
  * unread alert is never deleted no matter how old it is.
+ *
+ * The same run also removes finished LINE delivery-card dispatch rows
+ * (ACCEPTED / SKIPPED / FAILED) older than LINE_DELIVERY_DISPATCH_RETENTION_DAYS,
+ * in bounded batches — they hold the recipient's LINE user id and name.
+ * PENDING / PROCESSING rows are never touched.
  */
 
 const RETENTION_DAYS = 30;
@@ -45,14 +54,32 @@ export async function GET(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
+  let deleted: number;
   try {
-    const deleted = await cleanupOldNotifications(RETENTION_DAYS);
+    deleted = await cleanupOldNotifications(RETENTION_DAYS);
     if (deleted > 0) {
       console.log(`[notification-cleanup] deleted ${deleted} read notifications`);
     }
-    return NextResponse.json({ ok: true, retentionDays: RETENTION_DAYS, deleted });
   } catch (error) {
     await reportCriticalError(error, { scope: "cron.notification_cleanup" });
     return NextResponse.json({ ok: false, error: "NOTIFICATION_CLEANUP_FAILED" }, { status: 500 });
+  }
+
+  try {
+    const deletedLineDeliveryDispatches = await deleteExpiredSaleDeliveryDispatches();
+    if (deletedLineDeliveryDispatches > 0) {
+      // Count only: the rows carry LINE user ids and customer names.
+      console.log(`[notification-cleanup] deleted ${deletedLineDeliveryDispatches} LINE delivery dispatch rows`);
+    }
+    return NextResponse.json({
+      ok: true,
+      retentionDays: RETENTION_DAYS,
+      deleted,
+      lineDeliveryDispatchRetentionDays: LINE_DELIVERY_DISPATCH_RETENTION_DAYS,
+      deletedLineDeliveryDispatches,
+    });
+  } catch (error) {
+    await reportCriticalError(error, { scope: "cron.line_delivery_dispatch_cleanup" });
+    return NextResponse.json({ ok: false, error: "LINE_DELIVERY_DISPATCH_CLEANUP_FAILED" }, { status: 500 });
   }
 }

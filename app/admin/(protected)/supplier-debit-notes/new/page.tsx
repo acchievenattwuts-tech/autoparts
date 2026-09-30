@@ -3,7 +3,9 @@ import type { JSX } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
-import { formatDateThai } from "@/lib/th-date";
+import { formatDateOnlyForInput, formatDateThai } from "@/lib/th-date";
+import { getVatRegisteredFrom } from "@/lib/input-vat";
+import { PERIOD_LOCK_OVERRIDE_PERMISSION } from "@/lib/period-lock";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import DebitForm, { type DebitPurchase } from "../DebitForm";
@@ -15,22 +17,26 @@ const PURCHASE_PICK_LIMIT = 100;
 
 const loadNewDebit = async ({ searchParams }: { searchParams: Promise<{ q?: string; purchaseId?: string }> }) => {
   try {
-    await requirePermission("supplier_debit_notes.create");
+    const session = await requirePermission("supplier_debit_notes.create");
+    // A DN posts today; if today's month is already distributed only an override holder may save it, with a reason.
+    const canOverride = (session.user.permissions ?? []).includes(PERIOD_LOCK_OVERRIDE_PERMISSION);
     const { q = "", purchaseId } = await searchParams;
-    const purchases = await db.purchase.findMany({ where: { status: "ACTIVE", supplierId: { not: null },
+    // V1: the form explains the DN's VAT treatment from the registration date; the server decides it again on save.
+    const [purchases, registeredFrom] = await Promise.all([db.purchase.findMany({ where: { status: "ACTIVE", supplierId: { not: null },
       ...(q ? { OR: [{ purchaseNo: { contains: q, mode: "insensitive" } }, { referenceNo: { contains: q, mode: "insensitive" } },
         { supplier: { name: { contains: q, mode: "insensitive" } } }] } : {}),
     }, orderBy: { purchaseDate: "desc" }, take: PURCHASE_PICK_LIMIT,
-      select: { id: true, purchaseNo: true, referenceNo: true, purchaseDate: true, netAmount: true, supplier: { select: { name: true } } } });
+      select: { id: true, purchaseNo: true, referenceNo: true, purchaseDate: true, netAmount: true, supplier: { select: { name: true } } } }),
+    getVatRegisteredFrom(db)]);
     const selected = purchaseId ? await db.purchase.findFirst({ where: { id: purchaseId, status: "ACTIVE", supplierId: { not: null } },
       select: debitPurchaseSelect }) : null;
     const purchase: DebitPurchase | null = selected ? toDebitPurchase(selected) : null;
-    return { q, purchaseId, purchases, purchase };
+    return { q, purchaseId, purchases, purchase, canOverride, vatRegisteredFrom: registeredFrom ? formatDateOnlyForInput(registeredFrom) : null };
   } catch (error) { console.error("[supplier-DN new]", error); throw error; }
 };
 
 const NewDebitPage = async ({ searchParams }: { searchParams: Promise<{ q?: string; purchaseId?: string }> }): Promise<JSX.Element> => {
-  const { q, purchaseId, purchases, purchase } = await loadNewDebit({ searchParams });
+  const { q, purchaseId, purchases, purchase, canOverride, vatRegisteredFrom } = await loadNewDebit({ searchParams });
   return (
     <div className="space-y-6">
       <Link href="/admin/supplier-debit-notes" className="inline-flex items-center gap-1 text-sm text-gray-500 transition-colors hover:text-[#1e3a5f] dark:text-slate-400 dark:hover:text-sky-300">
@@ -69,7 +75,7 @@ const NewDebitPage = async ({ searchParams }: { searchParams: Promise<{ q?: stri
         </div>
       </section>
 
-      {purchase ? <DebitForm key={purchase.id} purchase={purchase} /> : (
+      {purchase ? <DebitForm key={purchase.id} purchase={purchase} periodLock={{ canOverride, headerPeriods: [] }} vatRegisteredFrom={vatRegisteredFrom} /> : (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white px-6 py-10 text-center text-sm text-gray-500 dark:border-white/15 dark:bg-[#101b2e] dark:text-slate-400">
           {purchaseId ? "ไม่พบใบซื้อที่เลือก หรือใบซื้อถูกยกเลิกแล้ว" : "เลือกใบซื้อด้านบนเพื่อเริ่มกรอกใบเพิ่มหนี้"}
         </div>

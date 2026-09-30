@@ -13,6 +13,7 @@ import {
   type ProfitSectionContext,
 } from "@/app/admin/(protected)/ProfitSectionShared";
 import { getProfitCustomerSection, getRevenueAmountByBasis } from "@/lib/profit-dashboard";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 
 const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContext }) => {
   const section = await getProfitCustomerSection({
@@ -100,7 +101,7 @@ const ProfitCustomerSection = async ({ context }: { context: ProfitSectionContex
                   </td>
                   <td className="py-3 text-right">{row.invoiceCount.toLocaleString("th-TH")}</td>
                   <td className="py-3 text-right">
-                    {row.quantity.toLocaleString("th-TH", { maximumFractionDigits: 4 })}
+                    {formatSaleQuantity(row.quantity)}
                   </td>
                   <td className="py-3 text-right">
                     {formatMoney(

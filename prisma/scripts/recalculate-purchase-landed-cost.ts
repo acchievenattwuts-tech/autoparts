@@ -15,6 +15,12 @@
  *   3. UPDATE PurchaseItem.landedCost        = allocation / quantity   (per base unit)
  *   4. recalculateStockCard(productId)       — rebuild MAVG from scratch for every affected product
  *
+ * The allocation is the shared formula in lib/purchase-inventory-cost.ts (owner decision V2).
+ * Purchases with separate VAT (vatType ≠ NO_VAT and vatRate > 0) are REFUSED and only listed:
+ * their landed cost may hold the input-VAT exclusion of a recoverable INCLUDING_VAT purchase or
+ * the non-recoverable VAT of an EXCLUDING_VAT purchase, both decided by the VAT registration date
+ * at save time — re-save them from the purchase edit form instead, so this script can never undo it.
+ *
  * Usage:
  *   npx tsx prisma/scripts/recalculate-purchase-landed-cost.ts --dry-run
  *   npx tsx prisma/scripts/recalculate-purchase-landed-cost.ts        (writes)
@@ -23,33 +29,15 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient, Prisma } from "../../lib/generated/prisma";
 import { recalculateStockCard } from "../../lib/stock-card";
+import { allocatePurchaseLandedCost } from "../../lib/purchase-inventory-cost";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL, max: 1 });
 const db = new PrismaClient({ adapter });
 
-const roundMoney = (value: number): number =>
-  Math.round((value + Number.EPSILON) * 100) / 100;
-
-function allocateByLineValue(lineValues: number[], netAdjustment: number): number[] {
-  const rounded = roundMoney(netAdjustment);
-  const empty = lineValues.map(() => 0);
-  if (rounded === 0 || lineValues.length === 0) return empty;
-
-  const total = roundMoney(lineValues.reduce((sum, value) => sum + value, 0));
-  if (total <= 0) return empty;
-
-  let allocatedTotal = 0;
-  return lineValues.map((lineValue, index) => {
-    const amount =
-      index === lineValues.length - 1
-        ? roundMoney(rounded - allocatedTotal)
-        : roundMoney((rounded * lineValue) / total);
-    allocatedTotal = roundMoney(allocatedTotal + amount);
-    return amount;
-  });
-}
+/** Purchases this script may re-allocate: no separate VAT (see the header comment). */
+const WITHOUT_SEPARATE_VAT: Prisma.PurchaseWhereInput = { OR: [{ vatType: "NO_VAT" }, { vatRate: 0 }] };
 
 async function main() {
   console.log(DRY_RUN ? "🔍 DRY RUN — no changes will be written\n" : "✏️  WRITE mode — changes will be persisted\n");
@@ -58,16 +46,32 @@ async function main() {
   // currently-stored values (i.e. discount > 0). Purchases with only shippingFee
   // already had correct allocation; purchases with discount = 0 = shipping = 0
   // have nothing to allocate.
+  const refusedVatPurchases = await db.purchase.findMany({
+    where: { status: "ACTIVE", discount: { gt: 0 }, NOT: WITHOUT_SEPARATE_VAT },
+    select: { purchaseNo: true, vatType: true, vatRate: true },
+    orderBy: { purchaseDate: "asc" },
+  });
+  if (refusedVatPurchases.length > 0) {
+    console.log(`⛔ Refused ${refusedVatPurchases.length} ACTIVE purchases with separate VAT (re-save them from the edit form):`);
+    for (const refused of refusedVatPurchases) {
+      console.log(`   ${refused.purchaseNo}  ${refused.vatType} ${Number(refused.vatRate)}%`);
+    }
+    console.log("");
+  }
+
   const purchases = await db.purchase.findMany({
     where: {
       status: "ACTIVE",
       discount: { gt: 0 },
+      ...WITHOUT_SEPARATE_VAT,
     },
     select: {
       id: true,
       purchaseNo: true,
       shippingFee: true,
       discount: true,
+      vatType: true,
+      vatRate: true,
       items: {
         orderBy: { lineNo: "asc" },
         select: {
@@ -96,11 +100,15 @@ async function main() {
 
     // Line value uses stored base-unit numbers; quantity * costPrice equals the
     // original (selected qty × selected cost) because Prisma stores qty in base
-    // and costPrice per base.
-    const lineValues = purchase.items.map((item) =>
-      roundMoney(Number(item.costPrice) * Number(item.quantity)),
-    );
-    const allocations = allocateByLineValue(lineValues, netAdjustment);
+    // and costPrice per base. No separate VAT here, so the formula is shipping − discount.
+    const allocations = allocatePurchaseLandedCost({
+      lines: purchase.items.map((item) => ({ qty: Number(item.quantity), costPrice: Number(item.costPrice) })),
+      shippingFee,
+      discount,
+      vatType: purchase.vatType,
+      vatRate: Number(purchase.vatRate),
+      inputVatRecoverable: false,
+    });
 
     console.log(`📄 ${purchase.purchaseNo}  shipping=${shippingFee}  discount=${discount}  netAdj=${netAdjustment}`);
 

@@ -4,7 +4,6 @@ import { db } from "@/lib/db";
 import { resolveReportUnit, toReportUnitQty } from "@/lib/report-unit";
 import { requirePermission } from "@/lib/require-auth";
 import { formatDateThai, getThailandDateKey, parseDateOnlyToDate, startOfThailandDay } from "@/lib/th-date";
-import { groupLotKeysByProduct } from "../lot-report-query";
 
 interface PageProps {
   searchParams: Promise<{ days?: string }>;
@@ -56,14 +55,19 @@ export default async function SlowMovingPage({ searchParams }: PageProps) {
   }
 
   const keys = balances.map((balance) => ({ productId: balance.productId, lotNo: balance.lotNo }));
-  // Match the actual pairs, rather than the Cartesian product of both lists.
+  const lotNos = [...new Set(keys.map((key) => key.lotNo))];
+  const balanceProductIds = [...new Set(keys.map((key) => key.productId))];
+  // Two flat IN lists keep this to a single SaleItem join. A per-product `OR`
+  // of `saleItem: { productId }` makes Prisma emit one LEFT JOIN per branch.
+  // The IN × IN superset may return extra (productId, lotNo) pairs; the
+  // `${productId}:${lotNo}` map below only reads pairs present in `balances`.
   const saleLots = await db.saleItemLot.findMany({
     where: {
-      OR: groupLotKeysByProduct(keys).map(({ productId, lotNo }) => ({
-        lotNo,
-        saleItem: { productId },
-      })),
-      saleItem: { sale: { status: { not: "CANCELLED" } } },
+      lotNo: { in: lotNos },
+      saleItem: {
+        productId: { in: balanceProductIds },
+        sale: { status: { not: "CANCELLED" } },
+      },
     },
     select: {
       lotNo: true,

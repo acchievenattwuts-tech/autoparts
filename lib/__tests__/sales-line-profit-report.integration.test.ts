@@ -54,6 +54,7 @@ const saleItems = [
     unitListPrice: 100,
     lineDiscount: 10,
     totalAmount: 190,
+    sale: { vatType: "INCLUDING_VAT" },
   },
   {
     id: "line-2",
@@ -63,6 +64,7 @@ const saleItems = [
     unitListPrice: 50,
     lineDiscount: 0,
     totalAmount: 50,
+    sale: { vatType: "INCLUDING_VAT" },
   },
 ] as const;
 
@@ -84,8 +86,21 @@ const returnRow = {
   grossProfit: -34.11,
 } as const;
 
+// A DISCOUNT credit note writes value-only SALE_RETURN facts: quantity 0 and cost 0.
+const discountRow = {
+  ...returnRow,
+  sourceSubtype: "DISCOUNT",
+  quantity: 0,
+  salesAmountIncVat: -10.7,
+  salesAmountExVat: -10,
+  costAmount: 0,
+  grossProfit: -10,
+} as const;
+
 let fixtureMode: "SALE" | "RETURN" | "CANCELLED" = "SALE";
+let returnSubtype: "RETURN" | "DISCOUNT" = "RETURN";
 let capturedBillWhere: unknown = null;
+let capturedShippingWhere: unknown = null;
 let forcedLineCount: number | null = null;
 let aggregateCalls = 0;
 let factFindManyCalls = 0;
@@ -124,6 +139,27 @@ before(async () => {
             }
             billGroupCalls += 1;
             capturedBillWhere = args.where;
+            if (fixtureMode === "RETURN" && returnSubtype === "DISCOUNT") {
+              return [
+                {
+                  sourceType: "SALE_RETURN",
+                  sourceSubtype: "DISCOUNT",
+                  sourceId: "return-1",
+                  sourceDocNo: "CN202609160001",
+                  referenceDocNo: "IV202609150001",
+                  businessDate: discountRow.businessDate,
+                  customerName: "ลูกค้าทดสอบ",
+                  channel: "STORE",
+                  _sum: {
+                    quantity: 0,
+                    salesAmountIncVat: -10.7,
+                    salesAmountExVat: -10,
+                    costAmount: 0,
+                    grossProfit: -10,
+                  },
+                },
+              ];
+            }
             if (fixtureMode === "RETURN") {
               return [
                 {
@@ -165,6 +201,11 @@ before(async () => {
           },
           aggregate: async (args: { where?: { productId?: unknown } }) => {
             aggregateCalls += 1;
+            // Shipping is read from SALE facts without a product; only the sale fixture has one.
+            if (args.where?.productId === null) {
+              capturedShippingWhere = args.where;
+              return { _sum: { salesAmountIncVat: fixtureMode === "SALE" ? 10 : 0 } };
+            }
             return fixtureMode === "RETURN"
               ? args.where?.productId
                 ? { _sum: { salesAmountIncVat: -90 } }
@@ -193,7 +234,7 @@ before(async () => {
           findMany: async (args: FindManyArgs) => {
             factFindManyCalls += 1;
             return fixtureMode === "RETURN"
-              ? [returnRow]
+              ? [returnSubtype === "DISCOUNT" ? discountRow : returnRow]
               : args.where?.productId?.in
                 ? [productRows[0]]
                 : productRows;
@@ -272,6 +313,10 @@ test(
     assert.equal(data.totals.allocatedBillDiscount, 15);
     assert.equal(data.totals.shippingAmountIncVat, 10);
     assert.equal(data.totalLineCount, 1);
+    assert.equal(data.bills[0].documentLabel, "ขาย");
+    const shippingWhere = capturedShippingWhere as { sourceType?: unknown; productId?: unknown };
+    assert.equal(shippingWhere.sourceType, "SALE", "shipping comes from SALE facts only");
+    assert.equal(shippingWhere.productId, null);
   },
 );
 
@@ -320,7 +365,39 @@ test(
     assert.equal(data.lines[0].netSalesIncVat, -90);
     assert.equal(data.lines[0].costAmount, -50);
     assert.equal(data.lines[0].grossProfit, -34.11);
+    assert.equal(data.lines[0].documentLabel, "คืนสินค้า");
+    assert.equal(data.bills[0].documentLabel, "คืนสินค้า");
     assert.equal(data.totals.shippingAmountIncVat, 0);
+  },
+);
+
+test(
+  "discount credit note reduces revenue with zero quantity and cost and a type label",
+  { skip: moduleMocksUnavailable },
+  async () => {
+    fixtureMode = "RETURN";
+    returnSubtype = "DISCOUNT";
+    forcedLineCount = null;
+    try {
+      const filters = reportModule.parseSalesLineProfitFilters({
+        from: "2026-09-01",
+        to: "2026-09-30",
+        includeReturns: "1",
+      });
+      const data = await reportModule.querySalesLineProfitData(filters);
+
+      assert.equal(data.lines.length, 1);
+      // The CN line itself carries qty 1, but a discount returns no goods.
+      assert.equal(data.lines[0].quantity, 0);
+      assert.equal(data.lines[0].documentLabel, "ลดหนี้ (ส่วนลด)");
+      assert.equal(data.lines[0].netSalesExVat, -10);
+      assert.equal(data.lines[0].costAmount, 0);
+      assert.equal(data.bills[0].quantity, 0);
+      assert.equal(data.bills[0].documentLabel, "ลดหนี้ (ส่วนลด)");
+      assert.equal(data.totals.shippingAmountIncVat, 0);
+    } finally {
+      returnSubtype = "RETURN";
+    }
   },
 );
 

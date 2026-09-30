@@ -70,10 +70,10 @@ test("daily and profit dashboard reads use the same limiter instance", () => {
     /\bdb\.factProfit\.(?:aggregate|findMany|groupBy)\(/g,
   );
 
-  assert.equal(dailyDbReads?.length, 17);
+  assert.equal(dailyDbReads?.length, 18);
   assert.equal(
     dailySource.match(/runAdminDashboardRead\(\(\) =>\s*db\./g)?.length,
-    17,
+    18,
   );
   assert.equal(profitDbReads?.length, 14);
   assert.equal(

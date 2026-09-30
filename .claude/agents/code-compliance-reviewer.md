@@ -45,7 +45,7 @@ When reviewing code or decisions, systematically check against ALL applicable ru
 
 **Security (OWASP)**
 - All server-side input validated with Zod — never trust client data
-- No raw SQL — Prisma parameterized API only
+- Prisma parameterized API first; tagged-template `$queryRaw` / `Prisma.sql` with bound parameters only when the API cannot express the query efficiently — never `$queryRawUnsafe` / `$executeRawUnsafe` or values interpolated into SQL strings
 - No `dangerouslySetInnerHTML` unless content is sanitized
 - Every Server Action that mutates data must verify the user session at the top
 - Passwords hashed with `bcryptjs` (min cost factor 12) — never plaintext

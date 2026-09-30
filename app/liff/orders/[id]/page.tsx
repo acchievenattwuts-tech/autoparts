@@ -10,6 +10,7 @@ import { getTrackingContactPhone, isTrackingExpired } from "@/lib/delivery-track
 import { getLiffCustomer } from "@/lib/liff-data";
 import { getPublicSiteConfig } from "@/lib/site-config";
 import { formatDateThai } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 import InlineDeliveryTracker from "./InlineDeliveryTracker";
 import PaymentHistory from "./PaymentHistory";
 
@@ -313,7 +314,7 @@ export default async function LiffOrderDetailPage({
                   <div>
                     <p className="font-semibold text-slate-900 dark:text-slate-200">{item.product.name}</p>
                     <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {Number(item.quantity).toLocaleString("th-TH")} {item.product.saleUnitName} x {money(item.salePrice)}
+                      {formatSaleQuantity(item.quantity)} {item.product.saleUnitName} x {money(item.salePrice)}
                     </p>
                   </div>
                   <p className="shrink-0 font-bold text-slate-950 dark:text-slate-100">{money(item.totalAmount)}</p>

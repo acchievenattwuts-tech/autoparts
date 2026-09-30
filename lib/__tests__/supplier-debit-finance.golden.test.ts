@@ -4,7 +4,7 @@ import { Prisma, type DocStatus } from "@/lib/generated/prisma";
 
 const mocksUnavailable = typeof (mock as { module?: unknown }).module !== "function" && "requires module mocks";
 const postingDate = new Date("2026-09-29T00:00:00+07:00");
-const debit = { id: "dn-1", debitNo: "SDN26090001", postingDate, dueDate: postingDate, status: "ACTIVE" as DocStatus,
+const debit = { id: "dn-1", debitNo: "SDN26090001", postingDate, receivedDate: postingDate, dueDate: postingDate, status: "ACTIVE" as DocStatus,
   supplierId: "sup-1", supplier: { name: "Supplier A" }, purchase: { purchaseNo: "PU26090001" },
   netAmount: new Prisma.Decimal(500), amountRemain: new Prisma.Decimal(375),
   varianceAmount: new Prisma.Decimal(300), vatAmount: new Prisma.Decimal(0), vatRecoverable: true,

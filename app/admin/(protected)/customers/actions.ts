@@ -375,7 +375,10 @@ export async function toggleCustomer(
 
     const updatedCustomer = await db.customer.update({
       where: { id },
-      data: { isActive },
+      // Deactivation also releases the LINE link so the LINE account can be
+      // linked again later instead of hitting a unique conflict on lineUserId.
+      // Reactivation never restores it; the customer links again through LIFF.
+      data: isActive ? { isActive } : { isActive, lineUserId: null, lineLinkedAt: null },
       select: {
         id: true,
         code: true,
@@ -406,7 +409,9 @@ export async function toggleCustomer(
       entityRef: updatedCustomer.code ?? updatedCustomer.name,
       before: diff.before,
       after: diff.after,
-      meta: { isActive },
+      // A deactivation that released a LINE link counts as an admin unlink, so a
+      // later LIFF link after reactivation is reported as a relink.
+      meta: !isActive && existingCustomer.lineUserId ? { isActive, lineUnlinkedByAdmin: true } : { isActive },
     });
     revalidatePath("/admin/customers");
     invalidateTransactionCustomerOptions();

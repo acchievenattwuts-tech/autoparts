@@ -12,6 +12,8 @@ import {
   isManualMarketplaceChannel,
 } from "@/lib/marketplace/config";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
+import { getSettlementFeeDatingViews } from "@/lib/marketplace/queries";
+import SettlementFeeDatingNotice from "@/app/admin/(protected)/sales/_marketplace/SettlementFeeDatingNotice";
 
 const money = (value: unknown) =>
   Number(value ?? 0).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,6 +70,7 @@ export default async function MarketplaceSettlementDetailPage({
   });
 
   if (!settlement) notFound();
+  const feeDating = (await getSettlementFeeDatingViews([settlement.id])).get(settlement.id) ?? null;
   const config = isManualMarketplaceChannel(settlement.channel)
     ? getMarketplaceChannelConfig(settlement.channel)
     : null;
@@ -142,6 +145,8 @@ export default async function MarketplaceSettlementDetailPage({
           </p>
         </div>
       </div>
+
+      <SettlementFeeDatingNotice dating={feeDating} />
 
       <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-[#101b2e]">
         <h2 className="mb-4 font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test, { before, beforeEach, mock } from "node:test";
 
-// Shopee order import: the sale is dated on the Shopee order date, so an order
-// approved later is often backdated. The out-of-stock alert therefore compares
-// stock before the import with stock after commit (like the admin sale form):
+// Shopee order import: the sale is posted on the Thai business date of approval
+// (date-only saleDate); the Shopee order date is kept as a reference only. The
+// out-of-stock alert compares stock before the import with stock after commit
+// (like the admin sale form):
 // tracked products that still had stock are handed, with the new sale id, to
 // dispatchOutOfStockAlerts, which alerts those now at zero. writeStockCard is
 // mocked, so nothing here depends on its crossedToZero flag.
@@ -121,7 +122,7 @@ const orderImport = {
   id: "import-1",
   orderSn: "2609150ABC",
   buyerUsername: "buyer_01",
-  // Ordered three days before approval: the sale is backdated to this date.
+  // Ordered three days before approval: a reference only, never the sale date.
   orderCreatedAt: new Date("2026-09-14T17:00:00.000Z"),
   totalAmount: null,
   rawPayload: {
@@ -175,7 +176,7 @@ beforeEach(() => {
   };
 });
 
-test("a backdated Shopee import hands the tracked products that still had stock and the new sale id to the alert", { skip: moduleMocksUnavailable }, async () => {
+test("a Shopee import approved after the order date hands the tracked products that still had stock and the new sale id to the alert", { skip: moduleMocksUnavailable }, async () => {
   const { createSaleFromShopeeOrder } = await import("../services/create-sale");
 
   const result = await createSaleFromShopeeOrder({ orderImportId: "import-1", approverUserId: "user-1" });
@@ -223,4 +224,29 @@ test("a Shopee sale is posted on the approval date as a date-only Thai start of 
   const saleCreate = txCalls.find((call) => call.method === "sale.create")?.args as { data: { saleDate: Date } };
   // A time-of-day saleDate would sort after same-day stock rows and block a same-day Supplier DN.
   assert.equal(saleCreate.data.saleDate.getTime(), parseDateOnlyToDate(getThailandDateKey()).getTime());
+});
+
+test("a Shopee import is refused before any write when today's month was already distributed", { skip: moduleMocksUnavailable }, async () => {
+  // Month lock (lib/period-lock.ts): the import posts on today's Thai date, so only a declared
+  // current month can stop it; no override is offered on create.
+  const { getThailandMonthKey } = await import("@/lib/th-date");
+  const currentMonth = getThailandMonthKey();
+  txOverrides.profitDistribution = {
+    findMany: async (args: unknown) =>
+      (args as { where: { activePeriodKey: { in: string[] } } }).where.activePeriodKey.in.includes(currentMonth)
+        ? [{ activePeriodKey: currentMonth, distributionNo: "PD0001" }]
+        : [],
+  };
+  const { createSaleFromShopeeOrder } = await import("../services/create-sale");
+
+  const result = await createSaleFromShopeeOrder({ orderImportId: "import-1", approverUserId: "user-1" });
+
+  assert.equal(result.ok, false);
+  assert.ok(!result.ok && result.error.includes("PD0001"));
+  assert.deepEqual(
+    txCalls.filter((call) => /\.(create|createMany|update|updateMany|upsert|delete|deleteMany)$/.test(call.method)),
+    [],
+    "not even the import claim is written",
+  );
+  assert.deepEqual(dispatches, []);
 });

@@ -16,7 +16,10 @@ import {
   PURCHASE_OCR_MAX_FILES,
   PURCHASE_OCR_MAX_FILE_BYTES,
   PURCHASE_OCR_MAX_TOTAL_BYTES,
+  describePurchaseOcrVat,
+  mapPurchaseOcrVatToForm,
   type PurchaseOcrExtraction,
+  type PurchaseOcrFormVat,
   type PurchaseOcrMatchConfidence,
 } from "@/lib/purchase-invoice-ocr-types";
 import {
@@ -58,7 +61,8 @@ export interface AppliedOcrItem {
 
 interface Props {
   existingProducts: PurchaseProductOption[];
-  onApply: (items: AppliedOcrItem[], chosenProducts: PurchaseProductOption[]) => void;
+  /** V6: `vat` carries the invoice's VAT type/rate and tax invoice number/date for the form. */
+  onApply: (items: AppliedOcrItem[], chosenProducts: PurchaseProductOption[], vat: PurchaseOcrFormVat) => void;
   disabled?: boolean;
 }
 
@@ -106,6 +110,11 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
   }, [existingProducts, candidatePool]);
 
   const mergedProductList = useMemo(() => Array.from(productPool.values()), [productPool]);
+  // V6: how the invoice's VAT will be set on the form (line prices stay as printed).
+  const ocrVat = useMemo(
+    () => (extraction ? mapPurchaseOcrVatToForm(extraction, extraction.lines) : null),
+    [extraction],
+  );
 
   // Derive object-URL previews from files (no setState-in-effect), and revoke them
   // on change/unmount to avoid leaks.
@@ -274,11 +283,13 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
       return;
     }
 
-    onApply(items, Array.from(chosen.values()));
+    const vat = ocrVat ?? mapPurchaseOcrVatToForm(extraction, extraction.lines);
+    onApply(items, Array.from(chosen.values()), vat);
     setFiles([]);
     resetReview();
     setInfo(
-      `เติม ${items.length} รายการลงฟอร์มแล้ว — กรุณาตรวจสอบจำนวน ราคา และหน่วยนับที่ AI กรอกก่อนบันทึก`,
+      `เติม ${items.length} รายการลงฟอร์มแล้ว และตั้งภาษีเป็น "${describePurchaseOcrVat(vat)}" ตามเอกสาร ` +
+        "— กรุณาตรวจสอบจำนวน ราคา หน่วยนับ ภาษี และเลขที่/วันที่ใบกำกับภาษีที่ AI กรอกก่อนบันทึก",
     );
   };
 
@@ -396,6 +407,24 @@ const PurchaseInvoiceUploader = ({ existingProducts, onApply, disabled = false }
               {extraction.supplierName && <span>ผู้ขาย: {extraction.supplierName}</span>}
               {extraction.referenceNo && <span>เลขที่เอกสาร: {extraction.referenceNo}</span>}
               {extraction.invoiceDate && <span>วันที่: {extraction.invoiceDate}</span>}
+            </div>
+          )}
+
+          {ocrVat && (
+            <div className="mb-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200">
+              <p>
+                ภาษีตามเอกสาร: <span className="font-semibold">{describePurchaseOcrVat(ocrVat)}</span>
+                {ocrVat.taxInvoiceNo ? ` · ใบกำกับภาษี ${ocrVat.taxInvoiceNo}` : ""}
+                {ocrVat.taxInvoiceDate ? ` · วันที่ ${ocrVat.taxInvoiceDate}` : ""}
+                {" "}— ระบบจะตั้งค่านี้ในฟอร์มเมื่อกดเติมรายการ (ราคาต่อหน่วยคงตามที่พิมพ์)
+              </p>
+              {ocrVat.notes.length > 0 && (
+                <ul className="mt-1 list-disc pl-4">
+                  {ocrVat.notes.map((note) => (
+                    <li key={note}>{note}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

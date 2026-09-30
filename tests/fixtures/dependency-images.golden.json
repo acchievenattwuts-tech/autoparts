@@ -233,6 +233,59 @@
           224
         ]
       }
+    },
+    {
+      "name": "Grayscale WebP payment slip and expense attachment (EXIF-rotated)",
+      "input": "generated-exif-rgb",
+      "width": 4,
+      "height": 4,
+      "format": "webp",
+      "quality": 60,
+      "grayscale": true,
+      "capturedWith": "sharp 0.35.5",
+      "expected": {
+        "width": 3,
+        "height": 4,
+        "channels": 3,
+        "pixels": [
+          194,
+          194,
+          194,
+          100,
+          100,
+          100,
+          27,
+          27,
+          27,
+          200,
+          200,
+          200,
+          112,
+          112,
+          112,
+          48,
+          48,
+          48,
+          210,
+          210,
+          210,
+          129,
+          129,
+          129,
+          77,
+          77,
+          77,
+          213,
+          213,
+          213,
+          141,
+          141,
+          141,
+          98,
+          98,
+          98
+        ]
+      }
     }
   ]
 }

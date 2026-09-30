@@ -2,7 +2,8 @@
 
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
-import CancelDocButton from "@/components/shared/CancelDocButton";
+import { PeriodLockCancelButton } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { CLAIM_CANCEL_NOTE_MAX_LENGTH, CLAIM_DELETED_SEARCH_PARAM } from "@/lib/warranty-claim-policy";
 import { cancelClaimAction } from "./actions";
 
@@ -11,10 +12,13 @@ const CancelClaimButton = ({
   claimNo,
   disabledReason,
   deletesClaim,
+  periodLock = null,
 }: {
   claimId: string;
   claimNo: string;
   disabledReason?: string | null;
+  /** Any posting month of the claim was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
   /** True for a claim on a sale warranty: cancelling deletes it (on-site claims are kept). */
   deletesClaim: boolean;
 }) => {
@@ -28,7 +32,8 @@ const CancelClaimButton = ({
   };
 
   return (
-    <CancelDocButton
+    <PeriodLockCancelButton
+      periodLock={periodLock}
       docId={claimId}
       docNo={claimNo}
       idFieldName="claimId"

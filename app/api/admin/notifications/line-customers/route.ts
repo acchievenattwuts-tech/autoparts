@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { db } from "@/lib/db";
-import { AuditAction } from "@/lib/generated/prisma";
 import { isLineCustomerProfileIncomplete } from "@/lib/line-customer-profile";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { requirePermission } from "@/lib/require-auth";
+
+import { findRelinkedCustomerIds, LINE_LINK_STATE_AUDIT_ACTIONS } from "./relink";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -34,13 +35,6 @@ const querySchema = z.object({
 
 const safeError = (message: string, status = 500) =>
   NextResponse.json({ error: message }, { status });
-
-const hasAdminLineUnlinkMeta = (meta: unknown): boolean =>
-  typeof meta === "object" &&
-  meta !== null &&
-  !Array.isArray(meta) &&
-  "lineUnlinkedByAdmin" in meta &&
-  meta.lineUnlinkedByAdmin === true;
 
 export const GET = async (request: Request): Promise<NextResponse> => {
   try {
@@ -89,32 +83,29 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       const relinkCandidateIds = customers
         .filter((customer) => customer.source !== "LINE_LIFF" && customer.lineUserId && customer.lineLinkedAt)
         .map((customer) => customer.id);
-      const customersById = new Map(customers.map((customer) => [customer.id, customer]));
-      const unlinkLogs = relinkCandidateIds.length
+      const linkStateLogs = relinkCandidateIds.length
         ? await db.auditLog.findMany({
             where: {
-              action: AuditAction.UPDATE,
+              action: { in: LINE_LINK_STATE_AUDIT_ACTIONS },
               entityType: "Customer",
               entityId: { in: relinkCandidateIds },
             },
             orderBy: { createdAt: "desc" },
             select: {
+              action: true,
               entityId: true,
               createdAt: true,
               meta: true,
+              before: true,
+              after: true,
             },
           })
         : [];
-      const relinkedCustomerIds = new Set<string>();
-
-      for (const log of unlinkLogs) {
-        if (!log.entityId || !hasAdminLineUnlinkMeta(log.meta)) continue;
-        const customer = customersById.get(log.entityId);
-        if (!customer?.lineLinkedAt) continue;
-        if (log.createdAt.getTime() < customer.lineLinkedAt.getTime()) {
-          relinkedCustomerIds.add(customer.id);
-        }
-      }
+      // Same rule as the LIFF link flow: the newest LINE link-state event before the current link wins.
+      const relinkedCustomerIds = findRelinkedCustomerIds(
+        customers.filter((customer) => relinkCandidateIds.includes(customer.id)),
+        linkStateLogs,
+      );
 
       return NextResponse.json({
         items: customers.map((customer) => {

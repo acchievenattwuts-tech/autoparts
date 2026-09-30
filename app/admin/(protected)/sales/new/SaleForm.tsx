@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { createSale, loadSaleProductsByIds, searchSaleProducts, updateSale } from "../actions";
 import { Plus, Trash2, CheckCircle, CheckCircle2, MapPin, Users, Zap } from "lucide-react";
 import PrintCopyModeLink from "@/app/admin/_components/print/PrintCopyModeLink";
+import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -40,6 +42,17 @@ import {
   type SaleFormLineItem,
 } from "../sale-form-data";
 import SaleLockedLineRow from "./SaleLockedLineRow";
+import SaleRoundingConfirm from "./SaleRoundingConfirm";
+import { buildSaleRoundingRows } from "../sale-rounding";
+import { comparableSaleCreditTerm } from "../sale-credit-term";
+import { roundStoredMoney, sumSaleLineTotals } from "@/lib/sale-profit-revenue";
+import {
+  isItemQuantityInputValid,
+  ITEM_QUANTITY_DECIMALS_ERROR,
+  ITEM_QUANTITY_INPUT_STEP,
+  itemQuantityInputStep,
+  itemQuantityLineKey,
+} from "@/lib/item-quantity";
 import { resolveNormalPrice } from "@/lib/pricing/resolve-price";
 import { resolveScheduledPrice } from "@/lib/pricing/price-promotion";
 
@@ -232,6 +245,9 @@ const SaleForm = ({
   defaultCustomerId = "",
   defaultCashBankAccountId = "",
   whtIncomeTypes = [],
+  periodLock = null,
+  periodLockHint,
+  periodLockCustomerEditable = false,
 }: {
   initialQuotationId?: string;
   canReferenceQuotation?: boolean;
@@ -254,6 +270,11 @@ const SaleForm = ({
   defaultCustomerId?: string;
   defaultCashBankAccountId?: string;
   whtIncomeTypes?: WhtIncomeTypeOption[];
+  /** Edit only: the sale's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  periodLockHint?: string;
+  /** Edit only: in the locked month the customer may change without the override (settled sale). */
+  periodLockCustomerEditable?: boolean;
 }) => {
   const isMarketplace = channel !== "STORE";
   const marketplaceLabel = channelLabel || channel;
@@ -279,6 +300,8 @@ const SaleForm = ({
     return { rows, lots: state };
   });
   const [items, setItems]         = useState<FormLineItem[]>(seededRows.rows);
+  // A saved line that comes back unchanged is never re-validated for decimals (E7).
+  const [savedQuantityKeys] = useState(() => new Set((initialData?.items ?? []).map(itemQuantityLineKey)));
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialData?.customerId ?? defaultCustomerId);
   const [channelRefNo, setChannelRefNo] = useState(initialData?.channelRefNo ?? "");
   const [customerNameOverride, setCustomerNameOverride] = useState(initialData?.customerName ?? "");
@@ -363,6 +386,10 @@ const SaleForm = ({
     persistedSaleId ? { mode: "edit", saleId: persistedSaleId } : { mode: "new" },
   )}${isMarketplace && !persistedSaleId ? `:${channel.toLowerCase()}` : ""}`;
   const lastPersistedDraftRef = useRef("");
+  const formRef = useRef<HTMLFormElement>(null);
+  /** Set by the in-page rounding confirmation for the one submit it triggers. */
+  const roundingConfirmedRef = useRef(false);
+  const [roundingConfirmOpen, setRoundingConfirmOpen] = useState(false);
 
   const getDraftSnapshot = useCallback(() =>
     JSON.stringify({
@@ -725,7 +752,13 @@ const SaleForm = ({
   const getUnits = (productId: string) =>
     productMap.get(productId)?.units ?? [];
 
-  const totalAmount = items.reduce((sum, it) => sum + it.qty * it.salePrice, 0);
+  // Same header rule as the server (Σ stored 2-decimal line totals), so payments match its netAmount.
+  const totalAmount = sumSaleLineTotals(items.map((it) => it.qty * it.salePrice));
+  const roundingRows = buildSaleRoundingRows(items.map((it) => ({
+    qty: it.qty,
+    salePrice: it.salePrice,
+    productName: productMap.get(it.productId)?.name ?? "-",
+  })));
   const totalLineDiscount = items.reduce((sum, it) => sum + it.lineDiscount, 0);
   const hasActivePromotion = items.some((item) =>
     (productMap.get(item.productId)?.pricePromotions ?? []).some(
@@ -744,6 +777,34 @@ const SaleForm = ({
   /** ยอดขายยังเป็น netAmount เต็ม แต่เงินที่รับจริงคือยอดหลังถูกหักภาษี ณ ที่จ่าย */
   const whtAmount = paymentType === "CASH_SALE" ? Math.round((wht?.taxAmount ?? 0) * 100) / 100 : 0;
   const cashTotal = Math.round((netAmount - whtAmount) * 100) / 100;
+
+  // P3: what updateSale compares in a locked month (sale-period-lock.ts), shaped as it is submitted.
+  // Notes, customer display text, delivery info and line detail text are left out.
+  const { financialChange: periodLockFinancialChange, markSaved: markPeriodLockSaved } = usePeriodLockFinancialChange(
+    periodLock,
+    {
+      saleDate,
+      saleType,
+      paymentType,
+      fulfillmentType,
+      shippingMethod: fulfillmentType === "DELIVERY" ? shippingMethod : "NONE",
+      shippingFee: effectiveShippingFee,
+      discount,
+      vatType,
+      vatRate,
+      // S9: a cash sale's credit term (e.g. from a newly picked customer) is not financial.
+      creditTerm: comparableSaleCreditTerm(paymentType, creditTerm),
+      channelRefNo: isMarketplace ? channelRefNo.trim() : "",
+      quotationId,
+      customerId: periodLockCustomerEditable ? "" : selectedCustomerId,
+      lines: stripSaleRowKeys(items).map((line) => ({ ...line, moreDetail: "" })),
+      payments: paymentType === "CASH_SALE"
+        ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
+        : [],
+      wht: paymentType === "CASH_SALE" ? wht : null,
+    },
+    error,
+  );
 
   useEffect(() => {
     if (!isMarketplace || !defaultCashBankAccountId) return;
@@ -828,12 +889,21 @@ const SaleForm = ({
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+      if (!isItemQuantityInputValid(item.qty) && !savedQuantityKeys.has(itemQuantityLineKey(item))) { setError(ITEM_QUANTITY_DECIMALS_ERROR); return; }
       const prod = productMap.get(item.productId);
       if (prod?.isLotControl) {
         const lotErr = validateLotRows(item.lotItems, item.qty, false);
         if (lotErr) { setError(lotErr); return; }
       }
     }
+
+    // Unit prices / line amounts with more than 2 decimals are saved rounded: confirm in-page first.
+    if (roundingRows.length > 0 && !roundingConfirmedRef.current) {
+      setRoundingConfirmOpen(true);
+      return;
+    }
+    roundingConfirmedRef.current = false;
+    setRoundingConfirmOpen(false);
 
     if (
       hasPromotionDiscountStacking &&
@@ -940,6 +1010,7 @@ const SaleForm = ({
         const result = await updateSale(persistedSaleId, formData);
         if (result.error) setError(result.error);
         else {
+          markPeriodLockSaved();
           window.localStorage.removeItem(draftKey);
           lastPersistedDraftRef.current = getDraftSnapshot();
           setAvailableDraft(null);
@@ -970,8 +1041,15 @@ const SaleForm = ({
     });
   };
 
+  const confirmRoundingAndSubmit = () => {
+    roundingConfirmedRef.current = true;
+    setRoundingConfirmOpen(false);
+    formRef.current?.requestSubmit();
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+      <PeriodLockFormSection lock={periodLock} hint={periodLockHint} financialChange={periodLockFinancialChange} />
       {availableDraft && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-300">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1560,8 +1638,8 @@ const SaleForm = ({
                     <td className="py-2 px-2">
                       <AdminNumberInput
                         value={item.qty}
-                        min={0.0001}
-                        step={0.0001}
+                        min={ITEM_QUANTITY_INPUT_STEP}
+                        step={itemQuantityInputStep(item.qty)}
                         onValueChange={(value) => updateItem(i, "qty", value)}
                         className={inputCls}
                       />
@@ -1822,6 +1900,15 @@ const SaleForm = ({
         </div>
       </div>
 
+      {roundingConfirmOpen && roundingRows.length > 0 && (
+        <SaleRoundingConfirm
+          rows={roundingRows}
+          savedTotal={Number.isFinite(totalAmount) ? roundStoredMoney(totalAmount) : 0}
+          disabled={isPending}
+          onConfirm={confirmRoundingAndSubmit}
+          onCancel={() => setRoundingConfirmOpen(false)}
+        />
+      )}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>

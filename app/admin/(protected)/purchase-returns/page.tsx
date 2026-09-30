@@ -16,6 +16,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -72,6 +73,13 @@ const PurchaseReturnsPage = async ({
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        returns.filter((r) => r.status === "ACTIVE").map((r) => r.returnDate),
+        permissions,
+      )
+    : () => null;
 
   const paginationParams: Record<string, string> = {};
   if (q)    paginationParams.q    = q;
@@ -167,7 +175,7 @@ const PurchaseReturnsPage = async ({
                               <Pencil size={14} /> แก้ไข
                             </Link>
                           ) : null}
-                          {canCancel ? <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} /> : null}
+                          {canCancel ? <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} periodLock={periodLockOf(r.returnDate)} /> : null}
                         </>
                       )}
                     </AdminActionGroup>

@@ -12,13 +12,16 @@ import { formatDateOnlyForInput } from "@/lib/th-date";
 import NewExpenseForm from "../../new/NewExpenseForm";
 import { getWhtIssuedIncomeTypeOptions } from "@/lib/wht-income-types";
 import { getExpensePayeeOptions } from "@/lib/wht-payees";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { EXPENSE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../expense-period-lock";
+import { getVatRegisteredFrom } from "@/lib/input-vat";
 
 const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) => {
-  await requirePermission("expenses.update");
+  const session = await requirePermission("expenses.update");
 
   const { id } = await params;
 
-  const [expense, expenseCodes, config, cashBankAccounts, expensePayments] = await Promise.all([
+  const [expense, expenseCodes, config, cashBankAccounts, expensePayments, vatRegisteredFrom] = await Promise.all([
     db.expense.findUnique({
       where: { id },
       include: {
@@ -39,6 +42,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
       select: { cashBankAccountId: true, amount: true },
     }),
+    getVatRegisteredFrom(db),
   ]);
 
   const [suppliers, whtIncomeTypes, expenseCertificate] = await Promise.all([
@@ -68,6 +72,7 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
   if (expense.deliveryCommissionRun?.status === "ACTIVE") redirect(`/admin/expenses/${id}`);
 
   const certificateLine = expenseCertificate?.lines[0] ?? null;
+  const periodLock = await getDocumentPeriodLockView([expense.expenseDate], session.user.permissions);
 
   const initialData = {
     id,
@@ -89,6 +94,8 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
     })),
     vatType:     expense.vatType,
     vatRate:     Number(expense.vatRate),
+    taxInvoiceNo: expense.taxInvoiceNo ?? "",
+    taxInvoiceDate: expense.taxInvoiceDate ? formatDateOnlyForInput(expense.taxInvoiceDate) : "",
     note:        expense.note ?? "",
     attachmentCount: expense._count.attachments,
     items:       expense.items.map((item) => ({
@@ -117,7 +124,10 @@ const EditExpensePage = async ({ params }: { params: Promise<{ id: string }> }) 
           whtIncomeTypes={whtIncomeTypes}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
+          vatRegisteredFrom={vatRegisteredFrom ? formatDateOnlyForInput(vatRegisteredFrom) : null}
           initialData={initialData}
+          periodLock={periodLock}
+          periodLockHint={EXPENSE_PERIOD_LOCK_ALLOWED_EDITS_HINT}
         />
       </div>
     </div>

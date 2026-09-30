@@ -18,6 +18,13 @@ import { AuditAction, Prisma } from "@/lib/generated/prisma";
 import { writeBalanceForwardLots, writeStockMovementLots, reverseBalanceForwardLotBalance, validateLotRows, type LotSubRow } from "@/lib/lot-control";
 import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+} from "@/lib/period-lock-document";
 
 const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
 
@@ -177,6 +184,8 @@ export async function createBF(
       // Allocated inside the transaction under a per-month lock so concurrent
       // saves wait for each other instead of colliding on the same number.
       docNo = await generateBFNo(parsedDocDate, tx);
+      // A balance forward dated in a month whose profit was distributed is refused (no override on create).
+      await assertPeriodsUnlocked(tx, [parsedDocDate]);
 
       // Create BalanceForward header
       const bf = await tx.balanceForward.create({
@@ -239,6 +248,7 @@ export async function createBF(
     revalidatePath("/admin/stock/bf");
     return { success: true, docNo };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     console.error("[createBF]", err);
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -268,13 +278,18 @@ export async function cancelBF(
   const bf = await db.balanceForward.findUnique({ where: { id: bfId } });
   if (!bf)                        return { error: "ไม่พบเอกสาร" };
   if (bf.status === "CANCELLED")  return { error: "เอกสารถูกยกเลิกไปแล้ว" };
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const beforeSnapshot = await getBalanceForwardAuditSnapshot(bf.id);
     await dbTx(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "BalanceForward" WHERE "id" = ${bfId} FOR UPDATE`);
+      const lockedRows = await tx.$queryRaw<{ id: string; docDate?: Date | null }[]>(Prisma.sql`SELECT "id", "docDate" FROM "BalanceForward" WHERE "id" = ${bfId} FOR UPDATE`);
       await lockStockMutationProducts(tx, [bf.productId]);
       await assertDocumentMutationAllowedInTx(tx, "BalanceForward", bfId, "cancel");
+      // Month lock on the date stored under the row lock, before any write.
+      const lockedDate = Array.isArray(lockedRows) ? lockedRows[0]?.docDate : null;
+      periodLock = await assertPeriodsUnlocked(tx, [lockedDate ?? bf.docDate], lockOverride);
       // Mark BalanceForward as CANCELLED first, conditionally: the update
       // row-locks the document, so a concurrent cancel of the same BF waits,
       // then matches 0 rows and stops — Lot balances are never reversed twice.
@@ -312,12 +327,23 @@ export async function cancelBF(
         entityRef: afterSnapshot.docNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null },
+        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "BalanceForward",
+      entityId: bf.id,
+      docNo: bf.docNo,
+      action: "ยกเลิกยอดยกมา",
+      actorName: session.user.name ?? session.user.email,
+      link: "/admin/stock/bf",
+    });
     revalidatePath("/admin/stock/bf");
     return { success: true };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     console.error("[cancelBF]", err);
     if (err instanceof BalanceForwardUserError) return { error: err.message };

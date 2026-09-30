@@ -10,6 +10,8 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
+import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 
 export type MarketplaceReturnPreset = {
@@ -100,11 +102,14 @@ interface InitialData {
   note: string;
   vatType: string;
   vatRate: number;
+  /** VAT ปัจจุบันของใบขายอ้างอิง (ถ้ามี) — ใบลดหนี้ที่อ้างอิงใบขายต้องใช้ VAT นี้ */
+  saleVat?: { vatType: string; vatRate: number } | null;
   items: LineItem[];
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 const labelCls = "block text-sm font-medium text-gray-700 mb-1.5 dark:text-slate-300";
+const VAT_RATE_TOLERANCE = 0.0001;
 
 const emptyItem = (): LineItem => ({
   productId: "",
@@ -127,6 +132,8 @@ const CreditNoteForm = ({
   initialData,
   submitLocked = false,
   marketplacePreset,
+  periodLock = null,
+  periodLockHint,
 }: {
   products: ProductOption[];
   customers: CustomerOption[];
@@ -138,6 +145,9 @@ const CreditNoteForm = ({
   submitLocked?: boolean;
   /** โหมดคืนสินค้าช่องทางขาย: ล็อกลูกค้า/ใบขาย/บัญชีคืนเงินไว้ตามการตั้งค่าของช่องทาง */
   marketplacePreset?: MarketplaceReturnPreset;
+  /** Edit only: the CN's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  periodLockHint?: string;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -163,6 +173,8 @@ const CreditNoteForm = ({
     initialData?.items ?? marketplacePreset?.items ?? [emptyItem()],
   );
   const [cnType, setCnType] = useState<"RETURN" | "DISCOUNT" | "OTHER">(initialData?.type ?? "RETURN");
+  // The date input stays uncontrolled; this copy only feeds the month-lock change check (P3).
+  const [cnDateKey, setCnDateKey] = useState(initialData?.cnDate ?? getThailandDateKey());
   const [settlementType, setSettlementType] = useState<"CASH_REFUND" | "CREDIT_DEBT">(initialData?.settlementType ?? "CASH_REFUND");
   const [payments, setPayments] = useState<PaymentChannelRow[]>(
     initialData?.payments && initialData.payments.length > 0
@@ -171,11 +183,12 @@ const CreditNoteForm = ({
         ? [{ cashBankAccountId: initialData.cashBankAccountId, amount: 0 }]
         : [{ cashBankAccountId: marketplacePreset?.cashBankAccountId ?? "", amount: 0 }],
   );
+  const initialSaleVat = initialData?.saleId ? initialData.saleVat ?? null : null;
   const [vatType, setVatType] = useState<string>(
-    initialData?.vatType ?? marketplacePreset?.vatType ?? defaultVatType,
+    initialSaleVat?.vatType ?? initialData?.vatType ?? marketplacePreset?.vatType ?? defaultVatType,
   );
   const [vatRate, setVatRate] = useState<number>(
-    initialData?.vatRate ?? marketplacePreset?.vatRate ?? defaultVatRate,
+    initialSaleVat?.vatRate ?? initialData?.vatRate ?? marketplacePreset?.vatRate ?? defaultVatRate,
   );
   const [productOptions, setProductOptions] = useState<ProductOption[]>(
     marketplacePreset ? [...products, ...marketplacePreset.products] : products,
@@ -192,6 +205,16 @@ const CreditNoteForm = ({
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const customerMap = new Map(customers.map((customer) => [customer.id, customer]));
   const isReferencedReturn = cnType === "RETURN" && Boolean(saleId);
+  // ใบลดหนี้ที่อ้างอิงใบขายใช้ VAT ตามใบขายเท่านั้น (server ตรวจซ้ำ) — ค่าถูกตั้งตอนเลือกใบขาย
+  const vatLockedToSale = Boolean(saleId);
+  // ใบลดหนี้เดิมที่ VAT ไม่ตรงกับใบขาย: แจ้งว่าการบันทึกจะเปลี่ยน VAT ให้ตรงกับใบขาย
+  const storedVatDiffersFromSale =
+    initialData !== undefined &&
+    initialSaleVat !== null &&
+    saleId === initialData.saleId &&
+    (initialSaleVat.vatType !== initialData.vatType ||
+      (initialSaleVat.vatType !== "NO_VAT" &&
+        Math.abs(initialSaleVat.vatRate - initialData.vatRate) > VAT_RATE_TOLERANCE));
 
   const handleCustomerChange = async (id: string) => {
     setCustomerId(id);
@@ -376,6 +399,27 @@ const CreditNoteForm = ({
   const totalAmount = items.reduce((sum, item) => sum + item.qty * item.salePrice, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, vatType as VatType, vatRate);
 
+  // P3: what updateCreditNote compares in a locked month (credit-note-period-lock.ts). The note,
+  // the customer display name and the line remarks (detail, no-restock reason) are left out.
+  const { financialChange: periodLockFinancialChange } = usePeriodLockFinancialChange(periodLock, {
+    cnDate: cnDateKey,
+    customerId,
+    saleId,
+    type: cnType,
+    settlementType,
+    vatType,
+    vatRate,
+    lines: items.map((item) => ({
+      ...item,
+      moreDetail: "",
+      stockDispositionNote: "",
+      lotItems: cnType === "RETURN" ? item.lotItems : [],
+    })),
+    payments: settlementType === "CASH_REFUND"
+      ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
+      : [],
+  }, error);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (createdCnNo) return;
@@ -517,6 +561,12 @@ const CreditNoteForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <PeriodLockFormSection
+        lock={periodLock}
+        hint={periodLockHint}
+        // A stored VAT that differs from the source sale is re-synced on save, which is financial.
+        financialChange={periodLockFinancialChange || storedVatDiffersFromSale}
+      />
       {marketplacePreset ? (
         <div className="rounded-xl border border-sky-200 bg-sky-50 p-5 dark:border-sky-400/30 dark:bg-sky-500/10">
           <h2 className="font-kanit text-lg font-semibold text-sky-900 dark:text-sky-100">
@@ -571,6 +621,7 @@ const CreditNoteForm = ({
               name="cnDate"
               required
               defaultValue={initialData?.cnDate ?? getThailandDateKey()}
+              onChange={(event) => setCnDateKey(event.target.value)}
               className={inputCls}
             />
           </div>
@@ -683,6 +734,15 @@ const CreditNoteForm = ({
           </div>
           <div className="md:col-span-3 border-t border-gray-100 pt-4 mt-2 dark:border-white/10">
             <p className="text-sm font-medium text-gray-700 mb-3 dark:text-slate-300">ภาษี (VAT)</p>
+            {vatLockedToSale ? (
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="px-3 py-1.5 rounded-lg text-sm font-medium border bg-gray-100 text-gray-700 border-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:border-white/10">
+                  {VAT_TYPE_LABELS[vatType as VatType] ?? vatType}
+                  {vatType !== "NO_VAT" ? ` ${vatRate}%` : ""}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">ใช้ภาษีตามใบขายอ้างอิง แก้ไขไม่ได้</span>
+              </div>
+            ) : (
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
@@ -713,6 +773,12 @@ const CreditNoteForm = ({
                 </div>
               )}
             </div>
+            )}
+            {storedVatDiffersFromSale ? (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+                ภาษีเดิมของใบลดหนี้นี้ไม่ตรงกับใบขายอ้างอิง เมื่อบันทึก ระบบจะใช้ภาษีตามใบขาย
+              </p>
+            ) : null}
           </div>
         </div>
 

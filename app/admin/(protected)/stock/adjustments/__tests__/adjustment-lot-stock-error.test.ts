@@ -16,6 +16,8 @@ let lotWrites = 0;
 
 const tx = {
   $executeRaw: async () => 0,
+  // Month lock (lib/period-lock.ts): no month is declared here.
+  profitDistribution: { findMany: async () => [] },
   productUnit: { findMany: async () => [{ productId: "p1", name: "ชิ้น", scale: 1 }] },
   product: {
     findMany: async () => [

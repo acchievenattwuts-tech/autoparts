@@ -50,6 +50,8 @@ const fakeTx: FakeTx = {
     record(`${/FOR UPDATE/.test(sql) ? "lock" : "query"}:${table}:${values.join(",")}`);
     return settlementInTx === null ? [] : [{ ...settlementInTx }];
   },
+  // S2: where the fee / income facts are dated (read-only, for the month lock); none here.
+  factProfit: { findMany: async () => [] },
   cashBankTransfer: { update: updateRecorder("cashBankTransfer") },
   expense: { update: updateRecorder("expense") },
   cashBankAdjustment: { update: updateRecorder("cashBankAdjustment") },
@@ -199,7 +201,7 @@ test("the lock is a parameterized SELECT ... FOR UPDATE on the settlement id", a
   const { sql, values } = captured as { sql: string; values: unknown[] };
   assert.match(
     sql,
-    /SELECT "status"::text AS "status", "expenseId", "cashBankTransferId", "cashBankAdjustmentId"\s+FROM "MarketplaceSettlement"\s+WHERE id = \?\s+FOR UPDATE/,
+    /SELECT "status"::text AS "status", "expenseId", "cashBankTransferId", "cashBankAdjustmentId", "settlementDate"\s+FROM "MarketplaceSettlement"\s+WHERE id = \?\s+FOR UPDATE/,
   );
   assert.deepEqual(values, ["set-1"]);
 });

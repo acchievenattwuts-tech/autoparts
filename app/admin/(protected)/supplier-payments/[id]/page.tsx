@@ -8,6 +8,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
+import { formatSupplierDebitAdjustmentLabel } from "@/lib/supplier-debit-balance";
 import SupplierPaymentCancelButton from "../SupplierPaymentCancelButton";
 
 const paymentMethodLabel = {
@@ -37,7 +38,8 @@ const SupplierPaymentDetailPage = async ({
         items: {
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
           include: {
-            debitNote: { select: { id: true, debitNo: true, postingDate: true } },
+            debitNote: { select: { id: true, debitNo: true, postingDate: true, netAmount: true,
+              adjustsDebitNote: { select: { debitNo: true } } } },
             purchase: { select: { id: true, purchaseNo: true, purchaseDate: true } },
             purchaseReturn: { select: { id: true, returnNo: true, returnDate: true } },
             advance: { select: { id: true, advanceNo: true, advanceDate: true } },
@@ -64,8 +66,10 @@ const SupplierPaymentDetailPage = async ({
   }
 
   const activityEvents = await getDocumentActivityTimeline("SupplierPayment", payment.id);
-  const purchaseItems = payment.items.filter((item) => !!item.purchaseId || !!item.debitNoteId);
-  const creditItems = payment.items.filter((item) => !!item.purchaseReturnId);
+  // A negative "ปรับยอด DN" line is supplier credit this payment used, listed with the other credits.
+  const isDebitCredit = (item: (typeof payment.items)[number]): boolean => Number(item.debitNote?.netAmount ?? 0) < 0;
+  const purchaseItems = payment.items.filter((item) => !!item.purchaseId || (!!item.debitNoteId && !isDebitCredit(item)));
+  const creditItems = payment.items.filter((item) => !!item.purchaseReturnId || isDebitCredit(item));
   const advanceItems = payment.items.filter((item) => !!item.advanceId);
   const creditTotal = creditItems.reduce((sum, item) => sum + Number(item.paidAmount), 0);
   const advanceTotal = advanceItems.reduce((sum, item) => sum + Number(item.paidAmount), 0);
@@ -165,7 +169,7 @@ const SupplierPaymentDetailPage = async ({
             </p>
           </div>
           <div className="rounded-lg border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-400/20 dark:bg-emerald-500/10">
-            <p className="text-sm text-emerald-700 dark:text-emerald-400">ใช้เครดิต CN ซื้อ</p>
+            <p className="text-sm text-emerald-700 dark:text-emerald-400">ใช้เครดิต CN ซื้อ / ปรับยอด DN</p>
             <p className="mt-2 font-kanit text-2xl font-bold text-emerald-700 dark:text-emerald-400">
               {creditTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
             </p>
@@ -217,6 +221,9 @@ const SupplierPaymentDetailPage = async ({
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono font-medium text-[#1e3a5f] dark:text-sky-300">{item.debitNote?.debitNo ?? item.purchase?.purchaseNo ?? "-"}</p>
+                      {item.debitNote?.adjustsDebitNote ? (
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{formatSupplierDebitAdjustmentLabel(item.debitNote.adjustsDebitNote.debitNo)}</p>
+                      ) : null}
                       <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                         {(item.debitNote?.postingDate ?? item.purchase?.purchaseDate)
                           ? formatDateThai(item.debitNote?.postingDate ?? item.purchase!.purchaseDate)
@@ -234,7 +241,7 @@ const SupplierPaymentDetailPage = async ({
         </div>
 
         <div className="rounded-xl border border-emerald-100 bg-white p-6 shadow-sm dark:border-emerald-400/20 dark:bg-[#101b2e]">
-          <h2 className="mb-4 font-kanit text-lg font-semibold text-emerald-800 dark:text-emerald-400">เครดิต CN ซื้อที่ใช้</h2>
+          <h2 className="mb-4 font-kanit text-lg font-semibold text-emerald-800 dark:text-emerald-400">เครดิต CN ซื้อ / ปรับยอด DN ที่ใช้</h2>
           {creditItems.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-slate-500">ไม่มีรายการ</p>
           ) : (
@@ -242,15 +249,18 @@ const SupplierPaymentDetailPage = async ({
               {creditItems.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/admin/purchase-returns/${item.purchaseReturn?.id}`}
+                  href={item.debitNote ? `/admin/supplier-debit-notes/${item.debitNote.id}` : `/admin/purchase-returns/${item.purchaseReturn?.id}`}
                   className="block rounded-lg border border-emerald-100 p-4 transition-colors hover:border-emerald-300 hover:bg-emerald-50/50 dark:border-emerald-400/20 dark:hover:border-emerald-400/40 dark:hover:bg-emerald-500/10"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="font-mono font-medium text-emerald-700 dark:text-emerald-400">{item.purchaseReturn?.returnNo ?? "-"}</p>
+                      <p className="font-mono font-medium text-emerald-700 dark:text-emerald-400">{item.debitNote?.debitNo ?? item.purchaseReturn?.returnNo ?? "-"}</p>
+                      {item.debitNote?.adjustsDebitNote ? (
+                        <p className="text-xs text-gray-500 dark:text-slate-400">{formatSupplierDebitAdjustmentLabel(item.debitNote.adjustsDebitNote.debitNo)}</p>
+                      ) : null}
                       <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-                        {item.purchaseReturn?.returnDate
-                          ? formatDateThai(item.purchaseReturn.returnDate)
+                        {(item.debitNote?.postingDate ?? item.purchaseReturn?.returnDate)
+                          ? formatDateThai(item.debitNote?.postingDate ?? item.purchaseReturn!.returnDate)
                           : "-"}
                       </p>
                     </div>

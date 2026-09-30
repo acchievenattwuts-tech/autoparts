@@ -97,6 +97,7 @@ export default async function CashBankLedgerReportPage({ searchParams,
               CUSTOMER_ADVANCE_REFUND
             </option>
             <option value="SUPPLIER_PAYMENT">SUPPLIER_PAYMENT</option>
+            <option value="SUPPLIER_DEBIT_REFUND">รับเงินคืนจากปรับยอด DN</option>
             <option value="TRANSFER">TRANSFER</option>
             <option value="ADJUSTMENT">ADJUSTMENT</option>
           </select>

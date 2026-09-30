@@ -17,6 +17,9 @@ let lotWriteError: Error = new Error("unset");
 const criticalReports: unknown[] = [];
 
 const tx = {
+  // Month lock (lib/period-lock.ts): no month is declared here.
+  $executeRaw: async () => 0,
+  profitDistribution: { findMany: async () => [] },
   productUnit: { findMany: async () => [{ productId: "p1", name: "ชิ้น", scale: 1 }] },
   product: {
     findMany: async () => [

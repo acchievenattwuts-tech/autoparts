@@ -11,14 +11,18 @@ import { formatDateOnlyForInput } from "@/lib/th-date";
 import {
   buildMutationBlockMessage,
   buildMutationBlockReferenceLinks,
+  buildStockDebitEditWarning,
   checkDocumentMutation,
+  checkDocumentStockDebitWarning,
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseForm from "../../new/PurchaseForm";
 import { getPurchaseProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { PURCHASE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../purchase-period-lock";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
-  await requirePermission("purchases.update");
+  const session = await requirePermission("purchases.update");
 
   const { id } = await params;
 
@@ -52,9 +56,19 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const mutationBlock = await checkDocumentMutation("Purchase", id, "update");
+  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+    // Also blocks while an ACTIVE supplier DN references this purchase.
+    checkDocumentMutation("Purchase", id, "update"),
+    // Lines before an active supplier DN of another purchase: a warning only; updatePurchase
+    // blocks just the rows it rewrites.
+    checkDocumentStockDebitWarning("Purchase", id),
+    // Month already distributed: same message updatePurchase returns (lib/period-lock.ts).
+    getDocumentPeriodLockView([purchase.purchaseDate], session.user.permissions),
+  ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
+  const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
 
   const suppliers = await getTransactionSuppliers([purchase.supplierId]);
   const products = await getPurchaseProductOptionsByIds(purchase.items.map((item) => item.productId));
@@ -100,6 +114,8 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     note: purchase.note ?? "",
     vatType: purchase.vatType,
     vatRate: Number(purchase.vatRate),
+    taxInvoiceNo: purchase.taxInvoiceNo ?? "",
+    taxInvoiceDate: purchase.taxInvoiceDate ? formatDateOnlyForInput(purchase.taxInvoiceDate) : "",
     creditTerm: purchase.creditTerm,
     items: initialItems,
   };
@@ -125,15 +141,26 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
           />
         </div>
       )}
+      {stockDebitWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={stockDebitWarningMessage}
+            references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
       <PurchaseForm
         products={products}
         suppliers={suppliers}
         cashBankAccounts={cashBankAccounts}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        vatRegisteredFrom={config.vatRegisteredFrom}
         initialData={initialData}
         editableLotOnEdit
         submitLocked={!!mutationBlockMessage}
+        periodLock={periodLock}
+        periodLockHint={PURCHASE_PERIOD_LOCK_ALLOWED_EDITS_HINT}
       />
     </div>
   );

@@ -53,6 +53,8 @@ export async function preloadSaleDependencies(
   const productIds = [...new Set(items.map((item) => item.productId))];
   // DN posting takes these locks before changing MAVG. Hold them before reading
   // the cost snapshots, so a sale cannot persist a pre-DN cost after DN commits.
+  // updateSale already holds them (one sorted batch with the old lines' products,
+  // taken before the guard); re-locking rows this transaction holds is a no-op.
   await lockStockMutationProducts(tx, productIds);
   const uniquePairs = [
     ...new Map(items.map((item) => [getSaleUnitKey(item.productId, item.unitName), item])).values(),

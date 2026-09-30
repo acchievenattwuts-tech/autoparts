@@ -12,6 +12,7 @@ import {
 import { getMarketplaceHoldingAccountId } from "@/lib/marketplace/queries";
 import { replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
+import { getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   extractShopeeEscrowFeeLines,
   type ShopeeEscrowFeeKind,
@@ -225,7 +226,9 @@ export async function createShopeeFeeExpense(params: {
     return { ok: false, error: blockingError };
   }
 
-  const expenseDate = new Date();
+  // expenseDate is date-only (Thai business date, start of day) like the Shopee
+  // sale's saleDate; the doc number and cash-bank txnDate use the same value.
+  const expenseDate = parseDateOnlyToDate(getThailandDateKey());
   let expenseNo = "";
   let createdExpenseId = "";
 

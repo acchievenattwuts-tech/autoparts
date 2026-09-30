@@ -10,8 +10,26 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import PurchaseInvoiceUploader, { type AppliedOcrItem } from "./PurchaseInvoiceUploader";
+import type { PurchaseOcrFormVat } from "@/lib/purchase-invoice-ocr-types";
+import { describeInputVatTreatment, isInputVatRecoverable, parseVatRegisteredFrom } from "@/lib/input-vat";
+import {
+  getTaxInvoiceFieldsError,
+  parseTaxInvoiceDate,
+  PURCHASE_TAX_INVOICE_MESSAGES,
+  TAX_INVOICE_NO_MAX_LENGTH,
+  toInputVatDecision,
+} from "../purchase-tax-invoice";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
+import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
+import {
+  isItemQuantityInputValid,
+  ITEM_QUANTITY_DECIMALS_ERROR,
+  ITEM_QUANTITY_INPUT_STEP,
+  itemQuantityInputStep,
+  itemQuantityLineKey,
+} from "@/lib/item-quantity";
 import {
   buildPurchaseDraft,
   getPurchaseDraftKey,
@@ -52,6 +70,9 @@ interface InitialData {
   note:         string;
   vatType:      string;
   vatRate:      number;
+  taxInvoiceNo: string;
+  /** YYYY-MM-DD or "" (date-only, .rules §11). */
+  taxInvoiceDate: string;
   creditTerm?:  number | null;
   items:        LineItem[];
 }
@@ -65,18 +86,26 @@ const PurchaseForm = ({
   cashBankAccounts,
   defaultVatType,
   defaultVatRate,
+  vatRegisteredFrom,
   initialData,
   editableLotOnEdit = false,
   submitLocked = false,
+  periodLock = null,
+  periodLockHint,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
   cashBankAccounts: CashBankAccountOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  /** Company setting vat_registered_from (YYYY-MM-DD, "" = not VAT-registered) — lib/input-vat.ts. */
+  vatRegisteredFrom: string;
   initialData?: InitialData;
   editableLotOnEdit?: boolean;
   submitLocked?: boolean;
+  /** Edit only: the purchase's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  periodLockHint?: string;
 }) => {
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -116,8 +145,12 @@ const PurchaseForm = ({
   const [items, setItems]     = useState<LineItem[]>(
     initialData?.items ?? [{ productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, moreDetail: "", lotItems: [] }]
   );
+  // A saved line that comes back unchanged is never re-validated for decimals (ก5).
+  const [savedQuantityKeys] = useState(() => new Set((initialData?.items ?? []).map(itemQuantityLineKey)));
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [taxInvoiceNo, setTaxInvoiceNo] = useState(initialData?.taxInvoiceNo ?? "");
+  const [taxInvoiceDate, setTaxInvoiceDate] = useState(initialData?.taxInvoiceDate ?? "");
   const [productOptions, setProductOptions] = useState<ProductOption[]>(products);
   const productMap = new Map(productOptions.map((product) => [product.id, product]));
   const draftKey = getPurchaseDraftKey(
@@ -137,9 +170,11 @@ const PurchaseForm = ({
       note,
       vatType,
       vatRate,
+      taxInvoiceNo,
+      taxInvoiceDate,
       creditTerm,
       items,
-    }), [payments, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
+    }), [payments, creditTerm, discount, items, note, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, taxInvoiceDate, taxInvoiceNo, vatRate, vatType]);
 
   const applyDraft = async (draft: PurchaseDraftPayload) => {
     const missingProductIds = [...new Set(draft.items.map((item) => item.productId).filter(Boolean))]
@@ -172,6 +207,8 @@ const PurchaseForm = ({
     setNote(draft.note);
     setVatType(draft.vatType);
     setVatRate(draft.vatRate);
+    setTaxInvoiceNo(draft.taxInvoiceNo ?? "");
+    setTaxInvoiceDate(draft.taxInvoiceDate ?? "");
     setCreditTerm(draft.creditTerm);
     setItems(draft.items as LineItem[]);
     setAvailableDraft(null);
@@ -210,6 +247,8 @@ const PurchaseForm = ({
           note,
           vatType,
           vatRate,
+          taxInvoiceNo,
+          taxInvoiceDate,
           creditTerm,
           items,
         });
@@ -222,7 +261,7 @@ const PurchaseForm = ({
     }, 2000);
 
     return () => window.clearTimeout(timeout);
-  }, [primaryAccountId, payments, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, vatRate, vatType]);
+  }, [primaryAccountId, payments, creditTerm, discount, draftKey, getDraftSnapshot, items, note, persistedPurchaseId, purchaseDate, purchaseType, referenceNo, shippingFee, supplierId, taxInvoiceDate, taxInvoiceNo, vatRate, vatType]);
 
   const addItem = () =>
     setItems((prev) => [...prev, { productId: "", unitName: "", qty: 1, costPrice: 0, landedCost: 0, moreDetail: "", lotItems: [] }]);
@@ -278,7 +317,13 @@ const PurchaseForm = ({
   // Merge AI-extracted invoice lines into the item list. Mirrors applySelectedProduct
   // (unit/cost/lot seeding) but never fills lot number / mfg / exp — the admin must
   // enter those. qty/cost fall back to product default when OCR left them blank.
-  const mergeOcrItems = (ocrItems: AppliedOcrItem[], chosenProducts: ProductOption[]) => {
+  // V6: the invoice's VAT type/rate and tax invoice number/date come along, so the line prices
+  // (as printed) are saved under the VAT type they were printed with.
+  const mergeOcrItems = (ocrItems: AppliedOcrItem[], chosenProducts: ProductOption[], ocrVat: PurchaseOcrFormVat) => {
+    setVatType(ocrVat.vatType);
+    setVatRate(ocrVat.vatRate);
+    if (ocrVat.taxInvoiceNo) setTaxInvoiceNo(ocrVat.taxInvoiceNo);
+    if (ocrVat.taxInvoiceDate) setTaxInvoiceDate(ocrVat.taxInvoiceDate);
     chosenProducts.forEach(rememberProduct);
     const productById = new Map(chosenProducts.map((product) => [product.id, product]));
     const newLines: LineItem[] = ocrItems.map((ocr) => {
@@ -352,6 +397,36 @@ const PurchaseForm = ({
   const totalBeforeDiscount = items.reduce((sum, it) => sum + it.qty * it.costPrice, 0);
   const discountedTotal = Math.max(0, totalBeforeDiscount + shippingFee - discount);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(discountedTotal, vatType as VatType, vatRate);
+  // V1: the same decision createPurchase / updatePurchase make (lib/input-vat.ts).
+  const inputVatDecision = toInputVatDecision(
+    { vatType, vatRate, taxInvoiceDate: parseTaxInvoiceDate(taxInvoiceDate) },
+    parseVatRegisteredFrom(vatRegisteredFrom),
+  );
+  const inputVatRecoverable = isInputVatRecoverable(inputVatDecision);
+  const isVatDocument = vatType !== "NO_VAT";
+
+  // P3: what updatePurchase compares in a locked month (purchase-period-lock.ts). The note, the
+  // reference number and the line detail text are left out; landed cost is recomputed server-side.
+  const { financialChange: periodLockFinancialChange, markSaved: markPeriodLockSaved } = usePeriodLockFinancialChange(
+    periodLock,
+    {
+      purchaseDate,
+      supplierId,
+      purchaseType,
+      discount,
+      shippingFee,
+      vatType,
+      vatRate,
+      // The tax invoice number/date are remarks unless the date flips VAT recoverability (V5).
+      inputVatRecoverable,
+      creditTerm: purchaseType === PurchaseType.CREDIT_PURCHASE ? creditTerm : "",
+      lines: items.map((item) => ({ ...item, moreDetail: "", landedCost: 0 })),
+      payments: purchaseType === PurchaseType.CASH_PURCHASE
+        ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
+        : [],
+    },
+    error,
+  );
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -362,6 +437,8 @@ const PurchaseForm = ({
     const formData = new FormData(e.currentTarget);
 
     if (!supplierId) { setError("กรุณาเลือกผู้จำหน่าย"); return; }
+    const taxInvoiceError = getTaxInvoiceFieldsError({ vatType, taxInvoiceNo, taxInvoiceDate }, PURCHASE_TAX_INVOICE_MESSAGES);
+    if (taxInvoiceError) { setError(taxInvoiceError); return; }
 
     let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
     if (purchaseType === PurchaseType.CASH_PURCHASE) {
@@ -383,11 +460,14 @@ const PurchaseForm = ({
     formData.set("creditTerm", purchaseType === PurchaseType.CREDIT_PURCHASE ? creditTerm : "");
     formData.set("referenceNo", referenceNo);
     formData.set("note", note);
+    formData.set("taxInvoiceNo", taxInvoiceNo.trim());
+    formData.set("taxInvoiceDate", taxInvoiceDate);
 
     for (const item of items) {
       if (!item.productId) { setError("กรุณาเลือกสินค้าทุกรายการ"); return; }
       if (!item.unitName)  { setError("กรุณาเลือกหน่วยนับทุกรายการ"); return; }
       if (item.qty <= 0)   { setError("จำนวนต้องมากกว่า 0"); return; }
+      if (!isItemQuantityInputValid(item.qty) && !savedQuantityKeys.has(itemQuantityLineKey(item))) { setError(ITEM_QUANTITY_DECIMALS_ERROR); return; }
 
       const prod = productMap.get(item.productId);
       if (prod?.isLotControl) {
@@ -406,6 +486,7 @@ const PurchaseForm = ({
         const result = await updatePurchase(persistedPurchaseId, formData);
         if (result.error) setError(result.error);
         else {
+          markPeriodLockSaved();
           window.localStorage.removeItem(draftKey);
           lastPersistedDraftRef.current = getDraftSnapshot();
           setDraftStatus("");
@@ -430,6 +511,7 @@ const PurchaseForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <PeriodLockFormSection lock={periodLock} hint={periodLockHint} financialChange={periodLockFinancialChange} />
       {availableDraft && (
         <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
           <p>พบ draft ที่ยังไม่ได้บันทึกจริงจาก {formatDateTimeThai(availableDraft.updatedAt)}</p>
@@ -610,6 +692,48 @@ const PurchaseForm = ({
                 </div>
               )}
             </div>
+            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label className={labelCls}>
+                  เลขที่ใบกำกับภาษี {isVatDocument && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  name="taxInvoiceNo"
+                  maxLength={TAX_INVOICE_NO_MAX_LENGTH}
+                  value={taxInvoiceNo}
+                  onChange={(event) => setTaxInvoiceNo(event.target.value)}
+                  aria-required={isVatDocument}
+                  className={inputCls}
+                  placeholder="เลขที่ใบกำกับภาษีของผู้จำหน่าย"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>
+                  วันที่ใบกำกับภาษี {isVatDocument && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="date"
+                  name="taxInvoiceDate"
+                  value={taxInvoiceDate}
+                  onChange={(event) => setTaxInvoiceDate(event.target.value)}
+                  aria-required={isVatDocument}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              บังคับกรอกเมื่อใบซื้อมี VAT — วันที่ใบกำกับภาษีใช้ตัดสินว่า VAT เป็นภาษีซื้อหรือรวมเป็นต้นทุน
+            </p>
+            <p
+              className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+                inputVatRecoverable
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  : "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
+              }`}
+            >
+              {describeInputVatTreatment(inputVatDecision)}
+            </p>
           </div>
         </div>
       </div>
@@ -695,7 +819,7 @@ const PurchaseForm = ({
                         </select>
                       </td>
                       <td className="py-2 px-2">
-                        <AdminNumberInput value={item.qty} min={0.0001} step={0.0001}
+                        <AdminNumberInput value={item.qty} min={ITEM_QUANTITY_INPUT_STEP} step={itemQuantityInputStep(item.qty)}
                           onValueChange={(value) => updateItem(i, "qty", value)}
                           className={inputCls} />
                       </td>

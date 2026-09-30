@@ -17,6 +17,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -125,6 +126,13 @@ const CreditNotesPage = async ({
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        creditNotes.filter((cn) => cn.status === "ACTIVE").map((cn) => cn.cnDate),
+        permissions,
+      )
+    : () => null;
 
   const paginationParams: Record<string, string> = {};
   if (q)    paginationParams.q    = q;
@@ -217,7 +225,7 @@ const CreditNotesPage = async ({
                       {cn.status === "ACTIVE" ? (
                         <>
                           {canUpdate && !(cn.channel && isManualMarketplaceChannel(cn.channel)) ? <NavLink href={`/admin/credit-notes/${cn.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
-                          {canCancel ? <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} /> : null}
+                          {canCancel ? <CreditNoteCancelButton cnId={cn.id} docNo={cn.cnNo} periodLock={periodLockOf(cn.cnDate)} /> : null}
                         </>
                       ) : null}
                     </AdminActionGroup>

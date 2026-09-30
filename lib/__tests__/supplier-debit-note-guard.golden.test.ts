@@ -80,25 +80,28 @@ test("golden guard: a purchase after DN can still be cancelled when no later DN 
   assert.equal(result.blocked, false);
 });
 
-test("golden guard: DN cannot be cancelled after sale and links its exact bill", async () => {
+test("golden guard (T1): a sale after the DN no longer blocks cancel or edit; the DN's stock is not even read", async () => {
   let stockReads = 0;
-  const result = await createDocumentMutationGuard({
-    supplierDebitNote: { findMany: async (args) => "id" in (args.where as Record<string, unknown>) ? [{ debitNo: debitRow.docNo }] : [] },
-    stockCard: { findMany: async () => ++stockReads === 1 ? [debitRow] : [{ ...debitRow, docNo: "SO26090001", sorder: 4 }] },
+  const database: GuardDb = {
+    supplierDebitNote: { findMany: async () => [{ debitNo: debitRow.docNo }] },
+    stockCard: { findMany: async () => { stockReads += 1; return [debitRow, { ...debitRow, docNo: "SO26090001", sorder: 4 }]; } },
     sale: { findMany: async () => [{ id: "sale-1", saleNo: "SO26090001" }] },
-  }).check("SupplierDebitNote", "dn-1", "cancel");
-  assert.equal(result.blocked, true);
-  assert.deepEqual(buildMutationBlockReferenceLinks(result), [{ href: "/admin/sales/sale-1", label: "SO26090001" }]);
+    supplierPaymentItem: { findMany: async () => [] },
+  };
+  for (const action of ["cancel", "update"] as const) {
+    assert.equal((await createDocumentMutationGuard(database).check("SupplierDebitNote", "dn-1", action)).blocked, false);
+  }
+  assert.equal(stockReads, 0);
 });
 
-test("golden guard: legacy movement without source ID links its SKU card", async () => {
-  let stockReads = 0;
-  const result = await createDocumentMutationGuard({
-    supplierDebitNote: { findMany: async (args) => "id" in (args.where as Record<string, unknown>) ? [{ debitNo: debitRow.docNo }] : [] },
-    stockCard: { findMany: async () => ++stockReads === 1 ? [debitRow] : [{ ...debitRow, docNo: "CLAIM-LEGACY-R", sorder: 4 }] },
-  }).check("SupplierDebitNote", "dn-1", "cancel");
-  assert.equal(result.blocked, true);
-  assert.deepEqual(buildMutationBlockReferenceLinks(result), [{ href: "/admin/stock/card?productId=sku-1", label: "CLAIM-LEGACY-R" }]);
+test("golden guard (T1): an ACTIVE payment blocks the cancel but not the edit (the service checks paid <= new net)", async () => {
+  let paymentReads = 0;
+  const database: GuardDb = { supplierPaymentItem: { findMany: async () => {
+    paymentReads += 1; return [{ payment: { id: "pay-1", paymentNo: "SP26090001" } }];
+  } } };
+  assert.equal((await createDocumentMutationGuard(database).check("SupplierDebitNote", "dn-1", "cancel")).blocked, true);
+  assert.equal((await createDocumentMutationGuard(database).check("SupplierDebitNote", "dn-1", "update")).blocked, false);
+  assert.equal(paymentReads, 1);
 });
 
 test("golden guard: latest unpaid DN has no downstream block", async () => {

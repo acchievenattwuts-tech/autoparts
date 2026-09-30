@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { getDeliveryErrorLogCode } from "@/lib/line-delivery-transport";
 import { processPendingSaleDeliveryLineDispatches } from "@/lib/line-delivery-worker";
 
 export const dynamic = "force-dynamic";
@@ -19,8 +20,9 @@ export const GET = async (request: Request): Promise<Response> => {
   }
   try {
     return NextResponse.json({ ok: true, processed: await processPendingSaleDeliveryLineDispatches() });
-  } catch {
-    console.error("[line-delivery] recovery failed");
+  } catch (error) {
+    // Batch-level failure (the due-row query): there is no single dispatch id to log.
+    console.error("[line-delivery] recovery failed", { code: getDeliveryErrorLogCode(error) });
     return NextResponse.json({ ok: false, error: "RECOVERY_FAILED" }, { status: 500 });
   }
 };

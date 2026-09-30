@@ -155,6 +155,7 @@ const NewPurchaseReturnPage = async ({
         initialPurchases={initialPurchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        vatRegisteredFrom={config.vatRegisteredFrom}
         prefillData={prefillData}
         claimId={claimId}
         claimContext={claimContext}

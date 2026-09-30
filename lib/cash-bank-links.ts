@@ -27,6 +27,8 @@ export function getCashBankSourceHref(
       return `/admin/supplier-advance-refunds/${sourceId}`;
     case "SUPPLIER_PAYMENT":
       return `/admin/supplier-payments/${sourceId}`;
+    case "SUPPLIER_DEBIT_REFUND":
+      return `/admin/supplier-debit-notes/${sourceId}`;
     case "PARTNER_PAYOUT":
       return `/admin/profit-distributions/${sourceId}`;
     case "TRANSFER":
@@ -62,6 +64,8 @@ export function getCashBankSourceLabel(sourceType: CashBankSourceType): string {
       return "รับคืนเงินมัดจำซัพพลายเออร์";
     case "SUPPLIER_PAYMENT":
       return "จ่ายชำระซัพพลายเออร์";
+    case "SUPPLIER_DEBIT_REFUND":
+      return "รับเงินคืนจากปรับยอด DN";
     case "PARTNER_PAYOUT":
       return "แบ่งกำไรผู้ร่วมทุน";
     case "TRANSFER":

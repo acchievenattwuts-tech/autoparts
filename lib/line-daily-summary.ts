@@ -1544,6 +1544,7 @@ export async function buildLineDailySummary(
     arOutstandingAgg,
     codOutstandingAgg,
     apOutstandingAgg,
+    apDebitNoteOutstandingAgg,
     pendingDelivery,
     outForDelivery,
     deliveredToday,
@@ -1732,6 +1733,12 @@ export async function buildLineDailySummary(
         purchaseType: "CREDIT_PURCHASE",
         amountRemain: { gt: 0 },
       },
+    }),
+    ),
+    // Open supplier debit notes (ใบเพิ่มหนี้) are payables too; a ปรับยอด DN credit (negative amountRemain) reduces them.
+    runSummaryStep("money.apDebitNoteOutstanding", () => db.supplierDebitNote.aggregate({
+      _sum: { amountRemain: true },
+      where: { status: "ACTIVE", amountRemain: { not: 0 } },
     }),
     ),
     runSummaryStep("counts.pendingDelivery", () => db.sale.count({
@@ -1937,7 +1944,9 @@ export async function buildLineDailySummary(
       toNumber(supplierAdvanceRefundTransferAgg._sum.amount),
     arOutstanding: toNumber(arOutstandingAgg._sum.amountRemain),
     codOutstanding: toNumber(codOutstandingAgg._sum.amountRemain),
-    apOutstanding: toNumber(apOutstandingAgg._sum.amountRemain),
+    apOutstanding:
+      toNumber(apOutstandingAgg._sum.amountRemain) +
+      toNumber(apDebitNoteOutstandingAgg._sum.amountRemain),
     expensesToday: toNumber(paymentsTodayTotal),
     cashOutForCustomerAdvanceRefunds: toNumber(
       customerAdvanceRefundTotalAgg._sum.refundAmount,

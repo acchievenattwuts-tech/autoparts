@@ -20,10 +20,14 @@ const replay = (rows: Row[]) => replayStockCardMavg(sortRowsForReplay(rows));
 const costOut = (result: ReturnType<typeof replay>, id: string) => result.updates.find((item) => item.id === id)?.priceOut;
 
 describe("supplier DN: fixed inventory and issue-cost golden scenarios", () => {
-  it("backdated stock is refused before insertion with a user-facing DN reference", async () => {
+  it("backdated stock is refused before insertion, naming the latest DN and its posting date", async () => {
     let writes = 0;
+    let orderBy: unknown;
     const tx = { $queryRaw: async () => [], stockCard: {
-      findFirst: async () => ({ docNo: "SDN26090001" }),
+      findFirst: async (args: { orderBy?: unknown }) => {
+        orderBy = args.orderBy;
+        return { docNo: "SDN26090001", docDate: parseDateOnlyToDate("2026-09-29") };
+      },
       create: async () => { writes += 1; return { id: "unexpected" }; },
     } } as unknown as Prisma.TransactionClient;
     await assert.rejects(writeStockCard(tx, { productId: "sku", docNo: "new-backdated-sale",
@@ -32,9 +36,39 @@ describe("supplier DN: fixed inventory and issue-cost golden scenarios", () => {
       assert.ok(error instanceof DocumentMutationBlockedError);
       assert.equal(isUserFacingDocumentError(error), true);
       assert.match(error.message, /SDN26090001/);
+      assert.match(error.message, /ลงต้นทุนวันที่ 29\/09\/2026/);
+      assert.match(error.message, /ตั้งแต่ 29\/09\/2026 เป็นต้นไป/);
+      assert.doesNotMatch(error.message, /ยกเลิก/);
       return true;
     });
+    assert.deepEqual(orderBy, [{ docDate: "desc" }, { sorder: "desc" }]);
     assert.equal(writes, 0);
+  });
+  it("fractional stock: DN capitalized on the true 0.5 on hand gives MAVG 150 (Product.stock 1 would give 200)", () => {
+    const rows = (adjustment: number) => [
+      row("receipt", "PURCHASE", 10, 0, 100),
+      row("sale", "SALE", 0, 9.5, 0, 0, 0, "2026-09-29", 2),
+      row("dn", "SUPPLIER_DEBIT", 0, 0, 0, adjustment, 1, "2026-09-29", 3),
+    ];
+    // DN +50 x 10 = 500 over 10 affected units: 0.5 covered -> 25; 1 covered (rounded stock) -> 50.
+    assert.deepEqual(allocateSupplierDebitCoverage([{ productId: "sku", affectedBaseQuantity: 10, costAdjustmentAmount: 500 }],
+      new Map([["sku", 0.5]])), [{ eligibleBaseQuantity: 0.5, inventoryAmount: 25, varianceAmount: 475 }]);
+    assert.equal(replay(rows(25)).finalPrice, 150);
+    assert.equal(replay(rows(50)).finalPrice, 200);
+  });
+  it("removing a tail DN row leaves every earlier balance and every quantity unchanged (repost ordering)", () => {
+    const before = [
+      row("receipt", "PURCHASE", 10, 0, 100),
+      row("sale", "SALE", 0, 6, 0, 0, 0, "2026-09-29", 2),
+    ];
+    const withDebit = replay([...before, row("dn", "SUPPLIER_DEBIT", 0, 0, 0, 200, 1, "2026-09-29", 3)]);
+    const without = replay(before);
+    for (const id of ["receipt", "sale"]) {
+      assert.deepEqual(withDebit.updates.find((item) => item.id === id), without.updates.find((item) => item.id === id));
+    }
+    // The DN row carries the same quantity as the row before it, so coverage read before or after the reversal is equal.
+    assert.equal(withDebit.updates.find((item) => item.id === "dn")?.qtyBalance, without.updates.find((item) => item.id === "sale")?.qtyBalance);
+    assert.equal(withDebit.finalQty, without.finalQty);
   });
   it("partial coverage preserves earlier sale cost and raises future sale cost", () => {
     const result = replay([

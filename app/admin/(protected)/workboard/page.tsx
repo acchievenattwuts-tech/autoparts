@@ -367,12 +367,13 @@ const WorkboardPage = async () => {
               {data.dueAp.items.map((item) => (
                 <Link
                   key={item.id}
-                  href={`/admin/purchases/${item.id}`}
+                  href={item.kind === "SUPPLIER_DEBIT" ? `/admin/supplier-debit-notes/${item.id}` : `/admin/purchases/${item.id}`}
                   className="block rounded-2xl border border-gray-100 px-4 py-3 transition-colors hover:border-amber-200 hover:bg-amber-50/60 dark:border-white/10 dark:hover:border-amber-400/20 dark:hover:bg-amber-500/5"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-mono text-sm font-semibold text-[#1e3a5f] dark:text-sky-200">{item.purchaseNo}</p>
+                      {item.label ? <p className="text-xs text-gray-500 dark:text-slate-400">{item.label}</p> : null}
                       <p className="mt-1 text-sm font-medium text-gray-900 dark:text-slate-100">{item.supplierName}</p>
                       <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                         ครบกำหนด {formatDateThai(item.dueDate)} • เกิน {item.daysOverdue.toLocaleString("th-TH")} วัน

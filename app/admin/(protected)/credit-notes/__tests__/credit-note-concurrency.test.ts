@@ -49,6 +49,9 @@ const settlementLineRows = (rows: { id: string; settlementNo: string }[]) =>
   rows.map((settlement) => ({ settlement }));
 
 const fakeTx: FakeTx = {
+  // Month lock (lib/period-lock.ts): no month is declared here — see credit-note-period-lock.test.ts.
+  $executeRaw: async () => 0,
+  profitDistribution: { findMany: async () => [] },
   $queryRaw: async (query: unknown) => {
     const { sql, values } = query as { sql: string; values: unknown[] };
     const table = /FROM\s+"(\w+)"/.exec(sql)?.[1] ?? "?";
@@ -74,7 +77,15 @@ const fakeTx: FakeTx = {
       if (select.items) {
         return { items: [{ id: "si-1", productId: "p-1", quantity: 2, costPrice: 50 }] };
       }
-      return { id: "sale-1", status: "ACTIVE", customerId: "cust-1", saleNo: "SO26090001", channel: "SHOPEE" };
+      return {
+        id: "sale-1",
+        status: "ACTIVE",
+        customerId: "cust-1",
+        saleNo: "SO26090001",
+        channel: "SHOPEE",
+        vatType: "NO_VAT",
+        vatRate: 0,
+      };
     },
   },
   saleItem: { findMany: async () => [{ id: "si-1", productId: "p-1", quantity: 2 }] },
@@ -85,6 +96,8 @@ const fakeTx: FakeTx = {
     findFirst: async () => ({ id: "acc-ship" }),
   },
   creditNote: {
+    // The date re-read under the row lock falls back to the pre-transaction read.
+    findUnique: async () => null,
     findMany: async () => [{ cnNo: "CN26090001" }],
     create: async (args: unknown) => {
       const { data } = args as { data: { cnNo: string } };

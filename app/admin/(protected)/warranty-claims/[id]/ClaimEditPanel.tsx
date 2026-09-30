@@ -24,8 +24,8 @@ interface Props {
   suppliers:       Supplier[];
 }
 
-const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm";
-const labelCls = "block text-xs text-gray-400 mb-0.5";
+const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm bg-white dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:ring-sky-400/50";
+const labelCls = "block text-xs text-gray-400 mb-0.5 dark:text-slate-400";
 
 const ClaimEditPanel = ({
   claimId,
@@ -84,7 +84,7 @@ const ClaimEditPanel = ({
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors"
+        className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-300 hover:border-[#1e3a5f] text-gray-600 hover:text-[#1e3a5f] text-sm rounded-lg transition-colors dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
       >
         <Pencil size={14} /> แก้ไข
       </button>
@@ -92,16 +92,16 @@ const ClaimEditPanel = ({
   }
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-4">
+    <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 space-y-4 dark:border-amber-300/30 dark:bg-amber-400/10">
       <div className="flex items-center justify-between">
-        <h2 className="font-kanit text-base font-semibold text-amber-800">แก้ไขรายละเอียด</h2>
-        <button onClick={() => setIsOpen(false)} className="text-amber-600 hover:text-amber-800">
+        <h2 className="font-kanit text-base font-semibold text-amber-800 dark:text-amber-200">แก้ไขรายละเอียด</h2>
+        <button onClick={() => setIsOpen(false)} className="text-amber-600 hover:text-amber-800 dark:text-amber-300 dark:hover:text-amber-100">
           <X size={18} />
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg">{error}</div>
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded-lg dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">{error}</div>
       )}
 
       <div>
@@ -116,8 +116,8 @@ const ClaimEditPanel = ({
           maxLength={500} placeholder="หมายเหตุ (ถ้ามี)" className={inputCls} />
       </div>
 
-      <div className="border-t border-amber-200 pt-3">
-        <p className="text-xs font-semibold text-amber-700 mb-2">ซัพพลายเออร์</p>
+      <div className="border-t border-amber-200 pt-3 dark:border-amber-300/30">
+        <p className="text-xs font-semibold text-amber-700 mb-2 dark:text-amber-300">ซัพพลายเออร์</p>
         <div className="space-y-2">
           <div>
             <label className={labelCls}>เลือกซัพพลายเออร์</label>
@@ -151,7 +151,7 @@ const ClaimEditPanel = ({
       <button
         onClick={handleSave}
         disabled={isPending}
-        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-[#1e3a5f] hover:bg-[#163055] text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 dark:bg-sky-600 dark:hover:bg-sky-500"
       >
         <Check size={15} /> {isPending ? "กำลังบันทึก..." : "บันทึก"}
       </button>

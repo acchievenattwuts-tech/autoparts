@@ -134,7 +134,9 @@ const activeSale = {
 };
 
 const deliverySale = {
-  ...activeSale, fulfillmentType: "DELIVERY", shippingMethod: "SELF", shippingStatus: "PENDING",
+  // An in-store bill sold today, so the LINE card skip reason comes from the
+  // customer link (CUSTOMER_NOT_LINKED), not the channel or the bill's age.
+  ...activeSale, channel: "STORE", saleDate: new Date(), fulfillmentType: "DELIVERY", shippingMethod: "SELF", shippingStatus: "PENDING",
   trackingNo: null, deliveryStaffId: null, deliveryCommissionItems: [],
 };
 

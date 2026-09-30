@@ -191,7 +191,24 @@ export function buildMutationBlockReferenceLinks(
 }
 
 const STOCK_BOUNDARY_REASON = "รายการสต็อกถูกใช้คำนวณใบเพิ่มหนี้แล้ว กรุณายกเลิกเอกสารปลายทางก่อน";
-const DEBIT_LATER_STOCK_REASON = "มีรายการสต็อกหลังใบเพิ่มหนี้ กรุณายกเลิกเอกสารปลายทางก่อน";
+/** A DN corrected by an ACTIVE "ปรับยอด DN" document can be neither cancelled nor reposted (R5-D). */
+export const SUPPLIER_DEBIT_ADJUSTED_REASON = "มีเอกสารปรับยอด DN ที่อ้างอิงใบนี้และยังใช้งานอยู่ กรุณายกเลิกเอกสารปรับยอดก่อน";
+/** An edit that deletes or rewrites stock rows dated before an ACTIVE DN on the same SKU. */
+export const STOCK_EDIT_BOUNDARY_REASON =
+  "รายการสินค้าที่ลบหรือแก้ไขมีสต็อกที่ถูกใช้คำนวณใบเพิ่มหนี้แล้ว แก้ไขได้เฉพาะข้อมูลที่ไม่กระทบสต็อก หรือยกเลิกใบเพิ่มหนี้ก่อน";
+const STOCK_EDIT_WARNING_LEAD =
+  "หากแก้ไขส่วนที่กระทบสต็อก เช่น ลบหรือเปลี่ยนรายการสินค้า จำนวน ราคา/ต้นทุน หรือวันที่เอกสาร จะบันทึกไม่ได้ เนื่องจาก";
+
+/**
+ * Update actions of these documents check only the stock rows they are about to delete
+ * or rewrite (checkRewrittenStockRows), so a header-only edit or a claim forward step
+ * (which only adds rows dated today) is allowed. Cancel and reopen still check every
+ * stock row of the document against a later ACTIVE DN. Adjustment and BalanceForward keep the
+ * whole-document boundary for every action; a SupplierDebitNote has none (its changes restate later sales).
+ */
+const ROW_SCOPED_UPDATE_ENTITIES: ReadonlySet<MutableDocumentEntityType> = new Set<MutableDocumentEntityType>([
+  "Sale", "CreditNote", "PurchaseReturn", "Purchase", "WarrantyClaim",
+]);
 
 type StockBoundaryRow = {
   productId: string;
@@ -250,44 +267,20 @@ function laterStockWhere(row: StockBoundaryRow): Record<string, unknown> {
   ] };
 }
 
-async function checkStockRowsBoundary(database: GuardDb, ownRows: StockBoundaryRow[],
-  debitCancellation: boolean): Promise<MutationBlockResult> {
+/** Rows of a document that a later ACTIVE supplier DN valued on the same SKU (the DN boundary). */
+async function checkStockRowsBoundary(database: GuardDb, ownRows: StockBoundaryRow[]): Promise<MutationBlockResult> {
   if (!database.stockCard || ownRows.length === 0) return allow();
   const ownDocNos = [...new Set(ownRows.map((row) => row.docNo))];
   const later = await database.stockCard.findMany({
-    where: { docNo: { notIn: ownDocNos }, ...(debitCancellation ? {} : { source: "SUPPLIER_DEBIT" }),
-      OR: ownRows.map(laterStockWhere) },
+    where: { docNo: { notIn: ownDocNos }, source: "SUPPLIER_DEBIT", OR: ownRows.map(laterStockWhere) },
     select: stockBoundarySelect,
   });
   const docNos = [...new Set(later.map((row) => stringValue(row.docNo)).filter((value): value is string => Boolean(value)))];
   if (docNos.length === 0) return allow();
-  if (!debitCancellation) {
-    const debits = await database.supplierDebitNote?.findMany({
-      where: { debitNo: { in: docNos }, status: "ACTIVE" }, select: { id: true, debitNo: true },
-    }) ?? [];
-    return block(STOCK_BOUNDARY_REASON, uniqueRefs(mapDirectRefs(debits, "SupplierDebitNote", "debitNo")));
-  }
-  // All retained StockCard rows represent active stock effects. Link known source documents;
-  // legacy claim rows without an exact source match remain reachable through the product card.
-  const sources: Array<[MutableDocumentEntityType, GuardDb[keyof GuardDb], string]> = [
-    ["SupplierDebitNote", database.supplierDebitNote, "debitNo"],
-    ["Purchase", database.purchase, "purchaseNo"], ["Sale", database.sale, "saleNo"],
-    ["CreditNote", database.creditNote, "cnNo"], ["PurchaseReturn", database.purchaseReturn, "returnNo"],
-    ["Adjustment", database.adjustment, "adjustNo"], ["BalanceForward", database.balanceForward, "docNo"],
-  ];
-  const references: MutationBlockReference[] = [];
-  for (const [entityType, delegate, refField] of sources) {
-    if (!delegate) continue;
-    const rows = await delegate.findMany({ where: { [refField]: { in: docNos } }, select: { id: true, [refField]: true } });
-    references.push(...mapDirectRefs(rows, entityType, refField));
-  }
-  const matched = new Set(references.map((ref) => ref.refNo));
-  for (const row of later) {
-    const productId = stringValue(row.productId);
-    const docNo = stringValue(row.docNo);
-    if (productId && docNo && !matched.has(docNo)) references.push({ entityType: "StockCard", id: productId, refNo: docNo });
-  }
-  return block(DEBIT_LATER_STOCK_REASON, uniqueRefs(references));
+  const debits = await database.supplierDebitNote?.findMany({
+    where: { debitNo: { in: docNos }, status: "ACTIVE" }, select: { id: true, debitNo: true },
+  }) ?? [];
+  return block(STOCK_BOUNDARY_REASON, uniqueRefs(mapDirectRefs(debits, "SupplierDebitNote", "debitNo")));
 }
 
 async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDocumentEntityType,
@@ -295,7 +288,7 @@ async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDo
   if (!database.stockCard) return allow();
   const source: Partial<Record<MutableDocumentEntityType, [GuardDb[keyof GuardDb], string]>> = {
     Purchase: [database.purchase, "purchaseNo"], Sale: [database.sale, "saleNo"],
-    SupplierDebitNote: [database.supplierDebitNote, "debitNo"], CreditNote: [database.creditNote, "cnNo"],
+    CreditNote: [database.creditNote, "cnNo"],
     PurchaseReturn: [database.purchaseReturn, "returnNo"], Adjustment: [database.adjustment, "adjustNo"],
     BalanceForward: [database.balanceForward, "docNo"], WarrantyClaim: [database.warrantyClaim, "claimNo"],
   };
@@ -308,7 +301,58 @@ async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDo
     where: entityType === "WarrantyClaim" ? { OR: [{ referenceId: entityId }, { docNo: { startsWith: docNo } }] } : { docNo },
     select: stockBoundarySelect,
   });
-  return checkStockRowsBoundary(database, rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)), entityType === "SupplierDebitNote");
+  return checkStockRowsBoundary(database, rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)));
+}
+
+/** StockCard filter for the rows an edit deletes or rewrites; null when it touches none. */
+export type RewrittenStockRowsWhere = Record<string, unknown>;
+
+/**
+ * The rows of `docNo` an edit is about to delete or rewrite: every row ("ALL", e.g. the
+ * document date or type changed), or only the rows of the given line ids (referenceId,
+ * the lines the differential match removed). An empty list means a header-only edit.
+ */
+export function buildRewrittenStockRowsWhere(docNo: string, lineIds: readonly string[] | "ALL",
+): RewrittenStockRowsWhere | null {
+  if (lineIds === "ALL") return { docNo };
+  const ids = [...new Set(lineIds)];
+  return ids.length > 0 ? { docNo, referenceId: { in: ids } } : null;
+}
+
+/**
+ * Checks only the stock rows an update deletes or rewrites against a later ACTIVE DN on
+ * the same SKU. Rows the edit keeps untouched never block. Run it under the same sorted
+ * SKU locks as the document guard, after the differential match and before any write.
+ */
+export async function checkRewrittenStockRows(database: GuardDb, rowsWhere: RewrittenStockRowsWhere | null,
+): Promise<MutationBlockResult> {
+  if (!rowsWhere || !database.stockCard) return allow();
+  try {
+    const rows = await database.stockCard.findMany({ where: rowsWhere, select: stockBoundarySelect });
+    const boundary = await checkStockRowsBoundary(database,
+      rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)));
+    return block(STOCK_EDIT_BOUNDARY_REASON, boundary.references);
+  } catch (error) { console.error("[checkRewrittenStockRows]", error); throw error; }
+}
+
+/**
+ * Edit pages cannot know in advance which lines the user will change, so a document whose
+ * stock rows come before an ACTIVE DN gets a warning (not a disabled form). Same boundary
+ * and DN links as the action; the message is built by buildStockDebitEditWarning.
+ */
+export async function checkDocumentStockDebitWarning(entityType: MutableDocumentEntityType, entityId: string,
+): Promise<MutationBlockResult> {
+  if (!entityId || !ROW_SCOPED_UPDATE_ENTITIES.has(entityType)) return allow();
+  try {
+    const { db } = await import("@/lib/db");
+    return await checkEntityStockBoundary(db as unknown as GuardDb, entityType, entityId);
+  } catch (error) { console.error("[checkDocumentStockDebitWarning]", error); throw error; }
+}
+
+export function buildStockDebitEditWarning(result: MutationBlockResult): string | null {
+  if (!result.blocked) return null;
+  const refs = result.references.map((ref) => ref.refNo).join(", ");
+  return `${STOCK_EDIT_WARNING_LEAD}${STOCK_EDIT_BOUNDARY_REASON}${refs ? `: ${refs}` : ""}`;
 }
 
 export class DocumentMutationBlockedError extends Error {
@@ -326,6 +370,13 @@ export async function assertDocumentMutationAllowedInTx(tx: Prisma.TransactionCl
   entityType: MutableDocumentEntityType, entityId: string, action: DocumentMutationAction): Promise<void> {
   const result = await createDocumentMutationGuard(tx as unknown as GuardDb).check(entityType, entityId, action);
   const message = buildMutationBlockMessage(result);
+  if (message) throw new DocumentMutationBlockedError(message);
+}
+
+/** In-transaction form of checkRewrittenStockRows: throws the shared block message. */
+export async function assertRewrittenStockRowsAllowedInTx(tx: Prisma.TransactionClient,
+  rowsWhere: RewrittenStockRowsWhere | null): Promise<void> {
+  const message = buildMutationBlockMessage(await checkRewrittenStockRows(tx as unknown as GuardDb, rowsWhere));
   if (message) throw new DocumentMutationBlockedError(message);
 }
 
@@ -354,10 +405,22 @@ export function createDocumentMutationGuard(database: GuardDb) {
     ): Promise<MutationBlockResult> {
       if (!entityId) return allow();
 
-      const stockBoundary = await checkEntityStockBoundary(database, entityType, entityId);
+      // Row-scoped updates check only the rows they rewrite (checkRewrittenStockRows). A supplier DN has no
+      // stock boundary of its own: cancelling or editing it restates later sales (T1, owner approved 2026-09-30).
+      const stockBoundary = (action === "update" && ROW_SCOPED_UPDATE_ENTITIES.has(entityType)) || entityType === "SupplierDebitNote"
+        ? allow()
+        : await checkEntityStockBoundary(database, entityType, entityId);
       if (stockBoundary.blocked) return stockBoundary;
 
       if (entityType === "SupplierDebitNote") {
+        // ACTIVE adjustments ("ปรับยอด DN") of this DN block both the cancel and a line/VAT repost.
+        const adjustments = await database.supplierDebitNote?.findMany({
+          where: { adjustsDebitNoteId: entityId, status: "ACTIVE" }, select: { id: true, debitNo: true },
+        }) ?? [];
+        const adjustmentRefs = mapDirectRefs(adjustments, "SupplierDebitNote", "debitNo");
+        if (adjustmentRefs.length > 0) return block(SUPPLIER_DEBIT_ADJUSTED_REASON, adjustmentRefs);
+        // An edit keeps its payments while the new net amount covers them (updateSupplierDebitNote); a cancel needs none.
+        if (action === "update") return allow();
         const payments = await database.supplierPaymentItem?.findMany({
           where: { debitNoteId: entityId, payment: { status: "ACTIVE" } },
           select: { payment: { select: { id: true, paymentNo: true } } },

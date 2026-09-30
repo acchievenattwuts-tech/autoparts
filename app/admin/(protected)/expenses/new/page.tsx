@@ -1,6 +1,9 @@
 export const dynamic = "force-dynamic";
 
 import { requirePermission } from "@/lib/require-auth";
+import { db } from "@/lib/db";
+import { getVatRegisteredFrom } from "@/lib/input-vat";
+import { formatDateOnlyForInput } from "@/lib/th-date";
 import Link from "next/link";
 import { Receipt, ChevronRight } from "lucide-react";
 import NewExpenseForm from "./NewExpenseForm";
@@ -13,12 +16,13 @@ import { getExpensePayeeOptions } from "@/lib/wht-payees";
 const NewExpensePage = async () => {
   await requirePermission("expenses.create");
 
-  const [expenseCodes, config, cashBankAccounts, suppliers, whtIncomeTypes] = await Promise.all([
+  const [expenseCodes, config, cashBankAccounts, suppliers, whtIncomeTypes, vatRegisteredFrom] = await Promise.all([
     getActiveExpenseCodeOptions(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
     getExpensePayeeOptions(),
     getWhtIssuedIncomeTypeOptions(),
+    getVatRegisteredFrom(db),
   ]);
 
   return (
@@ -42,6 +46,7 @@ const NewExpensePage = async () => {
           whtIncomeTypes={whtIncomeTypes}
           defaultVatType={config.vatType}
           defaultVatRate={config.vatRate}
+          vatRegisteredFrom={vatRegisteredFrom ? formatDateOnlyForInput(vatRegisteredFrom) : null}
         />
       </div>
     </div>

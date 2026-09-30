@@ -16,6 +16,7 @@ import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   getDocumentMutationBlockMessage, assertDocumentMutationAllowedInTx,
   lockStockMutationProducts, DocumentMutationBlockedError,
+  assertRewrittenStockRowsAllowedInTx, buildRewrittenStockRowsWhere,
 } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -61,6 +62,31 @@ import {
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { getPurchaseUserErrorMessage, PurchaseUserError } from "../purchases/purchase-user-error";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  collectLineRemarkUpdates,
+  loadStoredPaymentRows,
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+  resolveDocumentPeriodLock,
+} from "@/lib/period-lock-document";
+import { isPurchaseReturnNonFinancialChange } from "./purchase-return-period-lock";
+import { isInputVatRecoverable } from "@/lib/input-vat";
+import {
+  getTaxInvoiceFieldsError,
+  loadVatRegisteredFromFor,
+  normalizeTaxInvoiceNo,
+  parseTaxInvoiceDate,
+  PURCHASE_RETURN_TAX_INVOICE_MESSAGES,
+  toInputVatDecision,
+  type TaxDocumentVat,
+} from "../purchases/purchase-tax-invoice";
+import { getPurchaseReturnVatMismatchMessage, resolvePurchaseReturnTaxDocument } from "./purchase-return-vat";
+
+/** updatePurchaseReturn: the document changed after the edit form loaded it. */
+const PURCHASE_RETURN_STALE_MESSAGE = "เอกสารถูกแก้ไขโดยผู้อื่นระหว่างที่คุณแก้ไข กรุณาโหลดหน้าใหม่";
 
 type PurchaseReturnProductOption = {
   id: string;
@@ -296,7 +322,13 @@ const returnSchema = z.object({
   note: z.string().max(500).optional(),
   vatType: z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate: z.coerce.number().min(0).max(100).default(0),
+  // V5: the supplier's credit note — required when vatType ≠ NO_VAT.
+  taxInvoiceNo: z.string().optional(),
+  taxInvoiceDate: z.string().optional(),
   items: z.array(returnItemSchema).min(1, "ต้องมีรายการสินค้าอย่างน้อย 1 รายการ").max(100),
+}).superRefine((data, ctx) => {
+  const message = getTaxInvoiceFieldsError(data, PURCHASE_RETURN_TAX_INVOICE_MESSAGES);
+  if (message) ctx.addIssue({ code: "custom", message, path: ["taxInvoiceNo"] });
 });
 
 // Payment total is checked inside the transaction because netAmount depends on the
@@ -528,12 +560,17 @@ async function writePurchaseReturnLines(
   }
 }
 
+/**
+ * Checks the referenced purchase (ACTIVE, same supplier, same VAT — V3) before any write and
+ * returns its VAT and tax-invoice date, which the return inherits for recoverability.
+ */
 async function validatePurchaseReturnSourcePurchase(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   purchaseId: string | undefined,
   supplierId: string,
-): Promise<void> {
-  if (!purchaseId) return;
+  vat: { vatType: VatType; vatRate: number },
+): Promise<TaxDocumentVat | null> {
+  if (!purchaseId) return null;
 
   const purchase = await tx.purchase.findUnique({
     where: { id: purchaseId },
@@ -542,6 +579,9 @@ async function validatePurchaseReturnSourcePurchase(
       status: true,
       supplierId: true,
       purchaseNo: true,
+      vatType: true,
+      vatRate: true,
+      taxInvoiceDate: true,
     },
   });
 
@@ -552,6 +592,14 @@ async function validatePurchaseReturnSourcePurchase(
   if (purchase.supplierId !== supplierId) {
     throw new PurchaseUserError(`ใบซื้อ ${purchase.purchaseNo} ไม่ได้เป็นของผู้จำหน่ายรายที่เลือก`);
   }
+
+  const vatMismatchMessage = getPurchaseReturnVatMismatchMessage(
+    { purchaseNo: purchase.purchaseNo, vatType: purchase.vatType, vatRate: Number(purchase.vatRate) },
+    vat,
+  );
+  if (vatMismatchMessage) throw new PurchaseUserError(vatMismatchMessage);
+
+  return { vatType: purchase.vatType, vatRate: Number(purchase.vatRate), taxInvoiceDate: purchase.taxInvoiceDate };
 }
 
 async function validatePurchaseReturnClaim(
@@ -654,6 +702,8 @@ async function getPurchaseReturnAuditSnapshot(purchaseReturnId: string) {
     vatAmount: purchaseReturn.vatAmount,
     vatType: purchaseReturn.vatType,
     vatRate: purchaseReturn.vatRate,
+    taxInvoiceNo: purchaseReturn.taxInvoiceNo,
+    taxInvoiceDate: purchaseReturn.taxInvoiceDate,
     note: purchaseReturn.note,
     cancelNote: purchaseReturn.cancelNote,
     cancelledAt: purchaseReturn.cancelledAt,
@@ -701,6 +751,8 @@ export async function createPurchaseReturn(
     note: formData.get("note") || undefined,
     vatType: (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate: formData.get("vatRate") || 0,
+    taxInvoiceNo: formData.get("taxInvoiceNo") ?? undefined,
+    taxInvoiceDate: formData.get("taxInvoiceDate") ?? undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -717,6 +769,8 @@ export async function createPurchaseReturn(
     vatRate,
     items: validItems,
   } = parsed.data;
+  const taxInvoiceNo = normalizeTaxInvoiceNo(parsed.data.taxInvoiceNo);
+  const taxInvoiceDate = parseTaxInvoiceDate(parsed.data.taxInvoiceDate);
 
   const isCashRefund = settlementType === PurchaseReturnSettlementType.CASH_REFUND;
   let payments: DocumentPaymentRow[] = [];
@@ -747,8 +801,10 @@ export async function createPurchaseReturn(
         returnNo = nextReturnNo;
         createdPurchaseReturnId = "";
         await dbTx(async (tx) => {
-          await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+          await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
           const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
+          // A new return dated in a month whose profit was distributed is refused (no override on create).
+          await assertPeriodsUnlocked(tx, [docDate]);
 
           const lineData = await buildLineData(tx, validItems, vatType, vatRate);
           const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
@@ -770,6 +826,8 @@ export async function createPurchaseReturn(
               note: note?.trim() || null,
               vatType,
               vatRate,
+              taxInvoiceNo,
+              taxInvoiceDate,
               subtotalAmount,
               vatAmount,
               type,
@@ -856,6 +914,7 @@ export async function createPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true, returnNo };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.create" });
@@ -900,14 +959,21 @@ export async function cancelPurchaseReturn(
 
   const affectedProductIds = [...new Set(ret.items.map((item) => item.productId))];
   const hadStock = ret.type === PurchaseReturnType.RETURN;
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(ret.id);
     await dbTx(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReturn" WHERE "id" = ${ret.id} FOR UPDATE`);
+      // Re-check the status under the row lock: a concurrent cancel/update that passed the
+      // same pre-check must not reverse lot balances or rewrite RETURN_OUT rows a second time.
+      const locked = await tx.$queryRaw<{ status: string; returnDate?: Date | null }[]>(Prisma.sql`SELECT "status"::text AS "status", "returnDate" FROM "PurchaseReturn" WHERE "id" = ${ret.id} FOR UPDATE`);
+      if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
       await lockStockMutationProducts(tx, affectedProductIds);
       await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", ret.id, "cancel");
+      // Month lock on the date stored under the row lock, before any write.
+      periodLock = await assertPeriodsUnlocked(tx, [locked[0]?.returnDate ?? ret.returnDate], lockOverride);
       if (ret.claimId) {
         await reverseClaimStockMovements(tx, ret.claimId, {
           movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
@@ -951,9 +1017,19 @@ export async function cancelPurchaseReturn(
         entityRef: afterSnapshot.returnNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: parsed.data.cancelNote?.trim() || null },
+        meta: { cancelNote: parsed.data.cancelNote?.trim() || null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "PurchaseReturn",
+      entityId: ret.id,
+      docNo: ret.returnNo,
+      action: "ยกเลิกใบคืนสินค้า/ลดหนี้ซื้อ",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/purchase-returns/${ret.id}`,
+    });
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath(`/admin/purchase-returns/${ret.id}`);
@@ -962,7 +1038,10 @@ export async function cancelPurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
+    const userMessage = getPurchaseUserErrorMessage(error);
+    if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -989,9 +1068,14 @@ export async function updatePurchaseReturn(
           productId: true,
           qty:       true,
           costPrice: true,
+          showQty:   true,
+          showUnitName: true,
+          moreDetail: true,
           lotItems:  { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
         },
       },
+      // V3: a referenced return inherits the purchase's input-VAT recoverability.
+      purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
     },
   });
   if (!existing) return { error: "ไม่พบเอกสาร" };
@@ -1028,6 +1112,8 @@ export async function updatePurchaseReturn(
     note: formData.get("note") || undefined,
     vatType: (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate: formData.get("vatRate") || 0,
+    taxInvoiceNo: formData.get("taxInvoiceNo") ?? undefined,
+    taxInvoiceDate: formData.get("taxInvoiceDate") ?? undefined,
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
@@ -1044,6 +1130,8 @@ export async function updatePurchaseReturn(
     vatRate,
     items: validItems,
   } = parsed.data;
+  const taxInvoiceNo = normalizeTaxInvoiceNo(parsed.data.taxInvoiceNo);
+  const taxInvoiceDate = parseTaxInvoiceDate(parsed.data.taxInvoiceDate);
 
   const isCashRefund = settlementType === PurchaseReturnSettlementType.CASH_REFUND;
   let payments: DocumentPaymentRow[] = [];
@@ -1058,6 +1146,9 @@ export async function updatePurchaseReturn(
     }
   }
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
+
+  // Optimistic concurrency: the updatedAt the edit form loaded, compared under the row lock.
+  const expectedUpdatedAt = Date.parse(String(formData.get("updatedAt") ?? ""));
 
   const docDate = parseDateOnlyToDate(returnDate);
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
@@ -1078,27 +1169,99 @@ export async function updatePurchaseReturn(
     (existing.purchaseId ?? null) !== (purchaseId || null);
   const useDifferential =
     !returnDateChanged && !typeChanged && !purchaseIdChanged;
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseReturnAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "PurchaseReturn" WHERE "id" = ${id} FOR UPDATE`);
+      // A return cancelled after the pre-check must not get RETURN_OUT rows back.
+      const locked = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`SELECT "status"::text AS "status" FROM "PurchaseReturn" WHERE "id" = ${id} FOR UPDATE`);
+      if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้");
+      const current = await tx.purchaseReturn.findUnique({ where: { id }, select: { updatedAt: true } });
+      if (!current || current.updatedAt.getTime() !== expectedUpdatedAt) {
+        throw new PurchaseUserError(PURCHASE_RETURN_STALE_MESSAGE);
+      }
       await lockStockMutationProducts(tx, [...existing.items.map((item) => item.productId), ...validItems.map((item) => item.productId)]);
       await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", id, "update");
-      await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId);
+      const sourcePurchaseVat = await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
       const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
-
-      if (existing.claimId) {
-        await reverseClaimStockMovements(tx, existing.claimId, {
-          movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
-          docNos: [existing.returnNo],
-        });
-      }
 
       // Build lineData first so we have resolved per-base costs for both the
       // header total and the signature comparison.
       const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+
+      // Month lock (owner decisions T2/ก1/ก2) — under the row lock, before any write, on the
+      // stored and the new date. `existing` is current: updatedAt was re-checked above.
+      const periodDecision = await resolveDocumentPeriodLock(tx, [existing.returnDate, docDate], {
+        override: lockOverride,
+        isNonFinancialOnly: async () => {
+          // V5: the credit-note number/date are remarks unless the date flips recoverability.
+          const storedTaxDocument = resolvePurchaseReturnTaxDocument(existing, existing.purchaseId ? existing.purchase : null);
+          const submittedTaxDocument = resolvePurchaseReturnTaxDocument({ vatType, vatRate, taxInvoiceDate }, sourcePurchaseVat);
+          const registeredFrom = await loadVatRegisteredFromFor(tx, [storedTaxDocument, submittedTaxDocument]);
+          return isPurchaseReturnNonFinancialChange(
+          {
+            returnDate: existing.returnDate,
+            purchaseId: existing.purchaseId,
+            claimId: existing.claimId,
+            supplierId: existing.supplierId,
+            type: existing.type,
+            settlementType: existing.settlementType,
+            vatType: existing.vatType,
+            vatRate: existing.vatRate,
+            inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(storedTaxDocument, registeredFrom)),
+            lines: existing.items.map((item) => ({
+              signature: buildPurchaseReturnItemSignature({
+                productId: item.productId,
+                qtyInBase: Number(item.qty),
+                costPerBase: Number(item.costPrice),
+                lots: item.lotItems.map((lot) => ({ lotNo: lot.lotNo, qtyInBase: Number(lot.qty) })),
+              }),
+              showQty: item.showQty,
+              showUnitName: item.showUnitName,
+            })),
+            payments: await loadStoredPaymentRows(tx, DocumentPaymentDocType.CN_PURCHASE, id),
+          },
+          {
+            returnDate: docDate,
+            purchaseId: purchaseId || null,
+            claimId: claimId || null,
+            supplierId,
+            type,
+            settlementType,
+            vatType,
+            vatRate,
+            inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(submittedTaxDocument, registeredFrom)),
+            lines: lineData.map((line) => ({
+              signature: buildPurchaseReturnItemSignature({
+                productId: line.productId,
+                qtyInBase: line.qtyInBase,
+                costPerBase: line.costPerBase,
+                lots: line.lotItems.map((lot) => ({ lotNo: lot.lotNo.trim(), qtyInBase: lot.qty * line.unitScale })),
+              }),
+              showQty: line.qty,
+              showUnitName: line.unitName,
+            })),
+            payments,
+          },
+          );
+        },
+      });
+      if (periodDecision.kind === "non-financial") {
+        // Locked month, note / credit-note number+date / line-detail edit (ก2/P4/V5): stock,
+        // supplier credit, refunds and cash/bank stay untouched.
+        await tx.purchaseReturn.update({
+          where: { id },
+          data: { note: note?.trim() || null, taxInvoiceNo, taxInvoiceDate },
+        });
+        for (const remark of collectLineRemarkUpdates(existing.items, lineData, ["moreDetail"])) {
+          await tx.purchaseReturnItem.update({ where: { id: remark.id }, data: remark.data });
+        }
+        return;
+      }
+      periodLock = periodDecision.result;
 
       // ─── Per-line diff (only meaningful when useDifferential) ────────────
       type ExistingPRSig = {
@@ -1172,6 +1335,22 @@ export async function updatePurchaseReturn(
       removedExistingItems.forEach((r) => affectedProductIds.add(r.productId));
       addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
 
+      // Only the StockCard rows deleted below are checked against a later supplier DN,
+      // under the locks above and before the first write.
+      await assertRewrittenStockRowsAllowedInTx(tx, oldHadStock
+        ? buildRewrittenStockRowsWhere(
+            existing.returnNo,
+            useDifferential ? removedExistingItems.map((r) => r.existingItemId) : "ALL",
+          )
+        : null);
+
+      if (existing.claimId) {
+        await reverseClaimStockMovements(tx, existing.claimId, {
+          movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
+          docNos: [existing.returnNo],
+        });
+      }
+
       // ─── Drop stock effects + items for removed/all ──────────────────────
       if (useDifferential) {
         if (oldHadStock && removedExistingItems.length > 0) {
@@ -1226,6 +1405,8 @@ export async function updatePurchaseReturn(
           note: note?.trim() || null,
           vatType,
           vatRate,
+          taxInvoiceNo,
+          taxInvoiceDate,
           subtotalAmount,
           vatAmount,
           type,
@@ -1239,11 +1420,9 @@ export async function updatePurchaseReturn(
 
       // Sync header-derived fields on items we kept untouched in the
       // differential path. subtotalAmount = calcItemSubtotal(totalAmount,
-      // vatType, vatRate) so it must follow header VAT changes.
+      // vatType, vatRate) is always recomputed, so it follows header VAT
+      // changes and replaces values stored by the former calcItemSubtotal bug.
       if (useDifferential && matchedByNewIdx.size > 0) {
-        const taxBasisChanged =
-          existing.vatType !== vatType ||
-          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const line = lineData[newIdx];
           await tx.purchaseReturnItem.update({
@@ -1255,7 +1434,7 @@ export async function updatePurchaseReturn(
               showPricePerUnit: line.showPricePerUnit,
               unitScale: line.unitScale,
               moreDetail: line.moreDetail,
-              ...(taxBasisChanged ? { subtotalAmount: line.subtotalAmount } : {}),
+              subtotalAmount: line.subtotalAmount,
             },
           });
         }
@@ -1320,8 +1499,19 @@ export async function updatePurchaseReturn(
         entityRef: afterSnapshot.returnNo,
         before: diff.before,
         after: diff.after,
+        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "PurchaseReturn",
+      entityId: id,
+      docNo: existing.returnNo,
+      action: "แก้ไขใบคืนสินค้า/ลดหนี้ซื้อ",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/purchase-returns/${id}`,
+    });
 
     revalidatePath("/admin/purchase-returns");
     revalidatePath(`/admin/purchase-returns/${id}`);
@@ -1330,6 +1520,7 @@ export async function updatePurchaseReturn(
     revalidatePath("/admin/reports");
     return { success: true };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
@@ -1356,7 +1547,12 @@ export async function getPurchasesForSupplier(
 export type PurchaseDetailResult = {
   items: { productId: string; unitName: string; qty: number; costPrice?: number; lotItems: z.infer<typeof lotSubRowSchema>[] }[];
   products: PurchaseReturnProductOption[];
+  /** V3: the return uses this VAT (read-only in the form) and inherits its recoverability. */
+  vat: PurchaseReturnSourceVat;
 } | null;
+
+/** Client-safe VAT basis of a referenced purchase; taxInvoiceDate is YYYY-MM-DD or "". */
+export type PurchaseReturnSourceVat = { vatType: VatType; vatRate: number; taxInvoiceDate: string };
 
 export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
   const session = await requirePurchaseReturnProductPermission();
@@ -1365,6 +1561,9 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
     select: {
+      vatType: true,
+      vatRate: true,
+      taxInvoiceDate: true,
       items: {
         orderBy: { lineNo: "asc" },
         select: {
@@ -1442,6 +1641,11 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   return {
     items,
     products: [...productMap.values()],
+    vat: {
+      vatType: purchase.vatType ?? VatType.NO_VAT,
+      vatRate: Number(purchase.vatRate ?? 0),
+      taxInvoiceDate: purchase.taxInvoiceDate ? formatDateOnlyForInput(purchase.taxInvoiceDate) : "",
+    },
   };
 }
 

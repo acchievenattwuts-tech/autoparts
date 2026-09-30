@@ -10,6 +10,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { parseDateOnlyToEndOfDay, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 import { getStockDocumentDebitBlocks, buildMutationBlockMessage, buildMutationBlockReferenceLinks, type GuardDb } from "@/lib/document-mutation-guard";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 
 const AdjustmentsPage = async ({
   searchParams,
@@ -61,9 +62,15 @@ const AdjustmentsPage = async ({
     }),
   ]);
 
-  const debitBlocks = await getStockDocumentDebitBlocks(db as unknown as GuardDb, adjustments.filter((a) => a.status === "ACTIVE").map((a) => a.adjustNo));
+  const activeAdjustments = adjustments.filter((a) => a.status === "ACTIVE");
+  const [debitBlocks, periodLockOf] = await Promise.all([
+    getStockDocumentDebitBlocks(db as unknown as GuardDb, activeAdjustments.map((a) => a.adjustNo)),
+    // One query for the list: which documents sit in a month whose profit was distributed.
+    canCancel ? getPeriodLockViewResolver(activeAdjustments.map((a) => a.adjustDate), permissions) : null,
+  ]);
   const serialized = adjustments.map((a) => ({
     ...a,
+    periodLock: a.status === "ACTIVE" && periodLockOf ? periodLockOf(a.adjustDate) : null,
     disabledReason: debitBlocks.has(a.adjustNo) ? buildMutationBlockMessage(debitBlocks.get(a.adjustNo)!) : null,
     blockReferences: debitBlocks.has(a.adjustNo) ? buildMutationBlockReferenceLinks(debitBlocks.get(a.adjustNo)!) : [],
     adjustDate:  a.adjustDate.toISOString(),

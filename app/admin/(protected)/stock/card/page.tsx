@@ -193,6 +193,8 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
 
   const [cards, openingRow] = await Promise.all([cardsPromise, openingPromise]);
   const debitNumbers = [...new Set(cards.filter((card) => card.source === "SUPPLIER_DEBIT").map((card) => card.docNo))];
+  // T3: a non-DN row with a cost variance carries a stock value written off at zero on-hand.
+  const hasStockValueResidual = cards.some((card) => card.source !== "SUPPLIER_DEBIT" && Number(card.costVariance) !== 0);
   const debitDocuments = canViewDebit && debitNumbers.length > 0
     ? await db.supplierDebitNote.findMany({ where: { debitNo: { in: debitNumbers } }, select: { id: true, debitNo: true } })
     : [];
@@ -355,7 +357,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
               </p>
             </div>
             {debitNumbers.length > 0 && <p className="border-b border-indigo-100 bg-indigo-50 px-5 py-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
-              DN ไม่เปลี่ยนจำนวนสินค้า: ส่วนเพิ่มมูลค่าสต็อกปรับ MAVG ส่วนต่างต้นทุนลงในงวด DN และไม่เปลี่ยนต้นทุนใบขายเดิม
+              DN ไม่เปลี่ยนจำนวนสินค้า: ส่วนเพิ่มมูลค่าสต็อกปรับ MAVG ส่วนต่างต้นทุนลงในงวด DN · การลง DN ไม่เปลี่ยนต้นทุนใบขายก่อนหน้า แต่การแก้รายการหรือยกเลิก DN จะปรับต้นทุนใบขายที่อยู่หลัง DN ย้อนหลัง
+            </p>}
+            {hasStockValueResidual && <p className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              ผลต่างมูลค่าสต็อก: เมื่อจำนวนคงเหลือเป็น 0 แล้วยังมีมูลค่าค้างอยู่ (เช่น คืนซื้อหลังลง DN) ระบบตัดมูลค่านั้นเป็นส่วนต่างต้นทุนของรายการนั้น และรวมในกำไรขาดทุน
             </p>}
 
             {cards.length === 0 && !openingRow ? (
@@ -380,7 +385,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                       <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">คงเหลือ</th>
                       <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ราคาเข้า/หน่วย</th>
                       <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">เพิ่มมูลค่าสต็อก (บาท)</th>
-                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ส่วนต่างต้นทุนงวด DN (บาท)</th>
+                      <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">ส่วนต่างต้นทุน (บาท)</th>
                       <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">avgCost/หน่วย</th>
                       <th className="px-3 py-3 text-right font-medium text-gray-600 dark:text-slate-300">มูลค่าคงเหลือ</th>
                     </tr>
@@ -480,7 +485,8 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                             {card.source === "SUPPLIER_DEBIT" ? Number(card.valueAdjustment).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-amber-700 dark:text-amber-300">
-                            {card.source === "SUPPLIER_DEBIT" ? Number(card.costVariance).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+                            {card.source === "SUPPLIER_DEBIT" || Number(card.costVariance) !== 0
+                              ? Number(card.costVariance).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f] dark:text-sky-300">
                             {fmtPrice(priceBalance)}

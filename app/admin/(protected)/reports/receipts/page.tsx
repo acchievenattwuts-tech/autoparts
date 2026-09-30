@@ -10,6 +10,8 @@ import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
 import { requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
 import { buildExportQuery, parseReportQueryFilters,
+  PURCHASE_RETURN_REFUND_RECEIPT_LABEL,
+  SUPPLIER_DEBIT_REFUND_RECEIPT_LABEL,
 } from "@/lib/report-queries";
 
 import ReportResultsSkeleton from "../ReportResultsSkeleton";
@@ -69,6 +71,8 @@ export default async function DailyReceiptPage({ searchParams }: PageProps) {
           <option value="SUPPLIER_ADVANCE_REFUND">
               รับคืนเงินมัดจำซัพพลายเออร์
             </option>
+            <option value="PURCHASE_RETURN">{PURCHASE_RETURN_REFUND_RECEIPT_LABEL}</option>
+            <option value="SUPPLIER_DEBIT_REFUND">{SUPPLIER_DEBIT_REFUND_RECEIPT_LABEL}</option>
           </select>
         </label>
         <label className="flex flex-col gap-1 text-xs font-medium text-gray-600">

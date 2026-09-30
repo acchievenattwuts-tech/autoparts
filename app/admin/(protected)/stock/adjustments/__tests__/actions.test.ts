@@ -16,6 +16,8 @@ let claimCount = 1;
 
 const tx = {
   $queryRaw: async () => [],
+  // Month lock (lib/period-lock.ts): no month is declared here — see stock-period-lock.test.ts.
+  profitDistribution: { findMany: async () => [] },
   $executeRaw: async (query: { strings?: string[]; values?: unknown[] }) => {
     record("$executeRaw", query.strings?.join("?"), query.values);
     return 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { Fragment, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { LoaderCircle, Plus, X } from "lucide-react";
 import { MarketplaceFeeKind } from "@/lib/generated/prisma";
@@ -13,7 +13,15 @@ import {
   calculateMarketplaceSettlement,
   normalizeMarketplaceLineAmount,
 } from "@/lib/marketplace/settlement-math";
+import type { SettlementFeeDatingView } from "@/lib/marketplace/settlement-fee-dating";
 import { cancelMarketplaceSettlement, createMarketplaceSettlement } from "./actions";
+import SettlementFeeDatingNotice from "./SettlementFeeDatingNotice";
+import { PeriodLockNotice, PeriodLockReasonField } from "@/app/admin/_components/PeriodLockControls";
+import {
+  isPeriodLockReasonLongEnough,
+  PERIOD_LOCK_REASON_REQUIRED_MESSAGE,
+  type PeriodLockView,
+} from "@/lib/period-lock-view";
 
 type SaleRow = {
   id: string;
@@ -38,6 +46,12 @@ type HistoryRow = {
   income: number;
   payout: number;
   status: string;
+  /** Dated in a month whose profit was distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  /** Why an open-month settlement is locked: its shares are still dated in a declared sale month (S2). */
+  periodLockHint?: string | null;
+  /** Fee / income shares booked on the settlement date instead of the sale date (P2 = B). */
+  feeDating?: SettlementFeeDatingView | null;
 };
 type LineRow = { code: string; label: string; kind: MarketplaceFeeKind; amount: number };
 
@@ -83,6 +97,7 @@ export default function SettlementManager({
   const [isError, setIsError] = useState(false);
   const [pending, startTransition] = useTransition();
   const [pendingAction, setPendingAction] = useState<"create" | string | null>(null);
+  const [periodLockReasons, setPeriodLockReasons] = useState<Record<string, string>>({});
 
   const activeLines = useMemo(
     () => lines.filter((line) => Math.abs(line.amount) >= 0.01),
@@ -592,7 +607,8 @@ export default function SettlementManager({
                 </tr>
               ) : (
                 history.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100 dark:border-white/5">
+                  <Fragment key={row.id}>
+                  <tr className="border-t border-slate-100 dark:border-white/5">
                     <td className="p-2 font-mono">
                       <Link
                         href={`/admin/marketplace/settlements/${row.id}`}
@@ -611,18 +627,36 @@ export default function SettlementManager({
                     <td className="p-2">{row.status === "ACTIVE" ? "ใช้งาน" : "ยกเลิก"}</td>
                     <td className="p-2 text-right">
                       {canCancel && row.status === "ACTIVE" ? (
+                        <div className="flex flex-col items-end gap-2">
+                        {row.periodLock ? (
+                          <div className="w-64 space-y-2 text-left">
+                            <PeriodLockNotice compact lock={row.periodLock} hint={row.periodLockHint ?? undefined} />
+                            <PeriodLockReasonField
+                              lock={row.periodLock}
+                              value={periodLockReasons[row.id] ?? ""}
+                              onChange={(value) => setPeriodLockReasons((current) => ({ ...current, [row.id]: value }))}
+                            />
+                          </div>
+                        ) : null}
                         <button
                           type="button"
-                          disabled={pending}
+                          disabled={pending || Boolean(row.periodLock && !row.periodLock.canOverride)}
+                          title={row.periodLock && !row.periodLock.canOverride ? row.periodLock.message : undefined}
                           aria-busy={pending && pendingAction === row.id}
-                          className="inline-flex items-center gap-1.5 text-red-600 disabled:cursor-wait disabled:opacity-60"
+                          className="inline-flex items-center gap-1.5 text-red-600 disabled:cursor-not-allowed disabled:opacity-60 dark:text-red-400"
                           onClick={() => {
+                            const periodLockReason = (periodLockReasons[row.id] ?? "").trim();
+                            if (row.periodLock?.canOverride && !isPeriodLockReasonLongEnough(periodLockReason)) {
+                              setIsError(true);
+                              setMessage(PERIOD_LOCK_REASON_REQUIRED_MESSAGE);
+                              return;
+                            }
                             const reason = window.prompt("เหตุผลที่ยกเลิกรอบรับเงิน");
                             if (!reason) return;
                             setPendingAction(row.id);
                             startTransition(async () => {
                               try {
-                                const result = await cancelMarketplaceSettlement(row.id, reason);
+                                const result = await cancelMarketplaceSettlement(row.id, reason, periodLockReason || undefined);
                                 setIsError(Boolean(result.error));
                                 setMessage(result.error ?? "ยกเลิกรอบรับเงินแล้ว");
                               } finally {
@@ -640,9 +674,18 @@ export default function SettlementManager({
                             "ยกเลิก"
                           )}
                         </button>
+                        </div>
                       ) : null}
                     </td>
                   </tr>
+                  {row.feeDating ? (
+                    <tr>
+                      <td colSpan={10} className="px-2 pb-3">
+                        <SettlementFeeDatingNotice compact dating={row.feeDating} />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 ))
               )}
             </tbody>

@@ -413,6 +413,23 @@ const CompanySettingsForm = ({ config, canManage }: { config: SiteConfig; canMan
             <input type="number" name="vat_rate" defaultValue={config.vatRate} min={0} max={100} step={0.01} className={inputClass} placeholder="7" />
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">เช่น 7 สำหรับ VAT 7%</p>
           </div>
+          <div>
+            <label className={labelClass} htmlFor="vat_registered_from">วันที่จดทะเบียน VAT</label>
+            <input
+              id="vat_registered_from"
+              type="date"
+              name="vat_registered_from"
+              defaultValue={config.vatRegisteredFrom}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">เว้นว่างถ้ายังไม่ได้จดทะเบียน VAT</p>
+          </div>
+          <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs leading-relaxed text-sky-800 dark:border-sky-400/30 dark:bg-sky-500/10 dark:text-sky-200 md:col-span-2">
+            VAT ในใบซื้อ ใบคืนสินค้า ค่าใช้จ่าย และใบเพิ่มหนี้จากผู้จำหน่าย จะเป็น &quot;ภาษีซื้อ&quot; (ไม่รวมในต้นทุนสินค้า/ค่าใช้จ่าย)
+            ก็ต่อเมื่อเอกสารมี VAT และวันที่ใบกำกับภาษีตรงหรือหลังวันที่จดทะเบียนนี้ ถ้าเว้นว่างหรือใบกำกับภาษีลงวันที่ก่อนหน้า
+            VAT ทั้งหมดจะรวมเป็นต้นทุน การเปลี่ยนวันที่นี้มีผลกับเอกสารที่บันทึกหรือแก้ไขหลังจากนี้เท่านั้น
+            ระบบจะไม่คำนวณเอกสารที่บันทึกไว้แล้วใหม่ให้อัตโนมัติ
+          </div>
         </div>
       </div>
 

@@ -7,13 +7,37 @@ import {
   ProfitSourceType,
   SaleChannel,
 } from "@/lib/generated/prisma";
-import { allocateSaleProfitRevenue } from "@/lib/sale-profit-revenue";
+import { allocateMoneyByWeights, allocateSaleProfitRevenue } from "@/lib/sale-profit-revenue";
+import { getVatRegisteredFrom, isInputVatRecoverable } from "@/lib/input-vat";
 import {
   resolveReturnUnitCost,
   returnDispositionReversesStockCost,
 } from "@/lib/credit-note-return";
+import {
+  findDistributionLockingAtRecording,
+  loadMonthDistributions,
+  SETTLEMENT_SALE_LINE_ORDER,
+  type MonthDistribution,
+  type SettlementFactDating,
+  type SettlementMovedAmount,
+} from "@/lib/marketplace/settlement-fee-dating";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * DISCOUNT/OTHER credit notes reduce revenue only: their SALE_RETURN facts carry no
+ * returned quantity and no cost reversal. The fact's sourceSubtype holds the CN type.
+ */
+export function isValueOnlyCreditNoteType(type: string | null | undefined): boolean {
+  return type === CreditNoteType.DISCOUNT || type === CreditNoteType.OTHER;
+}
+
+/** Label of a SALE_RETURN fact by its sourceSubtype; facts without a subtype are returns. */
+export function getCreditNoteProfitLabel(type: string | null | undefined): string {
+  if (type === CreditNoteType.DISCOUNT) return "ลดหนี้ (ส่วนลด)";
+  if (type === CreditNoteType.OTHER) return "ลดหนี้ (อื่นๆ)";
+  return "คืนสินค้า";
+}
 
 type FactProfitRowInput = {
   businessDate: Date;
@@ -215,12 +239,127 @@ function buildWeightedSaleCostMap(
   );
 }
 
+/** A StockCard row whose stock value the replay wrote off (lib/stock-card.ts, T3). */
+export type StockValueResidual = { stockCardId: string; productId: string; docDate: Date; source: string; amount: number };
+
+export const STOCK_VALUE_RESIDUAL_LABEL = "ผลต่างมูลค่าสต็อก";
+
+type ActiveResidualFact = { sourceId: string; sourceLineId: string | null; businessDate: Date; costAmount: Prisma.Decimal };
+
+const residualKey = (stockCardId: string | null, businessDate: Date, amount: number): string =>
+  `${stockCardId ?? ""}|${businessDate.getTime()}|${amount.toFixed(2)}`;
+
+/** Products whose active facts differ from the residual rows the replay now reports. */
+function findChangedResidualProducts(productIds: string[], residuals: readonly StockValueResidual[],
+  active: ActiveResidualFact[]): string[] {
+  const wanted = new Map<string, string[]>();
+  for (const row of residuals) wanted.set(row.productId, [...(wanted.get(row.productId) ?? []), residualKey(row.stockCardId, row.docDate, row.amount)]);
+  const current = new Map<string, string[]>();
+  for (const fact of active) {
+    current.set(fact.sourceId, [...(current.get(fact.sourceId) ?? []), residualKey(fact.sourceLineId, fact.businessDate, Number(fact.costAmount))]);
+  }
+  return productIds.filter((productId) => {
+    const next = [...(wanted.get(productId) ?? [])].sort();
+    const now = [...(current.get(productId) ?? [])].sort();
+    return next.length !== now.length || next.some((key, index) => key !== now[index]);
+  });
+}
+
+async function createResidualFacts(tx: ProfitFactTx, productIds: string[], residuals: readonly StockValueResidual[]): Promise<void> {
+  const rows = residuals.filter((row) => productIds.includes(row.productId));
+  if (rows.length === 0) return;
+  // Sequential: one transaction connection runs one query at a time.
+  const cards = await tx.stockCard.findMany({ where: { id: { in: rows.map((row) => row.stockCardId) } }, select: { id: true, docNo: true } });
+  const products = await tx.product.findMany({ where: { id: { in: [...new Set(rows.map((row) => row.productId))] } },
+    select: { id: true, code: true, name: true } });
+  const docNoById = new Map(cards.map((card) => [card.id, card.docNo]));
+  const productById = new Map(products.map((product) => [product.id, product]));
+  for (const productId of [...new Set(rows.map((row) => row.productId))]) {
+    const versionNo = await getNextVersion(tx, ProfitSourceType.STOCK_VALUE_RESIDUAL, productId);
+    const product = productById.get(productId);
+    await createFactProfitRows(tx, rows.filter((row) => row.productId === productId).map((row) => ({
+      businessDate: row.docDate, sourceType: ProfitSourceType.STOCK_VALUE_RESIDUAL, sourceSubtype: row.source,
+      sourceId: productId, sourceLineId: row.stockCardId, sourceDocNo: docNoById.get(row.stockCardId) ?? "-",
+      sourceStatus: DocStatus.ACTIVE, versionNo, productId, productCode: product?.code ?? null, productName: product?.name ?? null,
+      lineLabel: STOCK_VALUE_RESIDUAL_LABEL, quantity: 0, salesAmountExVat: 0, salesAmountIncVat: 0, salesAmount: 0,
+      costAmount: row.amount, expenseAmount: 0, grossProfit: roundMoney(-row.amount), netProfitAmount: roundMoney(-row.amount),
+      unitSalePriceExVat: 0, unitSalePriceIncVat: 0, unitSalePrice: 0, unitCostPrice: 0, unitProfit: 0, marginPct: 0,
+    })));
+  }
+}
+
+/**
+ * T3: keeps a product's STOCK_VALUE_RESIDUAL facts equal to its written-off StockCard rows.
+ * sourceId = productId and sourceLineId = StockCard id. One indexed read when nothing changed
+ * (no residual now and none active before); otherwise the product's facts are superseded and
+ * one fact per residual row is written (businessDate = row date, cost = residual, sales 0).
+ */
+export async function syncStockValueResidualFacts(tx: ProfitFactTx, productIdsInput: readonly string[],
+  residuals: readonly StockValueResidual[]): Promise<void> {
+  try {
+    const productIds = [...new Set(productIdsInput.filter(Boolean))];
+    if (productIds.length === 0) return;
+    const active = await tx.factProfit.findMany({
+      where: { sourceType: ProfitSourceType.STOCK_VALUE_RESIDUAL, sourceId: { in: productIds }, isActive: true },
+      select: { sourceId: true, sourceLineId: true, businessDate: true, costAmount: true },
+    });
+    if (active.length === 0 && residuals.length === 0) return;
+    const changed = findChangedResidualProducts(productIds, residuals, active);
+    if (changed.length === 0) return;
+    await tx.factProfit.updateMany({
+      where: { sourceType: ProfitSourceType.STOCK_VALUE_RESIDUAL, sourceId: { in: changed }, isActive: true },
+      data: { isActive: false, supersededAt: new Date() },
+    });
+    await createResidualFacts(tx, changed, residuals);
+  } catch (error) {
+    console.error("[syncStockValueResidualFacts]", error);
+    throw error;
+  }
+}
+
+/**
+ * Rebuilds residual facts from the stored StockCard rows (append path and backfill). A negative "ปรับยอด DN" row's
+ * write-off is not stored on the row (its costVariance is the DN's posted variance) and only a replay can recompute
+ * it, so its current fact is carried over: an appended row never changes an earlier row's valuation.
+ */
+export async function rebuildStockValueResidualFactsForProducts(tx: ProfitFactTx, productIdsInput: readonly string[],
+  since: Date): Promise<void> {
+  try {
+    const productIds = [...new Set(productIdsInput.filter(Boolean))];
+    if (productIds.length === 0) return;
+    const rows = await tx.stockCard.findMany({
+      where: { productId: { in: productIds }, docDate: { gte: since }, source: { not: "SUPPLIER_DEBIT" }, costVariance: { not: 0 } },
+      orderBy: [{ productId: "asc" }, { docDate: "asc" }, { sorder: "asc" }],
+      select: { id: true, productId: true, docDate: true, source: true, costVariance: true },
+    });
+    const debitRows = await tx.factProfit.findMany({
+      where: { sourceType: ProfitSourceType.STOCK_VALUE_RESIDUAL, sourceId: { in: productIds }, isActive: true,
+        sourceSubtype: "SUPPLIER_DEBIT" },
+      select: { sourceId: true, sourceSubtype: true, sourceLineId: true, businessDate: true, costAmount: true },
+    });
+    await syncStockValueResidualFacts(tx, productIds, [
+      ...rows.map((row) => ({ stockCardId: row.id, productId: row.productId,
+        docDate: row.docDate, source: row.source, amount: Number(row.costVariance) })),
+      ...debitRows.filter((fact) => fact.sourceSubtype === "SUPPLIER_DEBIT" && fact.sourceLineId).map((fact) => ({ stockCardId: fact.sourceLineId ?? "",
+        productId: fact.sourceId, docDate: fact.businessDate, source: "SUPPLIER_DEBIT", amount: Number(fact.costAmount) })),
+    ]);
+  } catch (error) {
+    console.error("[rebuildStockValueResidualFactsForProducts]", error);
+    throw error;
+  }
+}
+
+/** Fact subtype and dashboard label of a "ปรับยอด DN" document's cost variance (a regular DN is "SUPPLIER_DN"). */
+export const SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE = "SUPPLIER_DN_ADJUSTMENT";
+export const getSupplierDebitProfitLabel = (subtype: string | null | undefined): string =>
+  subtype === SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE ? "ปรับยอด DN" : "Supplier DN";
+
 /** Rebuild from the posted allocation snapshot; never allocate DN costs again. */
 export async function rebuildSupplierDebitProfitFacts(tx: ProfitFactTx, debitNoteId: string): Promise<void> {
   try {
     const debit = await tx.supplierDebitNote.findUnique({
       where: { id: debitNoteId },
-      select: { id: true, debitNo: true, postingDate: true, status: true, supplierId: true,
+      select: { id: true, debitNo: true, postingDate: true, status: true, supplierId: true, adjustsDebitNoteId: true,
         supplier: { select: { name: true } }, purchase: { select: { purchaseNo: true } },
         items: { orderBy: { lineNo: "asc" }, select: { id: true, varianceAmount: true,
           productId: true, product: { select: { code: true, name: true } } } } },
@@ -229,13 +368,16 @@ export async function rebuildSupplierDebitProfitFacts(tx: ProfitFactTx, debitNot
     await deactivateCurrentFacts(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, debitNoteId);
     if (debit.status !== DocStatus.ACTIVE) return;
     const versionNo = await getNextVersion(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, debitNoteId);
+    const adjustment = Boolean(debit.adjustsDebitNoteId);
     const rows: FactProfitRowInput[] = debit.items.map((item) => {
       const variance = Number(item.varianceAmount);
       return { businessDate: debit.postingDate, sourceType: ProfitSourceType.PURCHASE_COST_VARIANCE,
-        sourceSubtype: "SUPPLIER_DN", sourceId: debit.id, sourceLineId: item.id, sourceDocNo: debit.debitNo,
+        sourceSubtype: adjustment ? SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE : "SUPPLIER_DN", sourceId: debit.id,
+        sourceLineId: item.id, sourceDocNo: debit.debitNo,
         referenceDocNo: debit.purchase.purchaseNo, sourceStatus: debit.status, versionNo,
         productId: item.productId, productCode: item.product.code, productName: item.product.name,
-        supplierId: debit.supplierId, supplierName: debit.supplier.name, lineLabel: "Supplier DN cost variance",
+        supplierId: debit.supplierId, supplierName: debit.supplier.name,
+        lineLabel: adjustment ? "ปรับยอด DN · ส่วนต่างต้นทุน" : "Supplier DN cost variance",
         quantity: 0, salesAmountExVat: 0, salesAmountIncVat: 0, salesAmount: 0, costAmount: variance,
         expenseAmount: 0, grossProfit: -variance, netProfitAmount: -variance,
         unitSalePriceExVat: 0, unitSalePriceIncVat: 0, unitSalePrice: 0, unitCostPrice: 0, unitProfit: 0, marginPct: 0 };
@@ -453,20 +595,26 @@ export async function rebuildCreditNoteProfitFacts(
   }
 
   await deactivateCurrentFacts(tx, ProfitSourceType.SALE_RETURN, creditNoteId);
-  if (
-    creditNote.status !== DocStatus.ACTIVE ||
-    creditNote.type !== CreditNoteType.RETURN ||
-    creditNote.items.length === 0
-  ) {
+  if (creditNote.status !== DocStatus.ACTIVE || creditNote.items.length === 0) {
     return;
   }
 
+  // Every CN type reduces revenue on cnDate; only RETURN also returns quantity and cost.
+  const isValueOnly = isValueOnlyCreditNoteType(creditNote.type);
   const versionNo = await getNextVersion(tx, ProfitSourceType.SALE_RETURN, creditNoteId);
   const totalRevenueExVat = roundMoney(Number(creditNote.subtotalAmount));
   const totalRevenueIncVat = roundMoney(Number(creditNote.totalAmount));
   const itemWeights = creditNote.items.map((item) => Number(item.amount));
-  const allocatedRevenueExVat = allocateByWeights(totalRevenueExVat, itemWeights);
-  const allocatedRevenueIncVat = allocateByWeights(totalRevenueIncVat, itemWeights);
+  // Satang allocation shared with SALE facts: base and VAT are split separately, so each
+  // line's inclusive amount is its base plus tax and no residual line flips sign.
+  const allocatedRevenueExVat = allocateMoneyByWeights(totalRevenueExVat, itemWeights);
+  const allocatedVat = allocateMoneyByWeights(
+    roundMoney(totalRevenueIncVat - totalRevenueExVat),
+    itemWeights,
+  );
+  const allocatedRevenueIncVat = allocatedRevenueExVat.map((base, index) =>
+    roundMoney(base + (allocatedVat[index] ?? 0)),
+  );
   const saleCostMap = buildWeightedSaleCostMap(
     (creditNote.sale?.items ?? []).map((item) => ({
       productId: item.productId,
@@ -480,7 +628,7 @@ export async function rebuildCreditNoteProfitFacts(
   const customerName = creditNote.customer?.name ?? creditNote.customerName ?? null;
 
   const rows: FactProfitRowInput[] = creditNote.items.map((item, index) => {
-    const quantityAbs = roundQty(Number(item.qty));
+    const quantityAbs = isValueOnly ? 0 : roundQty(Number(item.qty));
     const quantity = roundQty(-quantityAbs);
     const salesAmountExVat = roundMoney(-(allocatedRevenueExVat[index] ?? 0));
     const salesAmountIncVat = roundMoney(-(allocatedRevenueIncVat[index] ?? 0));
@@ -525,7 +673,7 @@ export async function rebuildCreditNoteProfitFacts(
       productName: item.product?.name ?? null,
       customerId: creditNote.customerId ?? null,
       customerName,
-      lineLabel: item.product?.name ?? null,
+      lineLabel: item.product?.name ?? (isValueOnly ? getCreditNoteProfitLabel(creditNote.type) : null),
       quantity,
       salesAmountExVat,
       salesAmountIncVat,
@@ -551,6 +699,30 @@ export async function rebuildCreditNoteProfitFacts(
   await createFactProfitRows(tx, rows);
 }
 
+type ExpenseProfitAmountSource = {
+  vatType: string;
+  vatRate: Prisma.Decimal;
+  taxInvoiceDate: Date | null;
+  subtotalAmount: Prisma.Decimal;
+  netAmount: Prisma.Decimal;
+};
+
+/**
+ * V7 (lib/input-vat.ts): recoverable input VAT is input tax, not expense, so the expense counts subtotalAmount;
+ * otherwise every baht paid (netAmount), VAT included, is expense. Without a tax-invoice date nothing is
+ * recoverable, so the registration setting is read only when the expense has one.
+ */
+async function resolveExpenseProfitAmount(tx: ProfitFactTx, expense: ExpenseProfitAmountSource): Promise<number> {
+  try {
+    const registeredFrom = expense.taxInvoiceDate ? await getVatRegisteredFrom(tx) : null;
+    const recoverable = isInputVatRecoverable({ vatType: expense.vatType, vatRate: Number(expense.vatRate),
+      taxDocumentDate: expense.taxInvoiceDate, registeredFrom });
+    return Number(recoverable ? expense.subtotalAmount : expense.netAmount);
+  } catch (error) {
+    throw new Error("Failed to resolve the expense profit amount", { cause: error });
+  }
+}
+
 export async function rebuildExpenseProfitFacts(
   tx: ProfitFactTx,
   expenseId: string,
@@ -564,6 +736,10 @@ export async function rebuildExpenseProfitFacts(
       status: true,
       channel: true,
       netAmount: true,
+      subtotalAmount: true,
+      vatType: true,
+      vatRate: true,
+      taxInvoiceDate: true,
       items: {
         orderBy: { lineNo: "asc" },
         select: {
@@ -592,7 +768,7 @@ export async function rebuildExpenseProfitFacts(
   }
 
   const versionNo = await getNextVersion(tx, ProfitSourceType.EXPENSE, expenseId);
-  const totalExpense = Number(expense.netAmount);
+  const totalExpense = await resolveExpenseProfitAmount(tx, expense);
   const itemWeights = expense.items.map((item) => Number(item.amount));
   const allocatedExpense = allocateByWeights(totalExpense, itemWeights);
 
@@ -641,23 +817,191 @@ export async function rebuildExpenseProfitFacts(
  * ของใบนั้น ไม่ใช่วันที่เงินเข้า — ขายสิ้นเดือนแต่แพลตฟอร์มโอนเดือนถัดไปจึงไม่ทำให้
  * กำไรเดือนที่ขายพองเกินและกำไรเดือนที่รับเงินหดผิดปกติ (matching principle)
  *
+ * ยกเว้น (owner decision P2 = B): ถ้าเดือนที่ขายประกาศปันผลแล้วก่อนบันทึกรอบนี้
+ * (ProfitDistribution ที่มีผลอยู่ ณ เวลาบันทึกรอบ: declaredAt <= createdAt และยังใช้งานอยู่ หรือถูกยกเลิกหลัง createdAt) ส่วนของใบขายนั้นลง
+ * "วันที่รับเงิน" แทน เพื่อไม่ให้กำไรของเดือนที่ปันผลแล้วเปลี่ยน — ดู
+ * lib/marketplace/settlement-fee-dating.ts กติกาอ่านเฉพาะเวลาที่บันทึกไว้ การ rebuild
+ * ภายหลัง (ยกเลิก / backfill) จึงได้วันที่เดิมเสมอ
+ *
  * เพราะฟังก์ชันนี้เป็นผู้เขียน EXPENSE facts ของใบค่าธรรมเนียมเอง จึงต้องไม่เรียก
  * rebuildExpenseProfitFacts() กับใบเดียวกัน มิฉะนั้นวันที่จะถูกเขียนทับกลับไปเป็น
  * expenseDate และการปันตามใบขายจะหายไป
  *
  * รายรับพิเศษ (subsidy / bonus / ชดเชย) บันทึกเป็น OTHER_INCOME แยกจากยอดขาย
  * เพื่อให้เข้ากำไรสุทธิเต็มจำนวนโดยไม่ไปเพิ่มฐานยอดขายจนทำให้ %margin เพี้ยน
+ *
+ * คืนค่าส่วนที่ลงวันที่รับเงินแทนวันที่ขาย (ใช้ใน audit) หรือ null เมื่อรอบไม่ ACTIVE
  */
 export async function rebuildMarketplaceSettlementProfitFacts(
   tx: ProfitFactTx,
   settlementId: string,
-): Promise<void> {
+): Promise<SettlementFactDating | null> {
+  try {
+    return await writeMarketplaceSettlementProfitFacts(tx, settlementId);
+  } catch (error) {
+    throw new Error("Failed to rebuild marketplace settlement profit facts", { cause: error });
+  }
+}
+
+/** A fee / income share below half a satang writes no fact. */
+const SETTLEMENT_SHARE_EPSILON = 0.005;
+
+const SETTLEMENT_ZERO_FIELDS = {
+  quantity: 0,
+  salesAmountExVat: 0,
+  salesAmountIncVat: 0,
+  salesAmount: 0,
+  costAmount: 0,
+  grossProfit: 0,
+  unitSalePriceExVat: 0,
+  unitSalePriceIncVat: 0,
+  unitSalePrice: 0,
+  unitCostPrice: 0,
+  unitProfit: 0,
+  marginPct: 0,
+};
+
+/** One sale's share of a settlement's fee and platform income, and the date it is booked on. */
+export type MarketplaceSettlementFactTarget = {
+  businessDate: Date;
+  referenceDocNo: string | null;
+  feeAmount: number;
+  incomeAmount: number;
+};
+
+export type MarketplaceSettlementFactPlan = {
+  targets: MarketplaceSettlementFactTarget[];
+  dating: SettlementFactDating;
+};
+
+/**
+ * Pure. Splits the fee and the platform income over the settlement's sales by sale amount
+ * (satang remainder on the last sale). A share is dated at its sale date unless that month was
+ * already distributed when the settlement was recorded (P2 = B) — then at the settlement date.
+ * A settlement without sales books everything on the settlement date.
+ */
+export function planMarketplaceSettlementFacts(input: {
+  settlementDate: Date;
+  recordedAt: Date;
+  feeAmount: number;
+  incomeAmount: number;
+  saleLines: ReadonlyArray<{ docNo: string; docDate: Date; amount: number }>;
+  distributions: ReadonlyMap<string, MonthDistribution>;
+}): MarketplaceSettlementFactPlan {
+  const { settlementDate, recordedAt, saleLines, distributions } = input;
+  const feeAmount = roundMoney(input.feeAmount);
+  const incomeAmount = roundMoney(input.incomeAmount);
+  // รอบที่ไม่มีใบขายเลย (เช่น รอบที่มีแต่ใบคืนกับค่าปรับ) ไม่มีวันขายให้ปันกลับ
+  // จึงรับรู้ที่วันที่ของรอบรับเงินแทน
+  if (saleLines.length === 0) {
+    return {
+      targets: [{ businessDate: settlementDate, referenceDocNo: null, feeAmount, incomeAmount }],
+      dating: { settlementDate, moved: [] },
+    };
+  }
+
+  const weights = saleLines.map((line) => line.amount);
+  const feeShares = feeAmount > 0 ? allocateByWeights(feeAmount, weights) : [];
+  const incomeShares = incomeAmount > 0 ? allocateByWeights(incomeAmount, weights) : [];
+  const moved: SettlementMovedAmount[] = [];
+  const targets = saleLines.map((line, index): MarketplaceSettlementFactTarget => {
+    const fee = roundMoney(feeShares[index] ?? 0);
+    const income = roundMoney(incomeShares[index] ?? 0);
+    const lockedBy = findDistributionLockingAtRecording(distributions, line.docDate, recordedAt);
+    const hasShare = Math.abs(fee) >= SETTLEMENT_SHARE_EPSILON || Math.abs(income) >= SETTLEMENT_SHARE_EPSILON;
+    if (lockedBy && hasShare) {
+      moved.push({
+        docNo: line.docNo,
+        docDate: line.docDate,
+        periodKey: lockedBy.periodKey,
+        distributionNo: lockedBy.distributionNo,
+        feeAmount: fee,
+        incomeAmount: income,
+      });
+    }
+    return {
+      businessDate: lockedBy ? settlementDate : line.docDate,
+      referenceDocNo: line.docNo,
+      feeAmount: fee,
+      incomeAmount: income,
+    };
+  });
+  return { targets, dating: { settlementDate, moved } };
+}
+
+type SettlementFactHeader = {
+  id: string;
+  settlementNo: string;
+  channel: SaleChannel;
+  expense: { expenseNo: string } | null;
+};
+
+function buildSettlementFeeRows(
+  settlement: SettlementFactHeader,
+  expenseId: string,
+  targets: MarketplaceSettlementFactTarget[],
+  versionNo: number,
+): FactProfitRowInput[] {
+  return targets.flatMap((target, index): FactProfitRowInput[] =>
+    Math.abs(target.feeAmount) < SETTLEMENT_SHARE_EPSILON
+      ? []
+      : [{
+          ...SETTLEMENT_ZERO_FIELDS,
+          businessDate: target.businessDate,
+          sourceType: ProfitSourceType.EXPENSE,
+          sourceSubtype: "MARKETPLACE_FEE",
+          sourceId: expenseId,
+          sourceLineId: `${settlement.id}:fee:${index}`,
+          sourceDocNo: settlement.expense?.expenseNo ?? settlement.settlementNo,
+          referenceDocNo: target.referenceDocNo,
+          sourceStatus: DocStatus.ACTIVE,
+          channel: settlement.channel,
+          versionNo,
+          lineLabel: "ค่าธรรมเนียมช่องทางขาย",
+          expenseAmount: target.feeAmount,
+          netProfitAmount: roundMoney(-target.feeAmount),
+        }],
+  );
+}
+
+function buildSettlementIncomeRows(
+  settlement: SettlementFactHeader,
+  targets: MarketplaceSettlementFactTarget[],
+  versionNo: number,
+): FactProfitRowInput[] {
+  return targets.flatMap((target, index): FactProfitRowInput[] =>
+    Math.abs(target.incomeAmount) < SETTLEMENT_SHARE_EPSILON
+      ? []
+      : [{
+          ...SETTLEMENT_ZERO_FIELDS,
+          businessDate: target.businessDate,
+          sourceType: ProfitSourceType.OTHER_INCOME,
+          sourceSubtype: "MARKETPLACE_INCOME",
+          sourceId: settlement.id,
+          sourceLineId: `${settlement.id}:income:${index}`,
+          sourceDocNo: settlement.settlementNo,
+          referenceDocNo: target.referenceDocNo,
+          sourceStatus: DocStatus.ACTIVE,
+          channel: settlement.channel,
+          versionNo,
+          lineLabel: "รายรับพิเศษจากช่องทางขาย",
+          expenseAmount: 0,
+          netProfitAmount: target.incomeAmount,
+        }],
+  );
+}
+
+async function writeMarketplaceSettlementProfitFacts(
+  tx: ProfitFactTx,
+  settlementId: string,
+): Promise<SettlementFactDating | null> {
   const settlement = await tx.marketplaceSettlement.findUnique({
     where: { id: settlementId },
     select: {
       id: true,
       settlementNo: true,
       settlementDate: true,
+      createdAt: true,
       status: true,
       channel: true,
       expenseId: true,
@@ -666,14 +1010,14 @@ export async function rebuildMarketplaceSettlementProfitFacts(
       expense: { select: { expenseNo: true } },
       lines: {
         where: { docType: MarketplaceSettlementDocType.SALE },
-        orderBy: [{ docDate: "asc" }, { docNo: "asc" }],
+        orderBy: SETTLEMENT_SALE_LINE_ORDER,
         select: { docNo: true, docDate: true, amount: true },
       },
     },
   });
 
   if (!settlement) {
-    return;
+    return null;
   }
 
   if (settlement.expenseId) {
@@ -682,89 +1026,41 @@ export async function rebuildMarketplaceSettlementProfitFacts(
   await deactivateCurrentFacts(tx, ProfitSourceType.OTHER_INCOME, settlement.id);
 
   if (settlement.status !== DocStatus.ACTIVE) {
-    return;
+    return null;
   }
 
-  const feeAmount = roundMoney(Number(settlement.feeAmount));
+  const { expenseId } = settlement;
+  // Only a fee with its Expense writes fee facts.
+  const feeAmount = expenseId ? roundMoney(Number(settlement.feeAmount)) : 0;
   const incomeAmount = roundMoney(Number(settlement.incomeAmount));
   if (feeAmount <= 0 && incomeAmount <= 0) {
-    return;
+    return { settlementDate: settlement.settlementDate, moved: [] };
   }
 
-  // รอบที่ไม่มีใบขายเลย (เช่น รอบที่มีแต่ใบคืนกับค่าปรับ) ไม่มีวันขายให้ปันกลับ
-  // จึงรับรู้ที่วันที่ของรอบรับเงินแทน
-  const hasSaleLines = settlement.lines.length > 0;
-  const targets = hasSaleLines
-    ? settlement.lines.map((line) => ({ businessDate: line.docDate, referenceDocNo: line.docNo }))
-    : [{ businessDate: settlement.settlementDate, referenceDocNo: null }];
-  const weights = hasSaleLines ? settlement.lines.map((line) => Number(line.amount)) : [1];
-
-  const emptyMoneyFields = {
-    quantity: 0,
-    salesAmountExVat: 0,
-    salesAmountIncVat: 0,
-    salesAmount: 0,
-    costAmount: 0,
-    grossProfit: 0,
-    unitSalePriceExVat: 0,
-    unitSalePriceIncVat: 0,
-    unitSalePrice: 0,
-    unitCostPrice: 0,
-    unitProfit: 0,
-    marginPct: 0,
-  };
+  const saleLines = settlement.lines.map((line) => ({
+    docNo: line.docNo,
+    docDate: line.docDate,
+    amount: Number(line.amount),
+  }));
+  const plan = planMarketplaceSettlementFacts({
+    settlementDate: settlement.settlementDate,
+    recordedAt: settlement.createdAt,
+    feeAmount,
+    incomeAmount,
+    saleLines,
+    distributions: await loadMonthDistributions(tx, saleLines.map((line) => line.docDate)),
+  });
 
   const rows: FactProfitRowInput[] = [];
-
-  if (feeAmount > 0 && settlement.expenseId) {
-    const versionNo = await getNextVersion(tx, ProfitSourceType.EXPENSE, settlement.expenseId);
-    const shares = allocateByWeights(feeAmount, weights);
-    targets.forEach((target, index) => {
-      const expenseAmount = roundMoney(shares[index] ?? 0);
-      if (Math.abs(expenseAmount) < 0.005) return;
-      rows.push({
-        ...emptyMoneyFields,
-        businessDate: target.businessDate,
-        sourceType: ProfitSourceType.EXPENSE,
-        sourceSubtype: "MARKETPLACE_FEE",
-        sourceId: settlement.expenseId as string,
-        sourceLineId: `${settlement.id}:fee:${index}`,
-        sourceDocNo: settlement.expense?.expenseNo ?? settlement.settlementNo,
-        referenceDocNo: target.referenceDocNo,
-        sourceStatus: DocStatus.ACTIVE,
-        channel: settlement.channel,
-        versionNo,
-        lineLabel: "ค่าธรรมเนียมช่องทางขาย",
-        expenseAmount,
-        netProfitAmount: roundMoney(-expenseAmount),
-      });
-    });
+  if (feeAmount > 0 && expenseId) {
+    const versionNo = await getNextVersion(tx, ProfitSourceType.EXPENSE, expenseId);
+    rows.push(...buildSettlementFeeRows(settlement, expenseId, plan.targets, versionNo));
   }
-
   if (incomeAmount > 0) {
     const versionNo = await getNextVersion(tx, ProfitSourceType.OTHER_INCOME, settlement.id);
-    const shares = allocateByWeights(incomeAmount, weights);
-    targets.forEach((target, index) => {
-      const income = roundMoney(shares[index] ?? 0);
-      if (Math.abs(income) < 0.005) return;
-      rows.push({
-        ...emptyMoneyFields,
-        businessDate: target.businessDate,
-        sourceType: ProfitSourceType.OTHER_INCOME,
-        sourceSubtype: "MARKETPLACE_INCOME",
-        sourceId: settlement.id,
-        sourceLineId: `${settlement.id}:income:${index}`,
-        sourceDocNo: settlement.settlementNo,
-        referenceDocNo: target.referenceDocNo,
-        sourceStatus: DocStatus.ACTIVE,
-        channel: settlement.channel,
-        versionNo,
-        lineLabel: "รายรับพิเศษจากช่องทางขาย",
-        expenseAmount: 0,
-        netProfitAmount: income,
-      });
-    });
+    rows.push(...buildSettlementIncomeRows(settlement, plan.targets, versionNo));
   }
 
   await createFactProfitRows(tx, rows);
+  return plan.dating;
 }

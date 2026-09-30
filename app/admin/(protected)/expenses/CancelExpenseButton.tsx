@@ -1,13 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import CancelDocButton from "@/components/shared/CancelDocButton";
+import { PeriodLockCancelButton } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { cancelExpense } from "./actions";
 
-const CancelExpenseButton = ({ id, expenseNo }: { id: string; expenseNo: string }) => {
+const CancelExpenseButton = ({
+  id,
+  expenseNo,
+  periodLock = null,
+}: {
+  id: string;
+  expenseNo: string;
+  periodLock?: PeriodLockView | null;
+}) => {
   const router = useRouter();
   return (
-    <CancelDocButton
+    <PeriodLockCancelButton
+      periodLock={periodLock}
       docId={id}
       docNo={expenseNo}
       idFieldName="expenseId"

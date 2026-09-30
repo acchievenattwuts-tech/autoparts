@@ -3,7 +3,7 @@
 import { Fragment, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts } from "../actions";
+import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, type PurchaseReturnSourceVat } from "../actions";
 import { CheckCircle, ExternalLink, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
@@ -12,6 +12,8 @@ import SearchableSelect, { type SelectOption } from "@/components/shared/Searcha
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import {
   createRowKey,
   createRowRequestTracker,
@@ -20,6 +22,17 @@ import {
   stripRowKeys,
 } from "@/lib/form-row-state";
 import { PURCHASE_RETURN_SETTLEMENT_LABELS } from "../purchase-return-presentation";
+import { describeInputVatTreatment, isInputVatRecoverable, parseVatRegisteredFrom } from "@/lib/input-vat";
+import {
+  getTaxInvoiceFieldsError,
+  parseTaxInvoiceDate,
+  PURCHASE_RETURN_TAX_INVOICE_MESSAGES,
+  TAX_INVOICE_NO_MAX_LENGTH,
+  toInputVatDecision,
+} from "../../purchases/purchase-tax-invoice";
+import { resolvePurchaseReturnTaxDocument } from "../purchase-return-vat";
+
+const VAT_RATE_TOLERANCE = 0.0001;
 
 interface ProductOption {
   id: string;
@@ -72,6 +85,8 @@ const ROW_KEY_PREFIX = "pr-row";
 
 interface InitialData {
   id: string;
+  /** Edit only: the document's updatedAt (ISO) as loaded; the action rejects a stale save. */
+  updatedAt?: string;
   returnDate: string;
   purchaseId: string;
   claimId?: string;
@@ -83,6 +98,11 @@ interface InitialData {
   note: string;
   vatType: string;
   vatRate: number;
+  /** V5: the supplier's credit note number / date (YYYY-MM-DD). */
+  taxInvoiceNo?: string;
+  taxInvoiceDate?: string;
+  /** V3: VAT of the referenced purchase (the return must use it). */
+  purchaseVat?: PurchaseReturnSourceVat | null;
   items: LineItem[];
   initialAvailableLots?: Record<number, LotAvailableJSON[]>;
 }
@@ -123,11 +143,14 @@ const PurchaseReturnForm = ({
   initialPurchases,
   defaultVatType,
   defaultVatRate,
+  vatRegisteredFrom,
   initialData,
   prefillData,
   claimId,
   claimContext,
   submitLocked = false,
+  periodLock = null,
+  periodLockHint,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -135,11 +158,16 @@ const PurchaseReturnForm = ({
   initialPurchases?: PurchaseOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  /** Company setting vat_registered_from (YYYY-MM-DD, "" = not VAT-registered) — lib/input-vat.ts. */
+  vatRegisteredFrom: string;
   initialData?: InitialData;
   prefillData?: PrefillData;
   claimId?: string;
   claimContext?: ClaimContext | null;
   submitLocked?: boolean;
+  /** Edit only: the return's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  periodLockHint?: string;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -182,8 +210,24 @@ const PurchaseReturnForm = ({
         ? [{ cashBankAccountId: seedData.cashBankAccountId, amount: 0 }]
         : [{ cashBankAccountId: "", amount: 0 }],
   );
-  const [vatType, setVatType] = useState<string>(seedData?.vatType ?? defaultVatType);
-  const [vatRate, setVatRate] = useState<number>(seedData?.vatRate ?? defaultVatRate);
+  // V3: a return that references a purchase uses the purchase's VAT (the server re-checks it).
+  const [purchaseVat, setPurchaseVat] = useState<PurchaseReturnSourceVat | null>(
+    seedData?.purchaseId ? seedData.purchaseVat ?? null : null,
+  );
+  const [vatType, setVatType] = useState<string>(purchaseVat?.vatType ?? seedData?.vatType ?? defaultVatType);
+  const [vatRate, setVatRate] = useState<number>(purchaseVat?.vatRate ?? seedData?.vatRate ?? defaultVatRate);
+  const [taxInvoiceNo, setTaxInvoiceNo] = useState(seedData?.taxInvoiceNo ?? "");
+  const [taxInvoiceDate, setTaxInvoiceDate] = useState(seedData?.taxInvoiceDate ?? "");
+  const vatLockedToPurchase = Boolean(purchaseId) && purchaseVat !== null;
+  // A saved return whose VAT differs from its purchase: saving switches it to the purchase VAT.
+  const storedVatDiffersFromPurchase =
+    initialData !== undefined &&
+    purchaseVat !== null &&
+    purchaseId === initialData.purchaseId &&
+    (purchaseVat.vatType !== initialData.vatType ||
+      (purchaseVat.vatType !== "NO_VAT" && Math.abs(purchaseVat.vatRate - initialData.vatRate) > VAT_RATE_TOLERANCE));
+  // The date input stays uncontrolled; this copy only feeds the month-lock change check (P3).
+  const [returnDateKey, setReturnDateKey] = useState(seedData?.returnDate ?? getThailandDateKey());
   // Per-row lot state is keyed by FormLineItem.rowKey, so removing a row never shifts
   // another row's lots onto it.
   const [availableLots, setAvailableLots] = useState<Record<string, LotAvailableJSON[]>>(seededRows.lots);
@@ -243,6 +287,7 @@ const PurchaseReturnForm = ({
     setSupplierId(id);
     if (!id) setSelectedSupplierOption(null);
     setPurchaseId("");
+    setPurchaseVat(null);
     setItems([emptyItem()]);
     resetAllRowLots();
     if (!id) {
@@ -258,9 +303,15 @@ const PurchaseReturnForm = ({
   const handlePurchaseChange = async (id: string) => {
     setPurchaseId(id);
     resetAllRowLots();
-    if (!id) return;
+    if (!id) {
+      setPurchaseVat(null);
+      return;
+    }
     const detail = await getPurchaseDetail(id);
     if (!detail) return;
+    setPurchaseVat(detail.vat);
+    setVatType(detail.vat.vatType);
+    setVatRate(detail.vat.vatRate);
     setProductOptions((prev) => {
       const next = new Map(prev.map((product) => [product.id, product]));
       detail.products.forEach((product) => {
@@ -431,6 +482,41 @@ const PurchaseReturnForm = ({
     return sum + item.qty * cost;
   }, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalBeforeVat, vatType as VatType, vatRate);
+  // V1/V3: recoverability follows the referenced purchase, else this return's own credit-note date.
+  const inputVatDecision = toInputVatDecision(
+    resolvePurchaseReturnTaxDocument(
+      { vatType, vatRate, taxInvoiceDate: parseTaxInvoiceDate(taxInvoiceDate) },
+      purchaseVat && purchaseId
+        ? { vatType: purchaseVat.vatType, vatRate: purchaseVat.vatRate, taxInvoiceDate: parseTaxInvoiceDate(purchaseVat.taxInvoiceDate) }
+        : null,
+    ),
+    parseVatRegisteredFrom(vatRegisteredFrom),
+  );
+  const inputVatRecoverable = isInputVatRecoverable(inputVatDecision);
+  const isVatDocument = vatType !== "NO_VAT";
+
+  // P3: what updatePurchaseReturn compares in a locked month (purchase-return-period-lock.ts).
+  // The note and the line detail text are left out.
+  const { financialChange: periodLockFinancialChange } = usePeriodLockFinancialChange(
+    periodLock,
+    {
+      returnDate: returnDateKey,
+      purchaseId,
+      claimId: linkedClaimId,
+      supplierId,
+      type: returnType,
+      settlementType,
+      vatType,
+      vatRate,
+      // The credit-note number/date are remarks unless the date flips VAT recoverability (V5).
+      inputVatRecoverable,
+      lines: stripRowKeys(items).map((item) => ({ ...item, moreDetail: "" })),
+      payments: settlementType === "CASH_REFUND"
+        ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
+        : [],
+    },
+    error,
+  );
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -446,6 +532,11 @@ const PurchaseReturnForm = ({
 
     if (!supplierId) {
       setError("กรุณาเลือกผู้จำหน่าย");
+      return;
+    }
+    const taxInvoiceError = getTaxInvoiceFieldsError({ vatType, taxInvoiceNo, taxInvoiceDate }, PURCHASE_RETURN_TAX_INVOICE_MESSAGES);
+    if (taxInvoiceError) {
+      setError(taxInvoiceError);
       return;
     }
     formData.set("supplierId", supplierId);
@@ -494,6 +585,10 @@ const PurchaseReturnForm = ({
     formData.set("items", JSON.stringify(stripRowKeys(items)));
     formData.set("vatType", vatType);
     formData.set("vatRate", String(vatRate));
+    formData.set("taxInvoiceNo", taxInvoiceNo.trim());
+    formData.set("taxInvoiceDate", taxInvoiceDate);
+
+    if (isEdit && initialData?.updatedAt) formData.set("updatedAt", initialData.updatedAt);
 
     startTransition(async () => {
       if (isEdit && initialData) {
@@ -518,6 +613,7 @@ const PurchaseReturnForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <PeriodLockFormSection lock={periodLock} hint={periodLockHint} financialChange={periodLockFinancialChange} />
       {claimContext && (
         <div className="overflow-hidden rounded-xl border border-orange-200 bg-orange-50 shadow-sm dark:border-orange-300/25 dark:bg-orange-400/10">
           <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
@@ -563,6 +659,7 @@ const PurchaseReturnForm = ({
               name="returnDate"
               required
               defaultValue={seedData?.returnDate ?? getThailandDateKey()}
+              onChange={(event) => setReturnDateKey(event.target.value)}
               className={inputCls}
             />
           </div>
@@ -678,6 +775,15 @@ const PurchaseReturnForm = ({
           </div>
           <div className="md:col-span-3 border-t border-gray-100 dark:border-white/10 pt-4 mt-2">
             <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mb-3">ภาษี (VAT)</p>
+            {vatLockedToPurchase ? (
+              <div className="flex flex-wrap gap-2 items-center">
+                <span className="px-3 py-1.5 rounded-lg text-sm font-medium border bg-gray-100 text-gray-700 border-gray-200 dark:bg-slate-800 dark:text-slate-200 dark:border-white/10">
+                  {VAT_TYPE_LABELS[vatType as VatType] ?? vatType}
+                  {vatType !== "NO_VAT" ? ` ${vatRate}%` : ""}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-slate-400">ใช้ภาษีตามใบซื้ออ้างอิง แก้ไขไม่ได้</span>
+              </div>
+            ) : (
             <div className="flex flex-wrap gap-2 items-center">
               {(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"] as const).map((value) => (
                 <button
@@ -708,6 +814,54 @@ const PurchaseReturnForm = ({
                 </div>
               )}
             </div>
+            )}
+            {storedVatDiffersFromPurchase ? (
+              <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+                ภาษีเดิมของใบคืนนี้ไม่ตรงกับใบซื้ออ้างอิง เมื่อบันทึก ระบบจะใช้ภาษีตามใบซื้อ
+              </p>
+            ) : null}
+            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label className={labelCls}>
+                  เลขที่ใบลดหนี้ของ supplier {isVatDocument && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="text"
+                  name="taxInvoiceNo"
+                  maxLength={TAX_INVOICE_NO_MAX_LENGTH}
+                  value={taxInvoiceNo}
+                  onChange={(event) => setTaxInvoiceNo(event.target.value)}
+                  aria-required={isVatDocument}
+                  className={inputCls}
+                  placeholder="เลขที่ใบลดหนี้ที่ supplier ออกให้"
+                />
+              </div>
+              <div>
+                <label className={labelCls}>
+                  วันที่ใบลดหนี้ {isVatDocument && <span className="text-red-500">*</span>}
+                </label>
+                <input
+                  type="date"
+                  name="taxInvoiceDate"
+                  value={taxInvoiceDate}
+                  onChange={(event) => setTaxInvoiceDate(event.target.value)}
+                  aria-required={isVatDocument}
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+              บังคับกรอกเมื่อใบคืนมี VAT{purchaseId ? " — สิทธิ์ภาษีซื้อเป็นไปตามใบซื้ออ้างอิง" : ""}
+            </p>
+            <p
+              className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+                inputVatRecoverable
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                  : "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-slate-900/60 dark:text-slate-300"
+              }`}
+            >
+              {describeInputVatTreatment(inputVatDecision)}
+            </p>
           </div>
         </div>
       </div>

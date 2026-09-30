@@ -13,6 +13,7 @@ import PrintFromListButton from "@/components/shared/PrintFromListButton";
 import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import { buildMutationBlockMessage } from "@/lib/document-mutation-guard";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import {
   CLAIM_DELETED_SEARCH_PARAM,
   CLAIM_DELETED_SUCCESS_MESSAGE,
@@ -132,6 +133,9 @@ const ClaimListPage = async ({
         id: true,
         claimNo: true,
         claimDate: true,
+        sentAt: true,
+        resolvedAt: true,
+        returnedAt: true,
         claimType: true,
         status: true,
         outcome: true,
@@ -167,6 +171,15 @@ const ClaimListPage = async ({
   const from = fromParam ?? "";
   const to = toParam ?? "";
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
+  // One query for the page: claims whose posting months were already distributed (cancel reverses them all).
+  const claimPostingDates = (claim: (typeof claims)[number]) =>
+    [claim.claimDate, claim.sentAt, claim.resolvedAt, claim.returnedAt];
+  const periodLockOf = canUpdate
+    ? await getPeriodLockViewResolver(
+        claims.filter((claim) => claim.status !== "CANCELLED").flatMap(claimPostingDates),
+        permissions,
+      )
+    : () => null;
   const paginationParams: Record<string, string> = {};
   if (normalizedQuery) paginationParams.q = normalizedQuery;
   if (status) paginationParams.status = status;
@@ -345,6 +358,7 @@ const ClaimListPage = async ({
                             <CancelClaimButton
                               claimId={claim.id}
                               claimNo={claim.claimNo}
+                              periodLock={periodLockOf(...claimPostingDates(claim))}
                               deletesClaim={getWarrantyClaimKind(claim.warranty) === "SALE"}
                               disabledReason={buildMutationBlockMessage({
                                 blocked: claim.purchaseReturns.length > 0,

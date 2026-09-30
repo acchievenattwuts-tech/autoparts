@@ -361,6 +361,11 @@ export async function extractPurchaseInvoiceFromStorage(
         supplierName: ocr.result.supplierName,
         referenceNo: ocr.result.referenceNo,
         invoiceDate: ocr.result.invoiceDate,
+        taxInvoiceNo: ocr.result.taxInvoiceNo,
+        taxInvoiceDate: ocr.result.taxInvoiceDate,
+        vatIncluded: ocr.result.vatIncluded,
+        vatRate: ocr.result.vatRate,
+        vatAmount: ocr.result.vatAmount,
         lines,
       },
     };

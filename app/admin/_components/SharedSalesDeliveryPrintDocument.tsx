@@ -5,6 +5,7 @@ import PrintDocumentRoot from "@/app/admin/_components/print/PrintDocumentRoot";
 import PrintDocumentStatusStamp from "@/app/admin/_components/print/PrintDocumentStatusStamp";
 import PrintSignatureGrid from "@/app/admin/_components/print/PrintSignatureGrid";
 import type { PrintDocumentVerifyBadge } from "@/lib/verify-token";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 import {
   getDefaultMarketplaceShippingAddress,
   getMarketplaceChannelConfig,
@@ -329,11 +330,11 @@ const SharedSalesDeliveryPrintDocument = ({
                   </div>
                   {item.lotItems.length > 0 ? (
                     <div className="mt-0.5 text-[11px] text-gray-600">
-                      Lot: {item.lotItems.map((lot) => `${lot.lotNo} × ${(Number(lot.qty) / displayScale).toLocaleString("th-TH")}`).join(", ")}
+                      Lot: {item.lotItems.map((lot) => `${lot.lotNo} × ${formatSaleQuantity(Number(lot.qty) / displayScale)}`).join(", ")}
                     </div>
                   ) : null}
                 </td>
-                <td className={`${PRINT_TABLE_CELL_CLASS} text-center`}>{displayQty.toLocaleString("th-TH")}</td>
+                <td className={`${PRINT_TABLE_CELL_CLASS} text-center`}>{formatSaleQuantity(displayQty)}</td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-center text-gray-700`}>{displayUnitName}</td>
                 <td className={`${PRINT_TABLE_CELL_CLASS} text-right`}>
                   {hasLineDiscount ? (

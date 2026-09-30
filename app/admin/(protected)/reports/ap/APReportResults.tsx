@@ -107,7 +107,7 @@ async function APRegisterView({ filters }: { filters: ARAPStockFilters }) {
                     <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-200">{row.docNo}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-slate-300">{formatDate(row.docDate)}</td>
                     <td className="px-3 py-2 text-gray-800 dark:text-slate-100">{row.supplierName}</td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">{AP_TYPE_LABELS[row.rowType]}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-slate-300">{row.typeLabel ?? AP_TYPE_LABELS[row.rowType]}</td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(row.netAmount)}</td>
                     <td className="px-3 py-2 text-right text-emerald-700 dark:text-emerald-200">{formatCurrency(row.paidAmount)}</td>
                     <td className="px-3 py-2 text-right font-medium text-rose-700 dark:text-rose-200">{formatCurrency(row.amountRemain)}</td>
@@ -157,7 +157,7 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
           <p className="font-kanit text-xl font-bold text-emerald-700 dark:text-emerald-100">฿{formatCurrency(totalAdvance)}</p>
         </div>
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 shadow-sm dark:border-amber-400/20 dark:bg-amber-500/10">
-          <p className="text-xs text-amber-700 dark:text-amber-200">เครดิต CN คืนสินค้า (ลบ)</p>
+          <p className="text-xs text-amber-700 dark:text-amber-200">เครดิต CN คืนสินค้า / ปรับยอด DN (ลบ)</p>
           <p className="font-kanit text-xl font-bold text-amber-700 dark:text-amber-100">฿{formatCurrency(totalCN)}</p>
         </div>
         <div className={`rounded-xl border p-4 shadow-sm ${netPayable >= 0 ? "border-gray-100 bg-[#1e3a5f]/5 dark:border-white/10 dark:bg-sky-500/10" : "border-emerald-100 bg-emerald-50 dark:border-emerald-400/20 dark:bg-emerald-500/10"}`}>
@@ -178,7 +178,7 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
             <thead className="bg-[#1e3a5f] text-white dark:bg-slate-900">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
-                <th className="px-3 py-2.5 text-left font-medium">วันที่เอกสาร</th>
+                <th className="px-3 py-2.5 text-left font-medium">วันที่เอกสาร/รับใบ</th>
                 <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
                 <th className="px-3 py-2.5 text-right font-medium">ยอดเอกสาร</th>
                 <th className="px-3 py-2.5 text-right font-medium">ค้างจ่าย</th>
@@ -193,7 +193,10 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
               ) : (
                 apData.purchases.map((row) => (
                   <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-200">{row.purchaseNo}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-200">
+                      {row.purchaseNo}
+                      {row.label ? <span className="block font-sans text-gray-500 dark:text-slate-400">{row.label}</span> : null}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-slate-300">{formatDate(row.purchaseDate)}</td>
                     <td className="px-3 py-2 text-gray-800 dark:text-slate-100">{row.supplierName || "-"}</td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(row.totalAmount)}</td>
@@ -253,16 +256,16 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
       {/* CN Purchase Credit */}
       <div className="rounded-xl border border-gray-100 bg-white shadow-sm dark:border-white/10 dark:bg-slate-950/40">
         <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
-          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">เครดิตคืนสินค้า (CN Purchase) คงเหลือ</h2>
+          <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">เครดิตคืนสินค้า (CN Purchase) / ปรับยอด DN คงเหลือ</h2>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-[#1e3a5f] text-white dark:bg-slate-900">
               <tr>
                 <th className="px-3 py-2.5 text-left font-medium">เลขที่</th>
-                <th className="px-3 py-2.5 text-left font-medium">วันที่คืน</th>
+                <th className="px-3 py-2.5 text-left font-medium">วันที่คืน/รับใบ</th>
                 <th className="px-3 py-2.5 text-left font-medium">ซัพพลายเออร์</th>
-                <th className="px-3 py-2.5 text-right font-medium">ยอดคืน</th>
+                <th className="px-3 py-2.5 text-right font-medium">ยอดคืน/ยอดลด</th>
                 <th className="px-3 py-2.5 text-right font-medium">คงเหลือ</th>
                 <th className="px-3 py-2.5 text-center font-medium">เอกสาร</th>
               </tr>
@@ -274,14 +277,17 @@ async function APOutstandingView({ filters }: { filters: ARAPStockFilters }) {
                 </tr>
               ) : (
                 apData.cnCredits.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-white/5">
-                    <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-200">{row.returnNo}</td>
+                  <tr key={`${row.kind ?? "PURCHASE_RETURN"}:${row.id}`} className="hover:bg-gray-50 dark:hover:bg-white/5">
+                    <td className="px-3 py-2 font-mono text-xs text-[#1e3a5f] dark:text-sky-200">
+                      {row.returnNo}
+                      {row.label ? <span className="block font-sans text-gray-500 dark:text-slate-400">{row.label}</span> : null}
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2 text-gray-600 dark:text-slate-300">{formatDate(row.returnDate)}</td>
                     <td className="px-3 py-2 text-gray-800 dark:text-slate-100">{row.supplierName || "-"}</td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(row.totalAmount)}</td>
                     <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-200">{formatCurrency(row.amountRemain)}</td>
                     <td className="px-3 py-2 text-center">
-                      <Link href={`/admin/purchase-returns/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline dark:text-sky-200">เปิด</Link>
+                      <Link href={row.kind === "SUPPLIER_DEBIT" ? `/admin/supplier-debit-notes/${row.id}` : `/admin/purchase-returns/${row.id}`} className="text-xs font-medium text-[#1e3a5f] hover:underline dark:text-sky-200">เปิด</Link>
                     </td>
                   </tr>
                 ))

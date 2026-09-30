@@ -9,19 +9,30 @@ const messageSchema = z.object({
 });
 
 export class DeliveryLinePushError extends Error {
-  constructor(public readonly code: string, public readonly retryable: boolean) {
+  constructor(public readonly code: string) {
     super(code);
     this.name = "DeliveryLinePushError";
   }
 }
 
-// One HTTP attempt only. The durable dispatch owns retry timing and the key.
+/**
+ * Loggable code for any dispatch-path error. Never the message: database and
+ * LINE errors can carry customer data such as LINE user ids.
+ */
+export const getDeliveryErrorLogCode = (error: unknown): string => {
+  if (error instanceof DeliveryLinePushError) return error.code;
+  if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") return error.code;
+  return error instanceof Error ? error.name : "UNKNOWN_ERROR";
+};
+
+// One HTTP attempt only, and a failed card is never sent again (owner decision
+// T6). The retry key header stays: LINE then rejects an accidental duplicate push.
 export const pushDeliveryLineCard = async (input: {
   accessToken: string; recipientId: string; retryKey: string; payload: Prisma.JsonValue;
 }): Promise<{ requestId: string | null }> => {
   try {
     const parsed = messageSchema.safeParse(input.payload);
-    if (!parsed.success) throw new DeliveryLinePushError("INVALID_PAYLOAD", false);
+    if (!parsed.success) throw new DeliveryLinePushError("INVALID_PAYLOAD");
     const response = await fetch(LINE_PUSH_URL, {
       method: "POST", signal: AbortSignal.timeout(LINE_PUSH_TIMEOUT_MS),
       headers: {
@@ -35,9 +46,10 @@ export const pushDeliveryLineCard = async (input: {
       return { requestId: acceptedRequestId ?? response.headers.get("x-line-request-id") };
     }
     // Never store raw LINE responses: they can contain customer identifiers.
-    throw new DeliveryLinePushError(`LINE_HTTP_${response.status}`, response.status === 429 || response.status >= 500);
+    throw new DeliveryLinePushError(`LINE_HTTP_${response.status}`);
   } catch (error) {
     if (error instanceof DeliveryLinePushError) throw error;
-    throw new DeliveryLinePushError("LINE_NETWORK_ERROR", true);
+    // Network failures and the request timeout share one code.
+    throw new DeliveryLinePushError("LINE_NETWORK_ERROR");
   }
 };

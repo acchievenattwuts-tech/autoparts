@@ -55,6 +55,14 @@ import {
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { ADMIN_CLAIM_TYPE_LABEL } from "@/lib/warranty-claim-i18n";
 import { lockSaleRowForClaim, lockWarrantyRow } from "@/lib/warranty-claim-locks";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockOverride, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  canOverridePeriodLock,
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+} from "@/lib/period-lock-document";
+import { PERIOD_LOCK_REASON_FIELD } from "@/lib/period-lock-view";
 import {
   appendSaleClaimCancelNote,
   buildSaleClaimCancelHistoryLine,
@@ -75,6 +83,15 @@ async function getWarrantyClaimMutationBlockError(
 
 /** An expected, user-facing refusal raised inside a transaction (not reported as a crash). */
 class ClaimFlowError extends Error {}
+
+/**
+ * Month lock (lib/period-lock.ts) for claim steps. Forward steps (open / send / close / return)
+ * post new stock rows on the date the user picks, like a new document: no override. Reopen and
+ * cancel reverse posted rows, so an admin with the override permission may unlock them with a reason.
+ */
+function buildClaimPeriodLockOverride(session: { user: { permissions?: string[] | null } }, reason: unknown): PeriodLockOverride {
+  return { allowed: canOverridePeriodLock(session.user.permissions), reason: typeof reason === "string" ? reason : null };
+}
 
 function getOpenClaimError(claimNo: string): string {
   return `รายการประกันนี้มีใบเคลม ${claimNo} ค้างอยู่แล้ว`;
@@ -345,6 +362,7 @@ export async function createClaim(
   try {
     await dbTx(async (tx) => {
       await lockAndRecheckClaimableWarranty(tx, warranty.id, warranty.saleId);
+      await assertPeriodsUnlocked(tx, [claimDate]);
       const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
       const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
       const isTracked = isInventoryTracked(warranty.product.inventoryTracking);
@@ -458,7 +476,9 @@ export async function createClaim(
     revalidatePath("/admin/warranty-claims");
     return { claimNo };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof ClaimFlowError) return { error: error.message };
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.create", userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -581,6 +601,7 @@ export async function sendClaimToSupplier(
   try {
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await assertPeriodsUnlocked(tx, [sentDate]);
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
 
@@ -624,6 +645,7 @@ export async function sendClaimToSupplier(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.send", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
@@ -693,6 +715,7 @@ export async function closeClaim(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await assertPeriodsUnlocked(tx, [resolvedDate]);
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
       const isLotControl = isTracked && claim.warranty.product.isLotControl;
@@ -802,6 +825,8 @@ export async function closeClaim(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.close", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
@@ -851,6 +876,7 @@ export async function returnClaimToCustomer(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
+      await assertPeriodsUnlocked(tx, [returnedDate]);
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
       const isLotControl = isTracked && claim.warranty.product.isLotControl;
       await tx.warrantyClaim.update({
@@ -918,13 +944,15 @@ export async function returnClaimToCustomer(
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.return", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
   }
 }
 
-export async function reopenClaim(id: string): Promise<{ error?: string }> {
+export async function reopenClaim(id: string, periodLockReason?: string): Promise<{ error?: string }> {
   let session: Awaited<ReturnType<typeof requirePermission>>;
   try {
     session = await requirePermission("warranty_claims.update");
@@ -939,6 +967,8 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
       status: true,
       outcome: true,
       claimType: true,
+      resolvedAt: true,
+      returnedAt: true,
       warranty: { select: { productId: true } },
     },
   });
@@ -946,6 +976,8 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
 
   const mutationBlockError = await getWarrantyClaimMutationBlockError(id, "reopen");
   if (mutationBlockError) return { error: mutationBlockError };
+  const lockOverride = buildClaimPeriodLockOverride(session, periodLockReason);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
@@ -953,6 +985,12 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
     await dbTx(async (tx) => {
       await lockStockMutationProducts(tx, [claim.warranty.productId]);
       await assertDocumentMutationAllowedInTx(tx, "WarrantyClaim", id, "reopen");
+      // Month lock on the step being reversed: the return-to-customer or the close date.
+      periodLock = await assertPeriodsUnlocked(
+        tx,
+        [claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER ? claim.returnedAt : claim.resolvedAt],
+        lockOverride,
+      );
       if (claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER) {
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
           docNos: [`${claim.claimNo}${RETURN_DOC_SUFFIX}`],
@@ -1012,12 +1050,24 @@ export async function reopenClaim(id: string): Promise<{ error?: string }> {
       action: AuditAction.UPDATE,
       beforeSnapshot,
       afterSnapshot,
+      ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
+    });
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "WarrantyClaim",
+      entityId: id,
+      docNo: claim.claimNo,
+      action: "ย้อนสถานะใบเคลม",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/warranty-claims/${id}`,
     });
 
     revalidatePath("/admin/warranty-claims");
     revalidatePath(`/admin/warranty-claims/${id}`);
     return {};
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.reopen", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
@@ -1030,7 +1080,7 @@ export async function cancelClaimAction(
 ): Promise<{ success?: boolean; error?: string; deleted?: boolean }> {
   const id = formData.get("claimId");
   if (typeof id !== "string" || !id) return { error: "ข้อมูลไม่ถูกต้อง" };
-  const result = await cancelClaim(id, formData.get("cancelNote"));
+  const result = await cancelClaim(id, formData.get("cancelNote"), formData.get(PERIOD_LOCK_REASON_FIELD));
   return result.error ? { error: result.error } : { success: true, deleted: result.deleted === true };
 }
 
@@ -1046,6 +1096,10 @@ async function loadCancellableClaim(id: string) {
       claimType: true,
       symptom: true,
       supplierName: true,
+      claimDate: true,
+      sentAt: true,
+      resolvedAt: true,
+      returnedAt: true,
       warranty: {
         select: {
           id: true,
@@ -1084,6 +1138,7 @@ async function deleteClaimStockCards(tx: TxClient, claimId: string, claimNo: str
 export async function cancelClaim(
   id: string,
   rawCancelNote?: unknown,
+  periodLockReason?: unknown,
 ): Promise<{ error?: string; deleted?: boolean }> {
   let session: ClaimSession;
   try {
@@ -1101,25 +1156,33 @@ export async function cancelClaim(
   if (mutationBlockError) return { error: mutationBlockError };
   if (claim.status === WarrantyClaimStatus.CANCELLED) return { error: "ยกเลิกไปแล้ว" };
 
+  const lockOverride = buildClaimPeriodLockOverride(session, periodLockReason);
   const saleId = claim.warranty.saleId;
   if (getWarrantyClaimKind(claim.warranty) === "SALE" && saleId) {
-    return cancelSaleClaim(session, claim, saleId, noteResult.note);
+    return cancelSaleClaim(session, claim, saleId, noteResult.note, lockOverride);
   }
-  return cancelOnsiteClaim(session, claim, noteResult.note);
+  return cancelOnsiteClaim(session, claim, noteResult.note, lockOverride);
 }
+
+/** Every posting date a claim cancel reverses: open, send, close and return-to-customer. */
+const getClaimPostingDates = (claim: CancellableClaim): Array<Date | null> =>
+  [claim.claimDate, claim.sentAt, claim.resolvedAt, claim.returnedAt];
 
 async function cancelOnsiteClaim(
   session: ClaimSession,
   claim: CancellableClaim,
   cancelNote: string,
+  lockOverride: PeriodLockOverride,
 ): Promise<{ error?: string }> {
   const { id } = claim;
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getWarrantyClaimAuditSnapshot(id);
     await dbTx(async (tx) => {
       await lockStockMutationProducts(tx, [claim.warranty.productId]);
       await assertDocumentMutationAllowedInTx(tx, "WarrantyClaim", id, "cancel");
+      periodLock = await assertPeriodsUnlocked(tx, getClaimPostingDates(claim), lockOverride);
       await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, claim.warranty.productId);
 
@@ -1140,7 +1203,17 @@ async function cancelOnsiteClaim(
       action: AuditAction.CANCEL,
       beforeSnapshot,
       afterSnapshot,
-      meta: { cancelNote },
+      meta: { cancelNote, ...periodLockAuditMeta(periodLock, lockOverride) },
+    });
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "WarrantyClaim",
+      entityId: id,
+      docNo: claim.claimNo,
+      action: "ยกเลิกใบเคลม",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/warranty-claims/${id}`,
     });
 
     revalidatePath("/admin/warranty-claims");
@@ -1148,6 +1221,7 @@ async function cancelOnsiteClaim(
     revalidatePath("/admin/warranties");
     return {};
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };
@@ -1159,9 +1233,11 @@ async function cancelSaleClaim(
   claim: CancellableClaim,
   saleId: string,
   cancelNote: string,
+  lockOverride: PeriodLockOverride,
 ): Promise<{ error?: string; deleted?: boolean }> {
   const { id, warranty } = claim;
   const actor = getAuditActorFromSession(session);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
   try {
     const requestContext = await getRequestContext();
     await dbTx(async (tx) => {
@@ -1174,6 +1250,7 @@ async function cancelSaleClaim(
       await lockStockMutationProducts(tx, [warranty.productId]);
       const guard = await createDocumentMutationGuard(tx as unknown as GuardDb).check("WarrantyClaim", id, "cancel");
       if (guard.blocked) throw new ClaimFlowError(buildMutationBlockMessage(guard) ?? "เอกสารถูกอ้างอิง");
+      periodLock = await assertPeriodsUnlocked(tx, getClaimPostingDates(claim), lockOverride);
 
       await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, warranty.productId);
@@ -1228,8 +1305,20 @@ async function cancelSaleClaim(
           supplierName: claim.supplierName,
           statusAtCancel: claim.status,
           cancelNote,
+          ...periodLockAuditMeta(periodLock, lockOverride),
         },
       });
+    });
+    // The claim row is gone; the alert links to the sale that keeps its cancel history.
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "WarrantyClaim",
+      entityId: id,
+      docNo: claim.claimNo,
+      action: "ยกเลิกใบเคลม",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/sales/${saleId}`,
     });
 
     revalidatePath("/admin/warranty-claims");
@@ -1238,6 +1327,7 @@ async function cancelSaleClaim(
     revalidatePath("/admin/warranties");
     return { deleted: true };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof ClaimFlowError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };

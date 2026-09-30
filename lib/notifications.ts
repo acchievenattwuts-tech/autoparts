@@ -1,7 +1,10 @@
 import { db } from "@/lib/db";
 import { NotificationSeverity, NotificationType, Role } from "@/lib/generated/prisma";
+import { getLineDeliveryReasonLabel } from "@/lib/line-delivery-status";
+import { getDeliveryErrorLogCode } from "@/lib/line-delivery-transport";
 import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 
@@ -311,6 +314,40 @@ export async function notifyProfitDistributionDeclared(input: {
   });
 }
 
+/**
+ * An admin changed a document dated in a month whose profit was already distributed, using the
+ * period-lock override (lib/period-lock.ts). Always bell + Telegram so the owner sees every override.
+ */
+export async function notifyPeriodLockOverride(input: {
+  entityType: string;
+  entityId: string;
+  docNo: string;
+  action: string;
+  periodLabels: string[];
+  reason: string;
+  actorName: string | null;
+  link: string;
+}): Promise<number> {
+  return createNotification({
+    type: NotificationType.PERIOD_LOCK_OVERRIDDEN,
+    severity: NotificationSeverity.WARNING,
+    title: `ปลดล็อกแก้เอกสาร ${input.docNo} ในเดือนที่ปันผลแล้ว`,
+    body: `${input.action} · เดือน ${input.periodLabels.join(", ")} · โดย ${input.actorName ?? "ไม่ทราบผู้ใช้"} · เหตุผล: ${input.reason} — ส่วนต่างกำไรจะถูกยกไปปรับในการปันผลครั้งถัดไป`,
+    link: input.link,
+    entityType: input.entityType,
+    entityId: input.entityId,
+  });
+}
+
+/** Never lets a failed alert break the business flow (.rules §10). */
+export async function safeNotifyPeriodLockOverride(input: Parameters<typeof notifyPeriodLockOverride>[0]): Promise<void> {
+  try {
+    await notifyPeriodLockOverride(input);
+  } catch (error) {
+    console.error("[notifyPeriodLockOverride]", error instanceof Error ? error.message : "failed");
+  }
+}
+
 export async function notifyProfitDistributionCancelled(input: {
   distributionId: string;
   distributionNo: string;
@@ -497,6 +534,84 @@ export async function notifyLineCustomerLinked(input: {
     entityId: input.customerId,
     dedupeKey: `line-customer-link:${input.customerId}:${input.kind}`,
   });
+}
+
+/** At most one LINE_DELIVERY_FAILED alert per error code inside this window. */
+const LINE_DELIVERY_FAILED_ALERT_WINDOW_MS = 60 * 60 * 1000;
+const LINE_DELIVERY_FAILED_ALERTS_PER_WINDOW = 1;
+/** Per-code bucket in the shared ApiThrottle table (same mechanism as lib/error-reporting.ts). */
+const LINE_DELIVERY_FAILED_THROTTLE_KEY_PREFIX = "line-delivery-failed-alert:";
+const LINE_DELIVERY_FAILED_DEDUPE_PREFIX = "line-delivery-failed:";
+const LINE_DELIVERY_FAILED_STATE = "FAILED";
+const LINE_DELIVERY_UNKNOWN_ERROR_CODE = "UNKNOWN";
+const LINE_DELIVERY_FAILED_NO_RESEND_LINE = "ระบบจะไม่ส่งซ้ำ กรุณาแจ้งลูกค้าเองถ้าจำเป็น";
+
+/**
+ * True while this error code has not alerted inside the window; consumes the
+ * code's one slot. Independent of bell rows, so it also throttles when no active
+ * ADMIN exists and only Telegram is sent. A throttle-store failure allows the
+ * alert, as in lib/error-reporting.ts: one extra alert beats a missed one.
+ */
+async function shouldSendLineDeliveryFailedAlert(code: string): Promise<boolean> {
+  try {
+    const rate = await checkRateLimit({
+      key: `${LINE_DELIVERY_FAILED_THROTTLE_KEY_PREFIX}${code}`,
+      limit: LINE_DELIVERY_FAILED_ALERTS_PER_WINDOW,
+      windowMs: LINE_DELIVERY_FAILED_ALERT_WINDOW_MS,
+    });
+    return rate.ok;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Alerts admins (bell + Telegram together) that a customer's LINE delivery card
+ * ended FAILED. Reads the committed dispatch row, so a call scheduled after a
+ * rolled-back status change sends nothing.
+ *
+ * Throttled to one alert per error code per hour through the shared rate limit
+ * (`line-delivery-failed-alert:<code>`). The bell row keeps the dedupe key
+ * `line-delivery-failed:<code>:<dispatchId>`.
+ *
+ * PRIVACY: carries the bill number and the Thai reason only — never the LINE
+ * user id or the customer name.
+ */
+export async function notifyLineDeliveryFailed(dispatchId: string): Promise<number> {
+  const dispatch = await db.saleLineDeliveryDispatch.findUnique({
+    where: { id: dispatchId },
+    select: { state: true, lastErrorCode: true, saleId: true, sale: { select: { saleNo: true } } },
+  });
+  if (!dispatch || dispatch.state !== LINE_DELIVERY_FAILED_STATE) return 0;
+
+  const code = dispatch.lastErrorCode ?? LINE_DELIVERY_UNKNOWN_ERROR_CODE;
+  if (!(await shouldSendLineDeliveryFailedAlert(code))) return 0;
+
+  return createNotification({
+    type: NotificationType.LINE_DELIVERY_FAILED,
+    severity: NotificationSeverity.WARNING,
+    title: "ส่งการ์ด LINE แจ้งลูกค้าไม่สำเร็จ",
+    body: [
+      `บิล ${dispatch.sale.saleNo}`,
+      `สาเหตุ: ${getLineDeliveryReasonLabel(code)} (${code})`,
+      "สาเหตุเดียวกันภายใน 1 ชั่วโมงจะไม่แจ้งซ้ำ",
+      // Owner decision P7b: a failed card is never re-sent (T6), so admins follow up themselves.
+      LINE_DELIVERY_FAILED_NO_RESEND_LINE,
+    ].join("\n"),
+    link: `/admin/sales/${dispatch.saleId}`,
+    entityType: "Sale",
+    entityId: dispatch.saleId,
+    dedupeKey: `${LINE_DELIVERY_FAILED_DEDUPE_PREFIX}${code}:${dispatchId}`,
+  });
+}
+
+/** Best-effort wrapper: an alert failure never touches the dispatch outcome. */
+export async function safeNotifyLineDeliveryFailed(dispatchId: string): Promise<void> {
+  try {
+    await notifyLineDeliveryFailed(dispatchId);
+  } catch (error) {
+    console.warn("[line-delivery] failure alert skipped", { code: getDeliveryErrorLogCode(error), dispatchId });
+  }
 }
 
 /** Divider matching the shared Telegram header rule. */
@@ -748,11 +863,30 @@ export async function cleanupOldNotifications(daysOld = 30): Promise<number> {
   return result.count;
 }
 const SUPPLIER_DEBIT_EVENT_LABEL = { created: "บันทึก", updated: "แก้ไข", cancelled: "ยกเลิก" } as const;
-export async function notifySupplierDebitNote(debit: { id: string; debitNo: string },
+const formatSupplierDebitAmount = (value: number): string =>
+  value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** "+1,234.00" / "-1,234.00": the sign of a restated cost change. */
+const formatSignedSupplierDebitAmount = (value: number): string =>
+  `${value < 0 ? "-" : "+"}${formatSupplierDebitAmount(Math.abs(value))}`;
+/**
+ * amountChange is set when an edit reposted the DN, so the alert shows the AP amount before and after.
+ * restatement is set when a cancel or edit restated the cost of later sales (lib/sale-cost-restatement.ts).
+ * adjustment is set for a "ปรับยอด DN" document: the DN it corrects and its signed amount.
+ */
+export async function notifySupplierDebitNote(
+  debit: { id: string; debitNo: string; amountChange?: { before: number; after: number };
+    restatement?: { saleCount: number; delta: number }; adjustment?: { parentDebitNo: string; netAmount: number } },
   event: keyof typeof SUPPLIER_DEBIT_EVENT_LABEL): Promise<void> {
   try {
+    const change = debit.amountChange
+      ? ` (ปรับยอด ${formatSupplierDebitAmount(debit.amountChange.before)} → ${formatSupplierDebitAmount(debit.amountChange.after)})` : "";
+    const restated = debit.restatement && debit.restatement.saleCount > 0
+      ? ` · ปรับต้นทุนขายย้อนหลัง ${debit.restatement.saleCount} บิล รวม ${formatSignedSupplierDebitAmount(debit.restatement.delta)} บาท` : "";
+    const subject = debit.adjustment
+      ? `ปรับยอด DN ${debit.debitNo} (ปรับยอดจาก DN ${debit.adjustment.parentDebitNo} ${formatSignedSupplierDebitAmount(debit.adjustment.netAmount)} บาท)`
+      : `ใบเพิ่มหนี้ ${debit.debitNo}`;
     await createNotification({ type: NotificationType.SUPPLIER_DEBIT_NOTE,
-      title: `${SUPPLIER_DEBIT_EVENT_LABEL[event]}ใบเพิ่มหนี้ ${debit.debitNo}`,
+      title: `${SUPPLIER_DEBIT_EVENT_LABEL[event]}${subject}${change}${restated}`,
       link: `/admin/supplier-debit-notes/${debit.id}`, entityType: "SupplierDebitNote", entityId: debit.id });
   } catch (error) { console.error("[supplier-DN notification]", error); }
 }

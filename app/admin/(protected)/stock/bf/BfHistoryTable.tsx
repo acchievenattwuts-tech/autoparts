@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import CancelDocButton from "@/components/shared/CancelDocButton";
+import { PeriodLockCancelButton, PeriodLockNotice } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { cancelBF } from "./actions";
 import { formatDateThai } from "@/lib/th-date";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
@@ -20,6 +21,8 @@ interface BfDoc {
   product:         { code: string; name: string };
   disabledReason?: string | null;
   blockReferences?: Array<{ href: string; label: string }>;
+  /** The BF's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
 }
 
 const BfHistoryTable = ({
@@ -95,7 +98,8 @@ const BfHistoryTable = ({
                   </td>
                   <td className="py-3 px-4 text-right">
                     {d.status === "ACTIVE" && canCancel && (
-                      <CancelDocButton
+                      <PeriodLockCancelButton
+                        periodLock={d.periodLock}
                         disabledReason={d.disabledReason ?? undefined}
                         docId={d.id}
                         docNo={d.docNo}
@@ -105,6 +109,7 @@ const BfHistoryTable = ({
                       />
                     )}
                     {d.disabledReason && <DocumentMutationBlockedNotice compact message={d.disabledReason} references={d.blockReferences} />}
+                    {d.status === "ACTIVE" && <PeriodLockNotice compact lock={d.periodLock} />}
                   </td>
                 </tr>
               ))

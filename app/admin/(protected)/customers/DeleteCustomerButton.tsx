@@ -14,7 +14,11 @@ const ToggleCustomerButton = ({ id, name, isActive }: Props) => {
 
   const handleToggle = () => {
     const action = isActive ? "ยกเลิก" : "เปิดใช้งาน";
-    if (!confirm(`ยืนยันการ${action}ลูกค้า "${name}" ?`)) return;
+    // Deactivation also releases the LINE link (toggleCustomer); reactivation never restores it.
+    const lineNotice = isActive
+      ? "\n\nหากลูกค้าผูก LINE ไว้ การผูก LINE จะถูกยกเลิกด้วย และจะไม่กลับมาเมื่อเปิดใช้งานอีกครั้ง (ลูกค้าต้องผูก LINE ใหม่)"
+      : "";
+    if (!confirm(`ยืนยันการ${action}ลูกค้า "${name}" ?${lineNotice}`)) return;
     startTransition(async () => {
       const result = await toggleCustomer(id, !isActive);
       if (result.error) alert(result.error);

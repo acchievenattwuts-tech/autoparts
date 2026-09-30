@@ -29,7 +29,7 @@ const NewPurchasePage = async () => {
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">สร้างใบซื้อใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบซื้อสินค้า</h1>
-      <PurchaseForm products={[]} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} />
+      <PurchaseForm products={[]} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} vatRegisteredFrom={config.vatRegisteredFrom} />
     </div>
   );
 };

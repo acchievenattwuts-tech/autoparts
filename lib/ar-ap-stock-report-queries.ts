@@ -245,9 +245,11 @@ export async function buildARExcel(rows: ARRow[], title: string): Promise<Blob> 
 // ─── AP ─────────────────────────────────────────────────────────────────────
 
 export type APData = {
-  purchases: { kind?: "PURCHASE" | "SUPPLIER_DEBIT"; id: string; purchaseNo: string; purchaseDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
+  /** label: "ปรับยอดจาก DN ..." on a positive adjustment DN. */
+  purchases: { kind?: "PURCHASE" | "SUPPLIER_DEBIT"; id: string; purchaseNo: string; purchaseDate: Date; supplierName: string; totalAmount: number; amountRemain: number; label?: string }[];
   advances: { id: string; advanceNo: string; advanceDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
-  cnCredits: { id: string; returnNo: string; returnDate: Date; supplierName: string; totalAmount: number; amountRemain: number }[];
+  /** Purchase-return credit, plus the supplier credit of a negative "ปรับยอด DN" (kind SUPPLIER_DEBIT, positive amounts). */
+  cnCredits: { kind?: "PURCHASE_RETURN" | "SUPPLIER_DEBIT"; id: string; returnNo: string; returnDate: Date; supplierName: string; totalAmount: number; amountRemain: number; label?: string }[];
 };
 
 export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
@@ -313,13 +315,19 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
         amountRemain: true,
       },
     }),
+    // AP side of a DN is dated by receivedDate (วันรับใบ); stock valuation stays on postingDate. A negative
+    // "ปรับยอด DN" keeps its unused supplier credit as a negative amountRemain and is listed with the credits.
     db.supplierDebitNote.findMany({
-      where: { status: "ACTIVE", amountRemain: { gt: 0 }, ...supplierWhere, ...dateWhere("postingDate") },
-      orderBy: { postingDate: "asc" }, take: 500,
-      select: { id: true, debitNo: true, postingDate: true, netAmount: true, amountRemain: true,
-        supplier: { select: { name: true } } },
+      where: { status: "ACTIVE", amountRemain: { not: 0 }, ...supplierWhere, ...dateWhere("receivedDate") },
+      orderBy: { receivedDate: "asc" }, take: 500,
+      select: { id: true, debitNo: true, receivedDate: true, netAmount: true, amountRemain: true,
+        supplier: { select: { name: true } }, adjustsDebitNote: { select: { debitNo: true } } },
     }),
   ]);
+  const adjustmentLabel = (row: { adjustsDebitNote?: { debitNo: string } | null }): { label?: string } =>
+    row.adjustsDebitNote ? { label: `ปรับยอดจาก DN ${row.adjustsDebitNote.debitNo}` } : {};
+  const debitPayables = debits.filter((row) => Number(row.amountRemain) > 0);
+  const debitCredits = debits.filter((row) => Number(row.amountRemain) < 0);
 
   return {
     purchases: [...purchases.map((r) => ({
@@ -328,9 +336,10 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
       supplierName: r.supplier?.name ?? "",
       totalAmount: Number(r.totalAmount),
       amountRemain: Number(r.amountRemain),
-    })), ...debits.map((r) => ({
-      kind: "SUPPLIER_DEBIT" as const, id: r.id, purchaseNo: r.debitNo, purchaseDate: r.postingDate,
+    })), ...debitPayables.map((r) => ({
+      kind: "SUPPLIER_DEBIT" as const, id: r.id, purchaseNo: r.debitNo, purchaseDate: r.receivedDate,
       supplierName: r.supplier.name, totalAmount: Number(r.netAmount), amountRemain: Number(r.amountRemain),
+      ...adjustmentLabel(r),
     }))].sort((a, b) => a.purchaseDate.getTime() - b.purchaseDate.getTime()),
     advances: advances.map((r) => ({
       ...r,
@@ -338,12 +347,15 @@ export async function queryAPData(filters: ARAPStockFilters): Promise<APData> {
       totalAmount: Number(r.totalAmount),
       amountRemain: Number(r.amountRemain),
     })),
-    cnCredits: cnCredits.map((r) => ({
+    cnCredits: [...cnCredits.map((r) => ({
       ...r,
       supplierName: r.supplier?.name ?? "",
       totalAmount: Number(r.totalAmount),
       amountRemain: Number(r.amountRemain),
-    })),
+    })), ...debitCredits.map((r) => ({
+      kind: "SUPPLIER_DEBIT" as const, id: r.id, returnNo: r.debitNo, returnDate: r.receivedDate, supplierName: r.supplier.name,
+      totalAmount: Math.abs(Number(r.netAmount)), amountRemain: -Number(r.amountRemain), ...adjustmentLabel(r),
+    }))],
   };
 }
 
@@ -351,9 +363,10 @@ export function buildAPCsv(data: APData): string {
   const sections: string[] = [];
 
   sections.push(csvRow(["=== ค้างจ่ายซัพพลายเออร์ (ซื้อเชื่อ / DN) ==="]));
-  sections.push(csvRow(["เลขที่", "วันที่เอกสาร", "ซัพพลายเออร์", "ยอดเอกสาร", "ค้างจ่าย"]));
+  sections.push(csvRow(["เลขที่", "วันที่เอกสาร/รับใบ", "ซัพพลายเออร์", "ยอดเอกสาร", "ค้างจ่าย"]));
   for (const r of data.purchases) {
-    sections.push(csvRow([r.purchaseNo, fmtDate(r.purchaseDate), r.supplierName, r.totalAmount, r.amountRemain]));
+    sections.push(csvRow([r.label ? `${r.purchaseNo} (${r.label})` : r.purchaseNo, fmtDate(r.purchaseDate), r.supplierName,
+      r.totalAmount, r.amountRemain]));
   }
 
   sections.push(csvRow([]));
@@ -364,10 +377,10 @@ export function buildAPCsv(data: APData): string {
   }
 
   sections.push(csvRow([]));
-  sections.push(csvRow(["=== เครดิต CN คืนสินค้า คงเหลือ ==="]));
-  sections.push(csvRow(["เลขที่", "วันที่คืน", "ซัพพลายเออร์", "ยอดคืน", "คงเหลือ"]));
+  sections.push(csvRow(["=== เครดิต CN คืนสินค้า / ปรับยอด DN คงเหลือ ==="]));
+  sections.push(csvRow(["เลขที่", "วันที่คืน/รับใบ", "ซัพพลายเออร์", "ยอดคืน/ยอดลด", "คงเหลือ", "หมายเหตุ"]));
   for (const r of data.cnCredits) {
-    sections.push(csvRow([r.returnNo, fmtDate(r.returnDate), r.supplierName, r.totalAmount, r.amountRemain]));
+    sections.push(csvRow([r.returnNo, fmtDate(r.returnDate), r.supplierName, r.totalAmount, r.amountRemain, r.label ?? ""]));
   }
 
   return BOM + sections.join("\r\n");
@@ -412,12 +425,13 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
     "ค้างจ่ายซัพพลายเออร์",
     [
       { header: "เลขที่", key: "purchaseNo", width: 16 },
-      { header: "วันที่เอกสาร", key: "purchaseDate", width: 12 },
+      { header: "วันที่เอกสาร/รับใบ", key: "purchaseDate", width: 16 },
       { header: "ซัพพลายเออร์", key: "supplierName", width: 28 },
       { header: "ยอดเอกสาร", key: "totalAmount", width: 14 },
       { header: "ค้างจ่าย", key: "amountRemain", width: 14 },
     ],
-    data.purchases.map((r) => ({ ...r, purchaseDate: fmtDate(r.purchaseDate) })),
+    data.purchases.map((r) => ({ id: r.id, purchaseNo: r.label ? `${r.purchaseNo} (${r.label})` : r.purchaseNo,
+      purchaseDate: fmtDate(r.purchaseDate), supplierName: r.supplierName, totalAmount: r.totalAmount, amountRemain: r.amountRemain })),
     ["totalAmount", "amountRemain"],
   );
 
@@ -443,7 +457,8 @@ export async function buildAPExcel(data: APData, title: string): Promise<Blob> {
       { header: "ยอดคืน", key: "totalAmount", width: 14 },
       { header: "คงเหลือ", key: "amountRemain", width: 14 },
     ],
-    data.cnCredits.map((r) => ({ ...r, returnDate: fmtDate(r.returnDate) })),
+    data.cnCredits.map((r) => ({ returnNo: r.label ? `${r.returnNo} (${r.label})` : r.returnNo, returnDate: fmtDate(r.returnDate),
+      supplierName: r.supplierName, totalAmount: r.totalAmount, amountRemain: r.amountRemain })),
     ["totalAmount", "amountRemain"],
   );
 

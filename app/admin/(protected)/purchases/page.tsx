@@ -22,6 +22,7 @@ import {
 } from "./purchase-payment-status";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -90,6 +91,13 @@ const PurchasesPage = async ({
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        purchases.filter((p) => p.status === "ACTIVE").map((p) => p.purchaseDate),
+        permissions,
+      )
+    : () => null;
 
   const paginationParams: Record<string, string> = {};
   if (q)    paginationParams.q    = q;
@@ -177,7 +185,7 @@ const PurchasesPage = async ({
                         {p.status === "ACTIVE" ? (
                           <>
                             {canUpdate ? <NavLink href={`/admin/purchases/${p.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200" hideSpinner><Pencil size={14} /> แก้ไข</NavLink> : null}
-                            {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} /> : null}
+                            {canCancel ? <PurchaseCancelButton purchaseId={p.id} docNo={p.purchaseNo} periodLock={periodLockOf(p.purchaseDate)} /> : null}
                           </>
                         ) : null}
                       </AdminActionGroup>

@@ -35,7 +35,7 @@ type CashBankAccountOption = {
 };
 
 type SelectedItem = {
-  kind: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT";
+  kind: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT" | "SUPPLIER_DEBIT_CREDIT";
   refId: string;
   docNo: string;
   outstanding: number;
@@ -57,6 +57,16 @@ const inputCls =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
 
 const labelCls = "mb-1.5 block text-sm font-medium text-gray-700 dark:text-slate-300";
+
+const EMPTY_DOCUMENTS: SupplierSettlementDocumentBundle = { debits: [], purchases: [], credits: [], advances: [], debitCredits: [] };
+
+const documentsOfKind = (bundle: SupplierSettlementDocumentBundle, kind: SelectedItem["kind"]): SupplierSettlementDocument[] => {
+  if (kind === "PURCHASE") return bundle.purchases;
+  if (kind === "SUPPLIER_DEBIT") return bundle.debits;
+  if (kind === "SUPPLIER_CREDIT") return bundle.credits;
+  if (kind === "SUPPLIER_DEBIT_CREDIT") return bundle.debitCredits;
+  return bundle.advances;
+};
 
 const SupplierPaymentForm = ({
   suppliers,
@@ -91,13 +101,13 @@ const SupplierPaymentForm = ({
   const [note, setNote] = useState(initialData?.note ?? "");
   const [wht, setWht] = useState<WhtIssuedFormValue | null>(initialData?.wht ?? null);
   const [documents, setDocuments] = useState<SupplierSettlementDocumentBundle>(
-    initialDocuments ?? { debits: [], purchases: [], credits: [], advances: [] },
+    initialDocuments ?? EMPTY_DOCUMENTS,
   );
   const [selectedItems, setSelectedItems] = useState<SelectedItem[]>(initialData?.items ?? []);
 
   const handleSupplierChange = (nextSupplierId: string) => {
     setSupplierId(nextSupplierId);
-    setDocuments({ debits: [], purchases: [], credits: [], advances: [] });
+    setDocuments(EMPTY_DOCUMENTS);
     setSelectedItems([]);
     if (!nextSupplierId) return;
 
@@ -106,19 +116,11 @@ const SupplierPaymentForm = ({
       .then((nextDocuments) => {
         setDocuments(nextDocuments);
         setSelectedItems((prev) =>
-          prev.filter((item) => {
-            const sourceList =
-              item.kind === "PURCHASE"
-                ? nextDocuments.purchases
-                : item.kind === "SUPPLIER_CREDIT"
-                  ? nextDocuments.credits
-                  : nextDocuments.advances;
-            return sourceList.some((doc) => doc.id === item.refId);
-          }),
+          prev.filter((item) => documentsOfKind(nextDocuments, item.kind).some((doc) => doc.id === item.refId)),
         );
       })
       .catch(() => {
-        setDocuments({ debits: [], purchases: [], credits: [], advances: [] });
+        setDocuments(EMPTY_DOCUMENTS);
         setSelectedItems([]);
       })
       .finally(() => setIsLoadingDocs(false));
@@ -177,10 +179,13 @@ const SupplierPaymentForm = ({
   const creditTotal = selectedItems
     .filter((item) => item.kind === "SUPPLIER_CREDIT")
     .reduce((sum, item) => sum + item.paidAmount, 0);
+  const debitCreditTotal = selectedItems
+    .filter((item) => item.kind === "SUPPLIER_DEBIT_CREDIT")
+    .reduce((sum, item) => sum + item.paidAmount, 0);
   const advanceTotal = selectedItems
     .filter((item) => item.kind === "ADVANCE")
     .reduce((sum, item) => sum + item.paidAmount, 0);
-  const netCashPaid = purchaseTotal - creditTotal - advanceTotal;
+  const netCashPaid = purchaseTotal - creditTotal - debitCreditTotal - advanceTotal;
   /** หนี้ถูกตัดเต็ม netCashPaid แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย */
   const whtAmount = Math.round((wht?.taxAmount ?? 0) * 100) / 100;
   const cashAfterWht = Math.round((netCashPaid - whtAmount) * 100) / 100;
@@ -254,6 +259,7 @@ const SupplierPaymentForm = ({
       JSON.stringify(
         selectedItems.map((item) => ({
           debitNoteId: item.kind === "SUPPLIER_DEBIT" ? item.refId : undefined,
+          debitCreditId: item.kind === "SUPPLIER_DEBIT_CREDIT" ? item.refId : undefined,
           purchaseId: item.kind === "PURCHASE" ? item.refId : undefined,
           purchaseReturnId: item.kind === "SUPPLIER_CREDIT" ? item.refId : undefined,
           advanceId: item.kind === "ADVANCE" ? item.refId : undefined,
@@ -341,7 +347,10 @@ const SupplierPaymentForm = ({
                         className="h-4 w-4 accent-[#1e3a5f]"
                       />
                     </td>
-                    <td className={`px-3 py-2 font-mono font-medium ${amountColor}`}>{doc.docNo}</td>
+                    <td className={`px-3 py-2 font-mono font-medium ${amountColor}`}>
+                      {doc.docNo}
+                      {doc.label ? <span className="block font-sans text-xs font-normal text-gray-500 dark:text-slate-400">{doc.label}</span> : null}
+                    </td>
                     <td className="px-3 py-2 text-gray-600 dark:text-slate-400">
                         {formatDateThai(doc.docDate)}
                     </td>
@@ -411,7 +420,7 @@ const SupplierPaymentForm = ({
           </div>
 
           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700 md:col-span-2 dark:border-blue-400/20 dark:bg-blue-500/10 dark:text-blue-300">
-            เลือกใบซื้อเชื่อที่ต้องการชำระ และสามารถเลือกใช้เครดิตจาก CN ซื้อหรือเงินมัดจำซัพพลายเออร์เพื่อนำมาหักได้
+            เลือกใบซื้อเชื่อที่ต้องการชำระ และสามารถเลือกใช้เครดิตจาก CN ซื้อ เครดิตจากปรับยอด DN หรือเงินมัดจำซัพพลายเออร์เพื่อนำมาหักได้
             หากยอดสุทธิหลังหักเครดิตและมัดจำเท่ากับ 0 ระบบจะบันทึกเป็นการตัดยอดโดยไม่มีการจ่ายเงินจริง
           </div>
 
@@ -487,6 +496,18 @@ const SupplierPaymentForm = ({
           })
         : null}
 
+      {supplierId && documents.debitCredits.length > 0
+        ? renderTable({
+            kind: "SUPPLIER_DEBIT_CREDIT",
+            title: "เครดิตจากปรับยอด DN คงเหลือ",
+            description: "ยอดที่ซัพพลายเออร์ลดให้เกินยอดค้างของ DN ต้นทาง เลือกเพื่อนำมาหักกับยอดที่ต้องจ่าย",
+            documents: documents.debitCredits,
+            headClassName: "bg-teal-50 dark:bg-teal-500/10",
+            docLabel: "เลขที่ปรับยอด DN",
+            amountColor: "text-teal-700 dark:text-teal-300",
+          })
+        : null}
+
       {supplierId
         ? renderTable({
             kind: "ADVANCE",
@@ -527,6 +548,14 @@ const SupplierPaymentForm = ({
                 -{creditTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
               </span>
             </div>
+            {debitCreditTotal > 0 ? (
+              <div className="flex items-center gap-8 text-sm text-teal-700 dark:text-teal-300">
+                <span>หักเครดิตปรับยอด DN</span>
+                <span className="font-medium">
+                  -{debitCreditTotal.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            ) : null}
             <div className="flex items-center gap-8 text-sm text-amber-700 dark:text-amber-400">
               <span>หักเงินมัดจำซัพพลายเออร์</span>
               <span className="font-medium">

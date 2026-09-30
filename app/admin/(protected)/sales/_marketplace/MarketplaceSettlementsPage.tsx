@@ -5,7 +5,7 @@ import { getSessionPermissionContext, requirePermission } from "@/lib/require-au
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getTransactionCustomers } from "@/lib/transaction-options";
-import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import { formatDateThai, getThailandDateKey, getThailandMonthKey } from "@/lib/th-date";
 import {
   getMarketplaceChannelConfig,
   type ManualMarketplaceChannel,
@@ -14,12 +14,31 @@ import {
   getChannelCashHealth,
   getMarketplaceChannelSetting,
   getPendingSettlementDocuments,
+  getSettlementFeeDatingViews,
 } from "@/lib/marketplace/queries";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import MarketplaceSetupForm from "./MarketplaceSetupForm";
 import SettlementManager from "./SettlementManager";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
+import type { PeriodLockView } from "@/lib/period-lock-view";
+import { loadSettlementFactDates, type SettlementFactOwner } from "./settlement-fact-dates";
 
 const RECENT_SETTLEMENT_LIMIT = 30;
+
+const SALE_MONTH_LOCK_HINT =
+  "ค่าธรรมเนียม/รายรับพิเศษของรอบนี้ยังลงวันที่ขายในเดือนที่ประกาศปันผลภายหลัง การยกเลิกจะเปลี่ยนกำไรของเดือนนั้น";
+
+type SettlementPeriodLock = { lock: PeriodLockView | null; hint: string | null };
+
+/** Read-only preview: on failure the page still renders (no lock shown); the cancel action re-checks. */
+const loadFactDatesForPreview = async (settlements: SettlementFactOwner[]): Promise<Map<string, Date[]>> => {
+  try {
+    return await loadSettlementFactDates(db, settlements);
+  } catch (error) {
+    console.error("[marketplace] settlement fact dates preview failed", error instanceof Error ? error.message : "unknown");
+    return new Map();
+  }
+};
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -68,6 +87,7 @@ export default async function MarketplaceSettlementsPage({
             incomeAmount: true,
             payoutAmount: true,
             status: true,
+            expenseId: true,
           },
         }),
         getChannelCashHealth(channel, activeSetting.settlementCashBankAccountId),
@@ -77,6 +97,30 @@ export default async function MarketplaceSettlementsPage({
   const canCancel =
     hasPermissionAccess(role, permissions, "expenses.cancel") &&
     hasPermissionAccess(role, permissions, "cash_bank.transfers.cancel");
+  const activeHistory = history.filter((row) => row.status === "ACTIVE");
+  // S2: a cancel also changes the months its fee / income facts are still dated in (sale dates of
+  // months open when it was recorded), so the lock preview covers those dates too.
+  const factDatesById = canCancel
+    ? await loadFactDatesForPreview(activeHistory.map((row) => ({ id: row.id, expenseId: row.expenseId })))
+    : new Map<string, Date[]>();
+  // One query for the history: settlements whose dates fall in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        activeHistory.flatMap((row) => [row.settlementDate, ...(factDatesById.get(row.id) ?? [])]),
+        permissions,
+      )
+    : () => null;
+  const settlementLockOf = (row: { id: string; settlementDate: Date }): SettlementPeriodLock => {
+    const factDates = factDatesById.get(row.id) ?? [];
+    const lock = periodLockOf(row.settlementDate, ...factDates);
+    if (!lock) return { lock: null, hint: null };
+    const settlementMonth = getThailandMonthKey(row.settlementDate);
+    const saleMonthLocked = periodLockOf(...factDates.filter((date) => getThailandMonthKey(date) !== settlementMonth)) !== null;
+    return { lock, hint: saleMonthLocked ? SALE_MONTH_LOCK_HINT : null };
+  };
+  const lockById = new Map(activeHistory.map((row) => [row.id, settlementLockOf(row)]));
+  // P2 = B: fee / income shares booked on the settlement date because the sale month was distributed first.
+  const feeDatingById = await getSettlementFeeDatingViews(activeHistory.map((row) => row.id));
   const destinationAccounts = accounts.filter(
     (account) => account.type === "BANK" && account.id !== activeSetting?.settlementCashBankAccountId,
   );
@@ -203,6 +247,9 @@ export default async function MarketplaceSettlementsPage({
               income: Number(row.incomeAmount),
               payout: Number(row.payoutAmount),
               status: row.status,
+              periodLock: lockById.get(row.id)?.lock ?? null,
+              periodLockHint: lockById.get(row.id)?.hint ?? null,
+              feeDating: feeDatingById.get(row.id) ?? null,
             }))}
           />
         </>

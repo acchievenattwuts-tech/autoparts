@@ -9,7 +9,9 @@ import {
   CreditNoteType,
   PaymentMethod,
   PurchaseType,
+  PurchaseReturnSettlementType,
   type Prisma,
+  type PurchaseReturnRefundMethod,
 } from "@/lib/generated/prisma";
 import {
   formatDateOnlyForInput,
@@ -20,6 +22,7 @@ import {
   parseDateOnlyToDate,
   parseDateOnlyToEndOfDay,
 } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 
 // Filter helpers
 
@@ -383,7 +386,7 @@ export async function querySalesRows(
         status: sale.status,
         productCode: item.product.code,
         productName: item.product.name,
-        qty: item.quantity,
+        qty: Number(item.quantity),
         unitName: item.product.saleUnitName,
         unitPrice: Number(item.salePrice),
         subtotalAmount: sub,
@@ -520,7 +523,7 @@ export async function queryPurchaseRows(
         status: p.status,
         productCode: item.product.code,
         productName: item.product.name,
-        qty: item.showQty != null ? Number(item.showQty) : item.quantity,
+        qty: item.showQty != null ? Number(item.showQty) : Number(item.quantity),
         unitName: item.showUnitName ?? item.product.purchaseUnitName,
         unitPrice: item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.costPrice),
         subtotalAmount: sub,
@@ -871,7 +874,7 @@ export function buildSalesCsv(rows: SaleRow[]): string {
       r.rowNo, r.docNo, r.marketplaceOrderNo, r.shopName, r.channel, r.trackingNo, r.syncStatus,
       fmtDate(r.docDate), r.docType, r.paymentType, r.paymentMethod, r.accountName,
       r.customerCode, r.customerName, r.note, statusLabel(r.status),
-      r.productCode, r.productName, r.qty, r.unitName, r.unitPrice,
+      r.productCode, r.productName, formatSaleQuantity(r.qty, { useGrouping: false }), r.unitName, r.unitPrice,
       r.subtotalAmount, r.vatType, r.vatAmount, r.totalAmount,
     ]),
   );
@@ -888,7 +891,7 @@ export function buildPurchasesCsv(rows: PurchaseRow[]): string {
     csvRow([
       r.rowNo, r.docNo, fmtDate(r.docDate), r.purchaseType, r.paymentMethod, r.accountName, r.supplierCode, r.supplierName,
       r.referenceNo, statusLabel(r.status), r.productCode, r.productName,
-      r.qty, r.unitName, r.unitPrice, r.subtotalAmount,
+      formatSaleQuantity(r.qty, { useGrouping: false }), r.unitName, r.unitPrice, r.subtotalAmount,
       r.vatType, r.vatAmount, r.totalAmount,
     ]),
   );
@@ -943,8 +946,18 @@ export function buildPaymentsCsv(rows: PaymentRow[]): string {
 
 // Daily Receipt row type
 
+/** Kind of money in; the same values as the report's docType filter. */
+export type DailyReceiptSource =
+  | "CASH_SALE"
+  | "RECEIPT"
+  | "CUSTOMER_ADVANCE"
+  | "SUPPLIER_ADVANCE_REFUND"
+  | "PURCHASE_RETURN"
+  | "SUPPLIER_DEBIT_REFUND";
+
 export type DailyReceiptRow = {
   rowNo: number;
+  source: DailyReceiptSource;
   docNo: string;
   docDate: Date;
   docType: string; // รวมเอกสารเงินเข้าทุกประเภท
@@ -997,6 +1010,7 @@ export async function queryDailyReceiptRows(
     for (const s of sales) {
       rows.push({
         rowNo: 0,
+        source: "CASH_SALE",
         docNo: s.saleNo,
         docDate: s.saleDate,
         docType: "ขายสด",
@@ -1040,6 +1054,7 @@ export async function queryDailyReceiptRows(
     for (const r of receipts) {
       rows.push({
         rowNo: 0,
+        source: "RECEIPT",
         docNo: r.receiptNo,
         docDate: r.receiptDate,
         docType: "รับชำระหนี้",
@@ -1082,6 +1097,7 @@ export async function queryDailyReceiptRows(
     for (const advance of advances) {
       rows.push({
         rowNo: 0,
+        source: "CUSTOMER_ADVANCE",
         docNo: advance.advanceNo,
         docDate: advance.advanceDate,
         docType: "รับเงินมัดจำลูกค้า",
@@ -1133,6 +1149,7 @@ export async function queryDailyReceiptRows(
     for (const refund of refunds)
       rows.push({
         rowNo: 0,
+        source: "SUPPLIER_ADVANCE_REFUND",
         docNo: refund.refundNo,
         docDate: refund.refundDate,
         docType: "รับคืนเงินมัดจำซัพพลายเออร์",
@@ -1148,12 +1165,153 @@ export async function queryDailyReceiptRows(
       });
   }
 
+  // S6: money a supplier paid back — purchase-return cash refunds and ปรับยอด DN cash refunds.
+  if (docType === "ALL" || docType === "PURCHASE_RETURN") {
+    rows.push(...(await queryPurchaseReturnRefundReceiptRows(filters, maxRows)));
+  }
+  if (docType === "ALL" || docType === "SUPPLIER_DEBIT_REFUND") {
+    rows.push(...(await querySupplierDebitRefundReceiptRows(filters, maxRows)));
+  }
+
   rows.sort((a, b) => {
     const dt = a.docDate.getTime() - b.docDate.getTime();
     return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
   });
   rows.forEach((r, i) => (r.rowNo = i + 1));
   return rows;
+}
+
+const UNKNOWN_SUPPLIER_NAME = "ไม่ระบุซัพพลายเออร์";
+export const PURCHASE_RETURN_REFUND_RECEIPT_LABEL = "รับเงินคืนจากใบคืนซื้อ";
+export const SUPPLIER_DEBIT_REFUND_RECEIPT_LABEL = "รับเงินคืนจากปรับยอด DN";
+
+function refundMethodLabel(method: PurchaseReturnRefundMethod | null): string {
+  if (method === "CASH") return "เงินสด";
+  if (method === "TRANSFER") return "โอนเงิน";
+  return "-";
+}
+
+/**
+ * Purchase returns settled as a cash refund, on their return date. The refund equals the return's
+ * total (its CN_PURCHASE payment rows must match it); the account filter also matches split rows.
+ */
+async function queryPurchaseReturnRefundReceiptRows(
+  filters: ReportFilters,
+  maxRows: number | null,
+): Promise<DailyReceiptRow[]> {
+  try {
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.CN_PURCHASE, filters.accountId)
+      : [];
+    const returns = await db.purchaseReturn.findMany({
+      where: {
+        returnDate: { gte: filters.from, lte: filters.to },
+        settlementType: PurchaseReturnSettlementType.CASH_REFUND,
+        ...accountWhereFilter(filters.accountId, accountDocIds),
+        ...(filters.showCancelled ? {} : { status: DocStatus.ACTIVE }),
+      },
+      select: {
+        returnNo: true,
+        returnDate: true,
+        refundMethod: true,
+        totalAmount: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        supplier: { select: { code: true, name: true } },
+      },
+      orderBy: [{ returnDate: "asc" }, { returnNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    return returns.map((purchaseReturn): DailyReceiptRow => ({
+      rowNo: 0,
+      source: "PURCHASE_RETURN",
+      docNo: purchaseReturn.returnNo,
+      docDate: purchaseReturn.returnDate,
+      docType: PURCHASE_RETURN_REFUND_RECEIPT_LABEL,
+      customerCode: purchaseReturn.supplier?.code ?? "",
+      customerName: purchaseReturn.supplier?.name ?? UNKNOWN_SUPPLIER_NAME,
+      paymentMethod: refundMethodLabel(purchaseReturn.refundMethod),
+      accountName: purchaseReturn.cashBankAccount?.name ?? "-",
+      note: purchaseReturn.note ?? "",
+      status: purchaseReturn.status,
+      amount: Number(purchaseReturn.totalAmount),
+    }));
+  } catch (error) {
+    throw new Error("Failed to load purchase-return refunds for the daily receipts", { cause: error });
+  }
+}
+
+const toSatang = (value: { toString(): string } | number): number => Math.round(Number(value) * 100);
+
+/**
+ * ปรับยอด DN cash refunds (cash/bank source SUPPLIER_DEBIT_REFUND), on their posting date. The amount
+ * is what the supplier actually paid back — the adjustment's SUPPLIER_DEBIT_REFUND payment rows —
+ * not its net: part of a reduction may have gone to the parent DN's open balance instead. Only
+ * ACTIVE adjustments: cancelling one clears its refund rows, so no refunded amount remains to show.
+ */
+async function querySupplierDebitRefundReceiptRows(
+  filters: ReportFilters,
+  maxRows: number | null,
+): Promise<DailyReceiptRow[]> {
+  try {
+    const accountDocIds = filters.accountId
+      ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_DEBIT_REFUND, filters.accountId)
+      : [];
+    const debits = await db.supplierDebitNote.findMany({
+      where: {
+        status: DocStatus.ACTIVE,
+        adjustsDebitNoteId: { not: null },
+        excessSettlementType: PurchaseReturnSettlementType.CASH_REFUND,
+        postingDate: { gte: filters.from, lte: filters.to },
+        ...accountWhereFilter(filters.accountId, accountDocIds),
+      },
+      select: {
+        id: true,
+        debitNo: true,
+        postingDate: true,
+        refundMethod: true,
+        note: true,
+        status: true,
+        cashBankAccount: { select: { name: true } },
+        supplier: { select: { code: true, name: true } },
+        adjustsDebitNote: { select: { debitNo: true } },
+      },
+      orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }],
+      ...(maxRows === null ? {} : { take: maxRows }),
+    });
+    if (debits.length === 0) return [];
+    const payments = await db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.SUPPLIER_DEBIT_REFUND, docId: { in: debits.map((debit) => debit.id) } },
+      select: { docId: true, amount: true },
+    });
+    const refundedSatang = new Map<string, number>();
+    for (const payment of payments) {
+      refundedSatang.set(payment.docId, (refundedSatang.get(payment.docId) ?? 0) + toSatang(payment.amount));
+    }
+    return debits.flatMap((debit): DailyReceiptRow[] => {
+      const satang = refundedSatang.get(debit.id) ?? 0;
+      if (satang <= 0) return [];
+      return [{
+        rowNo: 0,
+        source: "SUPPLIER_DEBIT_REFUND",
+        docNo: debit.debitNo,
+        docDate: debit.postingDate,
+        docType: debit.adjustsDebitNote
+          ? `${SUPPLIER_DEBIT_REFUND_RECEIPT_LABEL} ${debit.adjustsDebitNote.debitNo}`
+          : SUPPLIER_DEBIT_REFUND_RECEIPT_LABEL,
+        customerCode: debit.supplier.code ?? "",
+        customerName: debit.supplier.name,
+        paymentMethod: refundMethodLabel(debit.refundMethod),
+        accountName: debit.cashBankAccount?.name ?? "-",
+        note: debit.note ?? "",
+        status: debit.status,
+        amount: satang / 100,
+      }];
+    });
+  } catch (error) {
+    throw new Error("Failed to load Supplier DN refunds for the daily receipts", { cause: error });
+  }
 }
 
 // Daily Payment row type
@@ -1171,6 +1329,34 @@ export type DailyPaymentRow = {
   status: DocStatus;
   amount: number;
 };
+
+export type SupplierPaymentCashItem = {
+  paidAmount: Prisma.Decimal | number;
+  purchaseId: string | null;
+  debitNoteId: string | null;
+  /** The referenced DN's net amount: below zero it is a "ปรับยอด DN" whose credit this line consumes. */
+  debitNote?: { netAmount: Prisma.Decimal | number } | null;
+};
+
+/** A line consuming the supplier credit of a negative "ปรับยอด DN" (stored in debitNoteId like a DN payable). */
+export const isSupplierDebitCreditLine = (item: SupplierPaymentCashItem): boolean =>
+  Boolean(item.debitNoteId) && item.debitNote != null && Number(item.debitNote.netAmount) < 0;
+
+/**
+ * Actual cash out of a supplier payment: lines settling a purchase or a
+ * supplier debit note add, lines offset by advance / purchase-return credit
+ * or "ปรับยอด DN" credit subtract. Mirrors `calculateCashPaid()` in
+ * supplier-payments/actions.ts (where that credit arrives as debitCreditId).
+ */
+export function calculateSupplierPaymentCashOut(
+  items: readonly SupplierPaymentCashItem[],
+): number {
+  return items.reduce((sum, item) => {
+    const amt = Number(item.paidAmount);
+    if (item.purchaseId || (item.debitNoteId && !isSupplierDebitCreditLine(item))) return sum + amt;
+    return sum - amt;
+  }, 0);
+}
 
 // Query: Daily Payment
 
@@ -1346,6 +1532,8 @@ export async function queryDailyPaymentRows(
           select: {
             paidAmount: true,
             purchaseId: true,
+            debitNoteId: true,
+            debitNote: { select: { netAmount: true } },
             purchaseReturnId: true,
             advanceId: true,
           },
@@ -1355,12 +1543,8 @@ export async function queryDailyPaymentRows(
       ...(maxRows === null ? {} : { take: maxRows }),
     });
     for (const p of payments) {
-      // Actual cash out = items applied to purchases minus items offset by advance/return credit
-      const cashPaid = p.items.reduce((sum, item) => {
-        const amt = Number(item.paidAmount);
-        if (item.purchaseId) return sum + amt;
-        return sum - amt;
-      }, 0);
+      // Actual cash out = items applied to purchases / debit notes minus items offset by advance/return credit
+      const cashPaid = calculateSupplierPaymentCashOut(p.items);
       if (cashPaid <= 0) continue; // safety: skip rows that net to zero (shouldn't happen since CREDIT filtered out)
       rows.push({
         rowNo: 0,

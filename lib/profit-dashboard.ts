@@ -48,6 +48,8 @@ export type ProfitProductRow = {
 export type ProfitInvoiceRow = {
   sourceId: string;
   sourceType: ProfitSourceType;
+  /** Credit note type for SALE_RETURN rows (RETURN / DISCOUNT / OTHER). */
+  sourceSubtype: string | null;
   sourceDocNo: string;
   businessDate: Date;
   customerName: string | null;
@@ -125,6 +127,14 @@ type ProfitDashboardQueryInput = Partial<ProfitDashboardFilters> & {
   customerPage?: number;
   invoicePage?: number;
 };
+
+/**
+ * Facts that belong to a product's profit: sales, returns and the two cost variances (supplier DN
+ * variance and the stock value written off when on-hand reached zero). Customer analysis keeps sales only.
+ */
+const PRODUCT_PROFIT_SOURCE_TYPES: ProfitSourceType[] = [
+  ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE, ProfitSourceType.STOCK_VALUE_RESIDUAL,
+];
 
 const ANALYSIS_PAGE_SIZE = 10;
 const ALERT_PAGE_SIZE = 6;
@@ -309,7 +319,7 @@ async function getProductSpotlights(
 ): Promise<{ topProducts: ProfitProductRow[]; lowProducts: ProfitProductRow[] }> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
+    sourceType: { in: PRODUCT_PROFIT_SOURCE_TYPES },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -362,7 +372,7 @@ async function getProductAnalysis(
 ): Promise<PaginatedSection<ProfitProductRow>> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
+    sourceType: { in: PRODUCT_PROFIT_SOURCE_TYPES },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -403,7 +413,7 @@ async function getProductAnalysis(
 async function getAllProductAnalysis(fromDate: Date, toDate: Date): Promise<ProfitProductRow[]> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
+    sourceType: { in: PRODUCT_PROFIT_SOURCE_TYPES },
     businessDate: { gte: fromDate, lte: toDate },
     productId: { not: null as string | null },
     productName: { not: null as string | null },
@@ -501,6 +511,24 @@ async function getCustomerAnalysis(
   };
 }
 
+/** Supplier DN variance facts: sourceId is the SupplierDebitNote id; one query per page. */
+async function getSupplierDebitNoteSupplierNames(
+  debitNoteIds: string[],
+): Promise<Map<string, string>> {
+  if (debitNoteIds.length === 0) return new Map();
+
+  try {
+    const debitNotes = await runAdminDashboardRead(() => db.supplierDebitNote.findMany({
+      where: { id: { in: debitNoteIds } },
+      select: { id: true, supplier: { select: { name: true } } },
+    }));
+    return new Map(debitNotes.map((debitNote) => [debitNote.id, debitNote.supplier.name]));
+  } catch (error) {
+    console.error("[profit-dashboard] supplier debit note names failed", error);
+    throw error;
+  }
+}
+
 async function getInvoiceAnalysis(
   fromDate: Date,
   toDate: Date,
@@ -508,19 +536,22 @@ async function getInvoiceAnalysis(
 ): Promise<PaginatedSection<ProfitInvoiceRow>> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE] as ProfitSourceType[] },
+    sourceType: { in: PRODUCT_PROFIT_SOURCE_TYPES },
     businessDate: { gte: fromDate, lte: toDate },
   };
 
+  // One row per document: SALE facts carry a per-line supplier (and shipping has none), so
+  // grouping by supplierName would split one sale into several rows with the same doc number.
+  // sourceSubtype is uniform within a document's active version (the CN type for returns).
   const totalItems = (
     await runAdminDashboardRead(() => db.factProfit.groupBy({
-      by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName", "supplierName"],
+      by: ["sourceId", "sourceType", "sourceSubtype", "sourceDocNo", "businessDate", "customerName"],
       where,
     }))
   ).length;
   const pagination = buildPagination(page, totalItems);
   const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
-    by: ["sourceId", "sourceType", "sourceDocNo", "businessDate", "customerName", "supplierName"],
+    by: ["sourceId", "sourceType", "sourceSubtype", "sourceDocNo", "businessDate", "customerName"],
     _sum: {
       salesAmountExVat: true,
       salesAmountIncVat: true,
@@ -532,18 +563,28 @@ async function getInvoiceAnalysis(
     skip: (pagination.page - 1) * pagination.pageSize,
     take: pagination.pageSize,
   }));
+  const supplierNameByDebitNoteId = await getSupplierDebitNoteSupplierNames(
+    grouped
+      .filter((row) => row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE)
+      .map((row) => row.sourceId),
+  );
 
   return {
     items: grouped.map((row) => {
       const salesAmountExVat = asNumber(row._sum.salesAmountExVat);
       const grossProfit = asNumber(row._sum.grossProfit);
+      const supplierName =
+        row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE
+          ? supplierNameByDebitNoteId.get(row.sourceId) ?? null
+          : null;
 
       return {
         sourceId: row.sourceId,
         sourceType: row.sourceType,
+        sourceSubtype: row.sourceSubtype ?? null,
         sourceDocNo: row.sourceDocNo,
         businessDate: row.businessDate,
-        customerName: row.customerName ?? row.supplierName ?? null,
+        customerName: row.customerName ?? supplierName ?? null,
         salesAmountExVat,
         salesAmountIncVat: asNumber(row._sum.salesAmountIncVat),
         costAmount: asNumber(row._sum.costAmount),

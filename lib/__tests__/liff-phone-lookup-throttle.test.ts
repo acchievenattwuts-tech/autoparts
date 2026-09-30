@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { before, beforeEach, mock } from "node:test";
+import { Prisma } from "@/lib/generated/prisma";
 
 // LIFF phone lookup throttle: only FAILED lookups (BLOCKED / AMBIGUOUS) count,
 // the per-IP key allows 15 failures/hour (CGNAT-friendly) and the per-LINE-user
@@ -24,30 +25,64 @@ const LINE_KEY = "liff-phone-lookup:line:line-user-1";
 const IP_KEY = "liff-phone-lookup:ip:203.0.113.9";
 
 let throttleRecords: ThrottleRecord[] = [];
-let throttleWrites: Array<{ kind: "upsert" | "update"; key: string; failures: number; locked: boolean }> = [];
+let throttleWrites: Array<{ kind: "reset" | "increment" | "lock"; key: string }> = [];
 let matchedCustomers: MatchedCustomer[] = [];
+let failNextUpsertWithUniqueConflict = false;
+
+// Every fake statement first yields to the other in-flight requests, then reads
+// and writes its row in one synchronous step — the way a single SQL statement
+// is atomic. A read-modify-write done across two statements would lose updates.
+const yieldToOtherRequests = (): Promise<void> => new Promise((resolveYield) => setImmediate(resolveYield));
+const findRecord = (key: string): ThrottleRecord | undefined => throttleRecords.find((record) => record.key === key);
 
 before(async () => {
   const loginThrottle = {
-    findMany: async ({ where }: { where: { key: { in: string[] } } }) =>
-      throttleRecords.filter((record) => where.key.in.includes(record.key)),
-    upsert: async (args: { where: { key: string }; create: { failures: number; lockedUntil: Date | null } }) => {
-      throttleWrites.push({
-        kind: "upsert",
-        key: args.where.key,
-        failures: args.create.failures,
-        locked: args.create.lockedUntil !== null,
-      });
-      return args;
+    findMany: async ({ where }: { where: { key: { in: string[] } } }) => {
+      await yieldToOtherRequests();
+      return throttleRecords.filter((record) => where.key.in.includes(record.key)).map((record) => ({ ...record }));
     },
-    update: async (args: { where: { key: string }; data: { failures: number; lockedUntil: Date | null } }) => {
-      throttleWrites.push({
-        kind: "update",
-        key: args.where.key,
-        failures: args.data.failures,
-        locked: args.data.lockedUntil !== null,
-      });
-      return args;
+    updateMany: async (args: {
+      where: { key: string; OR: [{ firstFailureAt: null }, { firstFailureAt: { lt: Date } }] };
+      data: { failures: number; firstFailureAt: Date; lockedUntil: null };
+    }) => {
+      await yieldToOtherRequests();
+      const windowStart = args.where.OR[1].firstFailureAt.lt;
+      const record = findRecord(args.where.key);
+      if (!record || (record.firstFailureAt !== null && record.firstFailureAt >= windowStart)) return { count: 0 };
+      Object.assign(record, args.data);
+      throttleWrites.push({ kind: "reset", key: args.where.key });
+      return { count: 1 };
+    },
+    upsert: async (args: {
+      where: { key: string };
+      create: ThrottleRecord;
+      update: { failures: { increment: number } };
+    }) => {
+      await yieldToOtherRequests();
+      if (failNextUpsertWithUniqueConflict) {
+        // Another request inserted the first failure between this upsert's read and insert.
+        failNextUpsertWithUniqueConflict = false;
+        throttleRecords.push({ ...args.create });
+        throw new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+          code: "P2002", clientVersion: "test", meta: { target: ["key"] },
+        });
+      }
+      throttleWrites.push({ kind: "increment", key: args.where.key });
+      const record = findRecord(args.where.key);
+      if (!record) {
+        throttleRecords.push({ ...args.create });
+        return { failures: args.create.failures };
+      }
+      record.failures += args.update.failures.increment;
+      return { failures: record.failures };
+    },
+    update: async (args: { where: { key: string }; data: { lockedUntil: Date } }) => {
+      await yieldToOtherRequests();
+      const record = findRecord(args.where.key);
+      assert.ok(record, "lock is only set on an existing row");
+      Object.assign(record, args.data);
+      throttleWrites.push({ kind: "lock", key: args.where.key });
+      return { ...record };
     },
   };
 
@@ -91,7 +126,11 @@ beforeEach(() => {
   throttleRecords = [];
   throttleWrites = [];
   matchedCustomers = [];
+  failNextUpsertWithUniqueConflict = false;
 });
+
+const counters = (): Array<{ key: string; failures: number; locked: boolean }> =>
+  throttleRecords.map(({ key, failures, lockedUntil }) => ({ key, failures, locked: lockedUntil !== null }));
 
 const recentFailures = (key: string, failures: number): ThrottleRecord => ({
   key,
@@ -150,13 +189,10 @@ test("a BLOCKED lookup counts one failure against both keys", async () => {
   const result = await resolve();
 
   assert.equal(result.status, "BLOCKED");
-  assert.deepEqual(
-    throttleWrites.map(({ key, failures }) => ({ key, failures })),
-    [
-      { key: LINE_KEY, failures: 1 },
-      { key: IP_KEY, failures: 1 },
-    ],
-  );
+  assert.deepEqual(counters(), [
+    { key: LINE_KEY, failures: 1, locked: false },
+    { key: IP_KEY, failures: 1, locked: false },
+  ]);
 });
 
 test("an AMBIGUOUS lookup counts one failure, and the IP key locks only at its 15th failure", async () => {
@@ -169,9 +205,9 @@ test("an AMBIGUOUS lookup counts one failure, and the IP key locks only at its 1
   const result = await resolve();
 
   assert.equal(result.status, "AMBIGUOUS");
-  assert.deepEqual(throttleWrites, [
-    { kind: "update", key: LINE_KEY, failures: 2, locked: false },
-    { kind: "update", key: IP_KEY, failures: 15, locked: true },
+  assert.deepEqual(counters(), [
+    { key: LINE_KEY, failures: 2, locked: false },
+    { key: IP_KEY, failures: 15, locked: true },
   ]);
 });
 
@@ -207,4 +243,41 @@ test("failures older than the 1-hour window no longer block", async () => {
     { key: IP_KEY, failures: 40, firstFailureAt: new Date(Date.now() - 2 * 60 * 60 * 1000), lockedUntil: null },
   ];
   await assertLiffPhoneLookupAllowed([LINE_KEY, IP_KEY]);
+});
+
+test("parallel failed lookups never lose an increment and still lock at the limit", async () => {
+  const { recordLiffPhoneLookupFailure } = await import("@/lib/liff-customer");
+  throttleRecords = [recentFailures(LINE_KEY, 1), recentFailures(IP_KEY, 11)];
+
+  await Promise.all([1, 2, 3, 4].map(() => recordLiffPhoneLookupFailure([LINE_KEY, IP_KEY])));
+
+  assert.deepEqual(counters(), [
+    { key: LINE_KEY, failures: 5, locked: true },
+    { key: IP_KEY, failures: 15, locked: true },
+  ]);
+});
+
+test("parallel failures after an expired window reset it once and count every failure", async () => {
+  const { recordLiffPhoneLookupFailure } = await import("@/lib/liff-customer");
+  const staleStart = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  throttleRecords = [{ key: LINE_KEY, failures: 40, firstFailureAt: staleStart, lockedUntil: null }];
+
+  await Promise.all([recordLiffPhoneLookupFailure([LINE_KEY]), recordLiffPhoneLookupFailure([LINE_KEY])]);
+
+  assert.deepEqual(counters(), [{ key: LINE_KEY, failures: 2, locked: false }]);
+  assert.ok(throttleRecords[0].firstFailureAt! > staleStart);
+  assert.equal(throttleWrites.filter((write) => write.kind === "reset").length, 1);
+});
+
+test("two first failures racing on a new key both count", async () => {
+  const { recordLiffPhoneLookupFailure } = await import("@/lib/liff-customer");
+
+  await Promise.all([recordLiffPhoneLookupFailure([LINE_KEY]), recordLiffPhoneLookupFailure([LINE_KEY])]);
+  assert.deepEqual(counters(), [{ key: LINE_KEY, failures: 2, locked: false }]);
+
+  // The insert that loses a race (P2002) increments the winner's row instead of failing the lookup.
+  throttleRecords = [];
+  failNextUpsertWithUniqueConflict = true;
+  await recordLiffPhoneLookupFailure([IP_KEY]);
+  assert.deepEqual(counters(), [{ key: IP_KEY, failures: 2, locked: false }]);
 });

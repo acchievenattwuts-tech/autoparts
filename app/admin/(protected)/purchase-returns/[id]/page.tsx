@@ -11,6 +11,9 @@ import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai } from "@/lib/th-date";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
+import { describeInputVatTreatment, getVatRegisteredFrom } from "@/lib/input-vat";
+import { toInputVatDecision } from "../../purchases/purchase-tax-invoice";
+import { resolvePurchaseReturnTaxDocument } from "../purchase-return-vat";
 import {
   PURCHASE_RETURN_SETTLEMENT_LABELS,
   hasPurchaseReturnSupplierCredit,
@@ -26,7 +29,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
     where: { id },
     include: {
       supplier: { select: { name: true } },
-      purchase: { select: { purchaseNo: true } },
+      purchase: { select: { purchaseNo: true, vatType: true, vatRate: true, taxInvoiceDate: true } },
       claim: { select: { id: true, claimNo: true } },
       cashBankAccount: { select: { name: true } },
       user:     { select: { name: true } },
@@ -41,7 +44,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
   });
 
   if (!ret) notFound();
-  const [activityEvents, returnPayments] = await Promise.all([
+  const [activityEvents, returnPayments, vatRegisteredFrom] = await Promise.all([
     getDocumentActivityTimeline("PurchaseReturn", ret.id),
     db.documentPayment.findMany({
       where: { docType: "CN_PURCHASE", docId: ret.id },
@@ -51,6 +54,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
         cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
       },
     }),
+    getVatRegisteredFrom(db),
   ]);
 
   const vatLabel: Record<string, string> = {
@@ -142,7 +146,21 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ภาษี</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{vatLabel[ret.vatType] ?? ret.vatType}</p>
+            {/* V1/V3: follows the referenced purchase, else this return's credit-note date (lib/input-vat.ts). */}
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+              {describeInputVatTreatment(toInputVatDecision(resolvePurchaseReturnTaxDocument(ret, ret.purchase), vatRegisteredFrom))}
+            </p>
           </div>
+          {(ret.vatType !== "NO_VAT" || ret.taxInvoiceNo || ret.taxInvoiceDate) && (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">เลขที่ / วันที่ใบลดหนี้ของ supplier</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
+                <span className="font-mono">{ret.taxInvoiceNo ?? "-"}</span>
+                {" / "}
+                {ret.taxInvoiceDate ? formatDateThai(ret.taxInvoiceDate) : "-"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">รูปแบบการรับชดเชย</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">

@@ -42,8 +42,9 @@ export const getSupplierPaymentSupplierOptions = async (
       },
       _sum: { amountRemain: true },
     }),
+    // DN payables are positive; a "ปรับยอด DN" supplier credit is stored negative, so the sum is already net.
     db.supplierDebitNote.groupBy({ by: ["supplierId"],
-      where: { status: "ACTIVE", amountRemain: { gt: 0 } }, _sum: { amountRemain: true } }),
+      where: { status: "ACTIVE", amountRemain: { not: 0 } }, _sum: { amountRemain: true } }),
   ]);
 
   const supplierIds = [

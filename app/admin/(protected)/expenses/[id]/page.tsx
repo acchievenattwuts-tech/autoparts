@@ -9,6 +9,7 @@ import { hasPermissionAccess } from "@/lib/access-control";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
+import { describeInputVatTreatment, getVatRegisteredFrom } from "@/lib/input-vat";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { resolveExpenseAttachmentViewSource } from "@/lib/private-file-ref";
 import ExpenseAttachmentsPanel, { type ExpenseAttachmentView } from "./ExpenseAttachmentsPanel";
@@ -26,7 +27,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
   const canUpdate = hasPermissionAccess(role, permissions, "expenses.update");
   const { id } = await params;
 
-  const [expense, expensePayments] = await Promise.all([
+  const [expense, expensePayments, vatRegisteredFrom] = await Promise.all([
     db.expense.findUnique({
       where: { id },
       include: {
@@ -70,6 +71,7 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
         cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
       },
     }),
+    getVatRegisteredFrom(db),
   ]);
 
   if (!expense) notFound();
@@ -178,6 +180,21 @@ const ExpenseDetailPage = async ({ params }: { params: Promise<{ id: string }> }
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ภาษี</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{vatLabel[expense.vatType] ?? expense.vatType}</p>
+            <p className="mt-0.5 text-xs text-sky-800 dark:text-sky-200">
+              {describeInputVatTreatment({ vatType: expense.vatType, vatRate: Number(expense.vatRate),
+                taxDocumentDate: expense.taxInvoiceDate, registeredFrom: vatRegisteredFrom })}
+            </p>
+          </div>
+          <div>
+            <p className="mb-0.5 text-gray-500 dark:text-slate-400">ใบกำกับภาษี</p>
+            <p className="font-medium text-gray-900 dark:text-slate-100">
+              {expense.taxInvoiceNo ?? "-"}
+              {expense.taxInvoiceDate ? (
+                <span className="ml-1 text-xs font-normal text-gray-500 dark:text-slate-400">
+                  ลงวันที่ {formatDateThai(expense.taxInvoiceDate)}
+                </span>
+              ) : null}
+            </p>
           </div>
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ผู้บันทึก</p>

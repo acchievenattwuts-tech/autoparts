@@ -22,6 +22,7 @@ import {
   type DailyReceiptRow,
   type DailyPaymentRow,
 } from "@/lib/report-queries";
+import { isFractionalSaleQuantity, SALE_QUANTITY_FRACTION_EXCEL_FORMAT } from "@/lib/sale-quantity";
 import {
   parseCashBankReportFilters,
   queryCashBankLedgerData,
@@ -137,7 +138,7 @@ async function buildSalesExcel(rows: SaleRow[], title: string): Promise<Blob> {
     (["unitPrice", "subtotalAmount", "vatAmount", "totalAmount"] as const).forEach((k) => {
       row.getCell(k).numFmt = "#,##0.00";
     });
-    row.getCell("qty").numFmt = "#,##0.####";
+    row.getCell("qty").numFmt = isFractionalSaleQuantity(r.qty) ? SALE_QUANTITY_FRACTION_EXCEL_FORMAT : "#,##0.####";
   }
 
   addTotalRow(ws, "รวมทั้งสิ้น", 21, [
@@ -182,7 +183,7 @@ async function buildPurchasesExcel(rows: PurchaseRow[], title: string): Promise<
     (["unitPrice", "subtotalAmount", "vatAmount", "totalAmount"] as const).forEach((k) => {
       row.getCell(k).numFmt = "#,##0.00";
     });
-    row.getCell("qty").numFmt = "#,##0.####";
+    row.getCell("qty").numFmt = isFractionalSaleQuantity(r.qty) ? SALE_QUANTITY_FRACTION_EXCEL_FORMAT : "#,##0.####";
   }
 
   addTotalRow(ws, "รวมทั้งสิ้น", 15, [
@@ -252,7 +253,8 @@ async function buildDailyReceiptExcel(rows: DailyReceiptRow[], title: string): P
     { header: "#", key: "rowNo", width: 6 },
     { header: "เลขที่เอกสาร", key: "docNo", width: 16 },
     { header: "วันที่", key: "docDate", width: 12 },
-    { header: "ประเภท", key: "docType", width: 14 },
+    // Wide enough for "รับเงินคืนจากปรับยอด DN <เลข DN>" (S6).
+    { header: "ประเภท", key: "docType", width: 34 },
     { header: "รหัสลูกค้า", key: "customerCode", width: 12 },
     { header: "ชื่อลูกค้า", key: "customerName", width: 28 },
     { header: "ช่องทางชำระ", key: "paymentMethod", width: 14 },

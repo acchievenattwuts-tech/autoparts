@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { PurchaseProductOption } from "@/app/admin/(protected)/purchases/purchase-form-data";
+import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 
 /**
  * Advisory fields extracted from a supplier invoice / delivery-note image by
@@ -19,6 +20,13 @@ export const purchaseOcrResultSchema = z.object({
   supplierName: z.string().nullable(),
   referenceNo: z.string().nullable(),
   invoiceDate: z.string().nullable(),
+  // V6: the invoice's tax data — line unitCost is the price as printed, `vatIncluded` says
+  // whether those printed prices already include VAT (null when the document shows no VAT).
+  taxInvoiceNo: z.string().nullable(),
+  taxInvoiceDate: z.string().nullable(),
+  vatIncluded: z.boolean().nullable(),
+  vatRate: z.number().nullable(),
+  vatAmount: z.number().nullable(),
   lines: z.array(purchaseOcrLineSchema),
 });
 
@@ -83,6 +91,11 @@ export const EMPTY_PURCHASE_OCR_RESULT: PurchaseOcrResult = {
   supplierName: null,
   referenceNo: null,
   invoiceDate: null,
+  taxInvoiceNo: null,
+  taxInvoiceDate: null,
+  vatIncluded: null,
+  vatRate: null,
+  vatAmount: null,
   lines: [],
 };
 
@@ -107,6 +120,11 @@ export interface PurchaseOcrExtraction {
   supplierName: string | null;
   referenceNo: string | null;
   invoiceDate: string | null;
+  taxInvoiceNo: string | null;
+  taxInvoiceDate: string | null;
+  vatIncluded: boolean | null;
+  vatRate: number | null;
+  vatAmount: number | null;
   lines: PurchaseOcrMatchedLine[];
 }
 
@@ -140,6 +158,23 @@ function cleanNumber(value: unknown): number | null {
     if (Number.isFinite(numeric) && numeric >= 0) {
       return Math.round(numeric * 10000) / 10000;
     }
+  }
+  return null;
+}
+
+const MAX_VAT_RATE_PERCENT = 100;
+
+function cleanVatRate(value: unknown): number | null {
+  const rate = cleanNumber(value);
+  return rate !== null && rate > 0 && rate <= MAX_VAT_RATE_PERCENT ? rate : null;
+}
+
+function cleanBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
   }
   return null;
 }
@@ -211,12 +246,22 @@ export function parsePurchaseInvoiceOcr(raw: string): PurchaseOcrResult {
     let supplierName: string | null = null;
     let referenceNo: string | null = null;
     let invoiceDate: string | null = null;
+    let taxInvoiceNo: string | null = null;
+    let taxInvoiceDate: string | null = null;
+    let vatIncluded: boolean | null = null;
+    let vatRate: number | null = null;
+    let vatAmount: number | null = null;
     const lines: PurchaseOcrLine[] = [];
 
     for (const doc of docs) {
       supplierName ??= cleanString(doc.supplierName, 200);
       referenceNo ??= cleanString(doc.referenceNo, 100);
       invoiceDate ??= cleanInvoiceDate(doc.invoiceDate);
+      taxInvoiceNo ??= cleanString(doc.taxInvoiceNo, 100);
+      taxInvoiceDate ??= cleanInvoiceDate(doc.taxInvoiceDate);
+      vatIncluded ??= cleanBoolean(doc.vatIncluded);
+      vatRate ??= cleanVatRate(doc.vatRate);
+      vatAmount ??= cleanNumber(doc.vatAmount);
       const rawLines = Array.isArray(doc.lines) ? doc.lines : [];
       for (const line of rawLines) {
         const normalized = normalizeOcrLine(line);
@@ -228,10 +273,88 @@ export function parsePurchaseInvoiceOcr(raw: string): PurchaseOcrResult {
       supplierName,
       referenceNo,
       invoiceDate,
+      taxInvoiceNo,
+      taxInvoiceDate,
+      vatIncluded,
+      vatRate,
+      vatAmount,
       lines,
     });
     return result.success ? result.data : EMPTY_PURCHASE_OCR_RESULT;
   } catch {
     return EMPTY_PURCHASE_OCR_RESULT;
   }
+}
+
+// ─── V6: OCR tax data → purchase form VAT fields ─────────────────────────────
+
+/** Thai standard VAT rate — used only when the invoice shows VAT but its rate cannot be read. */
+export const PURCHASE_OCR_FALLBACK_VAT_RATE = 7;
+/** Baht difference between the invoice's VAT and the VAT recomputed from its lines that is flagged for review. */
+const OCR_VAT_CROSS_CHECK_TOLERANCE = 1;
+
+export interface PurchaseOcrFormVat {
+  vatType: VatType;
+  vatRate: number;
+  /** null → leave the form's value as it is. */
+  taxInvoiceNo: string | null;
+  taxInvoiceDate: string | null;
+  /** Thai review notes: every assumption the mapping made. */
+  notes: string[];
+}
+
+type PurchaseOcrTaxData = Pick<
+  PurchaseOcrResult,
+  "taxInvoiceNo" | "taxInvoiceDate" | "vatIncluded" | "vatRate" | "vatAmount"
+>;
+
+const formatBaht = (value: number): string => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** "ราคารวม VAT 7%" / "ไม่มีภาษี" — how the mapping will set the form. */
+export function describePurchaseOcrVat(vat: Pick<PurchaseOcrFormVat, "vatType" | "vatRate">): string {
+  return vat.vatType === "NO_VAT" ? VAT_TYPE_LABELS.NO_VAT : `${VAT_TYPE_LABELS[vat.vatType]} ${vat.vatRate}%`;
+}
+
+/**
+ * Maps the OCR tax data of an invoice onto the purchase form (owner decision V6). Line prices stay
+ * exactly as printed and the VAT type follows how they were printed — prices that include VAT →
+ * INCLUDING_VAT, prices before VAT with VAT added at the bottom → EXCLUDING_VAT, no VAT on the
+ * document → NO_VAT — so the saved purchase pays (and costs) what the invoice says. Every
+ * assumption is returned as a Thai note; the admin still reviews before saving.
+ */
+export function mapPurchaseOcrVatToForm(
+  ocr: PurchaseOcrTaxData,
+  lines: ReadonlyArray<{ qty: number | null; unitCost: number | null }>,
+): PurchaseOcrFormVat {
+  const rate = ocr.vatRate !== null && ocr.vatRate > 0 && ocr.vatRate <= MAX_VAT_RATE_PERCENT ? ocr.vatRate : null;
+  const amount = ocr.vatAmount !== null && ocr.vatAmount > 0 ? ocr.vatAmount : null;
+  const notes: string[] = [];
+  const hasVat = rate !== null || amount !== null || ocr.vatIncluded !== null;
+
+  if (!hasVat) {
+    notes.push("ไม่พบ VAT บนเอกสาร จึงตั้งเป็น \"ไม่มีภาษี\" ถ้าเอกสารมี VAT กรุณาเลือกประเภทภาษีเอง");
+    return { vatType: "NO_VAT", vatRate: 0, taxInvoiceNo: ocr.taxInvoiceNo, taxInvoiceDate: ocr.taxInvoiceDate, notes };
+  }
+
+  const vatRate = rate ?? PURCHASE_OCR_FALLBACK_VAT_RATE;
+  if (rate === null) notes.push(`อ่านอัตรา VAT จากเอกสารไม่ได้ จึงตั้งไว้ ${PURCHASE_OCR_FALLBACK_VAT_RATE}% กรุณาตรวจสอบ`);
+  if (ocr.vatIncluded === null) {
+    notes.push("อ่านไม่ได้ว่าราคาต่อหน่วยรวม VAT แล้วหรือยัง จึงตั้งเป็น \"ราคาไม่รวม VAT\" กรุณาตรวจสอบ");
+  }
+  const vatType: VatType = ocr.vatIncluded === true ? "INCLUDING_VAT" : "EXCLUDING_VAT";
+
+  if (amount !== null) {
+    const linesTotal = lines.reduce((sum, line) => sum + (line.qty ?? 0) * (line.unitCost ?? 0), 0);
+    const recomputed = linesTotal > 0 ? calcVat(linesTotal, vatType, vatRate).vatAmount : null;
+    if (recomputed !== null && Math.abs(recomputed - amount) > OCR_VAT_CROSS_CHECK_TOLERANCE) {
+      notes.push(
+        `VAT ที่คำนวณจากรายการ (${formatBaht(recomputed)} บาท) ไม่ตรงกับเอกสาร (${formatBaht(amount)} บาท) ` +
+          "อาจมีส่วนลด/ค่าส่งท้ายบิล หรือราคาต่อหน่วยอ่านผิด กรุณาตรวจสอบ",
+      );
+    }
+  }
+  if (!ocr.taxInvoiceNo) notes.push("ไม่พบเลขที่ใบกำกับภาษี กรุณากรอกเอง");
+  if (!ocr.taxInvoiceDate) notes.push("ไม่พบวันที่ใบกำกับภาษี กรุณากรอกเอง");
+
+  return { vatType, vatRate, taxInvoiceNo: ocr.taxInvoiceNo, taxInvoiceDate: ocr.taxInvoiceDate, notes };
 }

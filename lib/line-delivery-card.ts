@@ -8,12 +8,23 @@ export type DeliveryLineCard = {
   contents: Prisma.InputJsonObject;
 };
 
-export const buildDeliveryOrderUrl = (baseUrl: string, saleId: string): string => {
+const LIFF_LAUNCH_ORIGIN = "https://liff.line.me";
+
+/**
+ * The card button opens the order inside LIFF when a LIFF ID is configured:
+ * LINE appends the path after the LIFF ID to the LIFF endpoint (`<app>/liff`),
+ * so the customer lands on `/liff/orders/{id}` already signed in. Without a
+ * LIFF ID it falls back to the plain web URL. The app URL is validated either way.
+ */
+export const buildDeliveryOrderUrl = (baseUrl: string, saleId: string, liffId?: string | null): string => {
   const base = new URL(baseUrl);
   if (base.protocol !== "https:" || base.username || base.password) {
     throw new Error("INVALID_DELIVERY_APP_URL");
   }
-  return new URL(`/liff/orders/${encodeURIComponent(saleId)}`, base.origin).toString();
+  const orderPath = `/orders/${encodeURIComponent(saleId)}`;
+  const trimmedLiffId = liffId?.trim();
+  if (trimmedLiffId) return `${LIFF_LAUNCH_ORIGIN}/${encodeURIComponent(trimmedLiffId)}${orderPath}`;
+  return new URL(`/liff${orderPath}`, base.origin).toString();
 };
 
 const text = (value: string, size: string, color = "#213044"): Prisma.InputJsonObject => ({

@@ -3,11 +3,16 @@ import {
   resolveReturnUnitCost,
   returnDispositionReversesStockCost,
 } from "@/lib/credit-note-return";
+import { getCreditNoteProfitLabel } from "@/lib/profit-fact";
+import { formatSupplierDebitAdjustmentLabel } from "@/lib/supplier-debit-balance";
+import { getVatRegisteredFrom, isInputVatRecoverable } from "@/lib/input-vat";
 import {
   ClaimType,
   CNRefundMethod,
+  CreditNoteType,
   Prisma,
   CNSettlementType,
+  DocumentPaymentDocType,
   PaymentMethod,
   PurchaseReturnRefundMethod,
   PurchaseReturnSettlementType,
@@ -106,7 +111,10 @@ type SupplierSummaryRow = {
   supplierName: string;
   purchaseCount: number;
   purchaseAmount: number;
+  /** Supplier debit notes (ใบเพิ่มหนี้) posted in the period; no quantity. */
+  debitAmount: number;
   returnAmount: number;
+  /** purchaseAmount + debitAmount - returnAmount */
   netPurchaseAmount: number;
 };
 
@@ -144,7 +152,7 @@ type ExpenseDocumentRow = {
 type DailyReceiptRow = {
   source:
     | "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"
-    | "SUPPLIER_ADVANCE_REFUND";
+    | "SUPPLIER_ADVANCE_REFUND" | "SUPPLIER_DEBIT_REFUND";
   docNo: string;
   docDate: Date;
   counterpartCode: string;
@@ -153,6 +161,8 @@ type DailyReceiptRow = {
   accountName: string;
   amount: number;
   note: string;
+  /** "ปรับยอดจาก DN ..." on a ปรับยอด DN cash refund; shown instead of the generic source label. */
+  label?: string;
 };
 
 type DailyPaymentRow = {
@@ -194,10 +204,13 @@ export type ReportsData = {
   };
   profitLoss: {
     grossSales: number;
+    /** Pre-VAT subtotal of every active credit note type (RETURN, DISCOUNT, OTHER). */
     salesReturns: number;
     netRevenue: number;
     costOfGoodsSold: number;
     purchaseCostVariance?: number;
+    /** Stock value written off when on-hand reached zero (STOCK_VALUE_RESIDUAL facts); already inside costOfGoodsSold. */
+    stockValueResidual?: number;
     grossProfit: number;
     expenseTotal: number;
     netProfit: number;
@@ -233,11 +246,14 @@ export type ReportsData = {
   };
   payables: {
     purchaseOutstanding: number;
+    /** Open supplier debit notes (ใบเพิ่มหนี้) received in the period; not included in purchaseOutstanding. */
+    debitOutstanding: number;
     advanceOutstanding: number;
     purchaseReturnCreditOutstanding: number;
   };
   suppliers: {
     totalPurchaseAmount: number;
+    totalDebitAmount: number;
     totalReturnAmount: number;
     netPurchaseAmount: number;
     items: SupplierSummaryRow[];
@@ -261,6 +277,7 @@ export type ReportsData = {
     customerAdvanceAmount: number;
     purchaseReturnRefundAmount: number;
     supplierAdvanceRefundAmount: number;
+    supplierDebitRefundAmount: number;
     items: DailyReceiptRow[];
   };
   dailyPayments: {
@@ -283,6 +300,67 @@ const LOW_STOCK_PREVIEW_LIMIT = 100;
 
 function toNumber(value: unknown): number {
   return Number(value ?? 0);
+}
+
+type SupplierDebitVarianceSource = {
+  varianceAmount: unknown;
+  items?: ReadonlyArray<{ varianceAmount: unknown }>;
+};
+
+/**
+ * P&L purchase cost variance from supplier debit notes. Without a product
+ * filter the DN header total (= sum of all its lines) is used; with a product
+ * filter only the matching lines' variance counts, so a DN with lines A=300 and
+ * B=100 filtered to A contributes 300, not 400.
+ */
+export function sumSupplierDebitVariance(
+  debits: ReadonlyArray<SupplierDebitVarianceSource>,
+  productFiltered: boolean,
+): number {
+  return debits.reduce((sum, debit) => {
+    if (!productFiltered) return sum + toNumber(debit.varianceAmount);
+    return sum + (debit.items ?? []).reduce((lineSum, item) => lineSum + toNumber(item.varianceAmount), 0);
+  }, 0);
+}
+
+/** A purchase-side document's stored VAT fields (purchase, purchase return, expense). */
+type InputVatDocument = { vatType: string; vatRate: unknown; vatAmount: unknown; taxInvoiceDate: Date | null };
+
+/** V7: the document's VAT is recoverable input tax by its tax-invoice date (lib/input-vat.ts). */
+function isRecoverableInputVat(doc: InputVatDocument, registeredFrom: Date | null): boolean {
+  return isInputVatRecoverable({ vatType: doc.vatType, vatRate: toNumber(doc.vatRate), taxDocumentDate: doc.taxInvoiceDate,
+    registeredFrom });
+}
+
+function sumRecoverableInputVat(docs: readonly InputVatDocument[], registeredFrom: Date | null): number {
+  return docs.reduce((sum, doc) => sum + (isRecoverableInputVat(doc, registeredFrom) ? toNumber(doc.vatAmount) : 0), 0);
+}
+
+type PurchaseReturnInputVatSource = InputVatDocument & {
+  purchase?: Omit<InputVatDocument, "vatAmount"> | null;
+};
+
+/**
+ * V3: a purchase return that references a purchase inherits the PURCHASE's recoverability (its VAT type,
+ * rate and tax-invoice date) and reverses its own VAT amount; a return without a purchase uses its own fields.
+ */
+function toPurchaseReturnInputVatDocument(purchaseReturn: PurchaseReturnInputVatSource): InputVatDocument {
+  const source = purchaseReturn.purchase;
+  return source
+    ? { vatType: source.vatType, vatRate: source.vatRate, taxInvoiceDate: source.taxInvoiceDate, vatAmount: purchaseReturn.vatAmount }
+    : purchaseReturn;
+}
+
+/**
+ * The shop's VAT registration date for the report. A document without a tax-invoice date is never recoverable,
+ * so the setting is read only when one of them has it.
+ */
+async function readVatRegistrationForReport(docs: readonly InputVatDocument[]): Promise<Date | null> {
+  try {
+    return docs.some((doc) => doc.taxInvoiceDate) ? await getVatRegisteredFrom(db) : null;
+  } catch (error) {
+    throw new Error("Failed to read the VAT registration date for the report", { cause: error });
+  }
 }
 
 function startOfDay(date: Date): Date {
@@ -410,6 +488,58 @@ function getPurchaseReturnRefundMethodLabel(
       return "โอนเงิน";
     default:
       return "-";
+  }
+}
+
+type SupplierDebitRefundSource = {
+  id: string;
+  debitNo: string;
+  postingDate: Date;
+  excessSettlementType: PurchaseReturnSettlementType | null;
+  refundMethod: PurchaseReturnRefundMethod | null;
+  note: string | null;
+  cashBankAccount: { name: string } | null;
+  supplier: { code: string | null; name: string } | null;
+  adjustsDebitNote: { debitNo: string } | null;
+};
+
+/**
+ * P9: cash a supplier paid back on a ปรับยอด DN (CASH_REFUND) is money in on its posting date, listed like a
+ * purchase-return cash refund. The amount is what was refunded (its SUPPLIER_DEBIT_REFUND DocumentPayment rows),
+ * not the adjustment's net: part of a reduction may have gone to the parent DN's open balance instead.
+ */
+async function buildSupplierDebitRefundReceiptRows(debits: readonly SupplierDebitRefundSource[]): Promise<DailyReceiptRow[]> {
+  try {
+    const refunds = debits.filter((debit) =>
+      debit.excessSettlementType === PurchaseReturnSettlementType.CASH_REFUND && debit.adjustsDebitNote);
+    if (refunds.length === 0) return [];
+    const payments = await db.documentPayment.findMany({
+      where: { docType: DocumentPaymentDocType.SUPPLIER_DEBIT_REFUND, docId: { in: refunds.map((debit) => debit.id) } },
+      select: { docId: true, amount: true },
+    });
+    const refunded = new Map<string, Prisma.Decimal>();
+    for (const payment of payments) {
+      refunded.set(payment.docId, (refunded.get(payment.docId) ?? new Prisma.Decimal(0)).plus(payment.amount));
+    }
+    return refunds.flatMap((debit): DailyReceiptRow[] => {
+      const amount = refunded.get(debit.id);
+      if (!amount || amount.lte(0) || !debit.adjustsDebitNote) return [];
+      return [{
+        source: "SUPPLIER_DEBIT_REFUND",
+        docNo: debit.debitNo,
+        docDate: debit.postingDate,
+        counterpartCode: debit.supplier?.code ?? "",
+        counterpartName: debit.supplier?.name ?? "ไม่ระบุซัพพลายเออร์",
+        paymentMethod: getPurchaseReturnRefundMethodLabel(debit.refundMethod),
+        accountName: debit.cashBankAccount?.name ?? "-",
+        amount: amount.toNumber(),
+        note: debit.note ?? "",
+        label: formatSupplierDebitAdjustmentLabel(debit.adjustsDebitNote.debitNo),
+      }];
+    });
+  } catch (error) {
+    console.error("[reports] supplier DN refund receipts failed", error instanceof Error ? error.name : "UNKNOWN_ERROR");
+    throw error;
   }
 }
 
@@ -563,9 +693,9 @@ export async function getReportsData(filters: ParsedReportFilters,
     ...(customerCodeRange ? { customer: { code: customerCodeRange } } : {}),
     ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
   };
+  // All CN types: P&L revenue counts DISCOUNT/OTHER too; operational sections below keep RETURN.
   const creditNoteWhere = {
     status: "ACTIVE" as const,
-    type: "RETURN" as const,
     cnDate: { gte: filters.from, lte: filters.to },
     ...(customerCodeRange ? { customer: { code: customerCodeRange } } : {}),
     ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
@@ -664,6 +794,7 @@ export async function getReportsData(filters: ParsedReportFilters,
           id: true,
           cnNo: true,
           cnDate: true,
+          type: true,
           customerName: true,
           totalAmount: true,
           subtotalAmount: true,
@@ -708,7 +839,50 @@ export async function getReportsData(filters: ParsedReportFilters,
       ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
       ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
     },
-    select: { varianceAmount: true, vatAmount: true, vatRecoverable: true },
+    select: { varianceAmount: true, vatAmount: true, vatRecoverable: true,
+      // Per-supplier purchase summary: DN document total (incl. VAT), dated by postingDate.
+      supplierId: true, netAmount: true, supplier: { select: { code: true, name: true } },
+      // With a product filter only the matching lines' variance belongs in the P&L.
+      items: productCodeRange
+        ? { where: { product: { code: productCodeRange } }, select: { varianceAmount: true } }
+        : false,
+    },
+  });
+  // T3: stock value written off when on-hand reached zero (lib/stock-card.ts). The fact carries no supplier,
+  // so a supplier filter leaves it out; a product filter keeps the matching SKUs, like the DN variance lines.
+  // Summed in SQL over the [businessDate, isActive] index; the enum value is a SQL literal, never user input.
+  const stockValueResidualPromise: Promise<Array<{ total: Prisma.Decimal | number | null }>> = supplierCodeRange
+    ? Promise.resolve([])
+    : db.$queryRaw<Array<{ total: Prisma.Decimal | number | null }>>`
+        SELECT SUM(f."costAmount") AS "total"
+        FROM "FactProfit" f
+        WHERE f."isActive" = true AND f."sourceType" = 'STOCK_VALUE_RESIDUAL'
+          AND f."businessDate" >= ${filters.from} AND f."businessDate" <= ${filters.to}
+          ${productCodeRange?.gte ? Prisma.sql`AND f."productCode" >= ${productCodeRange.gte}` : Prisma.empty}
+          ${productCodeRange?.lte ? Prisma.sql`AND f."productCode" <= ${productCodeRange.lte}` : Prisma.empty}
+      `;
+  // AP side of a DN is dated by receivedDate (วันรับใบ), matching the AP report. A ปรับยอด DN supplier credit is
+  // stored as a negative amountRemain, so it reduces debitOutstanding.
+  const supplierDebitOutstandingPromise = db.supplierDebitNote.findMany({
+    where: { status: "ACTIVE", amountRemain: { not: 0 }, receivedDate: { gte: filters.from, lte: filters.to },
+      ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
+      ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
+    },
+    select: { amountRemain: true },
+  });
+  // P9: ปรับยอด DN cash refunds for the daily receipts, dated by postingDate (the refund's cash/bank txnDate) and
+  // filtered like purchase returns. Their amounts are read after this batch (buildSupplierDebitRefundReceiptRows).
+  const supplierDebitRefundsPromise = db.supplierDebitNote.findMany({
+    where: { status: "ACTIVE", adjustsDebitNoteId: { not: null }, excessSettlementType: PurchaseReturnSettlementType.CASH_REFUND,
+      postingDate: { gte: filters.from, lte: filters.to },
+      ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
+      ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
+    },
+    orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }],
+    select: { id: true, debitNo: true, postingDate: true, excessSettlementType: true, refundMethod: true, note: true,
+      cashBankAccount: { select: { name: true } }, supplier: { select: { code: true, name: true } },
+      adjustsDebitNote: { select: { debitNo: true } },
+    },
   });
   const purchasesPromise = db.purchase.findMany({
         where: purchaseWhere,
@@ -728,6 +902,9 @@ export async function getReportsData(filters: ParsedReportFilters,
           netAmount: true,
           amountRemain: true,
           vatAmount: true,
+          vatType: true,
+          vatRate: true,
+          taxInvoiceDate: true,
         },
       });
   const purchaseReturnsPromise = db.purchaseReturn.findMany({
@@ -745,6 +922,12 @@ export async function getReportsData(filters: ParsedReportFilters,
           refundMethod: true,
           note: true,
           cashBankAccount: { select: { name: true } },
+          vatAmount: true,
+          vatType: true,
+          vatRate: true,
+          taxInvoiceDate: true,
+          // V3: a return that references a purchase inherits the purchase's input-VAT recoverability.
+          purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
         },
       });
   const expensesPromise = db.expense.findMany({
@@ -758,6 +941,10 @@ export async function getReportsData(filters: ParsedReportFilters,
           totalAmount: true,
           vatAmount: true,
           netAmount: true,
+          subtotalAmount: true,
+          vatType: true,
+          vatRate: true,
+          taxInvoiceDate: true,
           cashBankAccount: { select: { name: true } },
           items: {
             orderBy: { lineNo: "asc" },
@@ -1012,6 +1199,9 @@ export async function getReportsData(filters: ParsedReportFilters,
     supplierAdvanceRefunds,
     customerAdvanceRefunds,
     supplierDebits,
+    supplierDebitOutstanding,
+    stockValueResidualRows,
+    supplierDebitRefunds,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise,
     ],
@@ -1026,6 +1216,9 @@ export async function getReportsData(filters: ParsedReportFilters,
       supplierAdvanceRefundsPromise,
       customerAdvanceRefundsPromise,
       supplierDebitsPromise,
+      supplierDebitOutstandingPromise,
+      stockValueResidualPromise,
+      supplierDebitRefundsPromise,
     ],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -1044,7 +1237,11 @@ export async function getReportsData(filters: ParsedReportFilters,
     Awaited<typeof supplierAdvanceRefundsPromise>,
     Awaited<typeof customerAdvanceRefundsPromise>,
     Awaited<typeof supplierDebitsPromise>,
+    Awaited<typeof supplierDebitOutstandingPromise>,
+    Awaited<typeof stockValueResidualPromise>,
+    Awaited<typeof supplierDebitRefundsPromise>,
   ];
+  const supplierDebitRefundReceiptRows = await buildSupplierDebitRefundReceiptRows(supplierDebitRefunds);
 
   const normalizedSales = sales.map((sale) => ({
     id: sale.id,
@@ -1079,10 +1276,14 @@ export async function getReportsData(filters: ParsedReportFilters,
       (creditNote.sale?.items ?? []).map((item) => [item.id, toNumber(item.costPrice)]),
     );
 
+    const isReturn = creditNote.type === CreditNoteType.RETURN;
+
     return {
       id: creditNote.id,
       cnNo: creditNote.cnNo,
       cnDate: creditNote.cnDate,
+      isReturn,
+      typeLabel: getCreditNoteProfitLabel(creditNote.type),
       customerCode: creditNote.customer?.code ?? "",
       customerName: creditNote.customer?.name ?? (creditNote.customerName?.trim() || "ลูกค้าทั่วไป"),
       returnAmount: toNumber(creditNote.totalAmount),
@@ -1092,8 +1293,9 @@ export async function getReportsData(filters: ParsedReportFilters,
       refundMethod: creditNote.refundMethod,
       accountName: creditNote.cashBankAccount?.name ?? "-",
       note: creditNote.note ?? "",
+      // DISCOUNT/OTHER never return goods, so they never reverse cost of goods sold.
       cogsReversal: creditNote.items.reduce((sum, item) => {
-        if (!returnDispositionReversesStockCost(item.stockDisposition)) return sum;
+        if (!isReturn || !returnDispositionReversesStockCost(item.stockDisposition)) return sum;
         const resolvedCost = resolveReturnUnitCost({
           saleItemId: item.saleItemId,
           productId: item.productId,
@@ -1142,6 +1344,8 @@ export async function getReportsData(filters: ParsedReportFilters,
     accountName: payment.cashBankAccount?.name ?? "-",
     note: payment.note ?? "",
   }));
+  // Sales and customer summaries stay on return credit notes ("ยอดคืนขาย"); CN cash refunds cover every type.
+  const returnCreditNotes = normalizedCreditNotes.filter((creditNote) => creditNote.isReturn);
   const salesTransactions = [
     ...normalizedSales.map((sale) => ({
       docDate: sale.saleDate,
@@ -1150,7 +1354,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       netSaleAmount: sale.grossSalesAmount,
       vatAmount: sale.vatAmount,
     })),
-    ...normalizedCreditNotes.map((creditNote) => ({
+    ...returnCreditNotes.map((creditNote) => ({
       docDate: creditNote.cnDate,
       grossSalesAmount: 0,
       returnAmount: creditNote.returnAmount,
@@ -1162,7 +1366,7 @@ export async function getReportsData(filters: ParsedReportFilters,
   const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.salesAmountExVat, 0,
   );
   const grossSalesIncVat = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0);
-  const salesReturnsIncVat = normalizedCreditNotes.reduce((sum, note) => sum + note.returnAmount, 0);
+  const salesReturnsIncVat = returnCreditNotes.reduce((sum, note) => sum + note.returnAmount, 0);
   const lineDiscountTotal = normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0,
   );
   const totalInvoices = normalizedSales.length;
@@ -1170,25 +1374,33 @@ export async function getReportsData(filters: ParsedReportFilters,
     (sum, creditNote) => sum + creditNote.cogsReversal,
     0,
   );
-  const purchaseCostVariance = supplierDebits.reduce((sum, debit) => sum + toNumber(debit.varianceAmount), 0);
-  const costOfGoodsSold =
-    normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal + purchaseCostVariance;
+  const purchaseCostVariance = sumSupplierDebitVariance(supplierDebits, Boolean(productCodeRange));
+  const stockValueResidual = toNumber(stockValueResidualRows[0]?.total);
+  const costOfGoodsSold = normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal +
+    purchaseCostVariance + stockValueResidual;
   const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0,
   );
+  // P&L revenue reduction and output-VAT reversal: every active CN type (RETURN, DISCOUNT, OTHER).
   const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmountExVat, 0,
   );
   const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0,
   );
-  const purchaseVat = purchases.reduce((sum, purchase) => sum + toNumber(purchase.vatAmount), 0,
-  ) + supplierDebits.reduce((sum, debit) => sum + (debit.vatRecoverable ? toNumber(debit.vatAmount) : 0), 0);
-  const expenseTotal = expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
-  );
-  const expenseVat = expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
-  );
+  // V7 (lib/input-vat.ts): only recoverable VAT is input tax. Purchases and expenses are decided by their
+  // tax-invoice date; a purchase return by its purchase's (V3), or its own when it has none; a DN and its
+  // signed adjustments carry the recoverability stored when posted (V1/V3).
+  const purchaseReturnVatDocs = purchaseReturns.map(toPurchaseReturnInputVatDocument);
+  const registeredFrom = await readVatRegistrationForReport([...purchases, ...purchaseReturnVatDocs, ...expenses]);
+  const purchaseVat = sumRecoverableInputVat(purchases, registeredFrom) - sumRecoverableInputVat(purchaseReturnVatDocs, registeredFrom)
+    + supplierDebits.reduce((sum, debit) => sum + (debit.vatRecoverable ? toNumber(debit.vatAmount) : 0), 0);
+  // Matches the expense profit facts: recoverable VAT is input tax, so it is not also counted as expense.
+  const expenseTotal = expenses.reduce((sum, expense) =>
+    sum + toNumber(isRecoverableInputVat(expense, registeredFrom) ? expense.subtotalAmount : expense.netAmount), 0);
+  const expenseVat = sumRecoverableInputVat(expenses, registeredFrom);
   const totalPurchaseAmount = purchases.reduce((sum, purchase) => sum + toNumber(purchase.netAmount), 0,
   );
   const totalReturnAmount = normalizedPurchaseReturns.reduce((sum, doc) => sum + doc.totalAmount, 0,
   );
+  const totalDebitAmount = supplierDebits.reduce((sum, debit) => sum + toNumber(debit.netAmount), 0);
   const netRevenue = grossSales - salesReturns;
   const grossProfit = netRevenue - costOfGoodsSold;
   const netProfit = grossProfit - expenseTotal;
@@ -1261,36 +1473,32 @@ export async function getReportsData(filters: ParsedReportFilters,
   });
 
   const supplierMap = new Map<string, SupplierSummaryRow>();
+  const getSupplierRow = (supplierKey: string, supplierCode: string, supplierName: string): SupplierSummaryRow => {
+    const existing = supplierMap.get(supplierKey);
+    if (existing) return existing;
+    const row: SupplierSummaryRow = { supplierKey, supplierCode, supplierName, purchaseCount: 0,
+      purchaseAmount: 0, debitAmount: 0, returnAmount: 0, netPurchaseAmount: 0 };
+    supplierMap.set(supplierKey, row);
+    return row;
+  };
   for (const purchase of purchases) {
-    const supplierKey = purchase.supplierId ?? purchase.supplier?.code ?? "unknown";
-    const existing = supplierMap.get(supplierKey) ?? {
-      supplierKey,
-      supplierCode: purchase.supplier?.code ?? "",
-      supplierName: purchase.supplier?.name ?? "ไม่ระบุซัพพลายเออร์",
-      purchaseCount: 0,
-      purchaseAmount: 0,
-      returnAmount: 0,
-      netPurchaseAmount: 0,
-    };
+    const existing = getSupplierRow(purchase.supplierId ?? purchase.supplier?.code ?? "unknown",
+      purchase.supplier?.code ?? "", purchase.supplier?.name ?? "ไม่ระบุซัพพลายเออร์");
     existing.purchaseCount += 1;
     existing.purchaseAmount += toNumber(purchase.netAmount);
-    existing.netPurchaseAmount = existing.purchaseAmount - existing.returnAmount;
-    supplierMap.set(supplierKey, existing);
+  }
+  // A DN raises what is owed for goods already bought; it adds no purchase document or quantity.
+  for (const debit of supplierDebits) {
+    const existing = getSupplierRow(debit.supplierId, debit.supplier?.code ?? "",
+      debit.supplier?.name ?? "ไม่ระบุซัพพลายเออร์");
+    existing.debitAmount += toNumber(debit.netAmount);
   }
   for (const doc of normalizedPurchaseReturns) {
-    const supplierKey = doc.supplierId ?? doc.supplierCode ?? "unknown";
-    const existing = supplierMap.get(supplierKey) ?? {
-      supplierKey,
-      supplierCode: doc.supplierCode,
-      supplierName: doc.supplierName,
-      purchaseCount: 0,
-      purchaseAmount: 0,
-      returnAmount: 0,
-      netPurchaseAmount: 0,
-    };
+    const existing = getSupplierRow(doc.supplierId ?? doc.supplierCode ?? "unknown", doc.supplierCode, doc.supplierName);
     existing.returnAmount += toNumber(doc.totalAmount);
-    existing.netPurchaseAmount = existing.purchaseAmount - existing.returnAmount;
-    supplierMap.set(supplierKey, existing);
+  }
+  for (const row of supplierMap.values()) {
+    row.netPurchaseAmount = row.purchaseAmount + row.debitAmount - row.returnAmount;
   }
 
   const customerMap = new Map<string, CustomerSummaryRow>();
@@ -1312,7 +1520,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     existing.netSalesAmount = existing.grossSalesAmount - existing.returnAmount;
     customerMap.set(customerKey, existing);
   }
-  for (const creditNote of normalizedCreditNotes) {
+  for (const creditNote of returnCreditNotes) {
     const customerKey = creditNote.customerCode || creditNote.customerName;
     const existing = customerMap.get(customerKey) ?? {
       customerKey,
@@ -1426,6 +1634,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       note: [refund.supplierAdvance.advanceNo, refund.note].filter(Boolean)
         .join(" · "),
     })),
+    ...supplierDebitRefundReceiptRows,
   ].sort((a, b) => a.docDate.getTime() - b.docDate.getTime() || a.docNo.localeCompare(b.docNo),
   );
 
@@ -1457,6 +1666,8 @@ export async function getReportsData(filters: ParsedReportFilters,
       amount: toNumber(expense.netAmount),
       note: expense.note ?? expense.items.map((item) => item.expenseCode.name).join(", "),
     })),
+    // T8d: every CN type refunded in cash pays money out (a DISCOUNT/OTHER CN too), for its full
+    // tax-inclusive total (a CASH_REFUND CN's payments must equal it). The CN type leads the note.
     ...normalizedCreditNotes
       .filter((creditNote) => creditNote.settlementType === CNSettlementType.CASH_REFUND,
       )
@@ -1469,7 +1680,7 @@ export async function getReportsData(filters: ParsedReportFilters,
         paymentMethod: getRefundMethodLabel(creditNote.refundMethod),
         accountName: creditNote.accountName,
         amount: creditNote.returnAmount,
-        note: creditNote.note,
+        note: [creditNote.typeLabel, creditNote.note].filter(Boolean).join(" · "),
       })),
     ...normalizedSupplierAdvances.map((advance) => ({
       source: "SUPPLIER_ADVANCE" as const,
@@ -1538,6 +1749,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       netRevenue,
       costOfGoodsSold,
       purchaseCostVariance,
+      stockValueResidual,
       grossProfit,
       expenseTotal,
       netProfit,
@@ -1578,6 +1790,7 @@ export async function getReportsData(filters: ParsedReportFilters,
         .filter((purchase) => purchase.purchaseType === PurchaseType.CREDIT_PURCHASE,
         )
         .reduce((sum, purchase) => sum + toNumber(purchase.amountRemain), 0),
+      debitOutstanding: supplierDebitOutstanding.reduce((sum, debit) => sum + toNumber(debit.amountRemain), 0),
       advanceOutstanding: normalizedSupplierAdvances.reduce((sum, advance) => sum + advance.amountRemain, 0,
       ),
       purchaseReturnCreditOutstanding: normalizedPurchaseReturns
@@ -1587,8 +1800,9 @@ export async function getReportsData(filters: ParsedReportFilters,
     },
     suppliers: {
       totalPurchaseAmount,
+      totalDebitAmount,
       totalReturnAmount,
-      netPurchaseAmount: totalPurchaseAmount - totalReturnAmount,
+      netPurchaseAmount: totalPurchaseAmount + totalDebitAmount - totalReturnAmount,
       items: [...supplierMap.values()].sort((a, b) => b.netPurchaseAmount - a.netPurchaseAmount).slice(0, 50),
     },
     customers: {
@@ -1623,6 +1837,9 @@ export async function getReportsData(filters: ParsedReportFilters,
         .reduce((sum, item) => sum + item.amount, 0),
       supplierAdvanceRefundAmount: dailyReceiptRows
         .filter((item) => item.source === "SUPPLIER_ADVANCE_REFUND")
+        .reduce((sum, item) => sum + item.amount, 0),
+      supplierDebitRefundAmount: dailyReceiptRows
+        .filter((item) => item.source === "SUPPLIER_DEBIT_REFUND")
         .reduce((sum, item) => sum + item.amount, 0),
       items: dailyReceiptRows.slice(0, 100),
     },
@@ -1675,15 +1892,16 @@ export function buildReportsCsv(data: ReportsData): string {
 
   pushRow(["กำไรขาดทุน", "มูลค่า"]);
   pushRow(["ยอดขายก่อน VAT", data.profitLoss.grossSales.toFixed(2)]);
-  pushRow(["ยอดคืนขายก่อน VAT", data.profitLoss.salesReturns.toFixed(2)]);
+  pushRow(["ยอดคืนขาย/ลดหนี้ก่อน VAT", data.profitLoss.salesReturns.toFixed(2)]);
   pushRow(["รายได้สุทธิก่อน VAT", data.profitLoss.netRevenue.toFixed(2)]);
-  pushRow(["ต้นทุนขายรวมส่วนต่าง DN", data.profitLoss.costOfGoodsSold.toFixed(2)]);
+  pushRow(["ต้นทุนขายรวมส่วนต่าง DN และผลต่างมูลค่าสต็อก", data.profitLoss.costOfGoodsSold.toFixed(2)]);
   pushRow(["ส่วนต่างต้นทุน DN (รวมในต้นทุนด้านบน)", (data.profitLoss.purchaseCostVariance ?? 0).toFixed(2)]);
+  pushRow(["ผลต่างมูลค่าสต็อก (รวมในต้นทุนด้านบน)", (data.profitLoss.stockValueResidual ?? 0).toFixed(2)]);
   pushRow(["กำไรขั้นต้น", data.profitLoss.grossProfit.toFixed(2)]);
   pushRow(["ค่าใช้จ่าย", data.profitLoss.expenseTotal.toFixed(2)]);
   pushRow(["กำไรสุทธิ", data.profitLoss.netProfit.toFixed(2)]);
   pushRow(["VAT ขาย", data.profitLoss.salesVat.toFixed(2)]);
-  pushRow(["VAT คืนขาย", data.profitLoss.creditNoteVat.toFixed(2)]);
+  pushRow(["VAT คืนขาย/ลดหนี้", data.profitLoss.creditNoteVat.toFixed(2)]);
   pushRow(["VAT ซื้อ", data.profitLoss.purchaseVat.toFixed(2)]);
   pushRow(["VAT ค่าใช้จ่าย", data.profitLoss.expenseVat.toFixed(2)]);
   pushRow(["VAT คงชำระ", data.profitLoss.vatPayable.toFixed(2)]);
@@ -1694,7 +1912,7 @@ export function buildReportsCsv(data: ReportsData): string {
   ]);
   for (const row of data.dailyReceipts.items) {
     pushRow([
-      row.source === "SALE"
+      row.label ?? (row.source === "SALE"
         ? "ขายสด"
         : row.source === "RECEIPT"
           ? "ใบเสร็จรับเงิน"
@@ -1702,7 +1920,9 @@ export function buildReportsCsv(data: ReportsData): string {
             ? "รับเงินมัดจำลูกค้า"
             : row.source === "SUPPLIER_ADVANCE_REFUND"
               ? "รับคืนเงินมัดจำซัพพลายเออร์"
-              : "รับเงินคืนซื้อ",
+              : row.source === "SUPPLIER_DEBIT_REFUND"
+                ? "รับเงินคืนจากปรับยอด DN"
+                : "รับเงินคืนซื้อ"),
       row.docNo,
       formatDateInput(row.docDate),
       row.counterpartCode || "-",
@@ -1762,10 +1982,10 @@ export function buildReportsCsv(data: ReportsData): string {
   lines.push("");
 
   pushRow(["สรุปซื้อแยกซัพพลายเออร์"]);
-  pushRow(["รหัสซัพพลายเออร์", "ซัพพลายเออร์", "จำนวนเอกสารซื้อ", "ยอดซื้อ", "ยอดคืน", "สุทธิ",
+  pushRow(["รหัสซัพพลายเออร์", "ซัพพลายเออร์", "จำนวนเอกสารซื้อ", "ซื้อสินค้า", "DN (ค่าใช้จ่ายเพิ่ม)", "คืน/ลดหนี้", "สุทธิ",
   ]);
   for (const row of data.suppliers.items) {
-    pushRow([row.supplierCode || "-", row.supplierName, row.purchaseCount, row.purchaseAmount.toFixed(2), row.returnAmount.toFixed(2), row.netPurchaseAmount.toFixed(2),
+    pushRow([row.supplierCode || "-", row.supplierName, row.purchaseCount, row.purchaseAmount.toFixed(2), row.debitAmount.toFixed(2), row.returnAmount.toFixed(2), row.netPurchaseAmount.toFixed(2),
     ]);
   }
   lines.push("");

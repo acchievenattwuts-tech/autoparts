@@ -40,6 +40,10 @@ export function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string)
   if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) {
     return `/admin/supplier-debit-notes/${sourceId}`;
   }
+  // A stock value residual fact is keyed by product (sourceId = productId): open its stock card.
+  if (sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL) {
+    return `/admin/stock/card?productId=${encodeURIComponent(sourceId)}`;
+  }
   if (sourceType === ProfitSourceType.SALE_RETURN) {
     return `/admin/credit-notes/${sourceId}`;
   }

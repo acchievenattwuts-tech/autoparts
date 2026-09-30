@@ -16,6 +16,15 @@ import {
   salesLineProfitFileDateRange,
 } from "@/lib/sales-line-profit-report";
 import { formatDateThai } from "@/lib/th-date";
+import { isFractionalSaleQuantity, SALE_QUANTITY_FRACTION_EXCEL_SIGNED_FORMAT } from "@/lib/sale-quantity";
+
+/** Integer quantity cells keep the column format; a fractional one shows exactly 2 decimals. */
+function formatFractionalQuantityCells(sheet: ExcelJS.Worksheet, quantities: number[]): void {
+  quantities.forEach((quantity, index) => {
+    if (!isFractionalSaleQuantity(quantity)) return;
+    sheet.getRow(index + 2).getCell("quantity").numFmt = SALE_QUANTITY_FRACTION_EXCEL_SIGNED_FORMAT;
+  });
+}
 
 const HEADER_FILL: ExcelJS.Fill = {
   type: "pattern",
@@ -79,7 +88,7 @@ export async function GET(request: Request) {
   const billSheet = workbook.addWorksheet("กำไรต่อบิล");
   billSheet.columns = [
     { header: "วันที่", key: "date", width: 14 },
-    { header: "ประเภท", key: "type", width: 12 },
+    { header: "ประเภท", key: "type", width: 16 },
     { header: "เลขที่เอกสาร", key: "docNo", width: 18 },
     { header: "อ้างอิงบิลขาย", key: "referenceDocNo", width: 18 },
     { header: "ลูกค้า", key: "customer", width: 28 },
@@ -96,7 +105,7 @@ export async function GET(request: Request) {
   for (const bill of data.bills) {
     billSheet.addRow({
       date: formatDateThai(bill.docDate),
-      type: bill.sourceType === "SALE" ? "ขาย" : "คืนสินค้า",
+      type: bill.documentLabel,
       docNo: bill.docNo,
       referenceDocNo: bill.referenceDocNo ?? "",
       customer: bill.customerName,
@@ -112,12 +121,13 @@ export async function GET(request: Request) {
   }
   styleMoneyColumns(billSheet, ["billDiscount", "netIncVat", "netExVat", "cost", "grossProfit"]);
   billSheet.getColumn("quantity").numFmt = "#,##0.####;[Red]-#,##0.####";
+  formatFractionalQuantityCells(billSheet, data.bills.map((bill) => bill.quantity));
   billSheet.getColumn("marginPct").numFmt = "0.00%";
 
   const lineSheet = workbook.addWorksheet("กำไรต่อสินค้า");
   lineSheet.columns = [
     { header: "วันที่", key: "date", width: 14 },
-    { header: "ประเภท", key: "type", width: 12 },
+    { header: "ประเภท", key: "type", width: 16 },
     { header: "เลขที่เอกสาร", key: "docNo", width: 18 },
     { header: "อ้างอิงบิลขาย", key: "referenceDocNo", width: 18 },
     { header: "ลูกค้า", key: "customer", width: 28 },
@@ -141,7 +151,7 @@ export async function GET(request: Request) {
   for (const line of data.lines) {
     lineSheet.addRow({
       date: formatDateThai(line.docDate),
-      type: line.sourceType === "SALE" ? "ขาย" : "คืนสินค้า",
+      type: line.documentLabel,
       docNo: line.docNo,
       referenceDocNo: line.referenceDocNo ?? "",
       customer: line.customerName,
@@ -174,6 +184,7 @@ export async function GET(request: Request) {
     "grossProfit",
   ]);
   lineSheet.getColumn("quantity").numFmt = "#,##0.####;[Red]-#,##0.####";
+  formatFractionalQuantityCells(lineSheet, data.lines.map((line) => line.quantity));
   lineSheet.getColumn("marginPct").numFmt = "0.00%";
 
   const fileName = `sales-line-profit-${salesLineProfitFileDateRange(filters)}.xlsx`;

@@ -13,6 +13,7 @@ import { db } from "@/lib/db";
 import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { buildMutationBlockMessage, buildMutationBlockReferenceLinks, checkDocumentMutation } from "@/lib/document-mutation-guard";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import ClaimEditPanel from "./ClaimEditPanel";
 import ClaimStatusActions from "./ClaimStatusActions";
 import { formatDateThai } from "@/lib/th-date";
@@ -143,12 +144,22 @@ const ClaimDetailPage = async ({ params }: Props) => {
   ]);
 
   if (!claim) notFound();
-  const [activityEvents, mutationBlock] = await Promise.all([
+  // Same rule as the actions: forward steps are "update" (they only add rows dated today);
+  // reopen and cancel reverse stock rows, so they also stop at a later ACTIVE supplier DN.
+  const claimPostingDates = [claim.claimDate, claim.sentAt, claim.resolvedAt, claim.returnedAt];
+  const [activityEvents, mutationBlock, reverseBlock, periodLockOf] = await Promise.all([
     getDocumentActivityTimeline("WarrantyClaim", claim.id),
     checkDocumentMutation("WarrantyClaim", claim.id, "update"),
+    checkDocumentMutation("WarrantyClaim", claim.id, "cancel"),
+    // Month lock (lib/period-lock.ts): cancel reverses every posting, reopen only the last step.
+    getPeriodLockViewResolver(claimPostingDates, permissions),
   ]);
+  const cancelPeriodLock = periodLockOf(...claimPostingDates);
+  const reopenPeriodLock = periodLockOf(claim.status === "RETURNED_TO_CUSTOMER" ? claim.returnedAt : claim.resolvedAt);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const reverseBlockMessage = buildMutationBlockMessage(reverseBlock);
+  const reverseBlockReferences = buildMutationBlockReferenceLinks(reverseBlock);
 
   const isEditable = claim.status === "DRAFT" || claim.status === "SENT_TO_SUPPLIER";
   const canManageStatus = claim.status !== "CANCELLED";
@@ -484,7 +495,11 @@ const ClaimDetailPage = async ({ params }: Props) => {
               isLotControl={claim.warranty.product.isLotControl}
               mutationBlockedReason={mutationBlockMessage}
               mutationBlockReferences={mutationBlockReferences}
+              reverseBlockedReason={reverseBlockMessage}
+              reverseBlockReferences={reverseBlockReferences}
               deletesClaimOnCancel={getWarrantyClaimKind(claim.warranty) === "SALE"}
+              cancelPeriodLock={cancelPeriodLock}
+              reopenPeriodLock={reopenPeriodLock}
             />
           </div>
         )}

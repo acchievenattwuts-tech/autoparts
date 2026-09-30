@@ -5,14 +5,17 @@ import { useRouter } from "next/navigation";
 import { createExpense, updateExpense } from "../actions";
 import { uploadExpenseAttachmentsSequentially } from "../upload-attachments-sequentially";
 import ExpenseAttachmentPicker from "@/components/shared/ExpenseAttachmentPicker";
-import { Plus, Trash2, CheckCircle } from "lucide-react";
+import { Plus, Trash2, CheckCircle, Info } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
-import { getThailandDateKey } from "@/lib/th-date";
+import { getThailandDateKey, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
+import { describeInputVatTreatment, isInputVatRecoverable, parseVatRegisteredFrom } from "@/lib/input-vat";
 import WhtIssuedFields, { type WhtIssuedFormValue } from "@/components/shared/WhtIssuedFields";
 import type { WhtIncomeTypeOption } from "@/components/shared/WhtReceivedFields";
+import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 
 interface ExpenseCodeOption {
   id: string;
@@ -51,6 +54,9 @@ interface InitialData {
   payments?: PaymentChannelRow[];
   vatType: string;
   vatRate: number;
+  /** V5: the supplier's tax invoice (date as YYYY-MM-DD); blank when none. */
+  taxInvoiceNo: string;
+  taxInvoiceDate: string;
   note: string;
   items: LineItem[];
   /** Attachments already stored on the document — counts toward the per-document cap. */
@@ -64,7 +70,13 @@ interface Props {
   whtIncomeTypes: WhtIncomeTypeOption[];
   defaultVatType: string;
   defaultVatRate: number;
+  /** V7: the shop's VAT registration date (YYYY-MM-DD), or null while it is not registered (lib/input-vat.ts). */
+  vatRegisteredFrom: string | null;
   initialData?: InitialData;
+  /** Edit only: the document's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
+  /** What may still be edited in that month without unlocking (expense-period-lock.ts). */
+  periodLockHint?: string;
 }
 
 const inputCls = "w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#1e3a5f] text-sm dark:border-white/20 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500";
@@ -79,7 +91,10 @@ const NewExpenseForm = ({
   whtIncomeTypes,
   defaultVatType,
   defaultVatRate,
+  vatRegisteredFrom,
   initialData,
+  periodLock = null,
+  periodLockHint,
 }: Props) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -100,6 +115,10 @@ const NewExpenseForm = ({
   const [wht, setWht] = useState<WhtIssuedFormValue | null>(initialData?.wht ?? null);
   const [vatType, setVatType] = useState<string>(initialData?.vatType ?? defaultVatType);
   const [vatRate, setVatRate] = useState<number>(initialData?.vatRate ?? defaultVatRate);
+  const [taxInvoiceNo, setTaxInvoiceNo] = useState(initialData?.taxInvoiceNo ?? "");
+  const [taxInvoiceDate, setTaxInvoiceDate] = useState(initialData?.taxInvoiceDate ?? "");
+  // The date input stays uncontrolled; this copy only feeds the month-lock change check (P3).
+  const [expenseDateKey, setExpenseDateKey] = useState(initialData?.expenseDate ?? getThailandDateKey());
 
   const addItem    = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) => setItems((prev) => prev.filter((_, idx) => idx !== i));
@@ -124,6 +143,29 @@ const NewExpenseForm = ({
   /** ยอดค่าใช้จ่ายยังเต็ม แต่เงินที่จ่ายออกจริงคือยอดหลังหักภาษี ณ ที่จ่าย */
   const whtAmount = Math.round((wht?.taxAmount ?? 0) * 100) / 100;
   const cashTotal = Math.round((netAmount - whtAmount) * 100) / 100;
+  // V7: whether this VAT is input tax (by the tax-invoice date) — the server decides it again on save.
+  const vatRequired = vatType !== "NO_VAT";
+  const vatDecision = { vatType, vatRate, registeredFrom: parseVatRegisteredFrom(vatRegisteredFrom),
+    taxDocumentDate: isDateOnlyString(taxInvoiceDate) ? parseDateOnlyToDate(taxInvoiceDate) : null };
+
+  // P3: what updateExpense compares in a locked month (expense-period-lock.ts). The note and the
+  // line descriptions are left out.
+  const { financialChange: periodLockFinancialChange } = usePeriodLockFinancialChange(
+    periodLock,
+    {
+      expenseDate: expenseDateKey,
+      supplierId,
+      vatType,
+      vatRate,
+      inputVatRecoverable: isInputVatRecoverable(vatDecision),
+      items: items.map((item) => ({ expenseCodeId: item.expenseCodeId, amount: item.amount })),
+      payments: payments
+        .filter((row) => row.amount > 0)
+        .map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount })),
+      wht,
+    },
+    error,
+  );
 
   /** Uploads the picked evidence files once the expense document exists. */
   const uploadPendingAttachments = async (expenseId: string): Promise<string | null> => {
@@ -144,6 +186,10 @@ const NewExpenseForm = ({
     }
 
     if (!supplierId) { setError("กรุณาเลือกผู้รับเงิน"); return; }
+    if (vatRequired && (!taxInvoiceNo.trim() || !isDateOnlyString(taxInvoiceDate))) {
+      setError("กรุณาระบุเลขที่และวันที่ใบกำกับภาษี (บังคับเมื่อมี VAT)");
+      return;
+    }
     if (wht) {
       if (!wht.incomeTypeId) { setError("กรุณาเลือกประเภทเงินได้ของภาษีหัก ณ ที่จ่าย"); return; }
       if (wht.taxAmount <= 0) { setError("ยอดภาษีหัก ณ ที่จ่ายต้องมากกว่า 0"); return; }
@@ -210,6 +256,7 @@ const NewExpenseForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      <PeriodLockFormSection lock={periodLock} hint={periodLockHint} financialChange={periodLockFinancialChange} />
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg dark:bg-red-500/10 dark:border-red-400/30 dark:text-red-400">
           {error}
@@ -229,6 +276,7 @@ const NewExpenseForm = ({
             type="date"
             name="expenseDate"
               defaultValue={initialData?.expenseDate ?? getThailandDateKey()}
+            onChange={(event) => setExpenseDateKey(event.target.value)}
             required
             className={inputCls}
           />
@@ -287,6 +335,40 @@ const NewExpenseForm = ({
               <span className="text-sm text-gray-500 dark:text-slate-400">%</span>
             </div>
           )}
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div>
+            <label htmlFor="expense-tax-invoice-no" className={labelCls}>
+              เลขที่ใบกำกับภาษี {vatRequired ? <span className="text-red-500">*</span> : null}
+            </label>
+            <input
+              id="expense-tax-invoice-no"
+              type="text"
+              name="taxInvoiceNo"
+              maxLength={100}
+              value={taxInvoiceNo}
+              onChange={(event) => setTaxInvoiceNo(event.target.value)}
+              placeholder={vatRequired ? "เลขที่ใบกำกับภาษีของผู้ขาย" : "ถ้ามี"}
+              className={inputCls}
+            />
+          </div>
+          <div>
+            <label htmlFor="expense-tax-invoice-date" className={labelCls}>
+              วันที่ใบกำกับภาษี {vatRequired ? <span className="text-red-500">*</span> : null}
+            </label>
+            <input
+              id="expense-tax-invoice-date"
+              type="date"
+              name="taxInvoiceDate"
+              value={taxInvoiceDate}
+              onChange={(event) => setTaxInvoiceDate(event.target.value)}
+              className={inputCls}
+            />
+          </div>
+          <p className="flex items-start gap-2 self-end rounded-lg border border-sky-100 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200">
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <span>{describeInputVatTreatment(vatDecision)}</span>
+          </p>
         </div>
       </div>
 

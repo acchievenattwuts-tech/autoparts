@@ -8,6 +8,7 @@ import Pagination from "@/components/shared/Pagination";
 import { getLotExpiryPage } from "../lot-expiry-query";
 
 const LOT_PAGE_SIZE = 50;
+const DEFAULT_DAYS = "30";
 
 interface PageProps {
   searchParams: Promise<{ days?: string; page?: string }>;
@@ -45,7 +46,10 @@ function badgeLabel(daysUntil: number): string {
 export default async function LotExpiryPage({ searchParams }: PageProps) {
   await requirePermission("lot_reports.view");
 
-  const { days = "30", page: pageParam = "1" } = await searchParams;
+  const { days: daysParam = DEFAULT_DAYS, page: pageParam = "1" } = await searchParams;
+  // Only offered options are honoured; anything else (e.g. ?days=abc) falls
+  // back to the default instead of building an Invalid Date threshold.
+  const days = DAYS_OPTIONS.some((option) => option.value === daysParam) ? daysParam : DEFAULT_DAYS;
   const page = Math.max(1, parseInt(pageParam, 10));
 
   const today = parseDateOnlyToDate(getThailandDateKey());

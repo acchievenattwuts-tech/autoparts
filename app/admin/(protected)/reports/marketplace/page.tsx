@@ -175,7 +175,8 @@ export default async function MarketplaceReportPage({
             </p>
             <p className="text-amber-800 dark:text-amber-200">
               มียอดขาย ฿{money(pendingFees.pendingSalesAmount)} ที่แพลตฟอร์มยังไม่โอน
-              ค่าธรรมเนียมของก้อนนี้จะถูกบันทึกย้อนกลับมาที่วันขายเมื่อกระทบยอดรอบถัดไป
+              ค่าธรรมเนียมของก้อนนี้จะถูกบันทึกที่วันขายเมื่อกระทบยอดรอบถัดไป
+              ยกเว้นเดือนของวันขายประกาศแบ่งกำไรไปแล้ว จะลงวันที่รอบรับเงินแทน
               {pendingFees.sampleSettlementCount > 0
                 ? ` (คำนวณแยกตามอัตราค่าธรรมเนียมเฉลี่ยของ Shopee และ Lazada จาก ${pendingFees.sampleSettlementCount} รอบที่ผ่านมา)`
                 : " (ยังไม่มีรอบรับเงินให้ใช้ประมาณอัตราค่าธรรมเนียม)"}

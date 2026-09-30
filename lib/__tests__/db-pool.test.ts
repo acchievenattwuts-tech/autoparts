@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
-import test, { afterEach, beforeEach } from "node:test";
-import { FluidPrismaPg } from "../db-pool";
+import test, { afterEach, before, beforeEach, mock } from "node:test";
+import { attachDatabasePool as realAttachDatabasePool } from "@vercel/functions";
+
+// The real helper runs in every test except where `attachError` is set, which
+// simulates a future pg / @vercel/functions upgrade rejecting Prisma's pool.
+let attachError: Error | null = null;
+let FluidPrismaPg: typeof import("../db-pool").FluidPrismaPg;
+
+before(async () => {
+  mock.module("@vercel/functions", {
+    namedExports: {
+      attachDatabasePool: (...args: Parameters<typeof realAttachDatabasePool>): void => {
+        if (attachError) throw attachError;
+        realAttachDatabasePool(...args);
+      },
+    },
+  });
+  ({ FluidPrismaPg } = await import("../db-pool"));
+});
 
 const POOL_CONFIG = {
   connectionString: "postgresql://test:test@127.0.0.1:1/unused",
@@ -13,6 +30,7 @@ const VERCEL_ENV_KEYS = ["VERCEL", "VERCEL_URL", "VERCEL_REGION"] as const;
 let originalEnv: Array<string | undefined>;
 beforeEach(() => { originalEnv = VERCEL_ENV_KEYS.map((key) => process.env[key]); });
 afterEach(() => {
+  attachError = null;
   VERCEL_ENV_KEYS.forEach((key, index) => {
     const value = originalEnv[index];
     if (value === undefined) delete process.env[key];
@@ -92,4 +110,29 @@ test("releasing a pool client registers an idle wait with the Vercel request con
   } finally {
     await adapter.dispose();
   }
+});
+
+test("a failing Fluid registration keeps the adapter and its pool usable", async (t) => {
+  process.env.VERCEL = "1";
+  attachError = new Error("Unsupported database pool type");
+  const warn = t.mock.method(console, "warn", () => undefined);
+  const factory = new FluidPrismaPg(POOL_CONFIG);
+  const adapter = await factory.connect();
+  const pool = adapter.underlyingDriver();
+  const reconnected = await factory.connect();
+  try {
+    assert.equal(pool.ended, false);
+    assert.equal(pool.listenerCount("release"), 0);
+    assert.equal(pool.options.max, POOL_CONFIG.max);
+    assert.equal(reconnected.underlyingDriver().ended, false);
+    // Warned once for the process, and the message never carries the DSN.
+    assert.equal(warn.mock.callCount(), 1);
+    const message = String(warn.mock.calls[0]?.arguments[0]);
+    assert.match(message, /Unsupported database pool type/);
+    assert.doesNotMatch(message, /postgresql:|test:test/);
+  } finally {
+    await reconnected.dispose();
+    await adapter.dispose();
+  }
+  assert.equal(pool.ended, true);
 });

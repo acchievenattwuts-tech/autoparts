@@ -30,6 +30,13 @@ import {
   type AdjustmentProductOption,
 } from "@/lib/adjustment-product-search";
 import { getAdjustmentLineLotError } from "./adjustment-lot-guard";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+} from "@/lib/period-lock-document";
 
 const INVALID_DATE_MESSAGE = "รูปแบบวันที่ไม่ถูกต้อง";
 
@@ -244,6 +251,8 @@ export async function createAdjustment(
           : null;
         if (lotError) throw new AdjustmentUserError(lotError);
       }
+      // A new adjustment dated in a month whose profit was distributed is refused (no override on create).
+      await assertPeriodsUnlocked(tx, [docDate]);
 
       const adjustment = await tx.adjustment.create({
         data: {
@@ -322,6 +331,7 @@ export async function createAdjustment(
     revalidatePath("/admin/stock/adjustments");
     return { success: true, adjustNo };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     console.error("[createAdjustment]", error);
     // An ADJUST_OUT lot short on stock (writeAdjustmentLots) is the user's to fix.
     if (error instanceof AdjustmentUserError || error instanceof LotStockInsufficientError || error instanceof DocumentMutationBlockedError) {
@@ -407,13 +417,18 @@ export async function cancelAdjustment(
   if (adjustment.status === "CANCELLED") return { error: "เอกสารถูกยกเลิกไปแล้ว" };
 
   const affectedProductIds = [...new Set(adjustment.items.map((item) => item.productId))];
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const beforeSnapshot = await getAdjustmentAuditSnapshot(adjustment.id);
     await dbTx(async (tx) => {
-      await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Adjustment" WHERE "id" = ${adjustmentId} FOR UPDATE`);
+      const lockedRows = await tx.$queryRaw<{ id: string; adjustDate?: Date | null }[]>(Prisma.sql`SELECT "id", "adjustDate" FROM "Adjustment" WHERE "id" = ${adjustmentId} FOR UPDATE`);
       await lockStockMutationProducts(tx, affectedProductIds);
       await assertDocumentMutationAllowedInTx(tx, "Adjustment", adjustmentId, "cancel");
+      // Month lock on the date stored under the row lock, before any write.
+      const lockedDate = Array.isArray(lockedRows) ? lockedRows[0]?.adjustDate : null;
+      periodLock = await assertPeriodsUnlocked(tx, [lockedDate ?? adjustment.adjustDate], lockOverride);
       // Claim the document first: the conditional update row-locks it, so a
       // concurrent cancel of the same document waits, then matches 0 rows and
       // stops here — LotBalance is never reversed twice.
@@ -448,13 +463,24 @@ export async function cancelAdjustment(
         entityRef: afterSnapshot.adjustNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null },
+        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "Adjustment",
+      entityId: adjustment.id,
+      docNo: adjustment.adjustNo,
+      action: "ยกเลิกใบปรับสต็อก",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/stock/adjustments#document-${adjustment.id}`,
+    });
 
     revalidatePath("/admin/stock/adjustments");
     return { success: true };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     console.error("[cancelAdjustment]", error);
     if (error instanceof AdjustmentUserError) return { error: error.message };

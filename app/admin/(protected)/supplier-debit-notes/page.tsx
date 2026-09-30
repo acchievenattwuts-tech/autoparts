@@ -7,6 +7,7 @@ import { requirePermission, getSessionPermissionContext } from "@/lib/require-au
 import { hasPermissionAccess } from "@/lib/access-control";
 import { formatDateThai, isDateOnlyString, parseDateOnlyToStartOfDay, parseDateOnlyToEndOfDay } from "@/lib/th-date";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
+import { formatSupplierDebitAdjustmentLabel } from "@/lib/supplier-debit-balance";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
@@ -44,7 +45,8 @@ const loadDebitList = async ({ searchParams }: { searchParams: ListSearchParams 
       db.supplierDebitNote.findMany({ where, orderBy: [{ postingDate: "desc" }, { debitNo: "desc" }], take: PAGE_SIZE, skip: (pageNumber - 1) * PAGE_SIZE,
         select: { id: true, debitNo: true, supplierReferenceNo: true, postingDate: true, netAmount: true,
           amountRemain: true, inventoryAmount: true, varianceAmount: true, status: true,
-          supplier: { select: { name: true } }, purchase: { select: { purchaseNo: true } } } }),
+          supplier: { select: { name: true } }, purchase: { select: { purchaseNo: true } },
+          adjustsDebitNote: { select: { debitNo: true } } } }),
       db.supplierDebitNote.count({ where }),
     ]);
     return { q, from, to, pageNumber, rows, count,
@@ -60,7 +62,7 @@ const DebitListPage = async ({ searchParams }: { searchParams: ListSearchParams 
     <div className="space-y-4">
       <AdminPageHeader
         title="ใบเพิ่มหนี้ซัพพลายเออร์ (DN)"
-        description="เพิ่มเจ้าหนี้และปรับมูลค่าต้นทุนโดยไม่เพิ่มจำนวนสินค้า · ส่วนที่ไม่เข้าสินค้าคงเหลือลงเป็นส่วนต่างต้นทุนงวด DN"
+        description="เพิ่มเจ้าหนี้และปรับมูลค่าต้นทุนโดยไม่เพิ่มจำนวนสินค้า · ส่วนที่ไม่เข้าสินค้าคงเหลือลงเป็นส่วนต่างต้นทุนงวด DN · DN ที่แก้ไม่ได้ให้ใช้ “ปรับยอด DN” จากหน้ารายละเอียด"
         actions={canCreate ? (
           <Link href="/admin/supplier-debit-notes/new" className="inline-flex items-center gap-2 rounded-xl bg-[#f97316] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-orange-600">
             <Plus size={16} /> บันทึก DN
@@ -110,6 +112,9 @@ const DebitListPage = async ({ searchParams }: { searchParams: ListSearchParams 
                   <td className="px-4 py-3">
                     <Link href={`/admin/supplier-debit-notes/${row.id}`} className="font-mono font-medium text-[#1e3a5f] hover:underline dark:text-sky-200">{row.debitNo}</Link>
                     <p className="text-xs text-slate-500 dark:text-slate-400">{row.supplierReferenceNo} · ใบซื้อ {row.purchase.purchaseNo}</p>
+                    {row.adjustsDebitNote ? (
+                      <p className="text-xs font-medium text-teal-700 dark:text-teal-300">{formatSupplierDebitAdjustmentLabel(row.adjustsDebitNote.debitNo)}</p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(row.postingDate)}</td>
                   <td className="px-4 py-3 text-slate-700 dark:text-slate-300">{row.supplier.name}</td>
@@ -118,12 +123,13 @@ const DebitListPage = async ({ searchParams }: { searchParams: ListSearchParams 
                   <td className="px-4 py-3 text-right tabular-nums text-amber-700 dark:text-amber-400">{money(row.varianceAmount)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-slate-700 dark:text-slate-300">{money(row.amountRemain)}</td>
                   <td className="px-4 py-3">{cancelled ? <AdminStatusBadge tone="danger">ยกเลิกแล้ว</AdminStatusBadge>
-                    : Number(row.amountRemain) === 0 ? <AdminStatusBadge tone="info">ชำระครบ</AdminStatusBadge>
-                      : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
+                    : Number(row.amountRemain) < 0 ? <AdminStatusBadge tone="info">มีเครดิตคงเหลือ</AdminStatusBadge>
+                      : Number(row.amountRemain) === 0 ? <AdminStatusBadge tone="info">{Number(row.netAmount) < 0 ? "ปิดยอดแล้ว" : "ชำระครบ"}</AdminStatusBadge>
+                        : <AdminStatusBadge tone="success">ใช้งาน</AdminStatusBadge>}</td>
                   <td className="px-4 py-3">
                     <AdminActionGroup align="end">
                       <Link href={`/admin/supplier-debit-notes/${row.id}`} className="inline-flex items-center gap-1 text-xs font-medium text-[#1e3a5f] transition-colors hover:text-blue-700 dark:text-sky-300 dark:hover:text-sky-200"><Eye size={14} /> ดู</Link>
-                      {!cancelled && canUpdate ? <Link href={`/admin/supplier-debit-notes/${row.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
+                      {!cancelled && !row.adjustsDebitNote && canUpdate ? <Link href={`/admin/supplier-debit-notes/${row.id}/edit`} className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"><Pencil size={14} /> แก้ไข</Link> : null}
                     </AdminActionGroup>
                   </td>
                 </tr>

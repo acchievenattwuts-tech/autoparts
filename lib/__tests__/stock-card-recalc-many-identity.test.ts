@@ -114,7 +114,8 @@ function sqlValues(values: unknown[]): unknown[] {
 function createTx(store: Store, selects: unknown[]) {
   const applyUpdates = (text: string, flat: unknown[]) => {
     if (text.includes('"qtyBalance" = data."qtyBalance"')) {
-      for (let i = 0; i < flat.length; i += 4) {
+      // (id, priceOut, qtyBalance, priceBalance, costVariance); a NULL costVariance keeps the stored value.
+      for (let i = 0; i < flat.length; i += 5) {
         const target = store.rows.find((r) => r.id === flat[i]);
         assert.ok(target);
         target.priceOut = col4(flat[i + 1]);
@@ -175,6 +176,10 @@ function createTx(store: Store, selects: unknown[]) {
         store.products.set(where.id, { stock: data.stock, avgCost: D(data.avgCost.toString()).toString() });
         return {};
       },
+    },
+    // T3 residual facts: none active and none written (every fixture row predates the go-live date).
+    factProfit: {
+      findMany: async () => [],
     },
     productStorefrontStockInvalidation: {
       upsert: async () => ({}),

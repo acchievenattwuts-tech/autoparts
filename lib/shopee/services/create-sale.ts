@@ -24,6 +24,7 @@ import {
   type LotSubRow,
 } from "@/lib/lot-control";
 import { rebuildSaleProfitFacts } from "@/lib/profit-fact";
+import { assertPeriodsUnlocked, PeriodLockedError } from "@/lib/period-lock";
 import { getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 import {
   assertLotBalanceAvailable,
@@ -37,8 +38,10 @@ import {
   mapShopeeOrderStatusToShippingStatus,
 } from "@/lib/shopee/logistics-utils";
 import { writeStockCard } from "@/lib/stock-card";
+import { SALE_BASE_QUANTITY_DECIMALS_ERROR, toSaleBaseQuantity } from "@/lib/sale-quantity";
 import { calcItemSubtotal } from "@/lib/vat";
 import { lockStockMutationProducts } from "@/lib/document-mutation-guard";
+import { roundStoredMoney, SaleRevenueAllocationError, sumSaleLineTotals } from "@/lib/sale-profit-revenue";
 
 /**
  * Shopee order → internal Sale (Phase F).
@@ -318,11 +321,12 @@ export async function createSaleFromShopeeOrder(params: {
   const docDate = parseDateOnlyToDate(getThailandDateKey());
   const lotSelections = params.lotSelections ?? {};
 
-  const totalAmount = draft.totalAmount;
+  // Header = Σ stored (2-decimal) line totals, so it always reconciles with the lines (E5).
+  // Lines already at 2 decimals keep the plain sum, identical to draft.totalAmount.
+  const totalAmount = sumSaleLineTotals(draft.lines.map((line) => line.lineTotal));
   const netAmount = totalAmount;
-  const subtotalAmount = draft.lines.reduce(
-    (sum, l) => sum + calcItemSubtotal(l.lineTotal, VatType.NO_VAT, 0),
-    0,
+  const subtotalAmount = sumSaleLineTotals(
+    draft.lines.map((line) => calcItemSubtotal(line.lineTotal, VatType.NO_VAT, 0)),
   );
 
   const saleNo = await generateSaleNo(SHOPEE_SALE_PREFIX, docDate);
@@ -339,13 +343,17 @@ export async function createSaleFromShopeeOrder(params: {
   try {
     // Real-time out-of-stock alert: note which products still have stock BEFORE
     // the sale; after commit only those now at/below zero are alerted. Compared
-    // before/after (not writeStockCard's crossedToZero) because the sale is dated
-    // on the Shopee order date, so an order approved later is often backdated.
+    // before/after (not writeStockCard's crossedToZero) because crossedToZero is
+    // skipped on the recalculation path, which the date-only saleDate takes
+    // whenever an existing row must sort after it (see findProductIdsWithStock).
     const productIdsWithStockBeforeSale = await findProductIdsWithStock(
       draft.lines.flatMap((line) => (line.isTracked && line.productId ? [line.productId] : [])),
     );
 
     await dbTx(async (tx) => {
+      // Month lock (lib/period-lock.ts) before any write. The import posts today, so this only
+      // bites if today's month was already declared; no override on create.
+      await assertPeriodsUnlocked(tx, [docDate]);
       const claimed = await tx.shopeeOrderImport.updateMany({
         where: {
           id: draft.orderImportId,
@@ -411,7 +419,9 @@ export async function createSaleFromShopeeOrder(params: {
 
       for (const [index, line] of draft.lines.entries()) {
         if (!line.productId) throw new Error("unmapped line");
-        const qtyInBase = line.qty * line.unitScale;
+        // Same base quantity for SaleItem and StockCard (Shopee qty is a whole number).
+        const qtyInBase = toSaleBaseQuantity(line.qty, line.unitScale);
+        if (qtyInBase === null) throw new Error(SALE_BASE_QUANTITY_DECIMALS_ERROR);
         const product = productMap.get(line.productId);
         if (!product) throw new Error("ไม่พบสินค้า");
 
@@ -424,14 +434,14 @@ export async function createSaleFromShopeeOrder(params: {
             saleId: sale.id,
             lineNo: index + 1,
             productId: line.productId,
-            quantity: Math.round(qtyInBase),
+            quantity: qtyInBase,
             salePrice: new Prisma.Decimal(line.unitPrice),
             // Marketplace lines carry no separate list price; net = list, no discount.
             unitListPrice: new Prisma.Decimal(line.unitPrice),
             priceSource: SalePriceSource.ORDER_SNAPSHOT,
             lineDiscount: new Prisma.Decimal(0),
             costPrice: costPerBase,
-            totalAmount: new Prisma.Decimal(itemTotal),
+            totalAmount: new Prisma.Decimal(roundStoredMoney(itemTotal)),
             subtotalAmount: new Prisma.Decimal(itemSubtotal),
             showQty: new Prisma.Decimal(line.qty),
             showUnitName: line.unitName,
@@ -520,7 +530,9 @@ export async function createSaleFromShopeeOrder(params: {
 
     return { ok: true, saleId: createdSaleId, saleNo };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { ok: false, error: error.message };
     console.error("[shopee] create sale failed:", error instanceof Error ? error.message : "unknown");
+    if (error instanceof SaleRevenueAllocationError) return { ok: false, error: error.userMessage };
     return { ok: false, error: error instanceof Error ? error.message : "สร้างบิลไม่สำเร็จ" };
   }
 }

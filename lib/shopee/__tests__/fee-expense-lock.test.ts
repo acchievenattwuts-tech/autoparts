@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { before, beforeEach, mock } from "node:test";
+import { getThailandDateKey, parseDateOnlyToDate } from "@/lib/th-date";
 
 // createShopeeFeeExpense: the draft check before the transaction is only a fast
 // path. Inside the transaction the order import is serialized with a
@@ -24,6 +25,8 @@ let txLinkedExpense: LinkedExpense;
 let callLog: string[] = [];
 let consoleErrors = 0;
 let createdCount = 0;
+// Dates handed to the doc number, the expense row and the cash-bank movement.
+let postedDates: { docNo?: Date; expense?: Date; txn?: Date } = {};
 
 const record = (entry: string) => {
   callLog.push(entry);
@@ -48,8 +51,9 @@ const fakeTx: FakeTx = {
   },
   expense: {
     create: async (args: unknown) => {
-      const { data } = args as { data: { totalAmount: { toString(): string } } };
+      const { data } = args as { data: { totalAmount: { toString(): string }; expenseDate: Date } };
       createdCount += 1;
+      postedDates.expense = data.expenseDate;
       record(`tx.expense.create:${data.totalAmount.toString()}`);
       return { id: `exp-${createdCount}` };
     },
@@ -61,15 +65,26 @@ let escrow: Escrow;
 
 before(async () => {
   await mock.module("@/lib/doc-number", {
-    namedExports: { generateExpenseNo: async () => "OE26090007" },
+    namedExports: {
+      generateExpenseNo: async (date?: Date) => {
+        postedDates.docNo = date;
+        return "OE26090007";
+      },
+    },
   });
   await mock.module("@/lib/marketplace/queries", {
     namedExports: { getMarketplaceHoldingAccountId: async () => "acc-hold" },
   });
   await mock.module("@/lib/cash-bank", {
     namedExports: {
-      replaceCashBankSourceMovements: async (_tx: unknown, _type: unknown, sourceId: string) => {
+      replaceCashBankSourceMovements: async (
+        _tx: unknown,
+        _type: unknown,
+        sourceId: string,
+        movements: { txnDate: Date }[],
+      ) => {
         record(`cashBank.replace:${sourceId}`);
+        postedDates.txn = movements[0]?.txnDate;
       },
     },
   });
@@ -120,6 +135,7 @@ beforeEach(() => {
   callLog = [];
   consoleErrors = 0;
   createdCount = 0;
+  postedDates = {};
 });
 
 test("creation takes the per-order advisory lock and re-reads the link before any write", async () => {
@@ -178,4 +194,14 @@ test("the fast path still reuses an ACTIVE expense without opening a transaction
   const result = await escrow.createShopeeFeeExpense({ orderImportId: ORDER_ID, userId: "user-1" });
   assert.deepEqual(result, { ok: true, expenseId: "exp-first", expenseNo: "OE26090006", reused: true });
   assert.deepEqual(callLog, []);
+});
+
+test("the fee expense, its doc number and the cash-bank movement use the date-only Thai business date", async () => {
+  const today = parseDateOnlyToDate(getThailandDateKey());
+  const result = await escrow.createShopeeFeeExpense({ orderImportId: ORDER_ID, userId: "user-1" });
+  assert.equal(result.ok, true);
+  // Same value as the Shopee sale's saleDate: Thai start of day, never a time of day.
+  assert.equal(postedDates.expense?.getTime(), today.getTime());
+  assert.equal(postedDates.docNo?.getTime(), today.getTime());
+  assert.equal(postedDates.txn?.getTime(), today.getTime());
 });

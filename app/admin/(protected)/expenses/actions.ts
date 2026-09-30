@@ -40,7 +40,22 @@ import {
 } from "@/lib/document-payments";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildExpenseProfitFacts } from "@/lib/profit-fact";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  collectLineRemarkUpdates,
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+  resolveDocumentPeriodLock,
+} from "@/lib/period-lock-document";
+import {
+  isExpenseNonFinancialChange,
+  loadExpenseFinancialState,
+  type StoredExpenseFinancialState,
+} from "./expense-period-lock";
 import { isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
+import { getVatRegisteredFrom, isInputVatRecoverable } from "@/lib/input-vat";
 import {
   parseWhtIssuedField,
   resolveCashAmount,
@@ -55,13 +70,36 @@ const expenseItemSchema = z.object({
   amount:        z.coerce.number().positive("จำนวนเงินต้องมากกว่า 0"),
 });
 
+const MAX_TAX_INVOICE_NO_LENGTH = 100;
+
 const expenseSchema = z.object({
   expenseDate: z.string().min(1, "กรุณาระบุวันที่"),
   supplierId:  z.string().min(1, "กรุณาเลือกผู้รับเงิน"),
   vatType:     z.nativeEnum(VatType).default(VatType.NO_VAT),
   vatRate:     z.coerce.number().min(0).max(100).default(0),
+  // V5/V7: the supplier's tax invoice, required only when the expense carries VAT; its date decides whether the VAT
+  // is recoverable input tax (lib/input-vat.ts). Date-only (Thailand), like expenseDate.
+  taxInvoiceNo: z.string().trim().max(MAX_TAX_INVOICE_NO_LENGTH, "เลขที่ใบกำกับภาษีต้องไม่เกิน 100 ตัวอักษร").optional(),
+  taxInvoiceDate: z.string().trim().optional()
+    .refine((value) => !value || isDateOnlyString(value), "วันที่ใบกำกับภาษีไม่ถูกต้อง"),
   note:        z.string().max(500).optional(),
   items:       z.array(expenseItemSchema).min(1, "ต้องมีรายการค่าใช้จ่ายอย่างน้อย 1 รายการ").max(50),
+}).superRefine((value, ctx) => {
+  if (value.vatType === VatType.NO_VAT) return;
+  if (!value.taxInvoiceNo) {
+    ctx.addIssue({ code: "custom", path: ["taxInvoiceNo"], message: "กรุณาระบุเลขที่ใบกำกับภาษี (บังคับเมื่อมี VAT)" });
+  }
+  if (!value.taxInvoiceDate) {
+    ctx.addIssue({ code: "custom", path: ["taxInvoiceDate"], message: "กรุณาระบุวันที่ใบกำกับภาษี (บังคับเมื่อมี VAT)" });
+  }
+});
+
+type ExpenseTaxInvoiceData = { taxInvoiceNo: string | null; taxInvoiceDate: Date | null };
+
+/** The parsed tax-invoice fields as stored (blank means none). */
+const toTaxInvoiceData = (input: { taxInvoiceNo?: string; taxInvoiceDate?: string }): ExpenseTaxInvoiceData => ({
+  taxInvoiceNo: input.taxInvoiceNo || null,
+  taxInvoiceDate: input.taxInvoiceDate ? parseDateOnlyToDate(input.taxInvoiceDate) : null,
 });
 
 async function getExpenseAuditSnapshot(expenseId: string) {
@@ -114,6 +152,8 @@ async function getExpenseAuditSnapshot(expenseId: string) {
     vatAmount: expense.vatAmount,
     vatRate: expense.vatRate,
     vatType: expense.vatType,
+    taxInvoiceNo: expense.taxInvoiceNo,
+    taxInvoiceDate: expense.taxInvoiceDate,
     totalAmount: expense.totalAmount,
     netAmount: expense.netAmount,
     whtAmount: expense.whtAmount,
@@ -162,6 +202,8 @@ export async function createExpense(
     supplierId:  formData.get("supplierId"),
     vatType:     (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:     formData.get("vatRate") || 0,
+    taxInvoiceNo: formData.get("taxInvoiceNo") || undefined,
+    taxInvoiceDate: formData.get("taxInvoiceDate") || undefined,
     note:        formData.get("note") || undefined,
     items,
   });
@@ -172,6 +214,7 @@ export async function createExpense(
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate   = parseDateOnlyToDate(d.expenseDate);
+  const taxInvoice = toTaxInvoiceData(d);
 
   let payments;
   try {
@@ -208,6 +251,8 @@ export async function createExpense(
         expenseNo = nextExpenseNo;
         createdExpenseId = "";
         await dbTx(async (tx) => {
+          // A new expense dated in a month whose profit was distributed is refused (no override on create).
+          await assertPeriodsUnlocked(tx, [docDate]);
           const expense = await tx.expense.create({
             data: {
               expenseNo,
@@ -219,6 +264,7 @@ export async function createExpense(
               whtAmount,
               vatType:        d.vatType,
               vatRate:        d.vatRate,
+              ...taxInvoice,
               subtotalAmount,
               vatAmount,
               netAmount,
@@ -302,6 +348,7 @@ export async function createExpense(
     revalidatePath("/admin/wht/certificates");
     return { success: true, expenseNo, expenseId: createdExpenseId };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     console.error("[createExpense]", err);
     if (isCashBankPostingError(err)) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -362,9 +409,9 @@ async function lockMutableExpense(
   expenseId: string,
   action: Extract<DocumentMutationAction, "update" | "cancel">,
   notActiveMessage: string,
-): Promise<void> {
-  const rows = await tx.$queryRaw<{ status: string }[]>(Prisma.sql`
-    SELECT "status"::text AS "status"
+): Promise<{ expenseDate: Date | null }> {
+  const rows = await tx.$queryRaw<{ status: string; expenseDate?: Date | null }[]>(Prisma.sql`
+    SELECT "status"::text AS "status", "expenseDate"
     FROM "Expense"
     WHERE id = ${expenseId}
     FOR UPDATE
@@ -379,6 +426,8 @@ async function lockMutableExpense(
   );
   const blockMessage = buildMutationBlockMessage(guard);
   if (blockMessage) throw new ExpenseMutationBlockedError(blockMessage);
+  // The stored date under the row lock — the one the month lock must check.
+  return { expenseDate: rows[0].expenseDate ?? null };
 }
 
 export async function cancelExpense(
@@ -395,6 +444,8 @@ export async function cancelExpense(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const { expenseId, cancelNote } = parsed.data;
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     // Fast paths only — the authoritative status and guard checks run under the row lock below.
@@ -411,7 +462,8 @@ export async function cancelExpense(
 
     const beforeSnapshot = await getExpenseAuditSnapshot(expenseId);
     await dbTx(async (tx) => {
-      await lockMutableExpense(tx, expenseId, "cancel", EXPENSE_ALREADY_CANCELLED_MESSAGE);
+      const locked = await lockMutableExpense(tx, expenseId, "cancel", EXPENSE_ALREADY_CANCELLED_MESSAGE);
+      periodLock = await assertPeriodsUnlocked(tx, [locked.expenseDate ?? expense.expenseDate], lockOverride);
       await clearCashBankSourceMovements(tx, CashBankSourceType.EXPENSE, expenseId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.EXPENSE, expenseId);
       await tx.expense.update({
@@ -433,9 +485,19 @@ export async function cancelExpense(
         entityRef: afterSnapshot.expenseNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null },
+        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "Expense",
+      entityId: expenseId,
+      docNo: expense.expenseNo,
+      action: "ยกเลิกใบค่าใช้จ่าย",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/expenses/${expenseId}`,
+    });
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
     revalidatePath("/admin/expenses");
@@ -444,6 +506,7 @@ export async function cancelExpense(
     return { success: true };
   } catch (err) {
     if (isExpenseUserError(err)) return { error: err.message };
+    if (err instanceof PeriodLockedError) return { error: err.message };
     console.error("[cancelExpense]", err);
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
@@ -488,6 +551,8 @@ export async function updateExpense(
     supplierId:        formData.get("supplierId"),
     vatType:           (formData.get("vatType") as VatType) || VatType.NO_VAT,
     vatRate:           formData.get("vatRate") || 0,
+    taxInvoiceNo:      formData.get("taxInvoiceNo") || undefined,
+    taxInvoiceDate:    formData.get("taxInvoiceDate") || undefined,
     note:              formData.get("note") || undefined,
     items,
   });
@@ -498,6 +563,7 @@ export async function updateExpense(
   const totalAmount = d.items.reduce((sum, it) => sum + it.amount, 0);
   const { subtotalAmount, vatAmount, netAmount } = calcVat(totalAmount, d.vatType, d.vatRate);
   const docDate = parseDateOnlyToDate(d.expenseDate);
+  const taxInvoice = toTaxInvoiceData(d);
 
   let payments;
   try {
@@ -522,11 +588,49 @@ export async function updateExpense(
     return { error: err instanceof Error ? err.message : "ยอดช่องทางจ่ายเงินไม่ถูกต้อง" };
   }
   const primaryAccountId = derivePrimaryAccountId(payments);
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const beforeSnapshot = await getExpenseAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await lockMutableExpense(tx, id, "update", EXPENSE_CANCELLED_NOT_EDITABLE_MESSAGE);
+      const locked = await lockMutableExpense(tx, id, "update", EXPENSE_CANCELLED_NOT_EDITABLE_MESSAGE);
+      // Month lock (owner decisions T2/ก1/ก2) — before any write, on the stored and the new date.
+      // The stored state is kept for the non-financial path, which saves line descriptions (P4).
+      const storedExpense: { current: StoredExpenseFinancialState | null } = { current: null };
+      const decision = await resolveDocumentPeriodLock(tx, [locked.expenseDate ?? existing.expenseDate, docDate], {
+        override: lockOverride,
+        isNonFinancialOnly: async () => {
+          // V7: the tax-invoice number is a remark; its date is one too unless it flips input-VAT recoverability.
+          const registeredFrom = await getVatRegisteredFrom(tx);
+          const stored = await loadExpenseFinancialState(tx, id, registeredFrom);
+          storedExpense.current = stored;
+          return stored !== null && isExpenseNonFinancialChange(stored, {
+            expenseDate: docDate,
+            supplierId: d.supplierId,
+            vatType: d.vatType,
+            vatRate: d.vatRate,
+            inputVatRecoverable: isInputVatRecoverable({ vatType: d.vatType, vatRate: d.vatRate,
+              taxDocumentDate: taxInvoice.taxInvoiceDate, registeredFrom }),
+            items: d.items.map((item) => ({
+              expenseCodeId: item.expenseCodeId,
+              description: item.description || null,
+              amount: item.amount,
+            })),
+            payments,
+            whtLines: wht ? [wht] : [],
+          });
+        },
+      });
+      if (decision.kind === "non-financial") {
+        // Locked month, note / description / tax-invoice edit: payments, cash/bank, WHT and profit facts stay as they are.
+        await tx.expense.update({ where: { id }, data: { note: d.note ?? null, ...taxInvoice } });
+        for (const remark of collectLineRemarkUpdates(storedExpense.current?.items ?? [], d.items, ["description"])) {
+          await tx.expenseItem.update({ where: { id: remark.id }, data: remark.data });
+        }
+        return;
+      }
+      periodLock = decision.result;
       await tx.expenseItem.deleteMany({ where: { expenseId: id } });
       await tx.expense.update({
         where: { id },
@@ -538,6 +642,7 @@ export async function updateExpense(
           whtAmount,
           vatType:        d.vatType,
           vatRate:        d.vatRate,
+          ...taxInvoice,
           subtotalAmount,
           vatAmount,
           netAmount,
@@ -610,8 +715,19 @@ export async function updateExpense(
         entityRef: afterSnapshot.expenseNo,
         before: diff.before,
         after: diff.after,
+        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "Expense",
+      entityId: id,
+      docNo: existing.expenseNo,
+      action: "แก้ไขใบค่าใช้จ่าย",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/expenses/${id}`,
+    });
 
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
@@ -621,6 +737,7 @@ export async function updateExpense(
     return { success: true };
   } catch (err) {
     if (isExpenseUserError(err)) return { error: err.message };
+    if (err instanceof PeriodLockedError) return { error: err.message };
     console.error("[updateExpense]", err);
     if (isCashBankPostingError(err)) return { error: err.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

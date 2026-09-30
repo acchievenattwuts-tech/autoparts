@@ -11,14 +11,18 @@ import { formatDateOnlyForInput } from "@/lib/th-date";
 import {
   buildMutationBlockMessage,
   buildMutationBlockReferenceLinks,
+  buildStockDebitEditWarning,
   checkDocumentMutation,
+  checkDocumentStockDebitWarning,
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 import { getPurchaseReturnProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { PURCHASE_RETURN_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../purchase-return-period-lock";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
-  await requirePermission("purchase_returns.update");
+  const session = await requirePermission("purchase_returns.update");
 
   const { id } = await params;
 
@@ -34,6 +38,8 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
           lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
         },
       },
+      // V3: the return must use the referenced purchase's VAT.
+      purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
       claim: {
         select: {
           id: true,
@@ -59,9 +65,17 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const mutationBlock = await checkDocumentMutation("PurchaseReturn", id, "update");
+  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+    checkDocumentMutation("PurchaseReturn", id, "update"),
+    // Lines before an active supplier DN: a warning only; updatePurchaseReturn blocks just the rows it rewrites.
+    checkDocumentStockDebitWarning("PurchaseReturn", id),
+    // Month already distributed: same message updatePurchaseReturn returns (lib/period-lock.ts).
+    getDocumentPeriodLockView([ret.returnDate], session.user.permissions),
+  ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
+  const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
 
   const [products, suppliers, config, cashBankAccounts] = await Promise.all([
     getPurchaseReturnProductOptionsByIds(ret.items.map((item) => item.productId)),
@@ -109,6 +123,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
 
   const initialData = {
     id,
+    updatedAt: ret.updatedAt.toISOString(),
       returnDate: formatDateOnlyForInput(ret.returnDate),
     purchaseId: ret.purchaseId ?? "",
     claimId: ret.claimId ?? "",
@@ -123,6 +138,15 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     note:       ret.note ?? "",
     vatType:    ret.vatType,
     vatRate:    Number(ret.vatRate),
+    taxInvoiceNo: ret.taxInvoiceNo ?? "",
+    taxInvoiceDate: ret.taxInvoiceDate ? formatDateOnlyForInput(ret.taxInvoiceDate) : "",
+    purchaseVat: ret.purchase
+      ? {
+          vatType: ret.purchase.vatType,
+          vatRate: Number(ret.purchase.vatRate),
+          taxInvoiceDate: ret.purchase.taxInvoiceDate ? formatDateOnlyForInput(ret.purchase.taxInvoiceDate) : "",
+        }
+      : null,
     items:      initialItems,
   };
   const claimContext = ret.claim
@@ -155,6 +179,14 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
           />
         </div>
       )}
+      {stockDebitWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={stockDebitWarningMessage}
+            references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
       <PurchaseReturnForm
         products={products}
         suppliers={suppliers}
@@ -162,9 +194,12 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         initialPurchases={initialPurchases}
         defaultVatType={config.vatType}
         defaultVatRate={config.vatRate}
+        vatRegisteredFrom={config.vatRegisteredFrom}
         initialData={initialData}
         claimContext={claimContext}
         submitLocked={!!mutationBlockMessage}
+        periodLock={periodLock}
+        periodLockHint={PURCHASE_RETURN_PERIOD_LOCK_ALLOWED_EDITS_HINT}
       />
     </div>
   );

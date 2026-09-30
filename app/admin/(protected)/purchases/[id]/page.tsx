@@ -11,6 +11,9 @@ import { getDocumentActivityTimeline } from "@/lib/document-activity";
 import { PaymentMethod, PurchaseType } from "@/lib/generated/prisma";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { addThailandDays, formatDateThai } from "@/lib/th-date";
+import { formatItemQuantity } from "@/lib/item-quantity";
+import { describeInputVatTreatment, getVatRegisteredFrom } from "@/lib/input-vat";
+import { toInputVatDecision } from "../purchase-tax-invoice";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import {
   getPurchasePaymentDisplayStatus,
@@ -24,7 +27,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
   const canUpdate = hasPermissionAccess(role, permissions, "purchases.update");
   const { id } = await params;
 
-  const [purchase, purchasePayments] = await Promise.all([
+  const [purchase, purchasePayments, vatRegisteredFrom] = await Promise.all([
     db.purchase.findUnique({
       where: { id },
       include: {
@@ -48,6 +51,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
         cashBankAccount: { select: { name: true, type: true, bankName: true, accountNo: true } },
       },
     }),
+    getVatRegisteredFrom(db),
   ]);
 
   if (!purchase) notFound();
@@ -137,7 +141,21 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ภาษี</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{vatLabel[purchase.vatType] ?? purchase.vatType}</p>
+            {/* V1: the treatment under the current VAT registration date (lib/input-vat.ts). */}
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+              {describeInputVatTreatment(toInputVatDecision(purchase, vatRegisteredFrom))}
+            </p>
           </div>
+          {(purchase.vatType !== "NO_VAT" || purchase.taxInvoiceNo || purchase.taxInvoiceDate) && (
+            <div>
+              <p className="mb-0.5 text-gray-500 dark:text-slate-400">เลขที่ / วันที่ใบกำกับภาษี</p>
+              <p className="font-medium text-gray-900 dark:text-slate-100">
+                <span className="font-mono">{purchase.taxInvoiceNo ?? "-"}</span>
+                {" / "}
+                {purchase.taxInvoiceDate ? formatDateThai(purchase.taxInvoiceDate) : "-"}
+              </p>
+            </div>
+          )}
           <div>
             <p className="mb-0.5 text-gray-500 dark:text-slate-400">ประเภทการซื้อ</p>
             <p className="font-medium text-gray-900 dark:text-slate-100">{purchaseTypeLabel[purchase.purchaseType] ?? purchase.purchaseType}</p>
@@ -262,7 +280,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{displayQty.toLocaleString("th-TH")}</td>
+                    <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{formatItemQuantity(displayQty)}</td>
                     <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{displayUnitName}</td>
                     <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">
                       {displayPrice.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -282,7 +300,7 @@ const PurchaseDetailPage = async ({ params }: { params: Promise<{ id: string }> 
                             >
                               <span className="font-mono font-semibold text-amber-800 dark:text-amber-300">{lot.lotNo}</span>
                               <span className="text-gray-500 dark:text-slate-400">จำนวน</span>
-                              <span className="font-medium text-gray-700 dark:text-slate-300">{(Number(lot.qty) / displayScale).toLocaleString("th-TH")}</span>
+                              <span className="font-medium text-gray-700 dark:text-slate-300">{formatItemQuantity(Number(lot.qty) / displayScale)}</span>
                               <span className="text-gray-500 dark:text-slate-400">{displayUnitName}</span>
                               {lot.expDate && (
                                 <>

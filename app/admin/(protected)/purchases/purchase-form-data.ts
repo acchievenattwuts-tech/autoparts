@@ -64,6 +64,9 @@ export interface PurchaseDraftPayload {
   note: string;
   vatType: string;
   vatRate: number;
+  /** V5 — optional so drafts saved before the field existed still restore. */
+  taxInvoiceNo?: string;
+  taxInvoiceDate?: string;
   creditTerm: string;
   items: PurchaseFormLineItem[];
 }
@@ -128,6 +131,8 @@ export function parsePurchaseDraft(
     return {
       ...(parsed as PurchaseDraftPayload),
       payments: Array.isArray(parsed.payments) ? parsed.payments : [],
+      taxInvoiceNo: typeof parsed.taxInvoiceNo === "string" ? parsed.taxInvoiceNo : "",
+      taxInvoiceDate: typeof parsed.taxInvoiceDate === "string" ? parsed.taxInvoiceDate : "",
     };
   } catch {
     return null;

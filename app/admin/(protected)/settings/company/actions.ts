@@ -14,6 +14,8 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { requirePermission } from "@/lib/require-auth";
 import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
+import { VAT_REGISTERED_FROM_KEY } from "@/lib/input-vat";
+import { isDateOnlyString } from "@/lib/th-date";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const ALLOWED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif"];
@@ -104,6 +106,15 @@ const taxPostcodeSchema = z
     message: "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก",
   });
 
+// V1: date-only (Thailand calendar); "" = not VAT-registered. Only documents saved or edited
+// afterwards use a new value — nothing already saved is recalculated.
+const vatRegisteredFromSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === "" || isDateOnlyString(value), {
+    message: "วันที่จดทะเบียน VAT ไม่ถูกต้อง (เว้นว่างได้ถ้ายังไม่ได้จดทะเบียน)",
+  });
+
 const companySchema = z.object({
   shop_name: z.string().min(1, "กรุณาใส่ชื่อร้าน").max(100),
   shop_slogan: z.string().max(200),
@@ -134,12 +145,16 @@ const companySchema = z.object({
   print_notice_text: printNoticeTextSchema,
   vat_type: z.enum(["NO_VAT", "EXCLUDING_VAT", "INCLUDING_VAT"]),
   vat_rate: z.coerce.number().min(0).max(100).transform(String),
+  // Optional like the LINE switch: a stale form without the field leaves the setting unchanged.
+  [VAT_REGISTERED_FROM_KEY]: vatRegisteredFromSchema.optional(),
   delivery_commission_percent: z.coerce.number().min(0).max(100).transform(String),
   product_search_auto_apply_synonyms_enabled: z.enum(["true", "false"]),
   line_ai_auto_reply_enabled: z.enum(["true", "false"]),
   line_ai_dry_run: z.enum(["true", "false"]),
   line_ai_image_search_enabled: z.enum(["true", "false"]),
-  line_delivery_notifications_enabled: z.enum(["true", "false"]).default("false"),
+  // Optional on purpose: a submit without the field (e.g. a stale form) leaves
+  // the setting unchanged and never runs the shutdown branch below.
+  line_delivery_notifications_enabled: z.enum(["true", "false"]).optional(),
   tax_payer_id: taxPayerIdSchema,
   tax_branch_no: taxBranchNoSchema,
   tax_addr_no: z.string().max(100),
@@ -167,7 +182,12 @@ export async function updateCompanySettings(formData: FormData) {
 
   try {
     const requestContext = await getRequestContext();
-    const keys = Object.keys(parsed.data);
+    // Absent optional fields are not saved, not audited and change nothing.
+    const entries = Object.entries(parsed.data).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    );
+    const submittedSettings = Object.fromEntries(entries);
+    const keys = entries.map(([key]) => key);
     const existingEntries = await db.siteContent.findMany({
       where: { key: { in: keys } },
       select: { key: true, value: true },
@@ -179,7 +199,6 @@ export async function updateCompanySettings(formData: FormData) {
       ]),
     );
 
-    const entries = Object.entries(parsed.data) as [string, string][];
     const lineDispatchesSkipped = await dbTx(async (tx): Promise<number> => {
       for (const [key, value] of entries) {
         await tx.siteContent.upsert({
@@ -205,7 +224,7 @@ export async function updateCompanySettings(formData: FormData) {
       return 0;
     });
 
-    const diff = diffEntity(beforeState, parsed.data);
+    const diff = diffEntity(beforeState, submittedSettings);
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),

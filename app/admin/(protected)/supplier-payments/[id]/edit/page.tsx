@@ -25,7 +25,7 @@ const EditSupplierPaymentPage = async ({
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
-          debitNote: { select: { debitNo: true, amountRemain: true } },
+          debitNote: { select: { debitNo: true, amountRemain: true, netAmount: true } },
           purchase: { select: { purchaseNo: true, amountRemain: true } },
           purchaseReturn: { select: { returnNo: true, amountRemain: true } },
           advance: { select: { advanceNo: true, amountRemain: true } },
@@ -84,7 +84,7 @@ const EditSupplierPaymentPage = async ({
       <div>
         <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100">แก้ไขจ่ายชำระซัพพลายเออร์</h1>
         <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-          ปรับรายการใบซื้อเชื่อ เครดิต CN ซื้อ เงินมัดจำ และบัญชีจ่ายเงินของเอกสารนี้
+          ปรับรายการใบซื้อเชื่อ เครดิต CN ซื้อ เครดิตปรับยอด DN เงินมัดจำ และบัญชีจ่ายเงินของเอกสารนี้
         </p>
       </div>
 
@@ -113,7 +113,9 @@ const EditSupplierPaymentPage = async ({
           })),
           note: payment.note ?? "",
           items: payment.items.map((item) => ({
-            kind: item.debitNoteId ? "SUPPLIER_DEBIT" : item.purchaseId
+            // A negative "ปรับยอด DN" line consumed its supplier credit (amountRemain is stored negative).
+            kind: item.debitNote && Number(item.debitNote.netAmount) < 0 ? "SUPPLIER_DEBIT_CREDIT"
+              : item.debitNoteId ? "SUPPLIER_DEBIT" : item.purchaseId
               ? "PURCHASE"
               : item.purchaseReturnId
                 ? "SUPPLIER_CREDIT"
@@ -126,7 +128,8 @@ const EditSupplierPaymentPage = async ({
               item.advance?.advanceNo ??
               "-",
             outstanding:
-              item.debitNoteId ? Number(item.debitNote?.amountRemain ?? 0) + Number(item.paidAmount) : item.purchaseId
+              item.debitNote && Number(item.debitNote.netAmount) < 0 ? -Number(item.debitNote.amountRemain) + Number(item.paidAmount)
+              : item.debitNoteId ? Number(item.debitNote?.amountRemain ?? 0) + Number(item.paidAmount) : item.purchaseId
                 ? Number(item.purchase?.amountRemain ?? 0) + Number(item.paidAmount)
                 : item.purchaseReturnId
                   ? Number(item.purchaseReturn?.amountRemain ?? 0) + Number(item.paidAmount)

@@ -1352,6 +1352,7 @@ model StockCard {
   lotMovements        StockMovementLot[]
 
   @@index([productId, docDate, sorder])
+  @@index([productId, source, docDate])
   @@index([docNo])
   @@index([referenceId])
 }
@@ -1395,6 +1396,9 @@ model Purchase {
   vatAmount            Decimal               @default(0) @db.Decimal(10, 2)
   vatRate              Decimal               @default(0) @db.Decimal(5, 2)
   vatType              VatType               @default(NO_VAT)
+  /// V5: เลขที่/วันที่ใบกำกับภาษีของ supplier — บังคับเมื่อ vatType ≠ NO_VAT; วันที่ใช้ตัดสิทธิ์ขอคืน VAT
+  taxInvoiceNo         String?
+  taxInvoiceDate       DateTime? @db.Timestamptz(3)
   cancelNote           String?
   cancelledAt          DateTime?             @db.Timestamptz(3)
   status               DocStatus             @default(ACTIVE)
@@ -1414,6 +1418,7 @@ model Purchase {
 
   @@index([cashBankAccountId])
   @@index([purchaseType])
+  @@index([taxInvoiceDate])
   @@index([purchaseDate(sort: Desc), status])
   @@index([supplierId, purchaseDate(sort: Desc)])
 }
@@ -1425,7 +1430,7 @@ model PurchaseItem {
   lineNo           Int               @default(0)
   productId        String
   supplierId       String?
-  quantity         Int
+  quantity         Decimal           @db.Decimal(12, 4)
   costPrice        Decimal           @db.Decimal(10, 2)
   totalAmount      Decimal           @db.Decimal(10, 2)
   landedCost       Decimal           @default(0) @db.Decimal(10, 2)
@@ -1791,7 +1796,7 @@ model SaleItem {
   saleId           String
   lineNo           Int              @default(0)
   productId        String
-  quantity         Int
+  quantity         Decimal          @db.Decimal(12, 4)
   salePrice        Decimal          @db.Decimal(10, 2)
   unitListPrice    Decimal          @default(0) @db.Decimal(10, 2)
   lineDiscount     Decimal          @default(0) @db.Decimal(10, 2)
@@ -1988,6 +1993,9 @@ model Expense {
   vatAmount                     Decimal                @default(0) @db.Decimal(10, 2)
   vatRate                       Decimal                @default(0) @db.Decimal(5, 2)
   vatType                       VatType                @default(NO_VAT)
+  /// V5: เลขที่/วันที่ใบกำกับภาษี — บังคับเมื่อ vatType ≠ NO_VAT; วันที่ใช้ตัดสิทธิ์ขอคืน VAT
+  taxInvoiceNo                  String?
+  taxInvoiceDate                DateTime? @db.Timestamptz(3)
   cancelNote                    String?
   cancelledAt                   DateTime?              @db.Timestamptz(3)
   expenseNo                     String                 @unique
@@ -2012,6 +2020,7 @@ model Expense {
 
   @@index([cashBankAccountId])
   @@index([supplierId, expenseDate(sort: Desc)])
+  @@index([taxInvoiceDate])
   @@index([expenseDate(sort: Desc), status])
   @@index([cashBankAccountId, expenseDate(sort: Desc), status])
   @@index([channel, expenseDate(sort: Desc), status])
@@ -2264,6 +2273,9 @@ model PurchaseReturn {
   vatAmount            Decimal                      @default(0) @db.Decimal(10, 2)
   vatRate              Decimal                      @default(0) @db.Decimal(5, 2)
   vatType              VatType                      @default(NO_VAT)
+  /// V5: เลขที่/วันที่ใบลดหนี้ (ใบกำกับภาษี) ที่ supplier ออกให้ — บังคับเมื่อ vatType ≠ NO_VAT
+  taxInvoiceNo         String?
+  taxInvoiceDate       DateTime? @db.Timestamptz(3)
   cancelNote           String?
   cancelledAt          DateTime?                    @db.Timestamptz(3)
   status               DocStatus                    @default(ACTIVE)
@@ -2283,6 +2295,7 @@ model PurchaseReturn {
 
   @@index([cashBankAccountId])
   @@index([claimId])
+  @@index([taxInvoiceDate])
   @@index([returnDate(sort: Desc), status])
   @@index([cashBankAccountId, returnDate(sort: Desc), status])
   @@index([settlementType])
@@ -2396,6 +2409,7 @@ model CashBankAccount {
   marketplaceSettleTo      MarketplaceSettlement[]     @relation("MarketplaceSettlementDestinationAccount")
   supplierAdvances         SupplierAdvance[]
   supplierPayments         SupplierPayment[]
+  supplierDebitNotes       SupplierDebitNote[]
   customerAdvances         CustomerAdvance[]
   customerAdvanceRefunds   CustomerAdvanceRefund[]
   supplierAdvanceRefunds   SupplierAdvanceRefund[]
@@ -2824,15 +2838,27 @@ model SupplierDebitNote {
   status              DocStatus @default(ACTIVE)
   cancelledAt         DateTime? @db.Timestamptz(3)
   cancelNote          String?
+  /// ปรับยอด DN (2026-09-30, R5-D/T1): เอกสารนี้ปรับยอดของ DN ต้นทาง ลงวันที่ปัจจุบัน ยอดบวกหรือลบได้
+  adjustsDebitNoteId  String?
+  /// ก3: ยอดที่ลดเกินยอดค้างของ DN ต้นทาง — SUPPLIER_CREDIT เก็บเป็นเครดิตไว้หักตอนจ่าย, CASH_REFUND supplier คืนเงินเข้าบัญชี
+  excessSettlementType PurchaseReturnSettlementType?
+  refundMethod        PurchaseReturnRefundMethod?
+  cashBankAccountId   String?
   createdAt           DateTime @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime @updatedAt @db.Timestamptz(3)
   purchase            Purchase @relation(fields: [purchaseId], references: [id])
   supplier            Supplier @relation(fields: [supplierId], references: [id])
   user                User @relation(fields: [userId], references: [id])
+  adjustsDebitNote    SupplierDebitNote? @relation("SupplierDebitNoteAdjustments", fields: [adjustsDebitNoteId], references: [id])
+  adjustments         SupplierDebitNote[] @relation("SupplierDebitNoteAdjustments")
+  cashBankAccount     CashBankAccount? @relation(fields: [cashBankAccountId], references: [id])
   items               SupplierDebitNoteItem[]
   supplierPaymentItems SupplierPaymentItem[]
 
-  @@unique([supplierId, supplierReferenceNo])
+  // Uniqueness of the supplier's DN number is enforced only among ACTIVE DNs, on a normalized key
+  // (upper-case, spaces . / - removed) by the partial expression index
+  // "SupplierDebitNote_active_supplier_reference_key" (see prisma/migrations/20260930_review_round4).
+  @@index([supplierId, supplierReferenceNo])
   @@index([purchaseId, status])
   @@index([supplierId, status])
   @@index([userId])
@@ -2840,12 +2866,14 @@ model SupplierDebitNote {
   @@index([receivedDate])
   @@index([debitDate])
   @@index([dueDate, status])
+  @@index([adjustsDebitNoteId])
+  @@index([cashBankAccountId])
 }
 
 model SupplierDebitNoteItem {
   id                   String @id @default(cuid())
   debitNoteId          String
-  purchaseItemId       String
+  purchaseItemId       String?
   productId            String
   lineNo               Int
   amountMode           SupplierDebitAmountMode
@@ -2867,7 +2895,7 @@ model SupplierDebitNoteItem {
   avgCostAfter         Decimal @db.Decimal(10, 4)
   stockCardId          String?
   debitNote            SupplierDebitNote @relation(fields: [debitNoteId], references: [id])
-  purchaseItem         PurchaseItem @relation(fields: [purchaseItemId], references: [id])
+  purchaseItem         PurchaseItem? @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
   product              Product @relation(fields: [productId], references: [id])
 
   @@index([debitNoteId, lineNo])
@@ -3422,6 +3450,7 @@ enum CashBankSourceType {
   SUPPLIER_ADVANCE_REFUND
   SUPPLIER_PAYMENT
   PARTNER_PAYOUT
+  SUPPLIER_DEBIT_REFUND
 }
 
 enum CashBankDirection {
@@ -3441,6 +3470,7 @@ enum DocumentPaymentDocType {
   SUPPLIER_ADVANCE
   SUPPLIER_ADVANCE_REFUND
   SUPPLIER_PAYMENT
+  SUPPLIER_DEBIT_REFUND
 }
 
 enum CashBankTransferStatus {
@@ -3530,6 +3560,8 @@ enum ProfitSourceType {
   SALE
   SALE_RETURN
   EXPENSE
+  /// มูลค่าสต็อกที่ค้างเมื่อจำนวนเหลือ 0 (เช่น คืนซื้อหลังลง DN) รับรู้เป็นผลต่างต้นทุน
+  STOCK_VALUE_RESIDUAL
   /// รายรับพิเศษที่ marketplace จ่ายเพิ่มในรอบรับเงิน (subsidy / bonus / ชดเชย)
   /// บันทึกเป็น netProfitAmount บวก โดยไม่แตะ salesAmount เพื่อไม่ปนกับยอดขายจริง
   OTHER_INCOME
@@ -3876,6 +3908,8 @@ enum NotificationType {
   MARKETPLACE_SETTLEMENT_RECORDED
   MARKETPLACE_SETTLEMENT_CANCELLED
   MARKETPLACE_RETURN_RECORDED
+  LINE_DELIVERY_FAILED
+  PERIOD_LOCK_OVERRIDDEN
 }
 
 enum NotificationSeverity {

@@ -17,6 +17,8 @@
 import { Prisma, StockCardSource } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
+import { formatDateThai, parseDateOnlyToStartOfDay } from "@/lib/th-date";
+import { rebuildStockValueResidualFactsForProducts, syncStockValueResidualFacts, type StockValueResidual } from "@/lib/profit-fact";
 import {
   enqueueStorefrontStockInvalidation,
   enqueueStorefrontStockInvalidations,
@@ -24,6 +26,54 @@ import {
 
 // Type for Prisma transaction client
 type TxClient = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * T3 option (b), owner approved 2026-09-30, from go-live only: when an outbound row leaves the
+ * running quantity at or below zero with stock value still attached (e.g. a purchase return at
+ * its original purchase cost after a supplier DN raised the pooled average), or would drive the
+ * value negative while quantity remains, the replay writes the running value off to zero at that
+ * row and keeps the amount in the row's costVariance (positive = extra cost). Profit then reads
+ * it as a STOCK_VALUE_RESIDUAL fact. Rows dated before this Thai date keep the old behaviour.
+ */
+export const STOCK_VALUE_RESIDUAL_START_DATE = "2026-09-30";
+const STOCK_VALUE_RESIDUAL_START = parseDateOnlyToStartOfDay(STOCK_VALUE_RESIDUAL_START_DATE);
+/** One satang: smaller remainders are float noise, not a residual. */
+const STOCK_VALUE_RESIDUAL_MIN = 0.01;
+const STOCK_MONEY_SCALE = 2;
+
+/** Rows whose costVariance the replay owns (a DN row keeps its own posted variance). */
+export function isStockValueResidualRow(row: { source: string; docDate: Date }): boolean {
+  return row.source !== "SUPPLIER_DEBIT" && row.docDate.getTime() >= STOCK_VALUE_RESIDUAL_START.getTime();
+}
+
+/**
+ * Value written off by an outbound row, rounded to the satang (0 below one satang).
+ * - Quantity ends at or below zero: the value left on the on-hand units after they leave at this
+ *   row's out price. An oversold quantity beyond on-hand never counts (negative stock is unchanged).
+ * - Quantity stays positive: only a value that would turn negative (clamped to zero) counts.
+ */
+export function computeStockValueResidual(input: {
+  baQty: number; baTotal: number; qtyOut: number; priceOut: number; newBaQty: number;
+}): number {
+  if (!(input.qtyOut > 0)) return 0;
+  const remaining = input.newBaQty <= 0
+    ? input.baTotal - Math.max(0, Math.min(input.qtyOut, input.baQty)) * input.priceOut
+    : Math.min(0, input.baTotal - input.qtyOut * input.priceOut);
+  const rounded = new Prisma.Decimal(remaining).toDecimalPlaces(STOCK_MONEY_SCALE, Prisma.Decimal.ROUND_HALF_UP).toNumber();
+  return Math.abs(rounded) >= STOCK_VALUE_RESIDUAL_MIN ? rounded : 0;
+}
+
+/**
+ * T3 for a negative value-only row (a "ปรับยอด DN" reduction, lib/supplier-debit-adjustment.ts): the running value
+ * never goes below zero. The part of the reduction the on-hand value cannot absorb is written off at that row and
+ * returned as a negative residual (a cost reduction), read by profit as a STOCK_VALUE_RESIDUAL fact like any other
+ * T3 write-off. Positive DN rows and rows dated before the T3 start never produce one.
+ */
+export function computeDebitValueResidual(input: { adjustment: number; newBaTotal: number; docDate: Date }): number {
+  if (!(input.adjustment < 0) || input.newBaTotal >= 0 || input.docDate.getTime() < STOCK_VALUE_RESIDUAL_START.getTime()) return 0;
+  const rounded = new Prisma.Decimal(input.newBaTotal).toDecimalPlaces(STOCK_MONEY_SCALE, Prisma.Decimal.ROUND_HALF_UP).toNumber();
+  return Math.abs(rounded) >= STOCK_VALUE_RESIDUAL_MIN ? rounded : 0;
+}
 
 export async function getStockValuationEpoch(
   tx: Pick<TxClient, "stockCard">, productId: string, docDate: Date,
@@ -196,6 +246,8 @@ export type StockReplayRow = StockSequenceRow & {
   priceBalance: Prisma.Decimal;
   priceOut: Prisma.Decimal;
   valueAdjustment?: Prisma.Decimal;
+  /** Stored residual (T3); a missing value reads as zero. */
+  costVariance?: Prisma.Decimal;
 };
 
 /**
@@ -220,6 +272,7 @@ export const STOCK_REPLAY_SELECT = {
   priceOut: true,
   valueAdjustment: true,
   valuationEpoch: true,
+  costVariance: true,
 } as const satisfies Record<keyof StockReplayRow | "productId", true>;
 
 type StockBalanceUpdate = {
@@ -227,16 +280,27 @@ type StockBalanceUpdate = {
   priceOut: number;
   qtyBalance: number;
   priceBalance: number;
+  /** null keeps the stored value (rows the replay does not own, see isStockValueResidualRow). */
+  costVariance: number | null;
 };
+
+/** A row the replay wrote off (T3), in replay order. */
+export type StockReplayResidual = { id: string; docDate: Date; source: string; amount: number };
+
+/** Every row's replayed values, for callers that compare two replays (lib/sale-cost-restatement.ts). */
+export type StockReplayRowResult = { id: string; priceOut: number; qtyBalance: number; priceBalance: number; costVariance: number };
 
 /**
  * Pure MAVG replay for one product's StockCard rows (already ordered by
  * docDate, sorder). Returns the diff-write update set (only rows whose stored
  * balance actually changes) plus the product's final stock/avgCost. Shared by
  * both the single- and multi-product recalculators so the math stays identical.
+ * `residuals` lists every row carrying a T3 write-off, changed or not. `onRow` (optional)
+ * receives every row's replayed values; it never changes the result.
  */
-export function replayStockCardMavg(rows: StockReplayRow[]): {
+export function replayStockCardMavg(rows: StockReplayRow[], onRow?: (result: StockReplayRowResult) => void): {
   updates: StockBalanceUpdate[];
+  residuals: StockReplayResidual[];
   finalQty: number;
   finalPrice: number;
 } {
@@ -244,6 +308,7 @@ export function replayStockCardMavg(rows: StockReplayRow[]): {
   let baPrice = 0;
   let baTotal = 0;
   const updates: StockBalanceUpdate[] = [];
+  const residuals: StockReplayResidual[] = [];
 
   for (const row of rows) {
     const qIn  = Number(row.qtyIn);
@@ -267,6 +332,14 @@ export function replayStockCardMavg(rows: StockReplayRow[]): {
       if (baQty <= 0 && adjustment !== 0) throw new Error("DN inventory adjustment requires positive stock");
       newBaTotal = baQty > 0 ? baTotal + adjustment : 0;
       newBaPrice = baQty > 0 ? newBaTotal / baQty : baPrice;
+      // A reduction never takes the value below zero; the unabsorbed part is a T3 write-off (DN rows keep their own
+      // posted costVariance, so the residual travels only through `residuals` into the profit facts).
+      if (adjustment < 0 && newBaTotal < 0) {
+        const writeOff = computeDebitValueResidual({ adjustment, newBaTotal, docDate: row.docDate });
+        if (writeOff !== 0) residuals.push({ id: row.id, docDate: row.docDate, source: row.source, amount: writeOff });
+        newBaTotal = 0;
+        newBaPrice = 0;
+      }
     } else if (qIn > 0) {
       if (newBaQty > 0) {
         if (baQty > 0) {
@@ -299,6 +372,18 @@ export function replayStockCardMavg(rows: StockReplayRow[]): {
       }
     }
 
+    // T3: the value left once quantity reaches zero (or a clamped negative value) becomes this
+    // row's cost variance. At quantity <= 0 no later row reads baTotal (an inbound row restarts
+    // the average from its own price), so zeroing it leaves every later MAVG unchanged.
+    let costVariance: number | null = null;
+    if (isStockValueResidualRow(row)) {
+      costVariance = qIn > 0 ? 0 : computeStockValueResidual({ baQty, baTotal, qtyOut: qOut, priceOut, newBaQty });
+      if (costVariance !== 0) {
+        newBaTotal = 0;
+        residuals.push({ id: row.id, docDate: row.docDate, source: row.source, amount: costVariance });
+      }
+    }
+
     const nextQtyBalance   = newBaQty;
     const nextPriceBalance = newBaPrice > 0 ? newBaPrice : 0;
 
@@ -309,17 +394,20 @@ export function replayStockCardMavg(rows: StockReplayRow[]): {
     const rowChanged =
       !roundToColumnScale(nextQtyBalance, STOCK_QTY_SCALE).equals(row.qtyBalance) ||
       !roundToColumnScale(nextPriceBalance, STOCK_PRICE_SCALE).equals(row.priceBalance) ||
-      !roundToColumnScale(priceOut, STOCK_PRICE_SCALE).equals(row.priceOut);
+      !roundToColumnScale(priceOut, STOCK_PRICE_SCALE).equals(row.priceOut) ||
+      (costVariance !== null && !roundToColumnScale(costVariance, STOCK_MONEY_SCALE).equals(row.costVariance ?? 0));
     if (rowChanged) {
-      updates.push({ id: row.id, priceOut, qtyBalance: nextQtyBalance, priceBalance: nextPriceBalance });
+      updates.push({ id: row.id, priceOut, qtyBalance: nextQtyBalance, priceBalance: nextPriceBalance, costVariance });
     }
+    onRow?.({ id: row.id, priceOut, qtyBalance: nextQtyBalance, priceBalance: nextPriceBalance,
+      costVariance: costVariance ?? Number(row.costVariance ?? 0) });
 
     baQty   = newBaQty;
     baPrice = newBaPrice;
     baTotal = newBaTotal;
   }
 
-  return { updates, finalQty: Math.round(baQty), finalPrice: baPrice > 0 ? baPrice : 0 };
+  return { updates, residuals, finalQty: Math.round(baQty), finalPrice: baPrice > 0 ? baPrice : 0 };
 }
 
 /** Flush diff-write balance updates in chunked `UPDATE ... FROM (VALUES ...)`. */
@@ -337,19 +425,22 @@ async function flushStockBalanceUpdates(
         ${update.id},
         ${safeSqlNumber(update.priceOut)}::numeric,
         ${safeSqlNumber(update.qtyBalance)}::numeric,
-        ${safeSqlNumber(update.priceBalance)}::numeric
+        ${safeSqlNumber(update.priceBalance)}::numeric,
+        ${update.costVariance === null ? null : safeSqlNumber(update.costVariance)}::numeric
       )`),
     );
 
+    // A NULL costVariance keeps the stored value (DN rows and rows before the T3 start date).
     await tx.$executeRaw`
       UPDATE "StockCard" AS sc
       SET
         "priceOut" = data."priceOut",
         "qtyBalance" = data."qtyBalance",
-        "priceBalance" = data."priceBalance"
+        "priceBalance" = data."priceBalance",
+        "costVariance" = COALESCE(data."costVariance", sc."costVariance")
       FROM (
         VALUES ${values}
-      ) AS data("id", "priceOut", "qtyBalance", "priceBalance")
+      ) AS data("id", "priceOut", "qtyBalance", "priceBalance", "costVariance")
       WHERE sc."id" = data."id"
     `;
   }
@@ -406,7 +497,7 @@ export async function recalculateStockCard(
   const orderedRows = sortRowsForReplay(rows);
   await flushSorderUpdates(tx, buildSorderUpdates(orderedRows));
 
-  const { updates, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
+  const { updates, residuals, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
   await flushStockBalanceUpdates(tx, updates);
 
   // Update Product with final balance
@@ -417,8 +508,13 @@ export async function recalculateStockCard(
       avgCost: new Prisma.Decimal(finalPrice),
     },
   });
+  await syncStockValueResidualFacts(tx, [productId], toStockValueResiduals(productId, residuals));
   await enqueueStorefrontStockInvalidation(tx, productId);
 }
+
+const toStockValueResiduals = (productId: string, residuals: StockReplayResidual[]): StockValueResidual[] =>
+  residuals.map((residual) => ({ stockCardId: residual.id, productId, docDate: residual.docDate,
+    source: residual.source, amount: residual.amount }));
 
 /**
  * Batched equivalent of calling recalculateStockCard() once per product, but
@@ -459,12 +555,14 @@ export async function recalculateStockCardMany(
 
   const allUpdates: StockBalanceUpdate[] = [];
   const allSorderUpdates: SorderUpdate[] = [];
+  const allResiduals: StockValueResidual[] = [];
   const productFinals: { id: string; stock: number; avgCost: number }[] = [];
   for (const productId of productIds) {
     const orderedRows = sortRowsForReplay(byProduct.get(productId) ?? []);
     allSorderUpdates.push(...buildSorderUpdates(orderedRows));
-    const { updates, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
+    const { updates, residuals, finalQty, finalPrice } = replayStockCardMavg(orderedRows);
     allUpdates.push(...updates);
+    allResiduals.push(...toStockValueResiduals(productId, residuals));
     productFinals.push({ id: productId, stock: finalQty, avgCost: finalPrice });
   }
 
@@ -490,6 +588,7 @@ export async function recalculateStockCardMany(
       WHERE p."id" = data."id"
     `;
   }
+  await syncStockValueResidualFacts(tx, productIds, allResiduals);
   await enqueueStorefrontStockInvalidations(tx, productIds);
 }
 
@@ -524,11 +623,16 @@ export async function writeStockCard(
   const usesRef = input.usesReferenceCost === true;
   const valuationEpoch = input.valuationEpoch ?? await getStockValuationEpoch(tx, input.productId, input.docDate);
   if (input.source !== "SUPPLIER_DEBIT") {
+    // Latest DN first: a date on/after its posting date clears every later DN boundary at once.
     const laterDebit = await tx.stockCard.findFirst({
       where: { productId: input.productId, source: "SUPPLIER_DEBIT", docDate: { gt: input.docDate } },
-      select: { docNo: true },
+      orderBy: [{ docDate: "desc" }, { sorder: "desc" }],
+      select: { docNo: true, docDate: true },
     });
-    if (laterDebit) throw new DocumentMutationBlockedError(`ไม่สามารถลงสต็อกย้อนหลังข้ามใบเพิ่มหนี้ ${laterDebit.docNo} กรุณายกเลิก DN ที่เกี่ยวข้องก่อน`);
+    if (laterDebit) {
+      const debitDate = formatDateThai(laterDebit.docDate);
+      throw new DocumentMutationBlockedError(`ไม่สามารถลงสต็อกย้อนหลังข้ามใบเพิ่มหนี้ ${laterDebit.docNo} ที่ลงต้นทุนวันที่ ${debitDate} กรุณาใช้วันที่เอกสารตั้งแต่ ${debitDate} เป็นต้นไป`);
+    }
   }
 
   // Get max sorder and check whether any existing row must sort AFTER this one.
@@ -656,6 +760,10 @@ export async function writeStockCard(
       }
     }
 
+    // T3: same write-off rule as the replay (see computeStockValueResidual).
+    const residual = qIn <= 0 && isStockValueResidualRow({ source: input.source, docDate: input.docDate })
+      ? computeStockValueResidual({ baQty, baTotal, qtyOut: qOut, priceOut, newBaQty }) : 0;
+
     // Update the just-inserted row with computed balances
     await tx.stockCard.update({
       where: { id: createdRow.id },
@@ -663,8 +771,11 @@ export async function writeStockCard(
         priceOut:     new Prisma.Decimal(priceOut),
         qtyBalance:   new Prisma.Decimal(newBaQty),
         priceBalance: new Prisma.Decimal(newBaPrice > 0 ? newBaPrice : 0),
+        ...(residual !== 0 ? { costVariance: new Prisma.Decimal(residual) } : {}),
       },
     });
+    // An appended row changes no other row, so the product's facts change only when it wrote off value.
+    if (residual !== 0) await rebuildStockValueResidualFactsForProducts(tx, [input.productId], STOCK_VALUE_RESIDUAL_START);
 
     // Update Product with final balance
     await tx.product.update({

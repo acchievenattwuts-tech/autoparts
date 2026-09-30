@@ -14,7 +14,9 @@ import { getWhtReceivedIncomeTypeOptions } from "@/lib/wht-income-types";
 import {
   buildMutationBlockMessage,
   buildMutationBlockReferenceLinks,
+  buildStockDebitEditWarning,
   checkDocumentMutation,
+  checkDocumentStockDebitWarning,
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import SaleForm from "../../new/SaleForm";
@@ -27,6 +29,8 @@ import {
 import type { LotAvailableJSON } from "@/lib/lot-control-client";
 import { getSaleProductOptionsByIds, getTransactionCustomers, getTransactionSuppliers } from "@/lib/transaction-options";
 import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { canChangeSaleCustomerInLockedPeriod, SALE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../sale-period-lock";
 
 const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("sales.update");
@@ -67,7 +71,7 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
     : null;
   if (marketplaceConfig && !canManageMarketplace) redirect(`/admin/sales/${id}`);
 
-  const [salePayments, saleWht, whtIncomeTypes, mutationBlock, saleClaims] = await Promise.all([
+  const [salePayments, saleWht, whtIncomeTypes, mutationBlock, saleClaims, stockDebitWarning, periodLock] = await Promise.all([
     db.documentPayment.findMany({
       where: { docType: "SALE", docId: id },
       orderBy: [{ lineNo: "asc" }, { id: "asc" }],
@@ -92,10 +96,16 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
       orderBy: { claimNo: "asc" },
       select: { claimNo: true, warranty: { select: { saleItemId: true } } },
     }),
+    // Lines before an active supplier DN: a warning only; updateSale blocks just the rows it rewrites.
+    checkDocumentStockDebitWarning("Sale", id),
+    // Month already distributed: same message updateSale returns (lib/period-lock.ts).
+    getDocumentPeriodLockView([sale.saleDate], permissions),
   ]);
 
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
+  const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
   const claimNosBySaleItem = groupClaimNosBySaleItem(saleClaims);
   const allSaleClaimNos = saleClaims.map((claim) => claim.claimNo);
   const headerClaimLock = allSaleClaimNos.length > 0
@@ -283,6 +293,14 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
           />
         </div>
       )}
+      {stockDebitWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={stockDebitWarningMessage}
+            references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
       <SaleForm
         canReferenceQuotation={hasPermissionAccess(role, permissions, "sales_quotations.view")}
         products={products}
@@ -307,6 +325,12 @@ const EditSalePage = async ({ params }: { params: Promise<{ id: string }> }) => 
         orderRefLabel={marketplaceConfig?.orderRefLabel}
         defaultCustomerId={marketplaceConfig ? sale.customerId ?? "" : undefined}
         defaultCashBankAccountId={marketplaceConfig ? sale.cashBankAccountId ?? "" : undefined}
+        periodLock={periodLock}
+        periodLockHint={SALE_PERIOD_LOCK_ALLOWED_EDITS_HINT}
+        periodLockCustomerEditable={
+          periodLock !== null &&
+          canChangeSaleCustomerInLockedPeriod({ paymentType: sale.paymentType, amountRemain: sale.amountRemain, wht: saleWht })
+        }
       />
     </div>
   );

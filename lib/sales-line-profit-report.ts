@@ -1,9 +1,10 @@
 import { db } from "@/lib/db";
+import { getCreditNoteProfitLabel, isValueOnlyCreditNoteType } from "@/lib/profit-fact";
 import {
-  CreditNoteType,
   DocStatus,
   ProfitSourceType,
   SaleChannel,
+  VatType,
   type Prisma,
 } from "@/lib/generated/prisma";
 import {
@@ -40,6 +41,8 @@ export type SalesLineProfitFilters = {
 
 export type SalesBillProfitRow = {
   sourceType: SupportedSourceType;
+  /** "ขาย", or the credit note type label: "คืนสินค้า" / "ลดหนี้ (ส่วนลด)" / "ลดหนี้ (อื่นๆ)". */
+  documentLabel: string;
   sourceId: string;
   docNo: string;
   referenceDocNo: string | null;
@@ -58,6 +61,7 @@ export type SalesBillProfitRow = {
 
 export type SalesLineProfitRow = {
   sourceType: SupportedSourceType;
+  documentLabel: string;
   sourceId: string;
   sourceLineId: string;
   docNo: string;
@@ -181,6 +185,30 @@ export function buildSalesLineProfitQuery(filters: SalesLineProfitFilters): stri
 
 const round2 = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
 const number = (value: Prisma.Decimal | number | null | undefined): number => Number(value ?? 0);
+const SALE_DOCUMENT_LABEL = "ขาย";
+
+function documentLabel(isReturn: boolean, sourceSubtype: string | null | undefined): string {
+  return isReturn ? getCreditNoteProfitLabel(sourceSubtype) : SALE_DOCUMENT_LABEL;
+}
+
+type FactRevenueAmounts = {
+  salesAmountExVat: Prisma.Decimal | number;
+  salesAmountIncVat: Prisma.Decimal | number;
+};
+
+/**
+ * SaleItem.totalAmount is pre-VAT for EXCLUDING_VAT sales and VAT-inclusive otherwise,
+ * so the allocated bill discount compares it with the fact revenue on the same basis.
+ */
+export function calcAllocatedBillDiscount(
+  amountAfterLineDiscount: number,
+  fact: FactRevenueAmounts,
+  vatType: VatType,
+): number {
+  const allocatedRevenue =
+    vatType === VatType.EXCLUDING_VAT ? fact.salesAmountExVat : fact.salesAmountIncVat;
+  return round2(amountAfterLineDiscount - number(allocatedRevenue));
+}
 
 function activeFactWhere(filters: SalesLineProfitFilters): Prisma.FactProfitWhereInput {
   return {
@@ -247,8 +275,8 @@ async function cancelledFactWhere(
     filters.includeReturns
       ? db.creditNote.findMany({
           where: {
+            // Every CN type writes SALE_RETURN facts (DISCOUNT/OTHER as value-only rows).
             status: DocStatus.CANCELLED,
-            type: CreditNoteType.RETURN,
             cnDate: { gte: filters.from, lte: filters.to },
             ...customerFilter,
             ...(resolvedChannelWhere ? { channel: resolvedChannelWhere } : {}),
@@ -400,6 +428,13 @@ export async function querySalesLineProfitData(
     productId: { not: null },
     sourceLineId: { not: null },
   };
+  // Only a sale's shipping row is a SALE fact without a product; a credit note line
+  // without a product (e.g. a DISCOUNT CN) is not shipping.
+  const shippingWhere: Prisma.FactProfitWhereInput = {
+    ...scopedWhere,
+    sourceType: ProfitSourceType.SALE,
+    productId: null,
+  };
   const exportLineCount = isExport ? await db.factProfit.count({ where: lineWhere }) : null;
   if (exportLineCount !== null && exportLineCount > detailLimit) {
     return {
@@ -415,7 +450,7 @@ export async function querySalesLineProfitData(
   const [
     billGroups,
     aggregates,
-    productAggregates,
+    shippingAggregates,
     totalLineCount,
     totalBillProductLineCount,
     facts,
@@ -423,6 +458,7 @@ export async function querySalesLineProfitData(
     db.factProfit.groupBy({
       by: [
         "sourceType",
+        "sourceSubtype",
         "sourceId",
         "sourceDocNo",
         "referenceDocNo",
@@ -455,7 +491,7 @@ export async function querySalesLineProfitData(
     isExport
       ? Promise.resolve({ _sum: { salesAmountIncVat: 0 } })
       : db.factProfit.aggregate({
-          where: billProductWhere,
+          where: shippingWhere,
           _sum: { salesAmountIncVat: true },
         }),
     isExport ? Promise.resolve(exportLineCount ?? 0) : db.factProfit.count({ where: lineWhere }),
@@ -466,6 +502,7 @@ export async function querySalesLineProfitData(
       take: detailLimit + 1,
       select: {
         sourceType: true,
+        sourceSubtype: true,
         sourceId: true,
         sourceLineId: true,
         sourceDocNo: true,
@@ -511,6 +548,7 @@ export async function querySalesLineProfitData(
         unitListPrice: true,
         lineDiscount: true,
         totalAmount: true,
+        sale: { select: { vatType: true } },
       },
     }),
     db.creditNoteItem.findMany({
@@ -543,6 +581,7 @@ export async function querySalesLineProfitData(
             sourceType: true,
             sourceLineId: true,
             salesAmountIncVat: true,
+            salesAmountExVat: true,
           },
         })
     : null;
@@ -559,6 +598,7 @@ export async function querySalesLineProfitData(
           unitListPrice: true,
           lineDiscount: true,
           totalAmount: true,
+          sale: { select: { vatType: true } },
         },
       })
     : null;
@@ -577,7 +617,7 @@ export async function querySalesLineProfitData(
           totals.lineDiscount += number(item.lineDiscount);
           totals.amountAfterLineDiscount += amountAfterLineDiscount;
           totals.allocatedBillDiscount += fact
-            ? round2(amountAfterLineDiscount - number(fact.salesAmountIncVat))
+            ? calcAllocatedBillDiscount(amountAfterLineDiscount, fact, item.sale.vatType)
             : 0;
           return totals;
         },
@@ -596,6 +636,7 @@ export async function querySalesLineProfitData(
     const isReturn = row.sourceType === ProfitSourceType.SALE_RETURN;
     return {
       sourceType: isReturn ? "SALE_RETURN" : "SALE",
+      documentLabel: documentLabel(isReturn, row.sourceSubtype),
       sourceId: row.sourceId,
       docNo: row.sourceDocNo,
       referenceDocNo: row.referenceDocNo,
@@ -620,9 +661,12 @@ export async function querySalesLineProfitData(
     const isReturn = fact.sourceType === ProfitSourceType.SALE_RETURN;
     const saleItem = isReturn ? undefined : saleItemById.get(sourceLineId);
     const creditNoteItem = isReturn ? creditNoteItemById.get(sourceLineId) : undefined;
-    const quantity = isReturn
-      ? -Math.abs(number(creditNoteItem?.showQty ?? creditNoteItem?.qty ?? fact.quantity))
-      : number(saleItem?.showQty ?? saleItem?.quantity ?? fact.quantity);
+    // A DISCOUNT/OTHER credit note returns no goods, whatever qty its line carries.
+    const quantity = isReturn && isValueOnlyCreditNoteType(fact.sourceSubtype)
+      ? 0
+      : isReturn
+        ? -Math.abs(number(creditNoteItem?.showQty ?? creditNoteItem?.qty ?? fact.quantity))
+        : number(saleItem?.showQty ?? saleItem?.quantity ?? fact.quantity);
     const unitListPrice = saleItem ? number(saleItem.unitListPrice) : null;
     const amountAfterLineDiscount = saleItem
       ? number(saleItem.totalAmount)
@@ -632,6 +676,7 @@ export async function querySalesLineProfitData(
 
     return {
       sourceType: isReturn ? "SALE_RETURN" : "SALE",
+      documentLabel: documentLabel(isReturn, fact.sourceSubtype),
       sourceId: fact.sourceId,
       sourceLineId,
       docNo: fact.sourceDocNo,
@@ -649,7 +694,7 @@ export async function querySalesLineProfitData(
       lineDiscount: saleItem ? number(saleItem.lineDiscount) : null,
       amountAfterLineDiscount,
       allocatedBillDiscount: saleItem
-        ? round2(amountAfterLineDiscount - number(fact.salesAmountIncVat))
+        ? calcAllocatedBillDiscount(amountAfterLineDiscount, fact, saleItem.sale.vatType)
         : null,
       netSalesIncVat: number(fact.salesAmountIncVat),
       netSalesExVat,
@@ -678,10 +723,7 @@ export async function querySalesLineProfitData(
       allocatedBillDiscount: discountBreakdown
         ? round2(discountBreakdown.allocatedBillDiscount)
         : null,
-      shippingAmountIncVat: round2(
-        number(aggregates._sum.salesAmountIncVat) -
-          number(productAggregates._sum.salesAmountIncVat),
-      ),
+      shippingAmountIncVat: round2(number(shippingAggregates._sum.salesAmountIncVat)),
       netSalesIncVat: number(aggregates._sum.salesAmountIncVat),
       netSalesExVat,
       costAmount: number(aggregates._sum.costAmount),

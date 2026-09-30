@@ -1,5 +1,7 @@
 "use client";
 
+import { formatSaleQuantity } from "@/lib/sale-quantity";
+
 export type TopProductsChartDatum = {
   name: string;
   qty: number;
@@ -14,7 +16,7 @@ const formatRevenue = (value: unknown) => {
   });
 };
 
-const formatQuantity = (value: unknown) => Number(value ?? 0).toLocaleString("th-TH");
+const formatQuantity = (value: unknown) => formatSaleQuantity(Number(value ?? 0));
 
 const TopProductsChart = ({ data }: { data: TopProductsChartDatum[] }) => {
   const maxQty = Math.max(1, ...data.map((item) => item.qty));

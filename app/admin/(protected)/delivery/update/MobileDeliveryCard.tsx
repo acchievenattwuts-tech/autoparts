@@ -26,6 +26,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
 import { updateShippingStatus } from "../../sales/actions";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 import {
   SHIPPING_METHOD_LABEL,
   SHIPPING_METHOD_OPTIONS,
@@ -223,7 +224,7 @@ const MobileDeliveryCard = ({
   const previewItems = items.slice(0, 2);
   const hasMoreItems = items.length > previewItems.length;
   const hasDestinationPin = destLatitude !== null && destLongitude !== null;
-  const itemSummary = `${items.length.toLocaleString("th-TH")} รายการ · รวม ${totalQuantity.toLocaleString("th-TH")} ชิ้น`;
+  const itemSummary = `${items.length.toLocaleString("th-TH")} รายการ · รวม ${formatSaleQuantity(totalQuantity)} ชิ้น`;
 
   const runUpdate = (nextStatus: ShippingStatus) => {
     setError("");
@@ -511,7 +512,7 @@ const MobileDeliveryCard = ({
                       {item.productName}
                     </span>
                     <span className="shrink-0 font-semibold text-gray-900 dark:text-slate-100">
-                      x{item.quantity.toLocaleString("th-TH")}
+                      x{formatSaleQuantity(item.quantity)}
                     </span>
                   </div>
                 ))}
@@ -535,7 +536,7 @@ const MobileDeliveryCard = ({
                         </p>
                       </div>
                       <span className="shrink-0 rounded-full bg-gray-100 px-2 py-1 text-xs font-semibold text-gray-700 dark:bg-white/10 dark:text-slate-200">
-                        {item.quantity.toLocaleString("th-TH")} {item.unitName}
+                        {formatSaleQuantity(item.quantity)} {item.unitName}
                       </span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
@@ -552,7 +553,7 @@ const MobileDeliveryCard = ({
                       <p className="mt-2 text-[11px] text-gray-500 dark:text-slate-400">
                         Lot:{" "}
                         {item.lots
-                          .map((lot) => `${lot.lotNo} x${lot.qty.toLocaleString("th-TH")}`)
+                          .map((lot) => `${lot.lotNo} x${formatSaleQuantity(lot.qty)}`)
                           .join(", ")}
                       </p>
                     ) : null}

@@ -52,7 +52,7 @@ What correct code looks like in this repo. Process rules — when to ask, what t
 ### Input & validation
 
 - **Always validate with Zod on the server.** Never trust client-supplied data.
-- **Never use raw SQL** or string interpolation in queries — Prisma's parameterized API only.
+- **Use Prisma's parameterized API for queries.** When it cannot express a query efficiently (e.g. reports), tagged-template `$queryRaw` / `Prisma.sql` with bound parameters is allowed. `$queryRawUnsafe` / `$executeRawUnsafe` and interpolating values into SQL strings remain forbidden.
 - Never render user input as raw HTML. `dangerouslySetInnerHTML` is banned unless the content is sanitized with DOMPurify or equivalent.
 - Validate file uploads server-side: MIME type, size, and extension, before storing.
 
@@ -97,7 +97,7 @@ Security headers in `next.config.ts`:
 
 ## 6. Prisma & schema
 
-- **Schema changes are applied as narrow additive SQL** in `prisma/migrations/<YYYYMMDD>_<name>/migration.sql`, run with `prisma db execute --file` — `ADD COLUMN` / `CREATE TABLE … IF NOT EXISTS`, and `CREATE INDEX CONCURRENTLY IF NOT EXISTS` for indexes, each index statement run separately outside a transaction. Then `npx prisma generate`, and verify with **`npx tsx scripts/check-schema-drift.ts`** (read-only `prisma migrate diff` against the configured database; ignores the known search drift below, exits 1 on anything else).
+- **Schema changes are applied as narrow additive SQL** in `prisma/migrations/<YYYYMMDD>_<name>/migration.sql`, run with `prisma db execute --file` — `ADD COLUMN` / `CREATE TABLE … IF NOT EXISTS`, and `CREATE INDEX CONCURRENTLY IF NOT EXISTS` for indexes, each index statement run separately outside a transaction. Then `npx prisma generate`, and verify with **`npx tsx scripts/check-schema-drift.ts`** (read-only `prisma migrate diff` against the configured database; ignores the known search drift below and the partial unique index `SupplierDebitNote_active_supplier_reference_key`, exits 1 on anything else).
 - **Never `prisma db push`** (nor `npm run db:push*`) and never `migrate dev`. The database intentionally holds five search indexes and the generated column `product_search_documents.trgm_text` created by `prisma/scripts/setup-search-v2.ts` / `setup-knowledge-rag.ts` outside `schema.prisma`; a push drops them. `migrate dev` needs a shadow database the Supabase pooler lacks. `prisma.config.ts` refuses `db push` against production (`lib/prisma-db-push-guard.ts`), and the `.claude/hooks/block-prisma-db-push.mjs` hook blocks it from agent shells.
 - **All `DateTime` fields use `@db.Timestamptz(3)`** unless the user approves a narrower PostgreSQL type for that specific field. Never a bare `DateTime` or `timestamp without time zone`; storage must preserve the instant semantics used by `lib/th-date.ts`.
 - Price and cost decimals: `@db.Decimal(10,2)`.
@@ -109,8 +109,9 @@ Security headers in `next.config.ts`:
 
 - Every stock-affecting transaction calls `writeStockCard()` inside `db.$transaction()`.
 - **Never update `Product.stock` or `Product.avgCost` directly** — always through `writeStockCard()`.
-- `avgCost` changes on stock-in (`qtyIn > 0`) and approved Supplier DN value-only postings (`SUPPLIER_DEBIT`, quantity zero). DN capitalizes current aggregate SKU coverage; uncovered cost is current-period variance. DN never rewrites historical SaleItem costs. Ordinary outgoing transactions preserve the existing valuation policy.
+- `avgCost` changes on stock-in (`qtyIn > 0`) and approved Supplier DN value-only postings (`SUPPLIER_DEBIT`, quantity zero). DN capitalizes the aggregate SKU coverage at its posting position; uncovered cost is posting-period variance. Cancelling or editing a DN (an edit reposts at the original posting date and position) restates the cost snapshots of later sales and their RETURN credit notes through `lib/sale-cost-restatement.ts`, subject to the month lock in §8. From 2026-09-30, value left when on-hand reaches zero is written off as a `STOCK_VALUE_RESIDUAL` cost variance. Ordinary outgoing transactions preserve the existing valuation policy.
 - Neutral stock-in sources (`RETURN_IN`, `CLAIM_RETURN_IN`, `CLAIM_RECV_IN`) use the current running `avgCost` as `priceIn` so they do not distort the average.
+- **Input VAT and cost** — decided only by `lib/input-vat.ts`: VAT on a purchase, purchase return, expense or Supplier DN is recoverable (kept out of product cost / expense, reported as input tax) only when the VAT type is not `NO_VAT` and the company setting `vat_registered_from` is on or before the document's tax-invoice date (`taxInvoiceDate`; DN `debitDate`). Otherwise all VAT is cost. Returns and DN adjustments inherit the source document's VAT. Never hard-code recoverability in a module.
 - Document numbers are `{PREFIX}{YYYYMMDD}{4-digit}` and always come from `generateDocNo()` — never hardcoded.
 - `StockCard` queries must use the `[productId, docDate, sorder]` index — no full scans.
 
@@ -122,6 +123,7 @@ Security headers in `next.config.ts`:
   - Purchase → cancel purchase returns first
   - Sale → cancel CN and receipts first
   - Receipt → may be cancelled directly, but must reverse AR
+- **Month lock after profit distribution.** Documents dated in a Thailand month with an ACTIVE `ProfitDistribution` that affect profit or stock cannot be created, changed or cancelled (`lib/period-lock.ts`); cash-only documents are exempt; note, line-remark, purchase-reference, customer-text and delivery-info edits stay allowed without a reason. Marketplace settlement amounts for sales in a month already declared when the settlement is recorded are dated at the settlement date. Corrections are keyed as new documents dated today. An admin holding `period_lock.override` may change one document with a reason, which must be audited and alerted (bell + Telegram); carry-forward rolls the restated difference into the next declaration.
 
 ## 9. Audit log
 
@@ -149,7 +151,7 @@ Telegram uses `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_IDS`. If unset, Telegram i
 ## 11. Dates and time
 
 - **All displayed dates use the Gregorian calendar.** Use locale `"th-TH-u-ca-gregory"`, never `"th-TH"` — the latter renders Buddhist Era years and causes confusion.
-- **Date-only business fields** — `saleDate`, `purchaseDate`, `receiptDate`, `claimDate`, `expenseDate`, `adjustDate`, `advanceDate`, `paymentDate`, and lot MFG/EXP dates — are date-only, not UTC timestamps:
+- **Date-only business fields** — `saleDate`, `purchaseDate`, `receiptDate`, `claimDate`, `expenseDate`, `adjustDate`, `advanceDate`, `paymentDate`, `taxInvoiceDate`, and lot MFG/EXP dates — are date-only, not UTC timestamps:
   - never `new Date().toISOString().slice(0, 10)` for `<input type="date">` defaults
   - never serialize with `date.toISOString().slice(0, 10)`
   - never parse `YYYY-MM-DD` with bare `new Date(value)` or `new Date(\`${value}T00:00:00\`)`

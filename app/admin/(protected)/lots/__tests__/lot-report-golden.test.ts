@@ -44,7 +44,7 @@ type Where = {
 type Query = { where?: Where; take?: number; skip?: number; orderBy?: unknown };
 type Fixture = { balances: Balance[]; lots: Lot[]; sales: SaleLot[]; products: Product[] };
 type Page = (props: { searchParams: Promise<{ days?: string; page?: string }> }) => Promise<ReactNode>;
-type Trace = { saleRowsRead: number; permissions: string[] };
+type Trace = { saleRowsRead: number; saleOrBranches: number; permissions: string[] };
 
 const product = (id: string): Product => ({
   id, code: `CODE-${id}`, name: `Product ${id}`, reportUnitName: "carton",
@@ -92,6 +92,7 @@ function dependencies(fixture: Fixture, trace: Trace): Record<string, unknown> {
     saleItemLot: { findMany: async ({ where }: Query) => {
       const rows = fixture.sales.filter((row) => saleMatches(row, where));
       trace.saleRowsRead += rows.length;
+      trace.saleOrBranches += where?.OR?.length ?? 0;
       return rows;
     } },
     product: { findMany: async ({ where }: Query) => fixture.products.filter((p) => stringMatches(p.id, where?.id)) },
@@ -135,7 +136,7 @@ function loadPage(kind: "slow-moving" | "expiry", before: boolean, imports: Reco
 
 async function render(kind: "slow-moving" | "expiry", before: boolean, fixture: Fixture,
   params: { days?: string; page?: string }) {
-  const trace: Trace = { saleRowsRead: 0, permissions: [] };
+  const trace: Trace = { saleRowsRead: 0, saleOrBranches: 0, permissions: [] };
   const page = loadPage(kind, before, dependencies(fixture, trace));
   const html = renderToStaticMarkup(await page({ searchParams: Promise.resolve(params) }));
   assert.deepEqual(trace.permissions, ["lot_reports.view"]);
@@ -160,14 +161,17 @@ function slowFixture(): Fixture {
       sale("p4", "C", -2, "CANCELLED"), sale("p1", "B", -1), sale("p2", "A", -200)] };
 }
 
-test("slow-moving exact-pair query preserves actual old markup and reads fewer sales", async () => {
+// The sale-lot lookup stays two flat IN lists: a per-product OR of
+// saleItem.productId makes Prisma emit one SaleItem LEFT JOIN per branch.
+test("slow-moving flat IN query preserves actual old markup without per-product OR branches", async () => {
   const fixture = slowFixture();
   for (const days of [undefined, "30", "90", "180", "365", "NaN", "-10"]) {
     const before = await render("slow-moving", true, fixture, { days });
     const after = await render("slow-moving", false, fixture, { days });
     assert.equal(after.html, before.html, `days=${days}`);
     assert.equal(before.trace.saleRowsRead, 7);
-    assert.equal(after.trace.saleRowsRead, 5);
+    assert.equal(after.trace.saleRowsRead, before.trace.saleRowsRead);
+    assert.equal(after.trace.saleOrBranches, 0);
   }
   const { html } = await render("slow-moving", false, fixture, { days: "90" });
   const body = html.split("<tbody")[1];
@@ -224,4 +228,13 @@ test("expiry retains zero-result markup when stock is zero or EXP is missing", a
       { productId: p.id, lotNo: "NULL", expDate: null }] };
   assert.equal((await render("expiry", false, fixture, { days: "all" })).html,
     (await render("expiry", true, fixture, { days: "all" })).html);
+});
+
+test("expiry falls back to 30 days for values outside the offered options", async () => {
+  const fixture = expiryFixture();
+  const expected = await render("expiry", false, fixture, { days: "30", page: "2" });
+  for (const days of ["abc", "", "15", "-1", "1e3", "ALL", " 30"]) {
+    const actual = await render("expiry", false, fixture, { days, page: "2" });
+    assert.equal(actual.html, expected.html, `days=${JSON.stringify(days)}`);
+  }
 });

@@ -10,6 +10,7 @@ import {
 } from "@/lib/audit-log";
 import { db, dbTx } from "@/lib/db";
 import { recalculateSupplierDebitRemain } from "@/lib/supplier-debit-note";
+import { formatSupplierDebitAdjustmentLabel } from "@/lib/supplier-debit-balance";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { generateSupplierPaymentNo } from "@/lib/doc-number";
 import {
@@ -61,7 +62,9 @@ export type SupplierSettlementDocument = {
   totalAmount: number;
   usedAmount: number;
   outstanding: number;
-  type: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT";
+  type: "PURCHASE" | "SUPPLIER_CREDIT" | "ADVANCE" | "SUPPLIER_DEBIT" | "SUPPLIER_DEBIT_CREDIT";
+  /** "ปรับยอดจาก DN ..." for an adjustment document. */
+  label?: string;
 };
 
 export type SupplierSettlementDocumentBundle = {
@@ -69,6 +72,8 @@ export type SupplierSettlementDocumentBundle = {
   purchases: SupplierSettlementDocument[];
   credits: SupplierSettlementDocument[];
   advances: SupplierSettlementDocument[];
+  /** Supplier credit left by a negative "ปรับยอด DN" (excess kept as SUPPLIER_CREDIT). */
+  debitCredits: SupplierSettlementDocument[];
 };
 
 type AvailableDocument = {
@@ -78,6 +83,7 @@ type AvailableDocument = {
   totalAmount: number;
   usedAmount: number;
   outstanding: number;
+  label?: string;
 };
 
 type AvailableDocumentBundle = {
@@ -85,18 +91,21 @@ type AvailableDocumentBundle = {
   purchases: AvailableDocument[];
   credits: AvailableDocument[];
   advances: AvailableDocument[];
+  debitCredits: AvailableDocument[];
 };
 
 const supplierPaymentItemSchema = z
   .object({
     debitNoteId: z.string().optional(),
+    /** Credit of a negative "ปรับยอด DN"; stored in SupplierPaymentItem.debitNoteId like a DN, but it reduces cash. */
+    debitCreditId: z.string().optional(),
     purchaseId: z.string().optional(),
     purchaseReturnId: z.string().optional(),
     advanceId: z.string().optional(),
     paidAmount: z.coerce.number().positive("ยอดที่นำมาชำระต้องมากกว่า 0"),
   })
   .superRefine((data, ctx) => {
-    const refCount = [data.debitNoteId, data.purchaseId, data.purchaseReturnId, data.advanceId,
+    const refCount = [data.debitNoteId, data.debitCreditId, data.purchaseId, data.purchaseReturnId, data.advanceId,
     ].filter(Boolean).length;
     if (refCount !== 1) {
       ctx.addIssue({
@@ -225,20 +234,36 @@ async function getAvailableSupplierDocuments(
       },
   });
 
+  const debitSelect = { id: true, debitNo: true, postingDate: true, netAmount: true, amountRemain: true,
+    adjustsDebitNote: { select: { debitNo: true } },
+    supplierPaymentItems: { where: { paymentId: excludePaymentId ?? "__never__" }, select: { paidAmount: true } } };
+  const usedByThisPayment = excludePaymentId ? [{ supplierPaymentItems: { some: { paymentId: excludePaymentId } } }] : [];
+  // Payables: DNs and positive adjustments. A negative adjustment never appears here (its netAmount is below zero).
   const debits = await tx.supplierDebitNote.findMany({
-    where: { supplierId, status: "ACTIVE", OR: [
-      { amountRemain: { gt: 0 } },
-      ...(excludePaymentId ? [{ supplierPaymentItems: { some: { paymentId: excludePaymentId } } }] : []),
-    ] }, orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }],
-    select: { id: true, debitNo: true, postingDate: true, netAmount: true, amountRemain: true,
-      supplierPaymentItems: { where: { paymentId: excludePaymentId ?? "__never__" }, select: { paidAmount: true } } },
+    where: { supplierId, status: "ACTIVE", netAmount: { gt: 0 }, OR: [{ amountRemain: { gt: 0 } }, ...usedByThisPayment] },
+    orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }], select: debitSelect,
   });
+  // Credits: negative adjustments whose excess was kept as supplier credit (amountRemain is stored negative).
+  const debitCredits = await tx.supplierDebitNote.findMany({
+    where: { supplierId, status: "ACTIVE", netAmount: { lt: 0 }, OR: [{ amountRemain: { lt: 0 } }, ...usedByThisPayment] },
+    orderBy: [{ postingDate: "asc" }, { debitNo: "asc" }], select: debitSelect,
+  });
+  const labelOf = (debit: { adjustsDebitNote?: { debitNo: string } | null }): { label?: string } =>
+    debit.adjustsDebitNote ? { label: formatSupplierDebitAdjustmentLabel(debit.adjustsDebitNote.debitNo) } : {};
   return {
-    debits: debits.map((debit) => {
+    debits: debits.filter((debit) => Number(debit.netAmount) > 0).map((debit) => {
       const currentUsage = sumPaidAmount(debit.supplierPaymentItems);
       return { id: debit.id, docNo: debit.debitNo, docDate: debit.postingDate,
         totalAmount: Number(debit.netAmount), outstanding: Number(debit.amountRemain) + currentUsage,
-        usedAmount: Number(debit.netAmount) - Number(debit.amountRemain) - currentUsage };
+        usedAmount: Number(debit.netAmount) - Number(debit.amountRemain) - currentUsage, ...labelOf(debit) };
+    }),
+    debitCredits: debitCredits.filter((debit) => Number(debit.netAmount) < 0).map((debit) => {
+      const currentUsage = sumPaidAmount(debit.supplierPaymentItems);
+      // amountRemain holds the unused credit as a negative number; this payment's own usage is available again.
+      const available = -Number(debit.amountRemain) + currentUsage;
+      return { id: debit.id, docNo: debit.debitNo, docDate: debit.postingDate,
+        totalAmount: Math.abs(Number(debit.netAmount)), outstanding: available,
+        usedAmount: Math.abs(Number(debit.netAmount)) - available, ...labelOf(debit) };
     }),
     purchases: purchases.map((purchase) => {
       const currentUsage = sumPaidAmount(purchase.supplierPaymentItems);
@@ -286,6 +311,7 @@ function serializeDocuments(bundle: AvailableDocumentBundle,
     })),
     advances: bundle.advances.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "ADVANCE",
     })),
+    debitCredits: bundle.debitCredits.map((item) => ({ ...item, docDate: item.docDate.toISOString(), type: "SUPPLIER_DEBIT_CREDIT" })),
   };
 }
 
@@ -313,6 +339,7 @@ function parseSupplierPaymentForm(
   }
 }
 
+/** Cash out: purchase and DN payables add; purchase-return credit, "ปรับยอด DN" credit and advances subtract. */
 function calculateCashPaid(items: ParsedSupplierPayment["items"]): number {
   return items.reduce((sum, item) => {
     if (item.purchaseId || item.debitNoteId) return sum + item.paidAmount;
@@ -322,6 +349,7 @@ function calculateCashPaid(items: ParsedSupplierPayment["items"]): number {
 
 function collectAffectedIds(items: Array<{
   debitNoteId?: string | null | undefined;
+  debitCreditId?: string | null | undefined;
   purchaseId?: string | null | undefined;
   purchaseReturnId?: string | null | undefined;
   advanceId?: string | null | undefined;
@@ -333,7 +361,8 @@ function collectAffectedIds(items: Array<{
   advanceIds: string[];
 } {
   return {
-    debitNoteIds: [...new Set(items.map((item) => item.debitNoteId).filter((id): id is string => !!id))],
+    debitNoteIds: [...new Set(items.flatMap((item) => [item.debitNoteId, item.debitCreditId])
+      .filter((id): id is string => !!id))],
     purchaseIds: [...new Set(items.map((item) => item.purchaseId).filter((id): id is string => !!id),
       ),
     ],
@@ -361,9 +390,19 @@ async function lockSupplierAdvancesForPayment(
   `);
 }
 
+/**
+ * Locks the DNs a payment touches plus the parent DN of every "ปรับยอด DN" among them, in id order: a payment on
+ * either side of a DN family recalculates the whole family (lib/supplier-debit-balance.ts), and every family change
+ * holds the parent's row lock.
+ */
 async function lockSupplierDebitNotesForPayment(tx: TxClient, debitNoteIds: string[]): Promise<void> {
-  const ids = [...new Set(debitNoteIds)].sort();
-  if (ids.length === 0) return;
+  const direct = [...new Set(debitNoteIds)];
+  if (direct.length === 0) return;
+  // adjustsDebitNoteId never changes after the adjustment is created, so it is read before the lock.
+  const links = await tx.supplierDebitNote.findMany({ where: { id: { in: direct }, adjustsDebitNoteId: { not: null } },
+    select: { adjustsDebitNoteId: true } });
+  const ids = [...new Set([...direct, ...links.map((link) => link.adjustsDebitNoteId)
+    .filter((id): id is string => Boolean(id))])].sort();
   await tx.$queryRaw`SELECT id FROM "SupplierDebitNote" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
 }
 
@@ -386,6 +425,7 @@ function validatePaymentItemsAgainstAvailable(
   available: AvailableDocumentBundle,
 ): string | null {
   const debitMap = new Map(available.debits.map((item) => [item.id, item]));
+  const debitCreditMap = new Map(available.debitCredits.map((item) => [item.id, item]));
   const purchaseMap = new Map(available.purchases.map((item) => [item.id, item]),
   );
   const creditMap = new Map(available.credits.map((item) => [item.id, item]));
@@ -404,6 +444,14 @@ function validatePaymentItemsAgainstAvailable(
       if (!debit) return "พบ DN ที่ไม่สามารถใช้ชำระได้";
       if (registerAmount(`debit:${item.debitNoteId}`, item.paidAmount) > debit.outstanding + 0.0001) {
         return `ยอดชำระของ ${debit.docNo} มากกว่ายอดคงเหลือ`;
+      }
+      continue;
+    }
+    if (item.debitCreditId) {
+      const credit = debitCreditMap.get(item.debitCreditId);
+      if (!credit) return "พบเครดิตจากเอกสารปรับยอด DN ที่ไม่สามารถใช้ได้แล้ว";
+      if (registerAmount(`debit-credit:${item.debitCreditId}`, item.paidAmount) > credit.outstanding + 0.0001) {
+        return `ยอดที่นำเครดิต ${credit.docNo} มาใช้ มากกว่ายอดคงเหลือที่ใช้ได้`;
       }
       continue;
     }
@@ -545,7 +593,7 @@ export async function getOutstandingSupplierDocuments(
     "supplier_payments.update",
   ]).catch(() => null);
   if (!session?.user?.id || !supplierId) {
-    return { debits: [], purchases: [], credits: [], advances: [] };
+    return { debits: [], purchases: [], credits: [], advances: [], debitCredits: [] };
   }
 
   const available = await getAvailableSupplierDocuments(db, supplierId, excludePaymentId,
@@ -635,7 +683,7 @@ export async function createSupplierPayment(
         data: parsed.items.map((item, idx) => ({
           paymentId: payment.id,
           lineNo:    idx + 1,
-          debitNoteId: item.debitNoteId ?? null,
+          debitNoteId: item.debitNoteId ?? item.debitCreditId ?? null,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,
@@ -832,7 +880,7 @@ export async function updateSupplierPayment(
         data: parsed.items.map((item, idx) => ({
           paymentId: id,
           lineNo:    idx + 1,
-          debitNoteId: item.debitNoteId ?? null,
+          debitNoteId: item.debitNoteId ?? item.debitCreditId ?? null,
           purchaseId: item.purchaseId ?? null,
           purchaseReturnId: item.purchaseReturnId ?? null,
           advanceId: item.advanceId ?? null,

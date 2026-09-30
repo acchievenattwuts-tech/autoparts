@@ -6,6 +6,7 @@ import { createWarranty, getSaleItems } from "../actions";
 import { Search, Receipt, UserPlus } from "lucide-react";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 
 interface SaleOption {
   id: string;
@@ -89,12 +90,13 @@ const NewWarrantyForm = ({ recentSales, customers, products }: Props) => {
   // Items for WITH_SALE select — show all items, disable those that already have warranty
   const saleItemOptions: SelectOption[] = (saleItems ?? []).map((item) => {
     const hasWarranty = item.warranties.length > 0;
+    const quantityText = formatSaleQuantity(item.quantity, { useGrouping: false });
     return {
       id: item.id,
       label: item.product.name,
       sublabel: hasWarranty
-        ? `${item.product.code} × ${item.quantity} — มีประกันแล้ว`
-        : `${item.product.code} × ${item.quantity}`,
+        ? `${item.product.code} × ${quantityText} — มีประกันแล้ว`
+        : `${item.product.code} × ${quantityText}`,
       disabled: hasWarranty,
     };
   });

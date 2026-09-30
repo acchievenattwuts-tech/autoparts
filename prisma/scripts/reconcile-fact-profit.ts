@@ -94,7 +94,7 @@ async function main() {
       select: { saleDate: true },
     }),
     db.creditNote.findFirst({
-      where: { status: "ACTIVE", type: "RETURN" },
+      where: { status: "ACTIVE" },
       orderBy: { cnDate: "asc" },
       select: { cnDate: true },
     }),
@@ -109,7 +109,7 @@ async function main() {
       select: { saleDate: true },
     }),
     db.creditNote.findFirst({
-      where: { status: "ACTIVE", type: "RETURN" },
+      where: { status: "ACTIVE" },
       orderBy: { cnDate: "desc" },
       select: { cnDate: true },
     }),
@@ -121,16 +121,21 @@ async function main() {
     db.supplierDebitNote.findFirst({ where: { status: "ACTIVE" }, orderBy: { postingDate: "asc" }, select: { postingDate: true } }),
     db.supplierDebitNote.findFirst({ where: { status: "ACTIVE" }, orderBy: { postingDate: "desc" }, select: { postingDate: true } }),
   ]);
+  // T3: stock value residual facts sit on stock movement dates (e.g. a purchase return), outside the documents above.
+  const [minResidual, maxResidual] = await Promise.all([
+    db.factProfit.findFirst({ where: { isActive: true, sourceType: "STOCK_VALUE_RESIDUAL" }, orderBy: { businessDate: "asc" }, select: { businessDate: true } }),
+    db.factProfit.findFirst({ where: { isActive: true, sourceType: "STOCK_VALUE_RESIDUAL" }, orderBy: { businessDate: "desc" }, select: { businessDate: true } }),
+  ]);
 
-  const minDate = [minSale?.saleDate, minCreditNote?.cnDate, minExpense?.expenseDate, minDebit?.postingDate]
+  const minDate = [minSale?.saleDate, minCreditNote?.cnDate, minExpense?.expenseDate, minDebit?.postingDate, minResidual?.businessDate]
     .filter((value): value is Date => value instanceof Date)
     .sort((left, right) => left.getTime() - right.getTime())[0];
-  const maxDate = [maxSale?.saleDate, maxCreditNote?.cnDate, maxExpense?.expenseDate, maxDebit?.postingDate]
+  const maxDate = [maxSale?.saleDate, maxCreditNote?.cnDate, maxExpense?.expenseDate, maxDebit?.postingDate, maxResidual?.businessDate]
     .filter((value): value is Date => value instanceof Date)
     .sort((left, right) => right.getTime() - left.getTime())[0];
 
   if (!minDate || !maxDate) {
-    console.log("No active sale / credit note return / expense / supplier debit data found to reconcile.");
+    console.log("No active sale / credit note / expense / supplier debit data found to reconcile.");
     return;
   }
 

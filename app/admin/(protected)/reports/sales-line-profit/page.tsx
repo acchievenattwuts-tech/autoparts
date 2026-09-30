@@ -15,12 +15,12 @@ import {
   type SalesLineProfitRow,
 } from "@/lib/sales-line-profit-report";
 import { formatDateThai } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 import SalesLineProfitFilters from "./SalesLineProfitFilters";
 
 const money = (value: number) =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const quantity = (value: number) =>
-  value.toLocaleString("th-TH", { minimumFractionDigits: 0, maximumFractionDigits: 4 });
+const quantity = (value: number) => formatSaleQuantity(value);
 const percent = (value: number) => `${value.toFixed(2)}%`;
 const optionalMoney = (value: number | null) => (value === null ? "—" : money(value));
 const valueTone = (value: number) =>
@@ -30,17 +30,17 @@ const valueTone = (value: number) =>
       ? "text-emerald-700 dark:text-emerald-300"
       : "text-slate-700 dark:text-slate-200";
 
-function DocumentTypeBadge({ sourceType }: { sourceType: "SALE" | "SALE_RETURN" }) {
+function DocumentTypeBadge({ sourceType, label }: { sourceType: "SALE" | "SALE_RETURN"; label: string }) {
   const isReturn = sourceType === "SALE_RETURN";
   return (
     <span
-      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
         isReturn
           ? "bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-200"
           : "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-200"
       }`}
     >
-      {isReturn ? "คืนสินค้า" : "ขาย"}
+      {label}
     </span>
   );
 }
@@ -62,7 +62,7 @@ function BillCards({ bills }: { bills: SalesBillProfitRow[] }) {
                 {formatDateThai(bill.docDate)} · {saleChannelLabel(bill.channel)}
               </p>
             </div>
-            <DocumentTypeBadge sourceType={bill.sourceType} />
+            <DocumentTypeBadge sourceType={bill.sourceType} label={bill.documentLabel} />
           </div>
           <p className="mt-3 text-sm text-slate-700 dark:text-slate-200">{bill.customerName}</p>
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
@@ -90,7 +90,7 @@ function LineCards({ lines }: { lines: SalesLineProfitRow[] }) {
               <p className="font-mono text-xs text-slate-500 dark:text-slate-400">{line.productCode}</p>
               <p className="font-medium text-slate-900 dark:text-slate-100">{line.productName}</p>
             </div>
-            <DocumentTypeBadge sourceType={line.sourceType} />
+            <DocumentTypeBadge sourceType={line.sourceType} label={line.documentLabel} />
           </div>
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             <Link href={line.href} className="font-mono text-sky-700 hover:underline dark:text-sky-300">{line.docNo}</Link>
@@ -243,7 +243,7 @@ export default async function SalesLineProfitPage({
                 <tr key={`${bill.sourceType}:${bill.sourceId}`} className="hover:bg-slate-50 dark:hover:bg-white/5">
                   <td className="whitespace-nowrap px-3 py-2">{formatDateThai(bill.docDate)}</td>
                   <td className="px-3 py-2"><Link href={bill.href} className="font-mono text-sky-700 hover:underline dark:text-sky-300">{bill.docNo}</Link></td>
-                  <td className="px-3 py-2"><DocumentTypeBadge sourceType={bill.sourceType} /></td>
+                  <td className="px-3 py-2"><DocumentTypeBadge sourceType={bill.sourceType} label={bill.documentLabel} /></td>
                   <td className="px-3 py-2 font-mono text-xs">{bill.referenceDocNo ?? "—"}</td>
                   <td className="px-3 py-2">{bill.customerName}</td><td className="px-3 py-2">{saleChannelLabel(bill.channel)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{money(bill.billDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{money(bill.netSalesIncVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(bill.netSalesExVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(bill.costAmount)}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${valueTone(bill.grossProfit)}`}>{money(bill.grossProfit)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{percent(bill.marginPct)}</td>
@@ -267,7 +267,7 @@ export default async function SalesLineProfitPage({
             <tbody className="divide-y divide-slate-100 dark:divide-white/5">
               {data.lines.length === 0 ? <tr><td colSpan={18} className="p-10 text-center text-slate-400">ไม่พบข้อมูล</td></tr> : data.lines.map((line) => (
                 <tr key={`${line.sourceType}:${line.sourceLineId}`} className="hover:bg-slate-50 dark:hover:bg-white/5">
-                  <td className="whitespace-nowrap px-3 py-2">{formatDateThai(line.docDate)}</td><td className="px-3 py-2"><Link href={line.href} className="font-mono text-sky-700 hover:underline dark:text-sky-300">{line.docNo}</Link></td><td className="px-3 py-2"><DocumentTypeBadge sourceType={line.sourceType} /></td><td className="px-3 py-2">{line.customerName}</td><td className="px-3 py-2">{saleChannelLabel(line.channel)}</td><td className="px-3 py-2 font-mono text-xs">{line.productCode}</td><td className="px-3 py-2">{line.productName}</td><td className="px-3 py-2 text-right tabular-nums">{quantity(line.quantity)} {line.unitName}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.unitListPrice)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.amountBeforeLineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.lineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.amountAfterLineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.allocatedBillDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.netSalesIncVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.netSalesExVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.costAmount)}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${valueTone(line.grossProfit)}`}>{money(line.grossProfit)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{percent(line.marginPct)}</td>
+                  <td className="whitespace-nowrap px-3 py-2">{formatDateThai(line.docDate)}</td><td className="px-3 py-2"><Link href={line.href} className="font-mono text-sky-700 hover:underline dark:text-sky-300">{line.docNo}</Link></td><td className="px-3 py-2"><DocumentTypeBadge sourceType={line.sourceType} label={line.documentLabel} /></td><td className="px-3 py-2">{line.customerName}</td><td className="px-3 py-2">{saleChannelLabel(line.channel)}</td><td className="px-3 py-2 font-mono text-xs">{line.productCode}</td><td className="px-3 py-2">{line.productName}</td><td className="px-3 py-2 text-right tabular-nums">{quantity(line.quantity)} {line.unitName}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.unitListPrice)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.amountBeforeLineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.lineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.amountAfterLineDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{optionalMoney(line.allocatedBillDiscount)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.netSalesIncVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.netSalesExVat)}</td><td className="px-3 py-2 text-right tabular-nums">{money(line.costAmount)}</td><td className={`px-3 py-2 text-right font-semibold tabular-nums ${valueTone(line.grossProfit)}`}>{money(line.grossProfit)}</td><td className="px-3 py-2 text-right font-semibold tabular-nums">{percent(line.marginPct)}</td>
                 </tr>
               ))}
             </tbody>

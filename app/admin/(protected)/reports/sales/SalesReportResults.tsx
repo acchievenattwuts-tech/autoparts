@@ -11,6 +11,7 @@ import {
   type SaleRow,
 } from "@/lib/report-queries";
 import { formatDateThai } from "@/lib/th-date";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 
 /**
  * The awaited half of the Sales Register page.
@@ -155,7 +156,7 @@ export default async function SalesReportResults({
               </td>
               <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
               <td className="px-3 py-2">{row.productName}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.qty.toLocaleString("th-TH")}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatSaleQuantity(row.qty)}</td>
               <td className="px-3 py-2 text-gray-500">{row.unitName}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.unitPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.subtotalAmount)}</td>

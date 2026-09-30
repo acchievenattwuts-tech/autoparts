@@ -23,23 +23,27 @@ test("LINE acceptance and duplicate-key acceptance preserve request identity", a
   } finally { fetchMock.mock.restore(); }
 });
 
-test("timeout and temporary failure retry; permanent errors and bare 409 do not", async () => {
-  for (const [status, retryable] of [[500, true], [429, true], [400, false], [401, false], [409, false]] as const) {
+test("every non-accepted response, network error and timeout rejects with a code only, after one HTTP call", async () => {
+  for (const status of [500, 503, 429, 400, 401, 409]) {
     const fetchMock = mock.method(globalThis, "fetch", async () => new Response(null, { status }));
     try {
-      await assert.rejects(pushDeliveryLineCard(input), (e: unknown) => e instanceof DeliveryLinePushError && e.retryable === retryable && e.code === `LINE_HTTP_${status}`);
+      await assert.rejects(pushDeliveryLineCard(input), (e: unknown) => e instanceof DeliveryLinePushError && e.code === `LINE_HTTP_${status}`);
+      assert.equal(fetchMock.mock.callCount(), 1);
     } finally { fetchMock.mock.restore(); }
   }
-  const fetchMock = mock.method(globalThis, "fetch", async () => { throw new Error("network timeout with private response"); });
-  try {
-    await assert.rejects(pushDeliveryLineCard(input), (e: unknown) => e instanceof DeliveryLinePushError && e.retryable && e.message === "LINE_NETWORK_ERROR");
-  } finally { fetchMock.mock.restore(); }
+  for (const thrown of [new Error("network failure with private response"), new DOMException("The operation was aborted due to timeout", "TimeoutError")]) {
+    const fetchMock = mock.method(globalThis, "fetch", async () => { throw thrown; });
+    try {
+      await assert.rejects(pushDeliveryLineCard(input), (e: unknown) => e instanceof DeliveryLinePushError && e.message === "LINE_NETWORK_ERROR");
+      assert.equal(fetchMock.mock.callCount(), 1);
+    } finally { fetchMock.mock.restore(); }
+  }
 });
 
 test("malformed persisted message never reaches LINE", async () => {
   const fetchMock = mock.method(globalThis, "fetch", async () => { throw new Error("must not call"); });
   try {
-    await assert.rejects(pushDeliveryLineCard({ ...input, payload: {} }), (e: unknown) => e instanceof DeliveryLinePushError && e.code === "INVALID_PAYLOAD" && !e.retryable);
+    await assert.rejects(pushDeliveryLineCard({ ...input, payload: {} }), (e: unknown) => e instanceof DeliveryLinePushError && e.code === "INVALID_PAYLOAD");
     assert.equal(fetchMock.mock.callCount(), 0);
   } finally { fetchMock.mock.restore(); }
 });

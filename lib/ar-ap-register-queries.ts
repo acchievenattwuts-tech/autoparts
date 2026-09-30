@@ -322,7 +322,9 @@ export type APRegisterRow = {
   dueDate: Date | null;
   supplierId: string | null;
   supplierName: string;
-  rowType: "CREDIT_PURCHASE" | "ADVANCE" | "PR_CREDIT" | "SUPPLIER_DEBIT";
+  rowType: "CREDIT_PURCHASE" | "ADVANCE" | "PR_CREDIT" | "SUPPLIER_DEBIT" | "SUPPLIER_DEBIT_ADJUSTMENT";
+  /** "ปรับยอดจาก DN ..." for an adjustment; shown instead of the generic type label. */
+  typeLabel?: string;
   netAmount: number;
   paidAmount: number;
   amountRemain: number;
@@ -334,6 +336,7 @@ export type APRegisterRow = {
 const AP_TYPE_LABEL: Record<APRegisterRow["rowType"], string> = {
   CREDIT_PURCHASE: "ซื้อเชื่อ",
   SUPPLIER_DEBIT: "ใบเพิ่มหนี้ (DN)",
+  SUPPLIER_DEBIT_ADJUSTMENT: "ปรับยอด DN",
   ADVANCE: "เงินมัดจำ",
   PR_CREDIT: "คืนซื้อ (เครดิต)",
 };
@@ -403,11 +406,13 @@ export async function queryAPRegisterRows(
         amountRemain: true,
       },
     }),
+    // AP age of a DN counts from receivedDate (วันรับใบ); overdue still uses dueDate.
     db.supplierDebitNote.findMany({
-      where: { ...supplierWhere, postingDate: { gte: filters.from, lte: filters.to } },
-      orderBy: [{ supplierId: "asc" }, { postingDate: "asc" }], take: 2000,
-      select: { id: true, debitNo: true, postingDate: true, dueDate: true, status: true,
-        supplierId: true, netAmount: true, amountRemain: true, supplier: { select: { name: true } } },
+      where: { ...supplierWhere, receivedDate: { gte: filters.from, lte: filters.to } },
+      orderBy: [{ supplierId: "asc" }, { receivedDate: "asc" }], take: 2000,
+      select: { id: true, debitNo: true, receivedDate: true, dueDate: true, status: true,
+        supplierId: true, netAmount: true, amountRemain: true, supplier: { select: { name: true } },
+        adjustsDebitNote: { select: { debitNo: true } } },
     }),
   ]);
 
@@ -451,11 +456,24 @@ export async function queryAPRegisterRows(
     const netAmount = Number(debit.netAmount);
     const amountRemain = Number(debit.amountRemain);
     const cancelled = debit.status === "CANCELLED";
+    const adjustment = debit.adjustsDebitNote
+      ? { rowType: "SUPPLIER_DEBIT_ADJUSTMENT" as const, typeLabel: `ปรับยอดจาก DN ${debit.adjustsDebitNote.debitNo}` } : null;
+    if (netAmount < 0) {
+      // A reduction: signed like a purchase-return credit. paid = net - remain covers the part that reduced the parent,
+      // the credit used by payments and the cash refunded, so the register still totals to the net payable.
+      rows.push({ kind: "SUPPLIER_DEBIT", id: debit.id, docNo: debit.debitNo, docDate: debit.receivedDate, dueDate: null,
+        supplierId: debit.supplierId, supplierName: debit.supplier.name, rowType: "SUPPLIER_DEBIT_ADJUSTMENT",
+        ...(adjustment ? { typeLabel: adjustment.typeLabel } : {}), netAmount, paidAmount: cancelled ? 0 : netAmount - amountRemain,
+        amountRemain: cancelled ? 0 : amountRemain, creditTerm: null, daysOverdue: null,
+        status: cancelled ? "CANCELLED" : amountRemain < 0 ? "UNPAID" : "PAID" });
+      continue;
+    }
     const { status, daysOverdue } = deriveSaleStatus({ cancelled, paymentType: "CREDIT_SALE",
       netAmount, amountRemain, dueDate: debit.dueDate, today });
-    rows.push({ kind: "SUPPLIER_DEBIT", id: debit.id, docNo: debit.debitNo, docDate: debit.postingDate,
+    rows.push({ kind: "SUPPLIER_DEBIT", id: debit.id, docNo: debit.debitNo, docDate: debit.receivedDate,
       dueDate: debit.dueDate, supplierId: debit.supplierId, supplierName: debit.supplier.name,
-      rowType: "SUPPLIER_DEBIT", netAmount, paidAmount: cancelled ? 0 : Math.max(0, netAmount - amountRemain),
+      rowType: adjustment?.rowType ?? "SUPPLIER_DEBIT", ...(adjustment ? { typeLabel: adjustment.typeLabel } : {}),
+      netAmount, paidAmount: cancelled ? 0 : Math.max(0, netAmount - amountRemain),
       amountRemain: cancelled ? 0 : amountRemain, creditTerm: null, daysOverdue, status });
   }
 
@@ -544,7 +562,7 @@ export function buildAPRegisterCsv(rows: APRegisterRow[]): string {
       r.docNo,
       formatDateThai(r.docDate),
       r.supplierName,
-      AP_TYPE_LABEL[r.rowType],
+      r.typeLabel ?? AP_TYPE_LABEL[r.rowType],
       r.netAmount,
       r.paidAmount,
       r.amountRemain,
@@ -582,7 +600,7 @@ export async function buildAPRegisterExcel(
       docNo: r.docNo,
       docDate: formatDateThai(r.docDate),
       supplierName: r.supplierName,
-      type: AP_TYPE_LABEL[r.rowType],
+      type: r.typeLabel ?? AP_TYPE_LABEL[r.rowType],
       netAmount: r.netAmount,
       paidAmount: r.paidAmount,
       amountRemain: r.amountRemain,

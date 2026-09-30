@@ -12,6 +12,7 @@ import {
   type ReportFilters,
 } from "@/lib/report-queries";
 import { formatDateThai } from "@/lib/th-date";
+import { formatItemQuantity } from "@/lib/item-quantity";
 
 /**
  * The awaited half of the purchases report.
@@ -168,7 +169,7 @@ export default async function PurchasesReportResults({
               </td>
               <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
               <td className="px-3 py-2">{row.productName}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{row.qty.toLocaleString("th-TH")}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatItemQuantity(row.qty)}</td>
               <td className="px-3 py-2 text-gray-500">{row.unitName}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.unitPrice)}</td>
               <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.subtotalAmount)}</td>

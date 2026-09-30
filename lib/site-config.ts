@@ -13,6 +13,7 @@ import {
   LINE_AI_SETTINGS_DEFAULTS,
   parseBoolSetting,
 } from "@/lib/line-ai-settings";
+import { VAT_REGISTERED_FROM_KEY } from "@/lib/input-vat";
 
 export interface SiteConfig {
   shopName: string;
@@ -62,6 +63,8 @@ export interface SiteConfig {
   taxAddrPostcode: string;
   /// รหัสเข้าระบบ e-Filing หรือเลขอ้างอิงการลงทะเบียน — ใช้ในไฟล์นำส่ง Format กลาง 2.0
   taxEfilingUserId: string;
+  /// วันที่จดทะเบียน VAT (YYYY-MM-DD ตามปฏิทินไทย) — ว่าง = ยังไม่จด; ตัดสินสิทธิ์ภาษีซื้อ (lib/input-vat.ts)
+  vatRegisteredFrom: string;
 }
 
 export const defaultSiteConfig: SiteConfig = {
@@ -109,6 +112,7 @@ export const defaultSiteConfig: SiteConfig = {
   taxAddrProvince: "",
   taxAddrPostcode: "",
   taxEfilingUserId: "",
+  vatRegisteredFrom: "",
 };
 
 /** ข้อมูลภาษีของกิจการ ใช้ร่วมกันระหว่าง getSiteConfig และหน้าพิมพ์ที่ map SiteContent เอง */
@@ -125,6 +129,7 @@ export const mapTaxSiteConfig = (
   | "taxAddrProvince"
   | "taxAddrPostcode"
   | "taxEfilingUserId"
+  | "vatRegisteredFrom"
 > => ({
   taxPayerId: map["tax_payer_id"] ?? defaultSiteConfig.taxPayerId,
   taxBranchNo: map["tax_branch_no"] ?? defaultSiteConfig.taxBranchNo,
@@ -135,6 +140,7 @@ export const mapTaxSiteConfig = (
   taxAddrProvince: map["tax_addr_province"] ?? defaultSiteConfig.taxAddrProvince,
   taxAddrPostcode: map["tax_addr_postcode"] ?? defaultSiteConfig.taxAddrPostcode,
   taxEfilingUserId: map["tax_efiling_user_id"] ?? defaultSiteConfig.taxEfilingUserId,
+  vatRegisteredFrom: map[VAT_REGISTERED_FROM_KEY]?.trim() ?? defaultSiteConfig.vatRegisteredFrom,
 });
 
 export const getSiteConfig = unstable_cache(

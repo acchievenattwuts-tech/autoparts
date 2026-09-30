@@ -38,6 +38,9 @@ const record = (entry: string) => {
 };
 
 const fakeTx: FakeTx = {
+  // Month lock (lib/period-lock.ts): no month is declared here — see expense-period-lock.test.ts.
+  $executeRaw: async () => 0,
+  profitDistribution: { findMany: async () => [] },
   $queryRaw: async (query: unknown) => {
     const { sql, values } = query as { sql: string; values: unknown[] };
     const table = /FROM\s+"(\w+)"/.exec(sql)?.[1] ?? "?";
@@ -242,7 +245,7 @@ test("the lock is a parameterized SELECT ... FOR UPDATE on the expense id", asyn
   }
   assert.ok(captured);
   const { sql, values } = captured as { sql: string; values: unknown[] };
-  assert.match(sql, /SELECT "status"::text AS "status"\s+FROM "Expense"\s+WHERE id = \?\s+FOR UPDATE/);
+  assert.match(sql, /SELECT "status"::text AS "status", "expenseDate"\s+FROM "Expense"\s+WHERE id = \?\s+FOR UPDATE/);
   assert.deepEqual(values, ["exp1"]);
 });
 

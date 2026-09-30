@@ -46,11 +46,15 @@ export type OverdueArItem = {
 
 export type DueApItem = {
   id: string;
+  kind: "PURCHASE" | "SUPPLIER_DEBIT";
+  /** Document number: purchaseNo for purchases, debitNo for supplier debit notes. */
   purchaseNo: string;
   supplierName: string;
   dueDate: Date;
   amountRemain: number;
   daysOverdue: number;
+  /** "ปรับยอดจาก DN ..." for a positive adjustment DN. */
+  label?: string;
 };
 
 export type SupplierClaimItem = {
@@ -327,27 +331,87 @@ async function queryOverdueAr(todayStart: Date, todayEnd: Date) {
   };
 }
 
-async function queryDueAp(todayStart: Date, todayEnd: Date) {
-  const rows = await db.purchase.findMany({
-    where: {
-      status: "ACTIVE",
-      purchaseType: "CREDIT_PURCHASE",
-      amountRemain: { gt: 0 },
-      purchaseDate: { lte: todayEnd },
-    },
-    orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-    select: {
-      id: true,
-      purchaseNo: true,
-      purchaseDate: true,
-      amountRemain: true,
-      creditTerm: true,
-      supplier: { select: { name: true, creditTerm: true } },
-    },
-  });
+const DUE_AP_PREVIEW_LIMIT = 5;
+
+function compareDueApItems(left: DueApItem, right: DueApItem): number {
+  return (
+    right.daysOverdue - left.daysOverdue ||
+    left.dueDate.getTime() - right.dueDate.getTime() ||
+    right.amountRemain - left.amountRemain
+  );
+}
+
+// Supplier debit notes (ใบเพิ่มหนี้) carry their own stored dueDate. A dueDate
+// strictly before today's Bangkok start is at least one day overdue, matching
+// the `daysOverdue > 0` rule used for purchases.
+async function queryOverdueDebitNotes(todayStart: Date): Promise<WorkboardData["dueAp"]> {
+  const where = {
+    status: "ACTIVE" as const,
+    amountRemain: { gt: 0 },
+    dueDate: { lt: todayStart },
+  };
+
+  const [summary, rows] = await Promise.all([
+    db.supplierDebitNote.aggregate({
+      where,
+      _count: { id: true },
+      _sum: { amountRemain: true },
+    }),
+    db.supplierDebitNote.findMany({
+      where,
+      orderBy: [{ dueDate: "asc" }, { amountRemain: "desc" }, { debitNo: "asc" }],
+      take: DUE_AP_PREVIEW_LIMIT,
+      select: {
+        id: true,
+        debitNo: true,
+        dueDate: true,
+        amountRemain: true,
+        supplier: { select: { name: true } },
+        adjustsDebitNote: { select: { debitNo: true } },
+      },
+    }),
+  ]);
+
+  return {
+    count: summary._count.id,
+    totalAmountRemain: Number(summary._sum.amountRemain ?? 0),
+    items: rows.map((row) => ({
+      id: row.id,
+      kind: "SUPPLIER_DEBIT" as const,
+      purchaseNo: row.debitNo,
+      supplierName: row.supplier.name,
+      dueDate: row.dueDate,
+      amountRemain: Number(row.amountRemain),
+      daysOverdue: getDayDiff(todayStart, row.dueDate),
+      ...(row.adjustsDebitNote ? { label: `ปรับยอดจาก DN ${row.adjustsDebitNote.debitNo}` } : {}),
+    })),
+  };
+}
+
+async function queryDueAp(todayStart: Date, todayEnd: Date): Promise<WorkboardData["dueAp"]> {
+  const [rows, overdueDebits] = await Promise.all([
+    db.purchase.findMany({
+      where: {
+        status: "ACTIVE",
+        purchaseType: "CREDIT_PURCHASE",
+        amountRemain: { gt: 0 },
+        purchaseDate: { lte: todayEnd },
+      },
+      orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
+      select: {
+        id: true,
+        purchaseNo: true,
+        purchaseDate: true,
+        amountRemain: true,
+        creditTerm: true,
+        supplier: { select: { name: true, creditTerm: true } },
+      },
+    }),
+    queryOverdueDebitNotes(todayStart),
+  ]);
 
   const dueRows = rows
-    .map((row) => {
+    .map((row): DueApItem | null => {
       const creditTerm = row.creditTerm ?? row.supplier?.creditTerm ?? 0;
       const dueDate = addThailandDays(row.purchaseDate, creditTerm);
       const daysOverdue = getDayDiff(todayStart, dueDate);
@@ -355,6 +419,7 @@ async function queryDueAp(todayStart: Date, todayEnd: Date) {
 
       return {
         id: row.id,
+        kind: "PURCHASE",
         purchaseNo: row.purchaseNo,
         supplierName: row.supplier?.name ?? "-",
         dueDate,
@@ -363,17 +428,15 @@ async function queryDueAp(todayStart: Date, todayEnd: Date) {
       } satisfies DueApItem;
     })
     .filter((row): row is DueApItem => row !== null)
-    .sort(
-      (left, right) =>
-        right.daysOverdue - left.daysOverdue ||
-        left.dueDate.getTime() - right.dueDate.getTime() ||
-        right.amountRemain - left.amountRemain,
-    );
+    .sort(compareDueApItems);
 
   return {
-    count: dueRows.length,
-    totalAmountRemain: dueRows.reduce((sum, row) => sum + row.amountRemain, 0),
-    items: dueRows.slice(0, 5),
+    count: dueRows.length + overdueDebits.count,
+    totalAmountRemain:
+      dueRows.reduce((sum, row) => sum + row.amountRemain, 0) + overdueDebits.totalAmountRemain,
+    items: [...dueRows.slice(0, DUE_AP_PREVIEW_LIMIT), ...overdueDebits.items]
+      .sort(compareDueApItems)
+      .slice(0, DUE_AP_PREVIEW_LIMIT),
   };
 }
 

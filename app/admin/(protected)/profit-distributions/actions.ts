@@ -46,6 +46,7 @@ import {
   roundMoney,
   SHARE_PERCENT_TOLERANCE,
 } from "@/lib/profit-distribution";
+import { lockPeriodForDeclaration } from "@/lib/period-lock";
 import { requirePermission } from "@/lib/require-auth";
 import { getThailandDateKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
@@ -287,6 +288,9 @@ export async function createProfitDistribution(formData: FormData): Promise<Acti
       maxAttempts: MAX_DOCNO_RETRIES,
       generate: () => generateProfitDistributionNo(),
       run: (distributionNo) => dbTx(async (tx) => {
+      // Exclusive month lock first: waits for documents of this month that are mid-check
+      // (they hold the shared lock until commit) and blocks new ones until this commits.
+      await lockPeriodForDeclaration(tx, getPeriodKey(periodYear, periodMonth));
       let distributionId = "";
 
       {
@@ -485,6 +489,9 @@ export async function cancelProfitDistribution(formData: FormData): Promise<Acti
 
   try {
     await dbTx(async (tx) => {
+      // Same exclusive month lock as the declaration, so unlocking the month serializes
+      // with in-flight document checks of that month.
+      await lockPeriodForDeclaration(tx, getPeriodKey(beforeSnapshot.periodYear, beforeSnapshot.periodMonth));
       await clearCashBankSourceMovements(
         tx,
         CashBankSourceType.PARTNER_PAYOUT,

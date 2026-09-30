@@ -15,6 +15,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -113,6 +114,13 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        expenses.filter((e) => e.status === "ACTIVE").map((e) => e.expenseDate),
+        permissions,
+      )
+    : () => null;
 
   const activeExpenses = expenses.filter((e) => e.status === "ACTIVE");
   const totalNet = activeExpenses.reduce((s, e) => s + Number(e.netAmount), 0);
@@ -288,7 +296,7 @@ const ExpensePage = async ({ searchParams }: ExpensePageProps) => {
                                 <Pencil size={14} /> แก้ไข
                               </Link>
                             ) : null}
-                            {canCancel ? <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} /> : null}
+                            {canCancel ? <CancelExpenseButton id={exp.id} expenseNo={exp.expenseNo} periodLock={periodLockOf(exp.expenseDate)} /> : null}
                           </>
                         ) : null}
                       </AdminActionGroup>

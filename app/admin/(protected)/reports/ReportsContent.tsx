@@ -19,7 +19,7 @@ function formatDate(value: Date): string {
 
 function getReceiptSourceLabel(source:
     | "SALE" | "RECEIPT" | "CUSTOMER_ADVANCE" | "PURCHASE_RETURN"
-    | "SUPPLIER_ADVANCE_REFUND",
+    | "SUPPLIER_ADVANCE_REFUND" | "SUPPLIER_DEBIT_REFUND",
 ): string {
   switch (source) {
     case "SALE":
@@ -32,6 +32,8 @@ function getReceiptSourceLabel(source:
       return "รับเงินคืนซื้อ";
     case "SUPPLIER_ADVANCE_REFUND":
       return "รับคืนเงินมัดจำซัพพลายเออร์";
+    case "SUPPLIER_DEBIT_REFUND":
+      return "รับเงินคืนจากปรับยอด DN";
     default:
       return source;
   }
@@ -112,18 +114,22 @@ function SummaryCard({
   value,
   accent = "text-[#1e3a5f]",
   hint,
+  detail,
   className = "",
 }: {
   label: string;
   value: string;
   accent?: string;
   hint: string;
+  /** Optional breakdown line shown under the value. */
+  detail?: string;
   className?: string;
 }) {
   return (
     <div className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950/80 ${className}`}>
       <p className="text-sm text-gray-500 dark:text-slate-400">{label}</p>
       <p className={`mt-1 font-kanit text-2xl font-bold ${accent}`}>{value}</p>
+      {detail ? <p className="mt-1 text-xs font-medium text-gray-600 dark:text-slate-300">{detail}</p> : null}
       <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">{hint}</p>
     </div>
   );
@@ -294,9 +300,10 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
           <SummaryCard
             label="A/P Outstanding"
-            value={`฿${formatCurrency(data.payables.purchaseOutstanding)}`}
+            value={`฿${formatCurrency(data.payables.purchaseOutstanding + data.payables.debitOutstanding)}`}
             accent="text-rose-700"
-            hint="เจ้าหนี้คงค้างจากใบซื้อเชื่อ"
+            detail={`รวมใบเพิ่มหนี้ ${formatCurrency(data.payables.debitOutstanding)} บาท`}
+            hint="เจ้าหนี้คงค้างจากใบซื้อเชื่อและใบเพิ่มหนี้ (DN ตามวันรับใบ)"
             className="xl:col-span-4"
           />
           <SummaryCard
@@ -326,8 +333,8 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
           <ScopePill label="section นี้อิงช่วงวันที่รายงาน" tone="date" />
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ รับเงินมัดจำลูกค้า รับคืนมัดจำซัพพลายเออร์ และรับเงินคืนจากใบคืนซื้อ พร้อมบัญชีที่เงินเข้า">
-            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-6 dark:border-white/10">
+          <TableCard title="รับเงินรายวัน" subtitle="ขายสด ใบรับชำระ รับเงินมัดจำลูกค้า รับคืนมัดจำซัพพลายเออร์ รับเงินคืนจากใบคืนซื้อ และรับเงินคืนจากปรับยอด DN พร้อมบัญชีที่เงินเข้า">
+            <div className="grid gap-3 border-b border-gray-100 p-4 md:grid-cols-2 xl:grid-cols-7 dark:border-white/10">
               <div className="rounded-xl bg-gray-50 p-3 dark:bg-white/5">
                 <p className="text-xs text-gray-500 dark:text-slate-400">รวมรับเงิน</p>
                 <p className="font-kanit text-xl font-bold text-[#1e3a5f]">฿{formatCurrency(data.dailyReceipts.totalAmount)}</p>
@@ -360,6 +367,12 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                   )}
                 </p>
               </div>
+              <div className="rounded-xl bg-teal-50 p-3 dark:bg-teal-500/10">
+                <p className="text-xs text-teal-700 dark:text-teal-300">รับเงินคืนจากปรับยอด DN</p>
+                <p className="font-kanit text-xl font-bold text-teal-700 dark:text-teal-300">
+                  ฿{formatCurrency(data.dailyReceipts.supplierDebitRefundAmount)}
+                </p>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -385,7 +398,7 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                         <td className="px-4 py-2">
                           <p className="font-mono text-xs text-[#1e3a5f]">{item.docNo}</p>
                           <p className="text-xs text-gray-400">
-                            {getReceiptSourceLabel(item.source)} | {" "}
+                            {item.label ?? getReceiptSourceLabel(item.source)} | {" "}
                             {formatDate(item.docDate)}
                           </p>
                         </td>
@@ -552,20 +565,23 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <TableCard title="สรุปซื้อแยกซัพพลายเออร์" subtitle="ภาพรวมคู่ค้าและยอดซื้อสุทธิ">
+          <TableCard title="สรุปซื้อแยกซัพพลายเออร์" subtitle="ซื้อสินค้า + ใบเพิ่มหนี้ (DN ตามวันลงบัญชี) − คืน/ลดหนี้ = สุทธิ">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 dark:bg-white/5">
                   <tr>
                     <th className="px-4 py-2 text-left font-medium text-gray-600 dark:text-slate-300">ซัพพลายเออร์</th>
                     <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">เอกสารซื้อ</th>
+                    <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ซื้อสินค้า</th>
+                    <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">DN (ค่าใช้จ่ายเพิ่ม)</th>
+                    <th className="whitespace-nowrap px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">คืน/ลดหนี้</th>
                     <th className="px-4 py-2 text-right font-medium text-gray-600 dark:text-slate-300">สุทธิ</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.suppliers.items.length === 0 ? (
                     <tr>
-                      <td colSpan={3} className="px-4 py-6 text-center text-sm text-gray-400">
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-gray-400 dark:text-slate-500">
                         ไม่มีข้อมูลซื้อ
                       </td>
                     </tr>
@@ -573,15 +589,14 @@ const ReportsContent = ({ data, compact = false }: ReportsContentProps) => {
                     data.suppliers.items.slice(0, maxRows).map((item) => (
                       <tr key={item.supplierKey} className="border-t border-gray-50 dark:border-white/5">
                         <td className="px-4 py-2">
-                          <p className="text-gray-800">{item.supplierName}</p>
-                          <p className="text-xs text-gray-400">
-                            {item.supplierCode || "-"} | ซื้อ {" "}
-                            {formatCurrency(item.purchaseAmount)} | คืน {" "}
-                            {formatCurrency(item.returnAmount)}
-                          </p>
+                          <p className="text-gray-800 dark:text-slate-100">{item.supplierName}</p>
+                          <p className="text-xs text-gray-400 dark:text-slate-500">{item.supplierCode || "-"}</p>
                         </td>
-                        <td className="px-4 py-2 text-right text-gray-600">{item.purchaseCount}</td>
-                        <td className="px-4 py-2 text-right font-medium text-gray-900">{formatCurrency(item.netPurchaseAmount)}</td>
+                        <td className="px-4 py-2 text-right text-gray-600 dark:text-slate-300">{item.purchaseCount}</td>
+                        <td className="px-4 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(item.purchaseAmount)}</td>
+                        <td className="px-4 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(item.debitAmount)}</td>
+                        <td className="px-4 py-2 text-right text-gray-700 dark:text-slate-200">{formatCurrency(item.returnAmount)}</td>
+                        <td className="px-4 py-2 text-right font-medium text-gray-900 dark:text-slate-100">{formatCurrency(item.netPurchaseAmount)}</td>
                       </tr>
                     ))
                   )}

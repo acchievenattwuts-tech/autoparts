@@ -12,6 +12,7 @@ import {
 } from "@/app/admin/(protected)/ProfitSectionShared";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import { getProfitInvoiceSection, getRevenueAmountByBasis } from "@/lib/profit-dashboard";
+import { getCreditNoteProfitLabel, getSupplierDebitProfitLabel, STOCK_VALUE_RESIDUAL_LABEL } from "@/lib/profit-fact";
 import { formatDateThai } from "@/lib/th-date";
 
 const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext }) => {
@@ -55,7 +56,7 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
           </thead>
           <tbody>
             {section.items.map((row) => (
-              <tr key={`${row.sourceType}-${row.sourceId}`} className="border-b border-gray-50 dark:border-white/5">
+              <tr key={`${row.sourceType}-${row.sourceId}-${row.sourceDocNo}-${String(row.businessDate)}`} className="border-b border-gray-50 dark:border-white/5">
                 <td className="py-3">
                   <IntentPrefetchLink
                     href={buildInvoiceHref(row.sourceType, row.sourceId)}
@@ -64,7 +65,10 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
                     {row.sourceDocNo}
                   </IntentPrefetchLink>
                   <p className="text-xs text-gray-400">
-                    {row.sourceType === ProfitSourceType.SALE ? "Sale" : row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE ? "Supplier DN" : "Credit Note Return"}
+                    {row.sourceType === ProfitSourceType.SALE ? "Sale"
+                      : row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE ? getSupplierDebitProfitLabel(row.sourceSubtype)
+                      : row.sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL ? STOCK_VALUE_RESIDUAL_LABEL
+                      : getCreditNoteProfitLabel(row.sourceSubtype)}
                   </p>
                 </td>
                 <td className="py-3 text-gray-500">{formatDateThai(row.businessDate)}</td>

@@ -54,6 +54,8 @@ const fakeDb = {
     return [];
   },
   $executeRaw: async () => 0,
+  // Month lock (lib/period-lock.ts): no month is declared here — see claim-period-lock.test.ts.
+  profitDistribution: { findMany: async () => [] },
   user: { findUnique: async () => ({ name: "Tester", signatureUrl: null }) },
   warranty: {
     findUnique: async ({ where }: { where: Where }) => {

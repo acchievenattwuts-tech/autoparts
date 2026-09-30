@@ -14,7 +14,12 @@ import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
 import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
-import { getDocumentMutationBlockMessage, DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
+import {
+  buildRewrittenStockRowsWhere,
+  getDocumentMutationBlockMessage,
+  lockStockMutationProducts,
+  DocumentMutationBlockedError,
+} from "@/lib/document-mutation-guard";
 import {
   AuditAction,
   CNRefundMethod,
@@ -32,8 +37,11 @@ import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@
 import {
   CreditNoteMutationBlockedError,
   CreditNoteNotActiveError,
+  CreditNoteSourceSaleError,
+  CreditNoteVatMismatchError,
   creditNoteUnitKey,
   dropLotRowsUnlessReturn,
+  getCreditNoteSaleVatMismatchMessage,
   loadCreditNoteLineRefs,
   lockMutableCreditNote,
 } from "./credit-note-action-helpers";
@@ -56,7 +64,23 @@ import {
 } from "@/lib/document-payments";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import { rebuildCreditNoteProfitFacts, rebuildExpenseProfitFacts } from "@/lib/profit-fact";
+import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import {
+  collectLineRemarkUpdates,
+  notifyPeriodLockOverrideUsed,
+  OPEN_PERIOD_RESULT,
+  periodLockAuditMeta,
+  readPeriodLockOverride,
+  resolveDocumentPeriodLock,
+} from "@/lib/period-lock-document";
+import {
+  isCreditNoteNonFinancialChange,
+  loadCreditNoteFinancialState,
+  toCreditNoteLineRemarks,
+  type StoredCreditNoteFinancialState,
+} from "./credit-note-period-lock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
+import { roundSaleQuantity } from "@/lib/sale-quantity";
 import { getMarketplaceChannelConfig, isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { notifyMarketplaceReturnRecorded } from "@/lib/notifications";
 import {
@@ -413,11 +437,13 @@ async function resolveCreditNoteRefundMethod(
 /**
  * ตรวจใบขายอ้างอิง และคืนช่องทางขายของใบนั้นกลับมา เพื่อประทับลงใบลดหนี้
  * ยอดคืนจึงถูกหักออกจากกำไรของช่องทางเดียวกับที่ขายไป (รายงานแยกช่องทางถึงจะตรง)
+ * ใบลดหนี้ที่อ้างอิงใบขายต้องใช้ VAT เดียวกับใบขาย (ตรวจก่อนเขียนข้อมูลใด ๆ)
  */
 async function validateCreditNoteSourceSale(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   saleId: string | undefined,
   customerId: string,
+  vat: { vatType: VatType; vatRate: number },
 ): Promise<SaleChannel | null> {
   if (!saleId) return null;
 
@@ -429,16 +455,24 @@ async function validateCreditNoteSourceSale(
       customerId: true,
       saleNo: true,
       channel: true,
+      vatType: true,
+      vatRate: true,
     },
   });
 
   if (!sale || sale.status !== "ACTIVE") {
-    throw new Error("ไม่พบใบขายอ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
+    throw new CreditNoteSourceSaleError("ไม่พบใบขายอ้างอิง หรือเอกสารถูกยกเลิกแล้ว");
   }
 
   if (sale.customerId !== customerId) {
-    throw new Error(`ใบขาย ${sale.saleNo} ไม่ได้เป็นของลูกค้ารายที่เลือก`);
+    throw new CreditNoteSourceSaleError(`ใบขาย ${sale.saleNo} ไม่ได้เป็นของลูกค้ารายที่เลือก`);
   }
+
+  const vatMismatchMessage = getCreditNoteSaleVatMismatchMessage(
+    { saleNo: sale.saleNo, vatType: sale.vatType, vatRate: Number(sale.vatRate) },
+    vat,
+  );
+  if (vatMismatchMessage) throw new CreditNoteVatMismatchError(vatMismatchMessage);
 
   return sale.channel;
 }
@@ -713,7 +747,14 @@ export async function createCreditNote(
     const requestContext = await getRequestContext();
     // One attempt: the whole transaction for one set of document numbers.
     const writeCreditNote = (cnNo: string, carrierExpenseNo: string | null): Promise<void> => dbTx(async (tx) => {
-      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
+      // Every product a RETURN line can stock-mutate is locked once, sorted, before the
+      // checks and writes (as updateCreditNote does); writeStockCard's re-locks are no-ops.
+      if (type === CreditNoteType.RETURN) {
+        await lockStockMutationProducts(tx, validItems.map((item) => item.productId));
+      }
+      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId, { vatType, vatRate });
+      // Month lock before any write: the CN date and the carrier-expense date (no override on create).
+      await assertPeriodsUnlocked(tx, [docDate, carrierExpenseNoDate]);
       const resolvedSaleItemIds =
         type === CreditNoteType.RETURN && saleId
           ? await validateReferencedReturnItems(tx, saleId, validItems)
@@ -1042,7 +1083,10 @@ export async function createCreditNote(
     }
     return { success: true, cnNo: savedCnNo };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
+    if (err instanceof CreditNoteVatMismatchError) return { error: err.message };
+    if (err instanceof CreditNoteSourceSaleError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.create" });
     // Checked before getCreditNoteReturnError, which maps every other P2002 to the
     // duplicate marketplace-return-case message.
@@ -1104,12 +1148,17 @@ export async function cancelCreditNote(
   const affectedProductIds = [
     ...new Set(cn.items.map((i) => i.productId).filter((id): id is string => id !== null)),
   ];
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(cnId);
     await dbTx(async (tx) => {
       await lockMutableCreditNote(tx, cnId, "cancel");
+      // Month lock on the date stored under the CN row lock, before any write.
+      const lockedCn = await tx.creditNote.findUnique({ where: { id: cnId }, select: { cnDate: true } });
+      periodLock = await assertPeriodsUnlocked(tx, [lockedCn?.cnDate ?? cn.cnDate], lockOverride);
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.CN_SALE, cnId);
 
@@ -1149,9 +1198,19 @@ export async function cancelCreditNote(
         entityRef: afterSnapshot.cnNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null },
+        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "CreditNote",
+      entityId: cnId,
+      docNo: cn.cnNo,
+      action: "ยกเลิกใบลดหนี้",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/credit-notes/${cnId}`,
+    });
 
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
@@ -1168,6 +1227,7 @@ export async function cancelCreditNote(
     }
     return { success: true };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };
     if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
@@ -1411,13 +1471,73 @@ export async function updateCreditNote(
   addedNewItems.forEach((a) => affectedProductIds.add(a.productId));
 
   const oldHadStock = existing.type === "RETURN";
+  // The StockCard rows step 1 deletes: only these are checked against a later supplier DN.
+  const rewrittenStockRows = oldHadStock
+    ? buildRewrittenStockRowsWhere(
+        existing.cnNo,
+        useDifferential ? removedExistingItems.map((r) => r.existingItemId) : "ALL",
+      )
+    : null;
+
+  const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
+  let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
   try {
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getCreditNoteAuditSnapshot(id);
     await dbTx(async (tx) => {
-      await lockMutableCreditNote(tx, id, "update");
-      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId);
+      // Every product this update can stock-mutate (old RETURN lines reversed, new RETURN
+      // lines written) is locked in one sorted batch with the CN's stock products.
+      await lockMutableCreditNote(tx, id, "update", [
+        ...(oldHadStock ? oldProductIds : []),
+        ...(type === CreditNoteType.RETURN ? validItems.map((item) => item.productId) : []),
+      ], rewrittenStockRows);
+      // Month lock (owner decisions T2/ก1/ก2) — under the CN row lock, before any write,
+      // on the stored and the new date.
+      const lockedCn = await tx.creditNote.findUnique({ where: { id }, select: { cnDate: true } });
+      // Kept for the non-financial path, which saves line remarks by the stored line ids (P4).
+      const storedCn: { current: StoredCreditNoteFinancialState | null } = { current: null };
+      const periodDecision = await resolveDocumentPeriodLock(tx, [lockedCn?.cnDate ?? existing.cnDate, docDate], {
+        override: lockOverride,
+        isNonFinancialOnly: async () => {
+          const stored = await loadCreditNoteFinancialState(tx, id);
+          storedCn.current = stored;
+          return stored !== null && isCreditNoteNonFinancialChange(
+            stored,
+            {
+              cnDate: docDate,
+              customerId: customerId || null,
+              saleId: saleId || null,
+              type,
+              settlementType,
+              vatType,
+              vatRate,
+              lines: validItems,
+              payments,
+            },
+            (line) => newUnitScaleMap.get(`${line.productId}::${line.unitName}`) ?? 1,
+          );
+        },
+      });
+      if (periodDecision.kind === "non-financial") {
+        // Locked month, text-only edit: stock, refund, receivable and profit facts stay untouched.
+        await tx.creditNote.update({
+          where: { id },
+          data: { customerName: customerName ?? null, note: note ?? null },
+        });
+        // Line detail text and the no-restock reason (P4): the lines matched one to one.
+        const remarks = collectLineRemarkUpdates(
+          storedCn.current?.lines ?? [],
+          toCreditNoteLineRemarks(validItems, type),
+          ["moreDetail", "stockDispositionNote"],
+        );
+        for (const remark of remarks) {
+          await tx.creditNoteItem.update({ where: { id: remark.id }, data: remark.data });
+        }
+        return;
+      }
+      periodLock = periodDecision.result;
+      const sourceChannel = await validateCreditNoteSourceSale(tx, saleId, customerId, { vatType, vatRate });
       const resolvedSaleItemIds =
         type === CreditNoteType.RETURN && saleId
           ? await validateReferencedReturnItems(tx, saleId, validItems, id)
@@ -1495,12 +1615,10 @@ export async function updateCreditNote(
       });
 
       // 3b. Sync header-derived fields on matched items in differential path.
-      //     subtotalAmount = calcItemSubtotal(amount, vatType, vatRate)
-      //     follows header VAT changes.
+      //     subtotalAmount = calcItemSubtotal(amount, vatType, vatRate) is always
+      //     recomputed: it follows header VAT changes and replaces values stored
+      //     by the former calcItemSubtotal bug.
       if (useDifferential && matchedByNewIdx.size > 0) {
-        const taxBasisChanged =
-          existing.vatType !== vatType ||
-          Math.abs(Number(existing.vatRate) - vatRate) > 0.0001;
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const item = validItems[newIdx];
           const displayScale =
@@ -1526,7 +1644,7 @@ export async function updateCreditNote(
                   : MarketplaceReturnStockDisposition.RESTOCK,
               stockDispositionNote:
                 type === CreditNoteType.RETURN ? item.stockDispositionNote || null : null,
-              ...(taxBasisChanged ? { subtotalAmount: itemSubtotal } : {}),
+              subtotalAmount: itemSubtotal,
             },
           });
         }
@@ -1676,8 +1794,19 @@ export async function updateCreditNote(
         entityRef: afterSnapshot.cnNo,
         before: diff.before,
         after: diff.after,
+        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
       });
     }
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "CreditNote",
+      entityId: id,
+      docNo: existing.cnNo,
+      action: "แก้ไขใบลดหนี้",
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/credit-notes/${id}`,
+    });
 
     revalidateProfitDashboardCache();
     revalidatePath("/admin");
@@ -1686,10 +1815,15 @@ export async function updateCreditNote(
     revalidatePath("/admin/products");
     return { success: true };
   } catch (err) {
+    if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof CreditNoteNotActiveError) {
       return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
     }
     if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
+    // e.g. writeStockCard refusing a backdated RETURN_IN across a supplier DN: a user-facing block, not a system failure.
+    if (err instanceof DocumentMutationBlockedError) return { error: err.message };
+    if (err instanceof CreditNoteVatMismatchError) return { error: err.message };
+    if (err instanceof CreditNoteSourceSaleError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.update" });
     const returnError = getCreditNoteReturnError(err);
     if (returnError) return { error: returnError };
@@ -1837,10 +1971,12 @@ export async function getSaleDetail(
       (saleLineCountByProductId.get(item.productId) ?? 0) === 1
         ? legacyReturnedByProductId.get(item.productId) ?? 0
         : 0;
-    const remainingBaseQty = Math.max(
+    // Rounded to storage precision so a fractional sale minus a partial return does not
+    // prefill the form with float noise (0.4 - 0.3 = 0.10000000000000003); integers are exact.
+    const remainingBaseQty = roundSaleQuantity(Math.max(
       0,
       Number(item.quantity) - (returnedBySaleItemId.get(item.id) ?? 0) - legacyReturned,
-    );
+    ));
     if (remainingBaseQty <= 0.0001) return [];
     return [{
       saleItemId: item.id,

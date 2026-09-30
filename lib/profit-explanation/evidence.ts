@@ -18,6 +18,8 @@ function productHref(productId: string): string {
 
 function invoiceHref(sourceId: string, sourceType: ProfitSourceType): string {
   if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) return `/admin/supplier-debit-notes/${sourceId}`;
+  // Stock value residual facts are keyed by product (sourceId = productId).
+  if (sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL) return `/admin/stock/card?productId=${encodeURIComponent(sourceId)}`;
   if (sourceType === ProfitSourceType.SALE_RETURN) return `/admin/credit-notes/${sourceId}`;
   return `/admin/sales/${sourceId}`;
 }
@@ -83,7 +85,9 @@ export function buildProfitExplanationEvidence(data: ProfitDashboardData): Profi
       label: anomaly.title,
     })),
     ...data.invoices.items.slice(0, PROFIT_EXPLANATION_MAX_ITEMS).map((invoice) => ({
-      id: `invoice:${invoice.sourceId}`,
+      // One product can carry several residual rows, so its evidence id also names the document.
+      id: invoice.sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL
+        ? `invoice:${invoice.sourceId}:${invoice.sourceDocNo}` : `invoice:${invoice.sourceId}`,
       label: invoice.sourceDocNo,
       href: invoiceHref(invoice.sourceId, invoice.sourceType),
     })),

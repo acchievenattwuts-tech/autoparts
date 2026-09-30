@@ -100,6 +100,11 @@ const fetchDashboardAggregates = (params: {
             amountRemain: { gt: 0 },
           },
         })),
+        // DN payables minus "ปรับยอด DN" supplier credit (stored as a negative amountRemain).
+        runAdminDashboardRead(() => db.supplierDebitNote.aggregate({
+          _sum: { amountRemain: true },
+          where: { status: "ACTIVE", amountRemain: { not: 0 } },
+        })),
         runAdminDashboardRead(() => db.supplierAdvance.aggregate({
           _sum: { amountRemain: true },
           where: { status: "ACTIVE", amountRemain: { gt: 0 } },
@@ -192,6 +197,7 @@ const DailyOperationsDashboard = async () => {
     customerAdvanceOutstandingAgg,
     expensesMonthAgg,
     apOutstandingAgg,
+    debitNoteOutstandingAgg,
     supplierAdvanceOutstandingAgg,
     purchaseReturnCreditOutstandingAgg,
     storefrontVisitorsToday,
@@ -218,6 +224,10 @@ const DailyOperationsDashboard = async () => {
 
   const formatShortDate = (date: Date) =>
     formatDateThai(date, { day: "2-digit", month: "short", year: "numeric" });
+
+  // AP outstanding = credit purchases + open supplier debit notes (ใบเพิ่มหนี้), net of ปรับยอด DN credit.
+  const debitNoteOutstanding = Number(debitNoteOutstandingAgg._sum.amountRemain ?? 0);
+  const apOutstandingTotal = Number(apOutstandingAgg._sum.amountRemain ?? 0) + debitNoteOutstanding;
 
   const todayLabel = formatShortDate(bangkokStartOfToday);
   const monthLabel = `${formatShortDate(bangkokStartOfMonth)} - ${todayLabel}`;
@@ -310,8 +320,10 @@ const DailyOperationsDashboard = async () => {
     },
     {
       label: "เจ้าหนี้คงค้าง",
-      value: `${formatMoney(apOutstandingAgg._sum.amountRemain)} บาท`,
-      helper: `ณ ${todayLabel}`,
+      value: `${formatMoney(apOutstandingTotal)} บาท`,
+      helper: debitNoteOutstanding > 0
+        ? `รวมใบเพิ่มหนี้ ${formatMoney(debitNoteOutstanding)} บาท | ณ ${todayLabel}`
+        : `ณ ${todayLabel}`,
       icon: ShoppingCart,
       color: "bg-rose-50 text-rose-600",
     },

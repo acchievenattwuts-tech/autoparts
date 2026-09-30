@@ -31,6 +31,7 @@ import { getReferencedReturnProgress } from "@/lib/credit-note-return";
 import { buildPromptPayQrDataUrl, getTransferDocumentState } from "@/lib/payment-qr";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getShippingTrackingUrl, SHIPPING_METHOD_LABEL, SHIPPING_STATUS_BADGE, SHIPPING_STATUS_LABEL } from "@/lib/shipping";
+import { buildLineDeliveryBadges } from "@/lib/line-delivery-status";
 import { addThailandDays, formatDateThai } from "@/lib/th-date";
 import { buildPrintDocumentVerifyBadge } from "@/lib/verify-token";
 import PrintButton from "./PrintButton";
@@ -141,7 +142,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
   // "client.query() while already executing" warning and slowed the page).
   // The activity timeline only needs the id, so it is loaded alongside the sale
   // instead of after it (it returns an empty list when the sale does not exist).
-  const [sale, siteContents, primaryTransferAccount, salePayments, activityEvents] = await Promise.all([
+  const [sale, siteContents, primaryTransferAccount, salePayments, activityEvents, lineDeliveryDispatches] = await Promise.all([
     db.sale.findUnique({
       where: { id },
       include: {
@@ -224,6 +225,11 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
       },
     }),
     getDocumentActivityTimeline("Sale", id),
+    // Screen-only LINE card status: at most one row per delivery event (unique saleId + eventStatus).
+    db.saleLineDeliveryDispatch.findMany({
+      where: { saleId: id },
+      select: { eventStatus: true, state: true, lastErrorCode: true },
+    }),
   ]);
 
   if (!sale) notFound();
@@ -294,6 +300,7 @@ const SaleDetailPage = async ({ params }: { params: Promise<{ id: string }> }) =
     verify,
   };
   const claimCancelHistory = parseSaleClaimCancelNotes(sale.claimCancelNotes);
+  const lineDeliveryBadges = buildLineDeliveryBadges(lineDeliveryDispatches);
   const trackingHref = sale.trackingNo
     ? getShippingTrackingUrl(sale.shippingMethod ?? "NONE", sale.trackingNo)
     : null;
@@ -574,6 +581,18 @@ ${PRINT_COPY_VISIBILITY_CSS}
                   <div className="col-span-2 md:col-span-3">
                     <p className="mb-1 text-gray-500 dark:text-slate-400">ลิงก์ติดตามสำหรับลูกค้า</p>
                     <TrackingLinkCopy path={`/liff/tracking/${sale.trackingToken}`} />
+                  </div>
+                ) : null}
+                {lineDeliveryBadges.length > 0 ? (
+                  <div className="col-span-2 md:col-span-3 print:hidden">
+                    <p className="mb-1 text-gray-500 dark:text-slate-400">แจ้งลูกค้าทาง LINE</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {lineDeliveryBadges.map((badge) => (
+                        <AdminStatusBadge key={badge.eventLabel} tone={badge.tone}>
+                          {badge.eventLabel}: {badge.statusLabel}
+                        </AdminStatusBadge>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </>

@@ -24,6 +24,7 @@ import AdminActionGroup from "@/components/shared/AdminActionGroup";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import { SHIPPING_STATUS_LABEL, SHIPPING_STATUS_TONE } from "@/lib/shipping";
 import {
   formatDateThai,
@@ -218,6 +219,13 @@ const SalesPage = async ({
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  const periodLockOf = canCancel
+    ? await getPeriodLockViewResolver(
+        sales.filter((s) => s.status === "ACTIVE").map((s) => s.saleDate),
+        permissions,
+      )
+    : () => null;
 
   const paginationParams: Record<string, string> = {};
   if (q)                    paginationParams.q              = q;
@@ -411,7 +419,7 @@ const SalesPage = async ({
                               </Link>
                             ) : null}
                             {canCancel && !returnProgress.hasReturns && s.marketplaceSettlementLines.length === 0 ? (
-                              <SaleCancelButton saleId={s.id} docNo={s.saleNo} />
+                              <SaleCancelButton saleId={s.id} docNo={s.saleNo} periodLock={periodLockOf(s.saleDate)} />
                             ) : null}
                           </>
                         ) : null}

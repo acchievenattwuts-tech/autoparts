@@ -376,29 +376,52 @@ async function deleteSaleLinkedWarranty(
   });
 }
 
-export async function getSaleItems(saleId: string) {
+/** Sale lines for the warranty form (a client component): quantities are plain numbers, never Prisma Decimals. */
+export type WarrantySaleItemsResult = {
+  id: string;
+  saleNo: string;
+  saleDate: Date;
+  customerName: string | null;
+  items: {
+    id: string;
+    product: { code: string; name: string };
+    quantity: number;
+    warranties: { id: string }[];
+  }[];
+} | null;
+
+export async function getSaleItems(saleId: string): Promise<WarrantySaleItemsResult> {
   const session = await requireAnyPermission(["warranties.view", "warranties.create"]).catch(
     () => null,
   );
   if (!session?.user?.id) return null;
 
-  const sale = await db.sale.findUnique({
-    where: { id: saleId },
-    select: {
-      id: true,
-      saleNo: true,
-      saleDate: true,
-      customerName: true,
-      items: {
-        orderBy: { lineNo: "asc" },
-        select: {
-          id: true,
-          product: { select: { code: true, name: true } },
-          quantity: true,
-          warranties: { select: { id: true } },
+  try {
+    const sale = await db.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        customerName: true,
+        items: {
+          orderBy: { lineNo: "asc" },
+          select: {
+            id: true,
+            product: { select: { code: true, name: true } },
+            quantity: true,
+            warranties: { select: { id: true } },
+          },
         },
       },
-    },
-  });
-  return sale;
+    });
+    if (!sale) return null;
+    return {
+      ...sale,
+      items: sale.items.map((item) => ({ ...item, quantity: Number(item.quantity) })),
+    };
+  } catch (err) {
+    console.error("[getSaleItems]", err);
+    return null;
+  }
 }

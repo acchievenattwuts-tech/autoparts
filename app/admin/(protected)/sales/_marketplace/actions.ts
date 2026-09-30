@@ -27,6 +27,10 @@ import {
 import { parseDateOnlyToDate } from "@/lib/th-date";
 import { clearCashBankSourceMovements, replaceCashBankSourceMovements } from "@/lib/cash-bank";
 import { rebuildMarketplaceSettlementProfitFacts } from "@/lib/profit-fact";
+import {
+  toSettlementFactDatingAudit,
+  type SettlementFactDating,
+} from "@/lib/marketplace/settlement-fee-dating";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 import {
   notifyMarketplaceSettlementCancelled,
@@ -47,11 +51,24 @@ import {
 } from "@/lib/generated/prisma";
 import { getAuditActorFromSession, getRequestContext, safeWriteAuditLog } from "@/lib/audit-log";
 import {
+  assertPeriodsUnlocked,
+  findLockedPeriods,
+  PeriodLockedError,
+  type PeriodLockOverride,
+  type PeriodLockResult,
+} from "@/lib/period-lock";
+import {
+  canOverridePeriodLock,
+  notifyPeriodLockOverrideUsed,
+  periodLockAuditMeta,
+} from "@/lib/period-lock-document";
+import {
   buildEligibleSettlementCreditNoteWhere,
   buildEligibleSettlementSaleWhere,
   lockAndRevalidateSettlementDocuments,
   MarketplaceSettlementDocumentsChangedError,
 } from "./settlement-document-lock";
+import { loadSettlementFactDates } from "./settlement-fact-dates";
 
 const channelSchema = z
   .nativeEnum(SaleChannel)
@@ -418,6 +435,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
   try {
     let createdSettlementId = "";
     let settlementNo = "";
+    let factDating: SettlementFactDating | null = null;
     // Every number is "latest + 1" read outside the transaction, so a concurrent save
     // can take the same one (P2002 on its column). Postgres aborts the transaction
     // after the failed insert, so the WHOLE transaction — row locks, re-checks and all
@@ -435,9 +453,18 @@ export async function createMarketplaceSettlement(payload: unknown) {
         const { transferNo, expenseNo, adjustNo } = docNumbers;
         settlementNo = docNumbers.settlementNo;
         createdSettlementId = "";
+        factDating = null;
         return dbTx(async (tx) => {
           // Lock CreditNote → Sale rows and re-check eligibility before any write.
           await lockAndRevalidateSettlementDocuments(tx, { channel, holdingAccountId, sales, creditNotes });
+          // Month lock on the settlement date (lib/period-lock.ts); no override when recording.
+          await assertPeriodsUnlocked(tx, [docDate]);
+          // P2 = B: shared month locks on the sale months BEFORE createdAt is stamped, so a
+          // declaration of one of them is either already committed (declaredAt <= createdAt:
+          // its shares go to the settlement date) or waits for this commit (they keep the sale
+          // date). See lib/marketplace/settlement-fee-dating.ts.
+          await findLockedPeriods(tx, sales.map((sale) => sale.saleDate));
+          const recordedAt = new Date();
 
           const destination = await tx.cashBankAccount.findFirst({
             where: { id: input.destinationAccountId, isActive: true, type: "BANK" },
@@ -486,7 +513,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
               },
             ]);
             // ไม่เรียก rebuildExpenseProfitFacts เพราะรอบรับเงินเป็นผู้เขียน FactProfit ของ
-            // ใบนี้เอง โดยลงวันที่ตามใบขายแต่ละใบแทนวันที่ของใบค่าใช้จ่าย
+            // ใบนี้เอง โดยลงวันที่ตามใบขายแต่ละใบแทนวันที่ของใบค่าใช้จ่าย (ยกเว้นใบขายในเดือน
+            // ที่ประกาศปันผลแล้วก่อนบันทึกรอบ ลงวันที่รับเงินแทน — P2 = B)
           }
 
           let adjustmentId: string | null = null;
@@ -567,6 +595,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
               cashBankTransferId: transfer.id,
               note: input.note || null,
               userId: session.user!.id!,
+              // The fact builder compares this with ProfitDistribution.declaredAt (P2 = B).
+              createdAt: recordedAt,
               lines: {
                 create: [
                   ...sales.map((sale) => ({
@@ -601,7 +631,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
           });
           createdSettlementId = created.id;
 
-          await rebuildMarketplaceSettlementProfitFacts(tx, created.id);
+          factDating = await rebuildMarketplaceSettlementProfitFacts(tx, created.id);
         });
       },
     });
@@ -625,6 +655,8 @@ export async function createMarketplaceSettlement(payload: unknown) {
         saleIds: sales.map((sale) => sale.id),
         creditNoteIds: creditNotes.map((creditNote) => creditNote.id),
       },
+      // Which fee / income shares were booked on the settlement date instead of their sale date.
+      meta: { factDating: toSettlementFactDatingAudit(factDating) },
     });
 
     try {
@@ -653,6 +685,7 @@ export async function createMarketplaceSettlement(payload: unknown) {
     revalidatePath("/admin/cash-bank");
     return { success: true, settlementNo, payoutDifference };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof MarketplaceSettlementDocumentsChangedError) return { error: error.message };
     if (isUniqueViolationOnAny(error, SETTLEMENT_DOC_NUMBER_FIELDS)) {
       console.error("[marketplace] SETTLEMENT_DOC_NUMBER_CONFLICT", error);
@@ -684,6 +717,7 @@ type LockedMarketplaceSettlement = {
   expenseId: string | null;
   cashBankTransferId: string;
   cashBankAdjustmentId: string | null;
+  settlementDate?: Date | null;
 };
 
 /**
@@ -708,7 +742,7 @@ async function lockActiveMarketplaceSettlement(
   settlementId: string,
 ): Promise<LockedMarketplaceSettlement> {
   const rows = await tx.$queryRaw<({ status: string } & LockedMarketplaceSettlement)[]>(Prisma.sql`
-    SELECT "status"::text AS "status", "expenseId", "cashBankTransferId", "cashBankAdjustmentId"
+    SELECT "status"::text AS "status", "expenseId", "cashBankTransferId", "cashBankAdjustmentId", "settlementDate"
     FROM "MarketplaceSettlement"
     WHERE id = ${settlementId}
     FOR UPDATE
@@ -717,16 +751,27 @@ async function lockActiveMarketplaceSettlement(
   if (rows[0].status !== DocStatus.ACTIVE) {
     throw new MarketplaceSettlementNotActiveError(SETTLEMENT_ALREADY_CANCELLED_MESSAGE);
   }
-  const { expenseId, cashBankTransferId, cashBankAdjustmentId } = rows[0];
-  return { expenseId, cashBankTransferId, cashBankAdjustmentId };
+  const { expenseId, cashBankTransferId, cashBankAdjustmentId, settlementDate } = rows[0];
+  return { expenseId, cashBankTransferId, cashBankAdjustmentId, settlementDate: settlementDate ?? null };
 }
 
 async function cancelLockedMarketplaceSettlement(
   tx: Prisma.TransactionClient,
   settlementId: string,
   note: string,
-): Promise<void> {
+  lockOverride: PeriodLockOverride,
+  fallbackSettlementDate: Date,
+): Promise<PeriodLockResult> {
   const settlement = await lockActiveMarketplaceSettlement(tx, settlementId);
+  // Month lock under the row lock, before any write: the stored settlement date and (S2) every date
+  // its fee / income facts are still booked on — sale dates of months open when it was recorded
+  // (P2 = B), which may have been declared since.
+  const factDates = await loadSettlementFactDates(tx, [{ id: settlementId, expenseId: settlement.expenseId }]);
+  const periodLock = await assertPeriodsUnlocked(
+    tx,
+    [settlement.settlementDate ?? fallbackSettlementDate, ...(factDates.get(settlementId) ?? [])],
+    lockOverride,
+  );
   const cancelledAt = new Date();
 
   await clearCashBankSourceMovements(
@@ -770,9 +815,10 @@ async function cancelLockedMarketplaceSettlement(
   });
 
   await rebuildMarketplaceSettlementProfitFacts(tx, settlementId);
+  return periodLock;
 }
 
-export async function cancelMarketplaceSettlement(settlementId: string, cancelNote: string) {
+export async function cancelMarketplaceSettlement(settlementId: string, cancelNote: string, periodLockReason?: string) {
   const note = cancelNote.trim();
   if (!note) return { error: "กรุณาระบุเหตุผลที่ยกเลิก" };
 
@@ -784,6 +830,7 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
       channel: true,
       payoutRef: true,
       cashBankAdjustmentId: true,
+      settlementDate: true,
     },
   });
   // Fast path only — the authoritative status check runs under the row lock below.
@@ -808,9 +855,15 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
   }
   const session = permissions[0];
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์ยกเลิกรอบรับเงิน" };
+  const lockOverride: PeriodLockOverride = {
+    allowed: canOverridePeriodLock(session.user.permissions),
+    reason: periodLockReason ?? null,
+  };
 
   try {
-    await dbTx((tx) => cancelLockedMarketplaceSettlement(tx, settlementId, note));
+    const periodLock = await dbTx((tx) =>
+      cancelLockedMarketplaceSettlement(tx, settlementId, note, lockOverride, before.settlementDate),
+    );
 
     await safeWriteAuditLog({
       ...getAuditActorFromSession(session),
@@ -821,7 +874,17 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
       entityRef: before.settlementNo,
       before,
       after: { ...before, status: DocStatus.CANCELLED },
-      meta: { cancelNote: note },
+      meta: { cancelNote: note, ...periodLockAuditMeta(periodLock, lockOverride) },
+    });
+    await notifyPeriodLockOverrideUsed({
+      result: periodLock,
+      override: lockOverride,
+      entityType: "MarketplaceSettlement",
+      entityId: settlementId,
+      docNo: before.settlementNo,
+      action: `ยกเลิกรอบรับเงิน ${config.label}`,
+      actorName: session.user.name ?? session.user.email,
+      link: `/admin/marketplace/settlements/${settlementId}`,
     });
 
     try {
@@ -842,6 +905,7 @@ export async function cancelMarketplaceSettlement(settlementId: string, cancelNo
     revalidatePath("/admin/cash-bank");
     return { success: true };
   } catch (error) {
+    if (error instanceof PeriodLockedError) return { error: error.message };
     if (error instanceof MarketplaceSettlementNotActiveError) return { error: error.message };
     console.error("[marketplace] SETTLEMENT_CANCEL_FAILED", error);
     return { error: "ยกเลิกรอบรับเงินไม่สำเร็จ" };

@@ -91,9 +91,13 @@ const fakeTx: FakeTx = {
   // Used only by the short master-row transactions that run before the settlement one.
   $executeRaw: async (query: unknown) => {
     const { sql, values } = query as { sql: string; values: unknown[] };
+    // The month-lock check (lib/period-lock.ts) is covered by marketplace-settlement-period-lock.test.ts.
+    if (String(values[0]).startsWith("period-lock:")) return 1;
     record(`${/pg_advisory_xact_lock/.test(sql) ? "advisoryLock" : "exec"}:${values.join(",")}`);
     return 1;
   },
+  // No month has a declared profit distribution here.
+  profitDistribution: { findMany: async () => [] },
   supplier: {
     create: async () => {
       record("tx.supplier.create");

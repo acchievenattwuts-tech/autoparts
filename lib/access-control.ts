@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { PERIOD_LOCK_OVERRIDE_PERMISSION } from "@/lib/period-lock";
 
 const globalForAccessControl = globalThis as typeof globalThis & {
   accessControlSetupPromise?: Promise<void>;
@@ -159,6 +160,14 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "profit_distributions.create", group: "แบ่งกำไรผู้ร่วมทุน", label: "ประกาศแบ่งกำไร" },
   { key: "profit_distributions.cancel", group: "แบ่งกำไรผู้ร่วมทุน", label: "ยกเลิกเอกสารแบ่งกำไร" },
   { key: "profit_distributions.partners.manage", group: "แบ่งกำไรผู้ร่วมทุน", label: "จัดการข้อมูลผู้ร่วมทุน" },
+  // ปลดล็อกแก้/ยกเลิกเอกสารที่ลงวันที่ในเดือนที่ประกาศปันผลแล้ว (lib/period-lock.ts) — ADMIN เท่านั้น
+  // จงใจไม่ใส่ใน STAFF_OPERATIONS/STAFF_VIEWER; ทุกครั้งที่ใช้ต้องระบุเหตุผล ลง Audit Log และแจ้ง Telegram
+  {
+    key: PERIOD_LOCK_OVERRIDE_PERMISSION,
+    group: "แก้เอกสารในเดือนที่ปันผลแล้ว",
+    label: "แก้เอกสารในเดือนที่ปันผลแล้ว",
+    description: "แก้ไขหรือยกเลิกเอกสารที่ลงวันที่ในเดือนที่ประกาศปันผลแล้ว โดยต้องระบุเหตุผลทุกครั้ง",
+  },
 
   { key: "reports.view", group: "รายงาน", label: "ดูรายงาน" },
   { key: "product_search_report.view", group: "รายงานค้นหา", label: "ดู Product Search No Result" },
@@ -683,6 +692,7 @@ export function getRoutePermission(pathname: string): PermissionKey | null | und
   if (pathname === "/admin/supplier-payments/new") return "supplier_payments.create";
   if (pathname === "/admin/supplier-debit-notes/new") return "supplier_debit_notes.create";
   if (/^\/admin\/supplier-debit-notes\/[^/]+\/edit$/.test(pathname)) return "supplier_debit_notes.update";
+  if (/^\/admin\/supplier-debit-notes\/[^/]+\/adjust$/.test(pathname)) return "supplier_debit_notes.create";
   if (/^\/admin\/supplier-payments\/[^/]+\/edit$/.test(pathname)) return "supplier_payments.update";
   if (pathname === "/admin/expenses/new") return "expenses.create";
   if (pathname === "/admin/profit-distributions/new") return "profit_distributions.create";

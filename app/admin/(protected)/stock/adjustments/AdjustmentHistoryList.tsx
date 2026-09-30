@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import CancelDocButton from "@/components/shared/CancelDocButton";
+import { PeriodLockCancelButton, PeriodLockNotice } from "@/app/admin/_components/PeriodLockControls";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import { cancelAdjustment } from "./actions";
 import { formatDateThai } from "@/lib/th-date";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
@@ -25,6 +26,8 @@ interface AdjDoc {
   items:       AdjItem[];
   disabledReason?: string | null;
   blockReferences?: Array<{ href: string; label: string }>;
+  /** The adjustment's month was already distributed (lib/period-lock.ts). */
+  periodLock?: PeriodLockView | null;
 }
 
 const AdjustmentHistoryList = ({
@@ -75,7 +78,8 @@ const AdjustmentHistoryList = ({
             <div className="flex items-center gap-4">
               <span className="text-xs text-gray-400 dark:text-slate-400">โดย {adj.user.name}</span>
               {adj.status === "ACTIVE" && canCancel && (
-                <CancelDocButton
+                <PeriodLockCancelButton
+                  periodLock={adj.periodLock}
                   disabledReason={adj.disabledReason ?? undefined}
                   docId={adj.id}
                   docNo={adj.adjustNo}
@@ -89,6 +93,7 @@ const AdjustmentHistoryList = ({
 
           {/* Items */}
           {adj.disabledReason && <DocumentMutationBlockedNotice compact message={adj.disabledReason} references={adj.blockReferences} />}
+          {adj.status === "ACTIVE" && <PeriodLockNotice compact lock={adj.periodLock} />}
           <div className="divide-y divide-gray-50 dark:divide-white/5">
             {adj.items.map((item) => {
               const isIn = item.qtyAdjust > 0;

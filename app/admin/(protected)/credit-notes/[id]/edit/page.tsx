@@ -11,22 +11,27 @@ import { formatDateOnlyForInput } from "@/lib/th-date";
 import {
   buildMutationBlockMessage,
   buildMutationBlockReferenceLinks,
+  buildStockDebitEditWarning,
   checkDocumentMutation,
+  checkDocumentStockDebitWarning,
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import CreditNoteForm from "../../new/CreditNoteForm";
 import { CNRefundMethod, CNSettlementType, CreditNoteType } from "@/lib/generated/prisma";
 import { getCreditNoteProductOptionsByIds, getTransactionCustomers } from "@/lib/transaction-options";
 import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { CREDIT_NOTE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../credit-note-period-lock";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
-  await requirePermission("credit_notes.update");
+  const session = await requirePermission("credit_notes.update");
 
   const { id } = await params;
 
   const cn = await db.creditNote.findUnique({
     where: { id },
     include: {
+      sale: { select: { vatType: true, vatRate: true } },
       items: {
         orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         include: {
@@ -53,9 +58,17 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const mutationBlock = await checkDocumentMutation("CreditNote", id, "update");
+  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+    checkDocumentMutation("CreditNote", id, "update"),
+    // Lines before an active supplier DN: a warning only; updateCreditNote blocks just the rows it rewrites.
+    checkDocumentStockDebitWarning("CreditNote", id),
+    // Month already distributed: same message updateCreditNote returns (lib/period-lock.ts).
+    getDocumentPeriodLockView([cn.cnDate], session.user.permissions),
+  ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
+  const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
+  const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
 
   const [products, customers, config, cashBankAccounts] = await Promise.all([
     getCreditNoteProductOptionsByIds(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
@@ -123,6 +136,7 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     note:           cn.note ?? "",
     vatType:        cn.vatType,
     vatRate:        Number(cn.vatRate),
+    saleVat:        cn.sale ? { vatType: cn.sale.vatType, vatRate: Number(cn.sale.vatRate) } : null,
     items:          initialItems,
   };
 
@@ -145,6 +159,14 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
           />
         </div>
       )}
+      {stockDebitWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={stockDebitWarningMessage}
+            references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
       <CreditNoteForm
         products={products}
         customers={customers.map((customer) => ({ id: customer.id, name: customer.name, isActive: customer.isActive }))}
@@ -154,6 +176,8 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         defaultVatRate={config.vatRate}
         initialData={initialData}
         submitLocked={!!mutationBlockMessage}
+        periodLock={periodLock}
+        periodLockHint={CREDIT_NOTE_PERIOD_LOCK_ALLOWED_EDITS_HINT}
       />
     </div>
   );

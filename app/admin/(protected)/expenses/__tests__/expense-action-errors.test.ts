@@ -105,6 +105,9 @@ before(async () => {
 const baseTx = (expenseCreate: (args: unknown) => unknown = async () => ({ id: "exp-1" })): FakeTx => ({
   // Row lock taken first by updateExpense / cancelExpense (see expense-row-lock.test.ts).
   $queryRaw: async () => [{ status: "ACTIVE" }],
+  // Month lock (lib/period-lock.ts): no month is declared here — see expense-period-lock.test.ts.
+  $executeRaw: async () => 0,
+  profitDistribution: { findMany: async () => [] },
   expense: { create: expenseCreate, update: async () => ({}) },
   expenseItem: { deleteMany: async () => ({ count: 1 }), createMany: async () => ({ count: 1 }) },
   documentPayment: { deleteMany: async () => ({ count: 0 }), createMany: async () => ({ count: 1 }) },

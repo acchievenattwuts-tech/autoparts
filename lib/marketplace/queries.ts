@@ -4,8 +4,16 @@ import {
   CNSettlementType,
   CreditNoteType,
   DocStatus,
+  MarketplaceSettlementDocType,
   ProfitSourceType,
 } from "@/lib/generated/prisma";
+import { planMarketplaceSettlementFacts } from "@/lib/profit-fact";
+import {
+  loadMonthDistributions,
+  SETTLEMENT_SALE_LINE_ORDER,
+  toSettlementFeeDatingView,
+  type SettlementFeeDatingView,
+} from "./settlement-fee-dating";
 import {
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
@@ -440,6 +448,8 @@ export type ChannelFeeRateEstimate = {
  * ค่าธรรมเนียมจะเข้ากำไรก็ต่อเมื่อกระทบยอดแล้ว และถูกลงวันที่ย้อนกลับไปวันขาย
  * ดังนั้นงวดที่ยังมีออเดอร์ค้างรับเงินจะเห็นกำไรสูงกว่าความจริงชั่วคราว จนกว่า
  * แพลตฟอร์มจะโอน ตัวเลขนี้ใช้เตือนก่อนปิดงวด/ปันผล ว่ากำไรจะถูกปรับลดอีกเท่าไร
+ * (หลังประกาศปันผลงวดนั้นแล้ว ค่าธรรมเนียมที่กระทบยอดภายหลังจะลงวันที่รับเงินแทน — P2 = B
+ * ดู lib/marketplace/settlement-fee-dating.ts)
  */
 export async function estimatePendingChannelFees(
   start: Date,
@@ -504,6 +514,62 @@ export async function estimatePendingChannelFees(
     estimatedPendingFee: byChannel.reduce((sum, row) => sum + row.estimatedPendingFee, 0),
     byChannel,
   };
+}
+
+/**
+ * P2 = B: for each ACTIVE settlement among `settlementIds`, the fee / income shares booked on the
+ * settlement date instead of their sale date, and the distribution that caused it. Uses the same
+ * plan as the fact builder (lib/profit-fact.ts), so the page shows exactly what a rebuild writes.
+ * Two queries for the whole list; settlements with nothing moved are absent from the map.
+ */
+export async function getSettlementFeeDatingViews(
+  settlementIds: readonly string[],
+): Promise<Map<string, SettlementFeeDatingView>> {
+  const ids = [...new Set(settlementIds)];
+  if (ids.length === 0) return new Map();
+  try {
+    const settlements = await db.marketplaceSettlement.findMany({
+      where: { id: { in: ids }, status: DocStatus.ACTIVE },
+      select: {
+        id: true,
+        settlementDate: true,
+        createdAt: true,
+        expenseId: true,
+        feeAmount: true,
+        incomeAmount: true,
+        lines: {
+          where: { docType: MarketplaceSettlementDocType.SALE },
+          orderBy: SETTLEMENT_SALE_LINE_ORDER,
+          select: { docNo: true, docDate: true, amount: true },
+        },
+      },
+    });
+    const distributions = await loadMonthDistributions(
+      db,
+      settlements.flatMap((settlement) => settlement.lines.map((line) => line.docDate)),
+    );
+    const views = new Map<string, SettlementFeeDatingView>();
+    for (const settlement of settlements) {
+      const { dating } = planMarketplaceSettlementFacts({
+        settlementDate: settlement.settlementDate,
+        recordedAt: settlement.createdAt,
+        // Same as the fact builder: only a fee with its Expense has fee facts.
+        feeAmount: settlement.expenseId ? Number(settlement.feeAmount) : 0,
+        incomeAmount: Number(settlement.incomeAmount),
+        saleLines: settlement.lines.map((line) => ({
+          docNo: line.docNo,
+          docDate: line.docDate,
+          amount: Number(line.amount),
+        })),
+        distributions,
+      });
+      const view = toSettlementFeeDatingView(dating);
+      if (view) views.set(settlement.id, view);
+    }
+    return views;
+  } catch (error) {
+    throw new Error("Failed to load marketplace settlement fee dating", { cause: error });
+  }
 }
 
 export type ChannelProductProfitRow = {
