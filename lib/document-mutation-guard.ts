@@ -1,4 +1,5 @@
 import { Prisma } from "@/lib/generated/prisma";
+import { isValueOnlyStockSource, PURCHASE_ALLOWANCE_SOURCE, valueOnlyStockSources } from "@/lib/stock-value-only-source";
 
 export type MutableDocumentEntityType =
   | "SalesQuotation"
@@ -190,12 +191,28 @@ export function buildMutationBlockReferenceLinks(
   }));
 }
 
-const STOCK_BOUNDARY_REASON = "รายการสต็อกถูกใช้คำนวณใบเพิ่มหนี้แล้ว กรุณายกเลิกเอกสารปลายทางก่อน";
+/**
+ * The documents that value stock without quantity: a supplier DN ("ใบเพิ่มหนี้") and, from V8, a purchase return of
+ * type DISCOUNT/OTHER ("ใบลดหนี้ซื้อ (ลดราคาซื้อ)"). A DN-only boundary keeps its original wording.
+ */
+function valuePostingLabel(references: readonly MutationBlockReference[]): string {
+  const allowance = references.some((ref) => ref.entityType === "PurchaseReturn");
+  const debit = references.some((ref) => ref.entityType !== "PurchaseReturn");
+  if (allowance && debit) return "ใบเพิ่มหนี้และใบลดหนี้ซื้อ (ลดราคาซื้อ)";
+  return allowance ? "ใบลดหนี้ซื้อ (ลดราคาซื้อ)" : "ใบเพิ่มหนี้";
+}
+/** Stock rows valued by a later ACTIVE DN / ลดราคาซื้อ on the same SKU (cancel, reopen, whole-document boundary). */
+export const buildStockBoundaryReason = (references: readonly MutationBlockReference[]): string =>
+  `รายการสต็อกถูกใช้คำนวณ${valuePostingLabel(references)}แล้ว กรุณายกเลิกเอกสารปลายทางก่อน`;
+/** An edit that deletes or rewrites stock rows dated before an ACTIVE DN / ลดราคาซื้อ on the same SKU. */
+export const buildStockEditBoundaryReason = (references: readonly MutationBlockReference[]): string => {
+  const label = valuePostingLabel(references);
+  return `รายการสินค้าที่ลบหรือแก้ไขมีสต็อกที่ถูกใช้คำนวณ${label}แล้ว แก้ไขได้เฉพาะข้อมูลที่ไม่กระทบสต็อก หรือยกเลิก${label}ก่อน`;
+};
 /** A DN corrected by an ACTIVE "ปรับยอด DN" document can be neither cancelled nor reposted (R5-D). */
 export const SUPPLIER_DEBIT_ADJUSTED_REASON = "มีเอกสารปรับยอด DN ที่อ้างอิงใบนี้และยังใช้งานอยู่ กรุณายกเลิกเอกสารปรับยอดก่อน";
-/** An edit that deletes or rewrites stock rows dated before an ACTIVE DN on the same SKU. */
-export const STOCK_EDIT_BOUNDARY_REASON =
-  "รายการสินค้าที่ลบหรือแก้ไขมีสต็อกที่ถูกใช้คำนวณใบเพิ่มหนี้แล้ว แก้ไขได้เฉพาะข้อมูลที่ไม่กระทบสต็อก หรือยกเลิกใบเพิ่มหนี้ก่อน";
+/** The DN wording of buildStockEditBoundaryReason. */
+export const STOCK_EDIT_BOUNDARY_REASON = buildStockEditBoundaryReason([]);
 const STOCK_EDIT_WARNING_LEAD =
   "หากแก้ไขส่วนที่กระทบสต็อก เช่น ลบหรือเปลี่ยนรายการสินค้า จำนวน ราคา/ต้นทุน หรือวันที่เอกสาร จะบันทึกไม่ได้ เนื่องจาก";
 
@@ -203,8 +220,9 @@ const STOCK_EDIT_WARNING_LEAD =
  * Update actions of these documents check only the stock rows they are about to delete
  * or rewrite (checkRewrittenStockRows), so a header-only edit or a claim forward step
  * (which only adds rows dated today) is allowed. Cancel and reopen still check every
- * stock row of the document against a later ACTIVE DN. Adjustment and BalanceForward keep the
- * whole-document boundary for every action; a SupplierDebitNote has none (its changes restate later sales).
+ * stock row of the document against a later ACTIVE DN / ลดราคาซื้อ. Adjustment and BalanceForward keep the
+ * whole-document boundary for every action; a SupplierDebitNote has none (its changes restate later sales), and
+ * neither have the value-only PURCHASE_ALLOWANCE rows of a DISCOUNT/OTHER purchase return (V8, same restatement).
  */
 const ROW_SCOPED_UPDATE_ENTITIES: ReadonlySet<MutableDocumentEntityType> = new Set<MutableDocumentEntityType>([
   "Sale", "CreditNote", "PurchaseReturn", "Purchase", "WarrantyClaim",
@@ -216,6 +234,7 @@ type StockBoundaryRow = {
   docDate: Date;
   sorder: number;
   valuationEpoch: number;
+  source: string | null;
 };
 
 function stockBoundaryRow(row: Record<string, unknown>): StockBoundaryRow | null {
@@ -223,36 +242,58 @@ function stockBoundaryRow(row: Record<string, unknown>): StockBoundaryRow | null
   const docNo = stringValue(row.docNo);
   return productId && docNo && row.docDate instanceof Date && typeof row.sorder === "number"
     ? { productId, docNo, docDate: row.docDate, sorder: row.sorder,
-        valuationEpoch: typeof row.valuationEpoch === "number" ? row.valuationEpoch : 0 }
+        valuationEpoch: typeof row.valuationEpoch === "number" ? row.valuationEpoch : 0, source: stringValue(row.source) }
     : null;
 }
 
 const stockBoundarySelect = {
-  productId: true, docNo: true, docDate: true, sorder: true, valuationEpoch: true,
+  productId: true, docNo: true, docDate: true, sorder: true, valuationEpoch: true, source: true,
 };
 
-/** Batch list-page reasons from the same persisted DN boundary used by server guards. */
+/**
+ * A document's own stock rows that a later value posting can have valued. Its own value-only rows (a DN, or the
+ * ลดราคาซื้อ rows of a DISCOUNT/OTHER purchase return) never are: changing them restates later sales instead.
+ */
+const toOwnStockRows = (rows: Array<Record<string, unknown>>): StockBoundaryRow[] =>
+  rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => row !== null && !isValueOnlyStockSource(row.source));
+
+/**
+ * The ACTIVE documents behind value-only rows: PURCHASE_ALLOWANCE rows belong to a purchase return (returnNo), every
+ * other value-only row to a supplier DN (debitNo). A cancelled document never blocks.
+ */
+async function findActiveValuePostingRefs(database: GuardDb,
+  rows: ReadonlyArray<{ docNo: string | null; source?: string | null }>): Promise<MutationBlockReference[]> {
+  const numbers = (allowance: boolean): string[] => [...new Set(rows
+    .filter((row) => (row.source === PURCHASE_ALLOWANCE_SOURCE) === allowance)
+    .map((row) => row.docNo).filter((value): value is string => Boolean(value)))];
+  const debitNos = numbers(false);
+  const returnNos = numbers(true);
+  const debits = debitNos.length === 0 ? [] : await database.supplierDebitNote?.findMany({
+    where: { debitNo: { in: debitNos }, status: "ACTIVE" }, select: { id: true, debitNo: true },
+  }) ?? [];
+  const allowances = returnNos.length === 0 ? [] : await database.purchaseReturn?.findMany({
+    where: { returnNo: { in: returnNos }, status: "ACTIVE" }, select: { id: true, returnNo: true },
+  }) ?? [];
+  return [...mapDirectRefs(debits, "SupplierDebitNote", "debitNo"), ...mapDirectRefs(allowances, "PurchaseReturn", "returnNo")];
+}
+
+/** Batch list-page reasons from the same persisted DN / ลดราคาซื้อ boundary used by server guards. */
 export async function getStockDocumentDebitBlocks(database: GuardDb, docNos: string[]): Promise<Map<string, MutationBlockResult>> {
   const results = new Map<string, MutationBlockResult>();
   if (!database.stockCard || docNos.length === 0) return results;
   try {
-    const ownRows = (await database.stockCard.findMany({ where: { docNo: { in: docNos } }, select: stockBoundarySelect }))
-      .map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row));
+    const ownRows = toOwnStockRows(await database.stockCard.findMany({ where: { docNo: { in: docNos } }, select: stockBoundarySelect }));
     if (ownRows.length === 0) return results;
     const laterRows = (await database.stockCard.findMany({ where: {
-      source: "SUPPLIER_DEBIT", OR: ownRows.map(laterStockWhere),
+      source: { in: valueOnlyStockSources() }, OR: ownRows.map(laterStockWhere),
     }, select: stockBoundarySelect })).map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row));
-    const debitRefs = mapDirectRefs(await database.supplierDebitNote?.findMany({
-      where: { debitNo: { in: [...new Set(laterRows.map((row) => row.docNo))] }, status: "ACTIVE" },
-      select: { id: true, debitNo: true },
-    }) ?? [], "SupplierDebitNote", "debitNo");
-    const refByNo = new Map(debitRefs.map((ref) => [ref.refNo, ref]));
+    const refByNo = new Map((await findActiveValuePostingRefs(database, laterRows)).map((ref) => [ref.refNo, ref]));
     for (const docNo of docNos) {
-      const refs = laterRows.filter((later) => ownRows.some((own) => own.docNo === docNo && own.productId === later.productId &&
+      const refs = uniqueRefs(laterRows.filter((later) => ownRows.some((own) => own.docNo === docNo && own.productId === later.productId &&
         (later.docDate > own.docDate || (later.docDate.getTime() === own.docDate.getTime() &&
           (later.valuationEpoch > own.valuationEpoch || (later.valuationEpoch === own.valuationEpoch && later.sorder > own.sorder))))))
-        .map((row) => refByNo.get(row.docNo)).filter((ref): ref is MutationBlockReference => Boolean(ref));
-      results.set(docNo, block(STOCK_BOUNDARY_REASON, uniqueRefs(refs)));
+        .map((row) => refByNo.get(row.docNo)).filter((ref): ref is MutationBlockReference => Boolean(ref)));
+      results.set(docNo, block(buildStockBoundaryReason(refs), refs));
     }
     return results;
   } catch (error) { console.error("[getStockDocumentDebitBlocks]", error); throw error; }
@@ -267,20 +308,22 @@ function laterStockWhere(row: StockBoundaryRow): Record<string, unknown> {
   ] };
 }
 
-/** Rows of a document that a later ACTIVE supplier DN valued on the same SKU (the DN boundary). */
+/**
+ * Rows of a document that a later ACTIVE value posting valued on the same SKU (the phase-1 boundary): a supplier DN,
+ * or (V8) the ลดราคาซื้อ rows of a DISCOUNT/OTHER purchase return.
+ */
 async function checkStockRowsBoundary(database: GuardDb, ownRows: StockBoundaryRow[]): Promise<MutationBlockResult> {
   if (!database.stockCard || ownRows.length === 0) return allow();
   const ownDocNos = [...new Set(ownRows.map((row) => row.docNo))];
   const later = await database.stockCard.findMany({
-    where: { docNo: { notIn: ownDocNos }, source: "SUPPLIER_DEBIT", OR: ownRows.map(laterStockWhere) },
+    where: { docNo: { notIn: ownDocNos }, source: { in: valueOnlyStockSources() }, OR: ownRows.map(laterStockWhere) },
     select: stockBoundarySelect,
   });
-  const docNos = [...new Set(later.map((row) => stringValue(row.docNo)).filter((value): value is string => Boolean(value)))];
-  if (docNos.length === 0) return allow();
-  const debits = await database.supplierDebitNote?.findMany({
-    where: { debitNo: { in: docNos }, status: "ACTIVE" }, select: { id: true, debitNo: true },
-  }) ?? [];
-  return block(STOCK_BOUNDARY_REASON, uniqueRefs(mapDirectRefs(debits, "SupplierDebitNote", "debitNo")));
+  const laterRows = later.map((row) => ({ docNo: stringValue(row.docNo), source: stringValue(row.source) }))
+    .filter((row) => row.docNo !== null);
+  if (laterRows.length === 0) return allow();
+  const refs = uniqueRefs(await findActiveValuePostingRefs(database, laterRows));
+  return block(buildStockBoundaryReason(refs), refs);
 }
 
 async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDocumentEntityType,
@@ -301,7 +344,7 @@ async function checkEntityStockBoundary(database: GuardDb, entityType: MutableDo
     where: entityType === "WarrantyClaim" ? { OR: [{ referenceId: entityId }, { docNo: { startsWith: docNo } }] } : { docNo },
     select: stockBoundarySelect,
   });
-  return checkStockRowsBoundary(database, rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)));
+  return checkStockRowsBoundary(database, toOwnStockRows(rows));
 }
 
 /** StockCard filter for the rows an edit deletes or rewrites; null when it touches none. */
@@ -320,7 +363,7 @@ export function buildRewrittenStockRowsWhere(docNo: string, lineIds: readonly st
 }
 
 /**
- * Checks only the stock rows an update deletes or rewrites against a later ACTIVE DN on
+ * Checks only the stock rows an update deletes or rewrites against a later ACTIVE DN / ลดราคาซื้อ on
  * the same SKU. Rows the edit keeps untouched never block. Run it under the same sorted
  * SKU locks as the document guard, after the differential match and before any write.
  */
@@ -329,9 +372,8 @@ export async function checkRewrittenStockRows(database: GuardDb, rowsWhere: Rewr
   if (!rowsWhere || !database.stockCard) return allow();
   try {
     const rows = await database.stockCard.findMany({ where: rowsWhere, select: stockBoundarySelect });
-    const boundary = await checkStockRowsBoundary(database,
-      rows.map(stockBoundaryRow).filter((row): row is StockBoundaryRow => Boolean(row)));
-    return block(STOCK_EDIT_BOUNDARY_REASON, boundary.references);
+    const boundary = await checkStockRowsBoundary(database, toOwnStockRows(rows));
+    return block(buildStockEditBoundaryReason(boundary.references), boundary.references);
   } catch (error) { console.error("[checkRewrittenStockRows]", error); throw error; }
 }
 
@@ -352,7 +394,7 @@ export async function checkDocumentStockDebitWarning(entityType: MutableDocument
 export function buildStockDebitEditWarning(result: MutationBlockResult): string | null {
   if (!result.blocked) return null;
   const refs = result.references.map((ref) => ref.refNo).join(", ");
-  return `${STOCK_EDIT_WARNING_LEAD}${STOCK_EDIT_BOUNDARY_REASON}${refs ? `: ${refs}` : ""}`;
+  return `${STOCK_EDIT_WARNING_LEAD}${buildStockEditBoundaryReason(result.references)}${refs ? `: ${refs}` : ""}`;
 }
 
 export class DocumentMutationBlockedError extends Error {
@@ -380,19 +422,16 @@ export async function assertRewrittenStockRowsAllowedInTx(tx: Prisma.Transaction
   if (message) throw new DocumentMutationBlockedError(message);
 }
 
-/** Bulk purchase insertion must obey the same backdating boundary as writeStockCard. */
+/** Bulk purchase insertion must obey the same backdating boundary as writeStockCard (DN and ลดราคาซื้อ rows). */
 export async function assertStockWriteDateAllowed(tx: Prisma.TransactionClient,
   productIds: readonly string[], docDate: Date): Promise<void> {
   const rows = await tx.stockCard.findMany({
-    where: { productId: { in: [...new Set(productIds)] }, source: "SUPPLIER_DEBIT", docDate: { gt: docDate } },
-    select: { docNo: true },
+    where: { productId: { in: [...new Set(productIds)] }, source: { in: valueOnlyStockSources() }, docDate: { gt: docDate } },
+    select: { docNo: true, source: true },
   });
   if (rows.length === 0) return;
-  const debits = await tx.supplierDebitNote.findMany({
-    where: { debitNo: { in: rows.map((row) => row.docNo) }, status: "ACTIVE" }, select: { id: true, debitNo: true },
-  });
-  const result = block(STOCK_BOUNDARY_REASON, mapDirectRefs(debits, "SupplierDebitNote", "debitNo"));
-  const message = buildMutationBlockMessage(result);
+  const refs = uniqueRefs(await findActiveValuePostingRefs(tx as unknown as GuardDb, rows));
+  const message = buildMutationBlockMessage(block(buildStockBoundaryReason(refs), refs));
   if (message) throw new DocumentMutationBlockedError(message);
 }
 
@@ -407,6 +446,7 @@ export function createDocumentMutationGuard(database: GuardDb) {
 
       // Row-scoped updates check only the rows they rewrite (checkRewrittenStockRows). A supplier DN has no
       // stock boundary of its own: cancelling or editing it restates later sales (T1, owner approved 2026-09-30).
+      // Neither have the value-only rows of a DISCOUNT/OTHER purchase return (V8; toOwnStockRows skips them).
       const stockBoundary = (action === "update" && ROW_SCOPED_UPDATE_ENTITIES.has(entityType)) || entityType === "SupplierDebitNote"
         ? allow()
         : await checkEntityStockBoundary(database, entityType, entityId);

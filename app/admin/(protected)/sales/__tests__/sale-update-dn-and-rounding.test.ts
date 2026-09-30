@@ -181,7 +181,7 @@ const stockCardWithLaterDebit = {
   findMany: async (args: unknown) => {
     const { where = {}, distinct } = args as Where;
     if (distinct) return [{ productId: "prod-1" }];
-    if (where.source === "SUPPLIER_DEBIT") return [debitRow];
+    if (JSON.stringify(where.source ?? null).includes("SUPPLIER_DEBIT")) return [debitRow];
     return where.docNo === SALE_NO ? [saleRow] : [];
   },
 };

@@ -162,7 +162,7 @@ beforeEach(() => {
     stockCard: {
       findMany: async (args: unknown) => {
         const where = (args as Where).where ?? {};
-        if (where.source === "SUPPLIER_DEBIT") return [debitRow];
+        if (JSON.stringify(where.source ?? null).includes("SUPPLIER_DEBIT")) return [debitRow];
         return where.docNo === PURCHASE_NO ? [{ productId: "prod-2", ...purchaseRow(new Date("2026-09-19T17:00:00.000Z")) }] : [];
       },
     },

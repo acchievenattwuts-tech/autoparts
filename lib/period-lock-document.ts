@@ -191,7 +191,8 @@ export async function notifyPeriodLockOverrideUsed(input: {
   });
 }
 
-const toPeriodLockView = (locked: LockedPeriod[], canOverride: boolean): PeriodLockView | null =>
+/** A page/dialog view of `locked` (null when empty), with the same message the server rejects with. */
+export const toPeriodLockView = (locked: LockedPeriod[], canOverride: boolean): PeriodLockView | null =>
   locked.length === 0
     ? null
     : {

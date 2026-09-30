@@ -3,8 +3,8 @@
 import { Fragment, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createPurchaseReturn, updatePurchaseReturn, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, type PurchaseReturnSourceVat } from "../actions";
-import { CheckCircle, ExternalLink, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { createPurchaseReturn, updatePurchaseReturn, previewPurchaseReturnUpdate, getPurchasesForSupplier, getPurchaseDetail, fetchProductLots, searchPurchaseReturnProducts, type PurchaseReturnSourceVat } from "../actions";
+import { CheckCircle, ExternalLink, Lock, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import { calcVat, VAT_TYPE_LABELS, type VatType } from "@/lib/vat";
 import AdminNumberInput from "@/components/shared/AdminNumberInput";
 import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
@@ -13,7 +13,18 @@ import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/share
 import { validateLotRows, type LotAvailableJSON, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
-import type { PeriodLockView } from "@/lib/period-lock-view";
+import {
+  isPeriodLockReasonLongEnough,
+  PERIOD_LOCK_REASON_FIELD,
+  PERIOD_LOCK_REASON_REQUIRED_MESSAGE,
+  type PeriodLockView,
+} from "@/lib/period-lock-view";
+import {
+  describePurchaseReturnRestatement,
+  needsPurchaseReturnEditPreview,
+  resolvePurchaseReturnEditLock,
+  type PurchaseReturnEditPreview,
+} from "../purchase-return-edit-preview";
 import {
   createRowKey,
   createRowRequestTracker,
@@ -21,7 +32,11 @@ import {
   seedRowKeys,
   stripRowKeys,
 } from "@/lib/form-row-state";
-import { PURCHASE_RETURN_SETTLEMENT_LABELS } from "../purchase-return-presentation";
+import {
+  isPurchaseReturnTypeChangeAllowed,
+  PURCHASE_RETURN_SETTLEMENT_LABELS,
+  PURCHASE_RETURN_TYPE_CHANGE_MESSAGE,
+} from "../purchase-return-presentation";
 import { describeInputVatTreatment, isInputVatRecoverable, parseVatRegisteredFrom } from "@/lib/input-vat";
 import {
   getTaxInvoiceFieldsError,
@@ -228,6 +243,9 @@ const PurchaseReturnForm = ({
       (purchaseVat.vatType !== "NO_VAT" && Math.abs(purchaseVat.vatRate - initialData.vatRate) > VAT_RATE_TOLERANCE));
   // The date input stays uncontrolled; this copy only feeds the month-lock change check (P3).
   const [returnDateKey, setReturnDateKey] = useState(seedData?.returnDate ?? getThailandDateKey());
+  // Y2 (edit): the month-lock preview of the financial fields it was run for, and the months of a lock rejection.
+  const [editPreview, setEditPreview] = useState<{ key: string; preview: PurchaseReturnEditPreview } | null>(null);
+  const [serverLock, setServerLock] = useState<PeriodLockView | null>(null);
   // Per-row lot state is keyed by FormLineItem.rowKey, so removing a row never shifts
   // another row's lots onto it.
   const [availableLots, setAvailableLots] = useState<Record<string, LotAvailableJSON[]>>(seededRows.lots);
@@ -497,26 +515,65 @@ const PurchaseReturnForm = ({
 
   // P3: what updatePurchaseReturn compares in a locked month (purchase-return-period-lock.ts).
   // The note and the line detail text are left out.
-  const { financialChange: periodLockFinancialChange } = usePeriodLockFinancialChange(
-    periodLock,
-    {
-      returnDate: returnDateKey,
-      purchaseId,
-      claimId: linkedClaimId,
-      supplierId,
-      type: returnType,
-      settlementType,
-      vatType,
-      vatRate,
-      // The credit-note number/date are remarks unless the date flips VAT recoverability (V5).
-      inputVatRecoverable,
-      lines: stripRowKeys(items).map((item) => ({ ...item, moreDetail: "" })),
-      payments: settlementType === "CASH_REFUND"
-        ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
-        : [],
-    },
-    error,
-  );
+  const periodLockSnapshot = {
+    returnDate: returnDateKey,
+    purchaseId,
+    claimId: linkedClaimId,
+    supplierId,
+    type: returnType,
+    settlementType,
+    vatType,
+    vatRate,
+    // The credit-note number/date are remarks unless the date flips VAT recoverability (V5).
+    inputVatRecoverable,
+    lines: stripRowKeys(items).map((item) => ({ ...item, moreDetail: "" })),
+    payments: settlementType === "CASH_REFUND"
+      ? payments.filter((row) => row.amount > 0).map((row) => ({ cashBankAccountId: row.cashBankAccountId, amount: row.amount }))
+      : [],
+  };
+  const { financialChange: periodLockFinancialChange } = usePeriodLockFinancialChange(periodLock, periodLockSnapshot, error);
+  // Y2: the same fields decide whether saving an edit first previews every month it touches — also the later sales /
+  // credit notes a ลดราคาซื้อ repost restates, which the page's render-time lock (return and posting month) misses.
+  const financialKey = JSON.stringify(periodLockSnapshot);
+  const [financialBaseline] = useState(financialKey);
+  const financialEdited = isEdit && financialKey !== financialBaseline;
+  const currentEditPreview = editPreview?.key === financialKey ? editPreview.preview : null;
+  const editLock = resolvePurchaseReturnEditLock({
+    initial: periodLock,
+    initialAsksReason: periodLockFinancialChange,
+    preview: currentEditPreview,
+    server: serverLock,
+  });
+  const restatementNote = editLock.lock ? describePurchaseReturnRestatement(currentEditPreview?.restatement ?? null) : null;
+
+  /** Y2: false = stop before saving (the reason is now asked for, or the change is blocked and the notice says why). */
+  const confirmEditPeriodLock = async (returnId: string, formData: FormData): Promise<boolean> => {
+    const reasonGiven = isPeriodLockReasonLongEnough(String(formData.get(PERIOD_LOCK_REASON_FIELD) ?? ""));
+    if (!needsPurchaseReturnEditPreview({ financialEdited, hasServerLock: serverLock !== null, reasonGiven })) return true;
+    let preview = currentEditPreview;
+    if (!preview) {
+      try {
+        const result = await previewPurchaseReturnUpdate(returnId, formData);
+        // A failed preview never blocks: the server decides and returns the months when it rejects for the lock.
+        if (!result.preview) return true;
+        preview = result.preview;
+        setEditPreview({ key: financialKey, preview });
+      } catch (previewError) {
+        console.error("[PurchaseReturnForm] edit preview", previewError);
+        return true;
+      }
+    }
+    const state = resolvePurchaseReturnEditLock({ initial: periodLock, initialAsksReason: false, preview, server: null });
+    if (state.blocks && state.lock) {
+      setError(state.lock.message);
+      return false;
+    }
+    if (state.asksReason) {
+      setError(PERIOD_LOCK_REASON_REQUIRED_MESSAGE);
+      return false;
+    }
+    return true;
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -592,9 +649,13 @@ const PurchaseReturnForm = ({
 
     startTransition(async () => {
       if (isEdit && initialData) {
+        if (!(await confirmEditPeriodLock(initialData.id, formData))) return;
         const result = await updatePurchaseReturn(initialData.id, formData);
-        if (result.error) setError(result.error);
-        else {
+        if (result.error) {
+          setError(result.error);
+          // Y2: a lock rejection names every month it found, so an owner is asked for the reason from here on.
+          if (result.periodLock) setServerLock(result.periodLock);
+        } else {
           setSubmitted(true);
           router.push("/admin/purchase-returns");
         }
@@ -613,7 +674,10 @@ const PurchaseReturnForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <PeriodLockFormSection lock={periodLock} hint={periodLockHint} financialChange={periodLockFinancialChange} />
+      <PeriodLockFormSection lock={editLock.lock} hint={periodLockHint} financialChange={editLock.asksReason} />
+      {restatementNote ? (
+        <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">{restatementNote}</p>
+      ) : null}
       {claimContext && (
         <div className="overflow-hidden rounded-xl border border-orange-200 bg-orange-50 shadow-sm dark:border-orange-300/25 dark:bg-orange-400/10">
           <div className="flex flex-col gap-4 p-4 md:flex-row md:items-center md:justify-between">
@@ -697,25 +761,45 @@ const PurchaseReturnForm = ({
           <div>
             <label className={labelCls}>ประเภทการคืน <span className="text-red-500">*</span></label>
             <div className="overflow-hidden rounded-lg border border-gray-300 dark:border-white/20">
-              {(["RETURN", "DISCOUNT", "OTHER"] as const).map((value, idx) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setReturnType(value)}
-                  className={`w-1/3 px-3 py-2 text-sm font-medium transition-colors ${
-                    idx > 0 ? "border-l border-gray-300 dark:border-white/20" : ""
-                  } ${
-                    returnType === value
-                      ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
-                      : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  {RETURN_TYPE_LABELS[value]}
-                </button>
-              ))}
+              {(["RETURN", "DISCOUNT", "OTHER"] as const).map((value, idx) => {
+                // X3: an edit keeps RETURN vs DISCOUNT/OTHER; the server refuses the switch with the same message.
+                const typeLocked = initialData !== undefined && !isPurchaseReturnTypeChangeAllowed(initialData.type, value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setReturnType(value)}
+                    disabled={typeLocked}
+                    title={typeLocked ? PURCHASE_RETURN_TYPE_CHANGE_MESSAGE : undefined}
+                    className={`w-1/3 px-3 py-2 text-sm font-medium transition-colors ${
+                      idx > 0 ? "border-l border-gray-300 dark:border-white/20" : ""
+                    } ${
+                      returnType === value
+                        ? "bg-[#1e3a5f] text-white dark:bg-sky-700"
+                        : typeLocked
+                          ? "cursor-not-allowed bg-gray-100 text-gray-400 dark:bg-slate-900 dark:text-slate-600"
+                          : "bg-white text-gray-600 hover:bg-gray-50 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                    }`}
+                  >
+                    {RETURN_TYPE_LABELS[value]}
+                  </button>
+                );
+              })}
             </div>
+            {isEdit && (
+              <p className="mt-1 flex items-start gap-1 text-xs text-gray-500 dark:text-slate-400">
+                <Lock size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{PURCHASE_RETURN_TYPE_CHANGE_MESSAGE}</span>
+              </p>
+            )}
             {returnType === "RETURN" && (
               <p className="mt-1 text-xs text-[#1e3a5f] dark:text-sky-400">ส่งคืนสินค้า: ระบบจะหักสต็อก + Lot อัตโนมัติ</p>
+            )}
+            {returnType !== "RETURN" && !linkedClaimId && (
+              <p className="mt-1 text-xs text-cyan-800 dark:text-cyan-300">
+                {RETURN_TYPE_LABELS[returnType]}: ไม่หักจำนวนสต็อก แต่ลดต้นทุนสินค้า (ลดราคาซื้อ) ตามจำนวนคงเหลือ ณ วันที่บันทึก
+                ส่วนที่ขายไปแล้วเป็นส่วนต่างต้นทุนในงวดนั้น
+              </p>
             )}
           </div>
           <div>

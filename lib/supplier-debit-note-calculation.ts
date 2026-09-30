@@ -89,9 +89,10 @@ function documentVat(total: Prisma.Decimal, vatType: VatType, rate: Prisma.Decim
 /**
  * Split whole satang across lines in proportion to their weights (largest remainder). Leftover
  * satang go to the largest fractional remainders; ties go to the earlier line, so the same input
- * order always yields the same split and the parts always sum to the total.
+ * order always yields the same split and the parts always sum to the total. Also splits a purchase
+ * return's allowance cost over its lines (lib/purchase-allowance.ts, V8 W3).
  */
-function allocateBySatang(total: Prisma.Decimal, weights: Prisma.Decimal[]): Prisma.Decimal[] {
+export function allocateBySatang(total: Prisma.Decimal, weights: Prisma.Decimal[]): Prisma.Decimal[] {
   const weightSum = weights.reduce((sum, weight) => sum.plus(weight), new Prisma.Decimal(0));
   const satang = total.mul(CENTS_PER_UNIT);
   if (weightSum.lte(0) || satang.lte(0)) return weights.map(() => new Prisma.Decimal(0));

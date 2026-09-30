@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import { PROFIT_DASHBOARD_CACHE_TAG } from "@/lib/profit-cache";
 import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
+import { PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 import {
   addThailandDays,
   getThailandDateKey,
@@ -529,6 +530,23 @@ async function getSupplierDebitNoteSupplierNames(
   }
 }
 
+/** V8: a PURCHASE_ALLOWANCE variance fact is keyed by its purchase return (DISCOUNT/OTHER, "ลดราคาซื้อ"). */
+async function getPurchaseReturnSupplierNames(purchaseReturnIds: string[]): Promise<Map<string, string>> {
+  if (purchaseReturnIds.length === 0) return new Map();
+
+  try {
+    const purchaseReturns = await runAdminDashboardRead(() => db.purchaseReturn.findMany({
+      where: { id: { in: purchaseReturnIds } },
+      select: { id: true, supplier: { select: { name: true } } },
+    }));
+    return new Map(purchaseReturns.flatMap((purchaseReturn): Array<[string, string]> =>
+      purchaseReturn.supplier ? [[purchaseReturn.id, purchaseReturn.supplier.name]] : []));
+  } catch (error) {
+    console.error("[profit-dashboard] purchase return supplier names failed", error);
+    throw error;
+  }
+}
+
 async function getInvoiceAnalysis(
   fromDate: Date,
   toDate: Date,
@@ -563,10 +581,13 @@ async function getInvoiceAnalysis(
     skip: (pagination.page - 1) * pagination.pageSize,
     take: pagination.pageSize,
   }));
+  const varianceRows = grouped.filter((row) => row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE);
+  const isAllowanceRow = (row: { sourceSubtype: string | null }): boolean => row.sourceSubtype === PURCHASE_ALLOWANCE_SOURCE;
   const supplierNameByDebitNoteId = await getSupplierDebitNoteSupplierNames(
-    grouped
-      .filter((row) => row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE)
-      .map((row) => row.sourceId),
+    varianceRows.filter((row) => !isAllowanceRow(row)).map((row) => row.sourceId),
+  );
+  const supplierNameByReturnId = await getPurchaseReturnSupplierNames(
+    varianceRows.filter(isAllowanceRow).map((row) => row.sourceId),
   );
 
   return {
@@ -575,7 +596,7 @@ async function getInvoiceAnalysis(
       const grossProfit = asNumber(row._sum.grossProfit);
       const supplierName =
         row.sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE
-          ? supplierNameByDebitNoteId.get(row.sourceId) ?? null
+          ? (isAllowanceRow(row) ? supplierNameByReturnId : supplierNameByDebitNoteId).get(row.sourceId) ?? null
           : null;
 
       return {

@@ -62,7 +62,7 @@ test("golden guard: same-day stock before DN uses epoch boundary, not source pre
   }).check("Purchase", "po-1", "cancel");
   assert.equal(result.blocked, true);
   assert.deepEqual(stockQueries[1]?.where, {
-    docNo: { notIn: ["PO26090001"] }, source: "SUPPLIER_DEBIT", OR: [{ productId: "sku-1", OR: [
+    docNo: { notIn: ["PO26090001"] }, source: { in: ["SUPPLIER_DEBIT", "PURCHASE_ALLOWANCE"] }, OR: [{ productId: "sku-1", OR: [
       { docDate: { gt: postingDate } },
       { docDate: postingDate, valuationEpoch: { gt: 0 } },
       { docDate: postingDate, valuationEpoch: 0, sorder: { gt: 2 } },
@@ -142,7 +142,8 @@ test("golden guard: bulk backdated stock writes reject with active DN number", a
     assert.ok(error.message.includes("SDN26090001"));
     return true;
   });
-  assert.deepEqual(query, { where: { productId: { in: ["sku-1"] }, source: "SUPPLIER_DEBIT", docDate: { gt: postingDate } }, select: { docNo: true } });
+  assert.deepEqual(query, { where: { productId: { in: ["sku-1"] }, source: { in: ["SUPPLIER_DEBIT", "PURCHASE_ALLOWANCE"] },
+    docDate: { gt: postingDate } }, select: { docNo: true, source: true } });
 });
 
 test("golden guard: cancelled DN does not leave an immutable purchase reference", async () => {

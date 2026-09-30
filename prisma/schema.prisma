@@ -3352,6 +3352,8 @@ enum StockCardSource {
   CLAIM_SEND_OUT
   CLAIM_RECV_IN
   CLAIM_REPLACE_OUT
+  /// V8: ส่วนลดราคาซื้อ (ใบคืนซื้อ DISCOUNT/OTHER) — แถวปรับมูลค่าอย่างเดียว ติดลบ แบบเดียวกับลดยอด DN
+  PURCHASE_ALLOWANCE
 }
 
 enum DocStatus {

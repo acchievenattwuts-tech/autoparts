@@ -1,4 +1,5 @@
 import { AuditAction, type Prisma } from "@/lib/generated/prisma";
+import { PURCHASE_ALLOWANCE_LABEL, PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 import {
   SALE_CLAIM_DELETED_ACTIVITY_TITLE,
   SALE_CLAIM_DELETED_AUDIT_EVENT,
@@ -525,6 +526,10 @@ async function getCreditNoteRelationEvents(id: string,
   ];
 }
 
+/**
+ * Purchase -> PurchaseReturn -> SupplierPayment, plus (V8) the ลดราคาซื้อ rows a DISCOUNT/OTHER return posted on the
+ * stock card of each SKU: those rows are the valuation boundary that blocks rewriting earlier stock documents.
+ */
 async function getPurchaseReturnRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
@@ -532,11 +537,18 @@ async function getPurchaseReturnRelationEvents(id: string,
   const ret = await db.purchaseReturn.findUnique({
     where: { id },
     select: {
+      returnNo: true,
       purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true,
         },
       },
     },
   });
+  const allowanceRows = ret ? await db.stockCard.findMany({
+    where: { docNo: ret.returnNo, source: PURCHASE_ALLOWANCE_SOURCE },
+    orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+    select: { id: true, productId: true, createdAt: true, valueAdjustment: true, costVariance: true,
+      product: { select: { code: true, name: true } } },
+  }) : [];
   const payments = await db.supplierPaymentItem.findMany({
     where: { purchaseReturnId: id, payment: { status: "ACTIVE" } },
     select: {
@@ -569,6 +581,20 @@ async function getPurchaseReturnRelationEvents(id: string,
       tone: "used",
     }),
     ),
+    ...allowanceRows.map((row) => buildRelationActivityEvent({
+      id: `purchase-return-${id}-allowance-${row.id}`,
+      kind: "SYSTEM",
+      occurredAt: row.createdAt,
+      title: `${PURCHASE_ALLOWANCE_LABEL}: ปรับต้นทุนสินค้าในสต็อกการ์ด`,
+      description: joinDescription([
+        `${row.product.code} ${row.product.name}`,
+        `ลดมูลค่าสต็อก ${formatMoneyActivity(String(row.valueAdjustment))}`,
+        `ส่วนต่างต้นทุน ${formatMoneyActivity(String(row.costVariance))}`,
+      ]),
+      href: `/admin/stock/card?productId=${encodeURIComponent(row.productId)}`,
+      hrefLabel: row.product.code,
+      tone: "system",
+    })),
   ];
 }
 

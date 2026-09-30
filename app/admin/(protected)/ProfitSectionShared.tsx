@@ -3,6 +3,7 @@ import ProfitSectionPaginationClient, {
 } from "@/app/admin/(protected)/ProfitSectionPaginationClient";
 import { ProfitSourceType } from "@/lib/generated/prisma";
 import type { ProfitRevenueBasis } from "@/lib/profit-dashboard";
+import { PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 
 /**
  * Context ที่ทุก section ของ Profit Dashboard ใช้ร่วมกัน เก็บเลขหน้าของทุกตารางไว้
@@ -36,9 +37,10 @@ export function formatPercent(value: number): string {
     maximumFractionDigits: 2,
   })}%`;
 }
-export function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string): string {
+export function buildInvoiceHref(sourceType: ProfitSourceType, sourceId: string, sourceSubtype?: string | null): string {
   if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) {
-    return `/admin/supplier-debit-notes/${sourceId}`;
+    // V8: a ลดราคาซื้อ variance belongs to its DISCOUNT/OTHER purchase return.
+    return sourceSubtype === PURCHASE_ALLOWANCE_SOURCE ? `/admin/purchase-returns/${sourceId}` : `/admin/supplier-debit-notes/${sourceId}`;
   }
   // A stock value residual fact is keyed by product (sourceId = productId): open its stock card.
   if (sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL) {

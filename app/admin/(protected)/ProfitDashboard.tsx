@@ -314,12 +314,12 @@ const ProfitDashboard = async ({
           </div>
           <div className="rounded-2xl bg-gray-50 px-4 py-3 dark:bg-white/5">
             <p className="text-xs font-medium uppercase tracking-wide text-gray-500">ชั้นข้อมูล</p>
-            <p className="mt-1 text-gray-900 dark:text-slate-100">รวมยอดขาย คืนขาย ค่าใช้จ่าย และส่วนต่างต้นทุน DN ในวันที่บันทึก</p>
+            <p className="mt-1 text-gray-900 dark:text-slate-100">รวมยอดขาย คืนขาย ค่าใช้จ่าย และส่วนต่างต้นทุน DN / ลดราคาซื้อ ในวันที่บันทึก</p>
           </div>
           <div className="rounded-2xl bg-amber-50 px-4 py-3 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
             <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Helper</p>
             <p className="mt-1">
-              ยอดต้นทุนรวมส่วนต่าง DN ที่ลงกำไรงวดนี้แล้ว ส่วนที่เพิ่มมูลค่าสต็อกจะเป็นต้นทุนเมื่อขาย กำไรและ % Margin ใช้ฐานก่อน VAT
+              ยอดต้นทุนรวมส่วนต่าง DN / ลดราคาซื้อ ที่ลงกำไรงวดนี้แล้ว ส่วนที่ปรับมูลค่าสต็อกจะเป็นต้นทุนเมื่อขาย กำไรและ % Margin ใช้ฐานก่อน VAT
             </p>
           </div>
         </div>

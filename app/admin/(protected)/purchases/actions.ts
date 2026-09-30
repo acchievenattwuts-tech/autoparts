@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { writeStockCard, recalculateStockCardMany, getStockValuationEpoch } from "@/lib/stock-card";
+import { valueOnlyStockSources } from "@/lib/stock-value-only-source";
 import { enqueueStorefrontStockInvalidation } from "@/lib/storefront-sync-queue";
 import { generatePurchaseNo } from "@/lib/doc-number";
 import { withDocNumberRetry } from "@/lib/doc-number-retry";
@@ -346,9 +347,9 @@ async function refreshLatestPurchaseStockCardBalance(
   row: PurchaseLandedStockCardSnapshot,
 ): Promise<boolean> {
   // The optimized legacy loop has no value-adjustment branch; use the shared replay
-  // whenever the SKU has a DN boundary, including a DN earlier than this receipt.
+  // whenever the SKU has a value-only boundary (a DN or ลดราคาซื้อ), including one earlier than this receipt.
   const debitBoundary = await tx.stockCard.findFirst({
-    where: { productId: row.productId, source: "SUPPLIER_DEBIT" }, select: { id: true },
+    where: { productId: row.productId, source: { in: valueOnlyStockSources() } }, select: { id: true },
   });
   if (debitBoundary) return false;
   const laterRow = await tx.stockCard.findFirst({

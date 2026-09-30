@@ -104,7 +104,7 @@ const fakeTx: FakeTx = {
     findMany: async (args: unknown) => {
       const { where = {}, distinct } = args as Where;
       if (distinct) return [{ productId: "p-2" }];
-      if (where.source === "SUPPLIER_DEBIT") return laterDebitActive ? [debitRow] : [];
+      if (JSON.stringify(where.source ?? null).includes("SUPPLIER_DEBIT")) return laterDebitActive ? [debitRow] : [];
       return where.docNo === CN_NO ? [cnRowStock] : [];
     },
     deleteMany: async () => {

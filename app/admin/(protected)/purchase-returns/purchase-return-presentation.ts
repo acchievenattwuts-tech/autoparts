@@ -12,3 +12,14 @@ export const PURCHASE_RETURN_SETTLEMENT_LABELS: Record<PurchaseReturnSettlementT
  */
 export const hasPurchaseReturnSupplierCredit = (settlementType: PurchaseReturnSettlementType): boolean =>
   settlementType === "SUPPLIER_CREDIT";
+
+/**
+ * X3 (owner 2026-09-30): an edit may switch DISCOUNT ↔ OTHER but never RETURN ↔ DISCOUNT/OTHER — a RETURN holds
+ * RETURN_OUT stock rows, a DISCOUNT/OTHER return ลดราคาซื้อ rows. updatePurchaseReturn rejects the switch and the edit
+ * form disables those options, both from this rule and message.
+ */
+export const isPurchaseReturnTypeChangeAllowed = (storedType: string, nextType: string): boolean =>
+  (storedType === "RETURN") === (nextType === "RETURN");
+
+export const PURCHASE_RETURN_TYPE_CHANGE_MESSAGE =
+  "เปลี่ยนประเภทการคืนระหว่าง \"ส่งคืนสินค้า\" กับ \"ส่วนลดราคา/อื่นๆ\" ไม่ได้ กรุณายกเลิกเอกสารนี้แล้วบันทึกเอกสารใหม่";

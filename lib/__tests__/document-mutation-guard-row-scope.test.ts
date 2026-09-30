@@ -35,7 +35,7 @@ function databaseWithLaterDebit(docNo: string, options: { debitActive?: boolean;
       findMany: async (args) => {
         options.stockQueries?.push(args as Query);
         const where = (args as Query).where ?? {};
-        return where.source === "SUPPLIER_DEBIT" ? [debitRow] : [ownRow(docNo)];
+        return JSON.stringify(where.source ?? null).includes("SUPPLIER_DEBIT") ? [debitRow] : [ownRow(docNo)];
       },
     },
     supplierDebitNote: {

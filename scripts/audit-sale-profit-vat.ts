@@ -12,6 +12,7 @@ import {
 import { calcItemSubtotal, calcVat } from "@/lib/vat";
 import { getThailandMonthKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 import { STOCK_VALUE_RESIDUAL_START_DATE } from "@/lib/stock-card";
+import { valueOnlyStockSources } from "@/lib/stock-value-only-source";
 
 const BATCH_SIZE = 100;
 const cents = (amount: number): number => Math.round(amount * 100);
@@ -236,6 +237,8 @@ async function countCancelledSettlementsWithActiveFacts(
 type CancelledDocumentsAudit = {
   sales: CancelledAudit; creditNotes: CancelledAudit; expenses: CancelledAudit;
   supplierDebitNotes: CancelledAudit; marketplaceSettlements: CancelledAudit;
+  /** V8: ลดราคาซื้อ variance facts of cancelled DISCOUNT/OTHER purchase returns. */
+  purchaseReturns: CancelledAudit;
 };
 
 async function auditCancelledDocuments(): Promise<CancelledDocumentsAudit> {
@@ -243,15 +246,16 @@ async function auditCancelledDocuments(): Promise<CancelledDocumentsAudit> {
     orderBy: { id: "asc" as const }, take: BATCH_SIZE, select: { id: true },
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
   try {
-    const [sales, creditNotes, expenses, supplierDebitNotes, marketplaceSettlements] = await Promise.all([
+    const [sales, creditNotes, expenses, supplierDebitNotes, marketplaceSettlements, purchaseReturns] = await Promise.all([
       countCancelledWithActiveFacts("SALE", (cursor) => db.sale.findMany(page(cursor))),
       countCancelledWithActiveFacts("SALE_RETURN", (cursor) => db.creditNote.findMany(page(cursor))),
       countCancelledWithActiveFacts("EXPENSE", (cursor) => db.expense.findMany(page(cursor))),
       countCancelledWithActiveFacts("PURCHASE_COST_VARIANCE", (cursor) => db.supplierDebitNote.findMany(page(cursor))),
       countCancelledSettlementsWithActiveFacts((cursor) => db.marketplaceSettlement.findMany({
         ...page(cursor), select: { id: true, expenseId: true } })),
+      countCancelledWithActiveFacts("PURCHASE_COST_VARIANCE", (cursor) => db.purchaseReturn.findMany(page(cursor))),
     ]);
-    return { sales, creditNotes, expenses, supplierDebitNotes, marketplaceSettlements };
+    return { sales, creditNotes, expenses, supplierDebitNotes, marketplaceSettlements, purchaseReturns };
   } catch (error) {
     throw new Error("Cancelled document audit failed", { cause: error });
   }
@@ -289,13 +293,14 @@ async function auditSourceSubtotals(): Promise<{
 type StockValueResidualAudit = { residualRows: number; activeFacts: number; rowsWithoutFact: number; staleFacts: number };
 
 /**
- * T3: every StockCard row with a written-off stock value (non-DN costVariance, from the go-live date) must have
+ * T3: every StockCard row with a written-off stock value (costVariance of a row that is not value-only — a DN or a
+ * ลดราคาซื้อ row keeps its posted variance —, from the go-live date) must have
  * exactly one active STOCK_VALUE_RESIDUAL fact with the same date and amount, and no active fact may outlive its row.
  */
 async function auditStockValueResidualFacts(): Promise<StockValueResidualAudit> {
   try {
     const rows = await db.stockCard.findMany({
-      where: { docDate: { gte: parseDateOnlyToStartOfDay(STOCK_VALUE_RESIDUAL_START_DATE) }, source: { not: "SUPPLIER_DEBIT" },
+      where: { docDate: { gte: parseDateOnlyToStartOfDay(STOCK_VALUE_RESIDUAL_START_DATE) }, source: { notIn: valueOnlyStockSources() },
         costVariance: { not: 0 } },
       select: { id: true, docDate: true, costVariance: true },
     });

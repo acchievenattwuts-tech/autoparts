@@ -1,4 +1,5 @@
 import { ProfitSourceType } from "@/lib/generated/prisma";
+import { PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 import type { ProfitDashboardData, ProfitProductRow } from "@/lib/profit-dashboard";
 import {
   PROFIT_EXPLANATION_MAX_ITEMS,
@@ -16,8 +17,11 @@ function productHref(productId: string): string {
   return `/admin/products/${productId}/edit`;
 }
 
-function invoiceHref(sourceId: string, sourceType: ProfitSourceType): string {
-  if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) return `/admin/supplier-debit-notes/${sourceId}`;
+function invoiceHref(sourceId: string, sourceType: ProfitSourceType, sourceSubtype?: string | null): string {
+  if (sourceType === ProfitSourceType.PURCHASE_COST_VARIANCE) {
+    // V8: a ลดราคาซื้อ variance fact is keyed by its DISCOUNT/OTHER purchase return.
+    return sourceSubtype === PURCHASE_ALLOWANCE_SOURCE ? `/admin/purchase-returns/${sourceId}` : `/admin/supplier-debit-notes/${sourceId}`;
+  }
   // Stock value residual facts are keyed by product (sourceId = productId).
   if (sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL) return `/admin/stock/card?productId=${encodeURIComponent(sourceId)}`;
   if (sourceType === ProfitSourceType.SALE_RETURN) return `/admin/credit-notes/${sourceId}`;
@@ -89,7 +93,7 @@ export function buildProfitExplanationEvidence(data: ProfitDashboardData): Profi
       id: invoice.sourceType === ProfitSourceType.STOCK_VALUE_RESIDUAL
         ? `invoice:${invoice.sourceId}:${invoice.sourceDocNo}` : `invoice:${invoice.sourceId}`,
       label: invoice.sourceDocNo,
-      href: invoiceHref(invoice.sourceId, invoice.sourceType),
+      href: invoiceHref(invoice.sourceId, invoice.sourceType, invoice.sourceSubtype),
     })),
   ];
 

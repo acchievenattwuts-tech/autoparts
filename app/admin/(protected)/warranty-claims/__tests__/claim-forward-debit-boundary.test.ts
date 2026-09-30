@@ -125,7 +125,7 @@ beforeEach(() => {
       findUnique: async () => claimRow({ status: "SENT_TO_SUPPLIER", outcome: null }),
     },
     stockCard: {
-      findMany: async (args) => ((args as Where).where?.source === "SUPPLIER_DEBIT" ? [debitRow] : [claimSendRow]),
+      findMany: async (args) => (JSON.stringify((args as Where).where?.source ?? null).includes("SUPPLIER_DEBIT") ? [debitRow] : [claimSendRow]),
     },
     supplierDebitNote: {
       findMany: async (args) => ((args as Where).where?.status === "ACTIVE" ? [{ id: "dn-1", debitNo: debitRow.docNo }] : []),

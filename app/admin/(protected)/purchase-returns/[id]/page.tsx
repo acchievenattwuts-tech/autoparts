@@ -14,15 +14,49 @@ import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { describeInputVatTreatment, getVatRegisteredFrom } from "@/lib/input-vat";
 import { toInputVatDecision } from "../../purchases/purchase-tax-invoice";
 import { resolvePurchaseReturnTaxDocument } from "../purchase-return-vat";
+import { formatItemQuantity } from "@/lib/item-quantity";
+import { PURCHASE_ALLOWANCE_LABEL, PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 import {
   PURCHASE_RETURN_SETTLEMENT_LABELS,
   hasPurchaseReturnSupplierCredit,
 } from "../purchase-return-presentation";
+import PurchaseReturnCancelButton from "../PurchaseReturnCancelButton";
+import {
+  buildMutationBlockMessage,
+  buildMutationBlockReferenceLinks,
+  checkDocumentMutation,
+  type MutationBlockResult,
+} from "@/lib/document-mutation-guard";
+import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import type { PeriodLockView } from "@/lib/period-lock-view";
+import { postsPurchaseAllowance } from "@/lib/purchase-allowance";
+
+/**
+ * Y1 (owner 2026-09-30): the cancel button of an ACTIVE return, as on the list page — the reference-chain guard
+ * cancelPurchaseReturn runs (its message when blocked) and the lock of the return month plus, for a DISCOUNT/OTHER
+ * return, the ลดราคาซื้อ posting month; the dialog previews the restated later sales when it opens (X4).
+ */
+const loadCancelState = async (
+  ret: { id: string; status: string; type: string; claimId: string | null; returnDate: Date; createdAt: Date },
+  permissions: readonly string[],
+): Promise<{ block: MutationBlockResult | null; periodLock: PeriodLockView | null }> => {
+  if (ret.status !== "ACTIVE") return { block: null, periodLock: null };
+  try {
+    const block = await checkDocumentMutation("PurchaseReturn", ret.id, "cancel");
+    if (block.blocked) return { block, periodLock: null };
+    const lockDates = postsPurchaseAllowance(ret) ? [ret.returnDate, ret.createdAt] : [ret.returnDate];
+    return { block, periodLock: await getDocumentPeriodLockView(lockDates, permissions) };
+  } catch (error) {
+    console.error("[purchase-return detail] cancel state", error);
+    throw error;
+  }
+};
 
 const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   await requirePermission("purchase_returns.view");
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "purchase_returns.update");
+  const canCancel = hasPermissionAccess(role, permissions, "purchase_returns.cancel");
   const { id } = await params;
 
   const ret = await db.purchaseReturn.findUnique({
@@ -44,7 +78,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
   });
 
   if (!ret) notFound();
-  const [activityEvents, returnPayments, vatRegisteredFrom] = await Promise.all([
+  const [activityEvents, returnPayments, vatRegisteredFrom, allowanceRows, cancelState] = await Promise.all([
     getDocumentActivityTimeline("PurchaseReturn", ret.id),
     db.documentPayment.findMany({
       where: { docType: "CN_PURCHASE", docId: ret.id },
@@ -55,7 +89,20 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
       },
     }),
     getVatRegisteredFrom(db),
+    // V8: the ลดราคาซื้อ rows a DISCOUNT/OTHER return posted (value-only, [docNo] index).
+    db.stockCard.findMany({
+      where: { docNo: ret.returnNo, source: PURCHASE_ALLOWANCE_SOURCE },
+      orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+      select: { id: true, productId: true, docDate: true, valueAdjustment: true, costVariance: true,
+        product: { select: { code: true, name: true } } },
+    }),
+    canCancel ? loadCancelState(ret, permissions) : Promise.resolve({ block: null, periodLock: null }),
   ]);
+  const cancelBlockMessage = cancelState.block ? buildMutationBlockMessage(cancelState.block) : null;
+  const cancelBlockLinks = cancelState.block ? buildMutationBlockReferenceLinks(cancelState.block) : [];
+  const formatMoney = (value: number): string => value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const allowanceInventory = allowanceRows.reduce((sum, row) => sum + Number(row.valueAdjustment), 0);
+  const allowanceVariance = allowanceRows.reduce((sum, row) => sum + Number(row.costVariance), 0);
 
   const vatLabel: Record<string, string> = {
     NO_VAT:        "ไม่มี VAT",
@@ -83,7 +130,7 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
       </div>
 
       <div className="mb-6 rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
-        <div className="mb-5 flex items-center justify-between border-b border-gray-100 pb-3 dark:border-white/10">
+        <div className="mb-5 flex flex-col gap-3 border-b border-gray-100 pb-3 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
           <div className="flex items-center gap-3">
             <h1 className="font-kanit text-xl font-bold text-gray-900 dark:text-slate-100">คืนสินค้าให้ซัพพลายเออร์</h1>
             {ret.status === "CANCELLED" ? (
@@ -92,15 +139,33 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
               <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-emerald-500/20 dark:text-emerald-300">ใช้งาน</span>
             )}
           </div>
-          {ret.status === "ACTIVE" && canUpdate && (
-            <Link
-              href={`/admin/purchase-returns/${id}/edit`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
-            >
-              <Pencil size={14} /> แก้ไข
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {ret.status === "ACTIVE" && canUpdate && (
+              <Link
+                href={`/admin/purchase-returns/${id}/edit`}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 transition-colors hover:border-[#1e3a5f] hover:text-[#1e3a5f] dark:border-white/20 dark:text-slate-300 dark:hover:border-sky-400 dark:hover:text-sky-300"
+              >
+                <Pencil size={14} /> แก้ไข
+              </Link>
+            )}
+            {ret.status === "ACTIVE" && canCancel && !cancelBlockMessage ? (
+              <PurchaseReturnCancelButton returnId={ret.id} docNo={ret.returnNo} periodLock={cancelState.periodLock} variant="outline" />
+            ) : null}
+          </div>
         </div>
+
+        {ret.status === "ACTIVE" && canCancel && cancelBlockMessage ? (
+          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-400/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <p><span className="font-medium">ยกเลิกไม่ได้:</span> {cancelBlockMessage}</p>
+            {cancelBlockLinks.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                {cancelBlockLinks.map((link) => (
+                  <Link key={link.href} href={link.href} className="font-medium underline underline-offset-2">{link.label}</Link>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm md:grid-cols-3">
           <div>
@@ -257,11 +322,11 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
                     </div>
                     {item.lotItems.length > 0 && (
                       <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                        Lot: {item.lotItems.map((lot) => `${lot.lotNo} (${(Number(lot.qty) / displayScale).toLocaleString("th-TH")} ${displayUnitName})`).join(", ")}
+                        Lot: {item.lotItems.map((lot) => `${lot.lotNo} (${formatItemQuantity(Number(lot.qty) / displayScale)} ${displayUnitName})`).join(", ")}
                       </div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{displayQty.toLocaleString("th-TH")}</td>
+                  <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">{formatItemQuantity(displayQty)}</td>
                   <td className="px-3 py-2 text-gray-500 dark:text-slate-400">{displayUnitName}</td>
                   <td className="px-3 py-2 text-right text-gray-700 dark:text-slate-300">
                     {displayPrice.toLocaleString("th-TH", { minimumFractionDigits: 2 })}
@@ -301,6 +366,57 @@ const PurchaseReturnDetailPage = async ({ params }: { params: Promise<{ id: stri
           </table>
         </div>
       </div>
+
+      {allowanceRows.length > 0 && (
+        <div className="mt-6 rounded-xl border border-cyan-100 bg-white p-6 shadow-sm dark:border-cyan-900/60 dark:bg-[#101b2e]">
+          <h2 className="mb-1 font-kanit text-lg font-semibold text-[#1e3a5f] dark:text-sky-200">
+            {PURCHASE_ALLOWANCE_LABEL}: ผลต่อต้นทุนสินค้า
+          </h2>
+          <p className="mb-4 border-b border-gray-100 pb-3 text-xs text-gray-500 dark:border-white/10 dark:text-slate-400">
+            ลงสต็อกการ์ดวันที่ {formatDateThai(allowanceRows[0].docDate)} (วันที่บันทึกเอกสาร) ไม่เปลี่ยนจำนวนสินค้า ·
+            ส่วนที่ยังมีสินค้าคงเหลือลดมูลค่าสต็อก ส่วนที่ขายไปแล้วเป็นส่วนต่างต้นทุนในงวดนั้น
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-white/5">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 dark:text-slate-300">สินค้า</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ลดมูลค่าสต็อก (บาท)</th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-600 dark:text-slate-300">ส่วนต่างต้นทุน (บาท)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allowanceRows.map((row) => (
+                  <tr key={row.id} className="border-t border-gray-50 dark:border-white/5">
+                    <td className="px-3 py-2 text-gray-800 dark:text-slate-200">
+                      <Link
+                        href={`/admin/stock/card?productId=${encodeURIComponent(row.productId)}`}
+                        className="font-mono text-xs text-[#1e3a5f] hover:underline dark:text-sky-300"
+                      >
+                        {row.product.code}
+                      </Link>{" "}
+                      {row.product.name}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-indigo-700 dark:text-indigo-300">
+                      {formatMoney(Number(row.valueAdjustment))}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-amber-700 dark:text-amber-300">
+                      {formatMoney(Number(row.costVariance))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
+                <tr>
+                  <td className="px-3 py-2 text-right font-semibold text-gray-700 dark:text-slate-300">รวม</td>
+                  <td className="px-3 py-2 text-right font-semibold text-indigo-700 dark:text-indigo-300">{formatMoney(allowanceInventory)}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-amber-700 dark:text-amber-300">{formatMoney(allowanceVariance)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

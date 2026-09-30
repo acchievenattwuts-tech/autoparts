@@ -59,7 +59,7 @@ const ProfitInvoiceSection = async ({ context }: { context: ProfitSectionContext
               <tr key={`${row.sourceType}-${row.sourceId}-${row.sourceDocNo}-${String(row.businessDate)}`} className="border-b border-gray-50 dark:border-white/5">
                 <td className="py-3">
                   <IntentPrefetchLink
-                    href={buildInvoiceHref(row.sourceType, row.sourceId)}
+                    href={buildInvoiceHref(row.sourceType, row.sourceId, row.sourceSubtype)}
                     className="font-medium text-sky-700 underline-offset-2 hover:underline"
                   >
                     {row.sourceDocNo}

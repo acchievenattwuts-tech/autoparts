@@ -17,6 +17,7 @@ import { getAdminDocumentRowClass } from "@/lib/admin-status-presentation";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
+import { postsPurchaseAllowance } from "@/lib/purchase-allowance";
 import {
   formatDateThai,
   parseDateOnlyToEndOfDay,
@@ -73,10 +74,14 @@ const PurchaseReturnsPage = async ({
   ]);
 
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  // One query for the whole page: which rows sit in a month whose profit was distributed.
+  // One query for the whole page: which rows sit in a month whose profit was distributed. A DISCOUNT/OTHER
+  // return also posted ลดราคาซื้อ on its creation date (V8), so cancelling it touches that month too. The cancel
+  // dialog adds the months of the later sales it restates when it opens (X4, previewPurchaseReturnCancel).
+  const lockDatesOf = (r: (typeof returns)[number]): Date[] =>
+    postsPurchaseAllowance(r) ? [r.returnDate, r.createdAt] : [r.returnDate];
   const periodLockOf = canCancel
     ? await getPeriodLockViewResolver(
-        returns.filter((r) => r.status === "ACTIVE").map((r) => r.returnDate),
+        returns.filter((r) => r.status === "ACTIVE").flatMap(lockDatesOf),
         permissions,
       )
     : () => null;
@@ -175,7 +180,7 @@ const PurchaseReturnsPage = async ({
                               <Pencil size={14} /> แก้ไข
                             </Link>
                           ) : null}
-                          {canCancel ? <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} periodLock={periodLockOf(r.returnDate)} /> : null}
+                          {canCancel ? <PurchaseReturnCancelButton returnId={r.id} docNo={r.returnNo} periodLock={periodLockOf(...lockDatesOf(r))} /> : null}
                         </>
                       )}
                     </AdminActionGroup>

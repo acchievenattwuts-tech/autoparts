@@ -62,8 +62,10 @@ import {
 import { getOriginalClaimUnitCost, reverseClaimStockMovements, writeClaimStockMovement } from "@/lib/claim-stock";
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { getPurchaseUserErrorMessage, PurchaseUserError } from "../purchases/purchase-user-error";
-import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import { assertPeriodsUnlocked, findLockedPeriods, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
+import type { PeriodLockView } from "@/lib/period-lock-view";
 import {
+  canOverridePeriodLock,
   collectLineRemarkUpdates,
   loadStoredPaymentRows,
   notifyPeriodLockOverrideUsed,
@@ -71,6 +73,7 @@ import {
   periodLockAuditMeta,
   readPeriodLockOverride,
   resolveDocumentPeriodLock,
+  toPeriodLockView,
 } from "@/lib/period-lock-document";
 import { isPurchaseReturnNonFinancialChange } from "./purchase-return-period-lock";
 import { isInputVatRecoverable } from "@/lib/input-vat";
@@ -84,6 +87,19 @@ import {
   type TaxDocumentVat,
 } from "../purchases/purchase-tax-invoice";
 import { getPurchaseReturnVatMismatchMessage, resolvePurchaseReturnTaxDocument } from "./purchase-return-vat";
+import { isPurchaseReturnTypeChangeAllowed, PURCHASE_RETURN_TYPE_CHANGE_MESSAGE } from "./purchase-return-presentation";
+import type { PurchaseReturnCancelPreview } from "./purchase-return-cancel-preview";
+import type { PurchaseReturnEditPreview } from "./purchase-return-edit-preview";
+import { formatItemQuantity, roundItemQuantity } from "@/lib/item-quantity";
+import {
+  allocatePurchaseAllowanceAmounts, attachAllowanceItemIds, isPurchaseAllowanceType, planPurchaseAllowanceChange,
+  postPurchaseAllowanceLines, postsPurchaseAllowance, preparePurchaseAllowanceCreate, previewPurchaseAllowanceCancel,
+  previewPurchaseAllowanceChange, PurchaseAllowanceError,
+  repostPurchaseAllowance, reversePurchaseAllowance, summarizePurchaseAllowance, todayPurchaseAllowancePostingDate,
+  type PreparedPurchaseAllowance, type PurchaseAllowanceAudit, type PurchaseAllowanceChange, type PurchaseAllowanceSourceLine,
+} from "@/lib/purchase-allowance";
+import { rebuildPurchaseAllowanceProfitFacts } from "@/lib/profit-fact";
+import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
 
 /** updatePurchaseReturn: the document changed after the edit form loaded it. */
 const PURCHASE_RETURN_STALE_MESSAGE = "เอกสารถูกแก้ไขโดยผู้อื่นระหว่างที่คุณแก้ไข กรุณาโหลดหน้าใหม่";
@@ -411,7 +427,9 @@ async function buildLineData(
     const isTracked = isInventoryTracked(product.inventoryTracking);
     const fallbackCost = isTracked ? product.avgCost : product.costPrice;
     const costPerBase = item.costPrice && item.costPrice > 0 ? item.costPrice / scale : fallbackCost;
-    const totalAmount = Math.round(qtyInBase) * costPerBase;
+    // X2 (owner 2026-09-30): the exact base quantity as stored (W7, 4 decimals), never Math.round — 0.5 x 100 is 50,
+    // not 100. An integer quantity (float noise removed) gives the same amount as before.
+    const totalAmount = roundItemQuantity(qtyInBase) * costPerBase;
     const subtotalAmount = calcItemSubtotal(totalAmount, vatType, vatRate);
 
     lineData.push({
@@ -432,6 +450,54 @@ async function buildLineData(
   }
 
   return lineData;
+}
+
+/**
+ * V8 W3: the lines of a DISCOUNT/OTHER return as the ลดราคาซื้อ posting sees them (lineNo = form order). The cost each
+ * removes follows lib/input-vat.ts on the document that decides recoverability (the referenced purchase — V3 — else
+ * the return itself with its own credit-note date): recoverable → pre-VAT, otherwise VAT-inclusive.
+ */
+async function buildPurchaseAllowanceSourceLines(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  lineData: LineData[],
+  vat: TaxDocumentVat & { vatType: VatType; vatRate: number },
+  sourcePurchaseVat: TaxDocumentVat | null,
+): Promise<PurchaseAllowanceSourceLine[]> {
+  const taxDocument = resolvePurchaseReturnTaxDocument(vat, sourcePurchaseVat);
+  const registeredFrom = await loadVatRegisteredFromFor(tx, [taxDocument]);
+  const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
+  const { subtotalAmount, netAmount } = calcVat(rawTotal, vat.vatType, vat.vatRate);
+  const costs = allocatePurchaseAllowanceAmounts({
+    lineAmounts: lineData.map((line) => line.totalAmount), subtotalAmount, netAmount,
+    vatRecoverable: isInputVatRecoverable(toInputVatDecision(taxDocument, registeredFrom)),
+  });
+  return lineData.map((line, index) => ({ lineNo: index + 1, productId: line.productId, qtyInBase: line.qtyInBase,
+    costAmount: costs[index] ?? 0, isTracked: line.isTracked }));
+}
+
+/** A new DISCOUNT/OTHER return: coverage at today's position, read under the sorted SKU locks like a DN posting. */
+async function prepareNewPurchaseAllowance(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  lineData: LineData[],
+  vat: TaxDocumentVat & { vatType: VatType; vatRate: number },
+  sourcePurchaseVat: TaxDocumentVat | null,
+  postingDate: Date,
+): Promise<PreparedPurchaseAllowance> {
+  const lines = await buildPurchaseAllowanceSourceLines(tx, lineData, vat, sourcePurchaseVat);
+  await lockStockMutationProducts(tx, lines.filter((line) => line.isTracked).map((line) => line.productId));
+  return preparePurchaseAllowanceCreate(tx, { postingDate, lines });
+}
+
+/** Mutable holder: the transaction callback records what the audit entry reports after commit. */
+type PurchaseAllowanceAuditHolder = { audit: PurchaseAllowanceAudit | null; touched: boolean };
+
+/** Both month-lock checks of one save (return dates, then the ลดราคาซื้อ posting and restated documents). */
+function mergePeriodLockResults(first: PeriodLockResult, second: PeriodLockResult): PeriodLockResult {
+  const periods = new Map([...first.locked, ...second.locked].map((period) => [period.periodKey, period]));
+  return {
+    locked: [...periods.values()].sort((a, b) => a.periodKey.localeCompare(b.periodKey)),
+    overridden: first.overridden || second.overridden,
+  };
 }
 
 /**
@@ -492,28 +558,31 @@ async function writePurchaseReturnLines(
   lineData: { line: LineData; lineNo: number }[],
   type: PurchaseReturnType,
   sourcePurchaseId: string | undefined,
-): Promise<void> {
+): Promise<Map<number, string>> {
   const writeStock = type === PurchaseReturnType.RETURN;
   const referenceCostMap = writeStock
     ? await buildPurchaseReferenceCostMap(tx, sourcePurchaseId)
     : new Map<string, number>();
+  const itemIdsByLineNo = new Map<number, string>();
 
   for (const { line, lineNo } of lineData) {
     if (writeStock && line.isLotControl) {
       const lotError = validateLotRows(line.lotItems as LotSubRow[], line.qty, false);
       if (lotError) throw new PurchaseUserError(lotError);
     }
+    // W7: the exact base quantity (the StockCard row's qtyOut), shown with the shared quantity format.
+    const lineDetail = `คืน ${formatItemQuantity(line.qty, { useGrouping: false })} ${line.unitName}`;
 
     const returnItem = await tx.purchaseReturnItem.create({
       data: {
         purchaseReturnId,
         lineNo,
         productId: line.productId,
-        qty: Math.round(line.qtyInBase),
+        qty: roundItemQuantity(line.qtyInBase),
         costPrice: line.costPerBase,
         amount: line.totalAmount,
         subtotalAmount: line.subtotalAmount,
-        detail: `คืน ${line.qty} ${line.unitName}`,
+        detail: lineDetail,
         showQty: line.qty,
         showUnitName: line.unitName,
         showPricePerUnit: line.showPricePerUnit,
@@ -521,6 +590,7 @@ async function writePurchaseReturnLines(
         moreDetail: line.moreDetail,
       },
     });
+    itemIdsByLineNo.set(lineNo, returnItem.id);
 
     if (writeStock && line.isTracked) {
       const referenceCost = referenceCostMap.get(line.productId);
@@ -534,7 +604,7 @@ async function writePurchaseReturnLines(
         qtyOut: line.qtyInBase,
         priceIn: usesReferenceCost ? referenceCost : 0,
         usesReferenceCost,
-        detail: `คืน ${line.qty} ${line.unitName}`,
+        detail: lineDetail,
         referenceId: returnItem.id,
       });
 
@@ -558,6 +628,7 @@ async function writePurchaseReturnLines(
       }
     }
   }
+  return itemIdsByLineNo;
 }
 
 /**
@@ -787,8 +858,11 @@ export async function createPurchaseReturn(
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   const docDate = parseDateOnlyToDate(returnDate);
+  // V8 (W1/W2): a DISCOUNT/OTHER return also lowers stock cost ("ลดราคาซื้อ") at today's Thai business date.
+  const allowancePosted = postsPurchaseAllowance({ type, claimId });
   let returnNo = "";
   let createdPurchaseReturnId = "";
+  const allowanceState: PurchaseAllowanceAuditHolder = { audit: null, touched: false };
 
   try {
     const requestContext = await getRequestContext();
@@ -800,13 +874,20 @@ export async function createPurchaseReturn(
       run: async (nextReturnNo) => {
         returnNo = nextReturnNo;
         createdPurchaseReturnId = "";
+        allowanceState.audit = null;
+        allowanceState.touched = false;
         await dbTx(async (tx) => {
-          await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
+          const sourcePurchaseVat = await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
           const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
-          // A new return dated in a month whose profit was distributed is refused (no override on create).
-          await assertPeriodsUnlocked(tx, [docDate]);
+          const allowancePostingDate = todayPurchaseAllowancePostingDate();
+          // A new return dated in a month whose profit was distributed is refused (no override on create); a
+          // DISCOUNT/OTHER return also needs its ลดราคาซื้อ posting month open.
+          await assertPeriodsUnlocked(tx, allowancePosted ? [docDate, allowancePostingDate] : [docDate]);
 
           const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+          const allowance = allowancePosted
+            ? await prepareNewPurchaseAllowance(tx, lineData, { vatType, vatRate, taxInvoiceDate }, sourcePurchaseVat, allowancePostingDate)
+            : null;
           const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
           const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
           if (isCashRefund) {
@@ -840,7 +921,7 @@ export async function createPurchaseReturn(
           });
           createdPurchaseReturnId = purchaseReturn.id;
 
-          await writePurchaseReturnLines(
+          const itemIdsByLineNo = await writePurchaseReturnLines(
             tx,
             purchaseReturn.id,
             returnNo,
@@ -849,6 +930,16 @@ export async function createPurchaseReturn(
             type,
             purchaseId,
           );
+
+          if (allowance) {
+            if (allowance.lines.length > 0) {
+              await postPurchaseAllowanceLines(tx, { returnNo, positions: allowance.positions,
+                lines: attachAllowanceItemIds(allowance.lines, itemIdsByLineNo) });
+              await rebuildPurchaseAllowanceProfitFacts(tx, purchaseReturn.id);
+            }
+            allowanceState.audit = summarizePurchaseAllowance({ postingDate: allowance.postingDate, lines: allowance.lines });
+            allowanceState.touched = allowance.lines.length > 0;
+          }
 
           if (linkedClaim) {
             const originalCost = await getOriginalClaimUnitCost(tx, linkedClaim.warrantyId);
@@ -905,6 +996,7 @@ export async function createPurchaseReturn(
         entityId: afterSnapshot.id,
         entityRef: afterSnapshot.returnNo,
         after: afterSnapshot,
+        ...(allowanceState.audit ? { meta: { purchaseAllowance: allowanceState.audit } } : {}),
       });
     }
 
@@ -912,9 +1004,11 @@ export async function createPurchaseReturn(
     revalidatePath("/admin/products");
     revalidatePath("/admin/cash-bank");
     revalidatePath("/admin/reports");
+    if (allowanceState.touched) revalidateProfitDashboardCache();
     return { success: true, returnNo };
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof PurchaseAllowanceError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.create" });
@@ -927,9 +1021,50 @@ const cancelReturnSchema = z.object({
   cancelNote: z.string().max(200).optional(),
 });
 
+const previewReturnIdSchema = z.string().min(1).max(50);
+const NO_CANCEL_PREVIEW: PurchaseReturnCancelPreview = { periodLock: null, restatement: null };
+
+/**
+ * X4 (owner 2026-09-30): the months cancelling this return would touch — its date, and for a DISCOUNT/OTHER return
+ * the ลดราคาซื้อ posting month and the restated later sales / credit notes (the planner the cancel runs, reads only) —
+ * so the cancel dialog can ask an owner for the override reason up front. cancelPurchaseReturn re-checks under its
+ * locks and, when it still rejects for the lock, returns the months too.
+ */
+export async function previewPurchaseReturnCancel(
+  returnId: string,
+): Promise<{ preview?: PurchaseReturnCancelPreview; error?: string }> {
+  const session = await requirePermission("purchase_returns.cancel").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  const parsedId = previewReturnIdSchema.safeParse(returnId);
+  if (!parsedId.success) return { error: "รหัสเอกสารไม่ถูกต้อง" };
+
+  try {
+    const ret = await db.purchaseReturn.findUnique({
+      where: { id: parsedId.data },
+      select: { status: true, type: true, returnNo: true, returnDate: true, createdAt: true },
+    });
+    if (!ret || ret.status !== "ACTIVE") return { preview: NO_CANCEL_PREVIEW };
+    const { locked, restatement } = await dbTx(async (tx) => {
+      const allowance = isPurchaseAllowanceType(ret.type)
+        ? await previewPurchaseAllowanceCancel(tx, { returnNo: ret.returnNo, createdAt: ret.createdAt })
+        : null;
+      return {
+        locked: await findLockedPeriods(tx, [ret.returnDate, ...(allowance?.lockDates ?? [])]),
+        restatement: allowance?.restatement ?? null,
+      };
+    });
+    return {
+      preview: { periodLock: toPeriodLockView(locked, canOverridePeriodLock(session.user.permissions)), restatement },
+    };
+  } catch (error) {
+    console.error("[previewPurchaseReturnCancel]", error);
+    return { error: "ตรวจสอบเดือนที่ประกาศปันผลแล้วไม่สำเร็จ" };
+  }
+}
+
 export async function cancelPurchaseReturn(
   formData: FormData,
-): Promise<{ success?: boolean; error?: string }> {
+): Promise<{ success?: boolean; error?: string; periodLock?: PeriodLockView }> {
   const session = await requirePermission("purchase_returns.cancel").catch(() => null);
   if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
 
@@ -959,6 +1094,9 @@ export async function cancelPurchaseReturn(
 
   const affectedProductIds = [...new Set(ret.items.map((item) => item.productId))];
   const hadStock = ret.type === PurchaseReturnType.RETURN;
+  // V8: a DISCOUNT/OTHER return may hold ลดราคาซื้อ rows to reverse.
+  const hadAllowance = isPurchaseAllowanceType(ret.type);
+  const allowanceState: PurchaseAllowanceAuditHolder = { audit: null, touched: false };
   const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
   let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
 
@@ -972,8 +1110,13 @@ export async function cancelPurchaseReturn(
       if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
       await lockStockMutationProducts(tx, affectedProductIds);
       await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", ret.id, "cancel");
+      // V8 (W5): reversing ลดราคาซื้อ restates later sales, so its posting month and theirs are locked too (reads only).
+      const allowanceChange: PurchaseAllowanceChange | null = hadAllowance
+        ? await planPurchaseAllowanceChange(tx, { returnNo: ret.returnNo, createdAt: ret.createdAt, lines: [] })
+        : null;
       // Month lock on the date stored under the row lock, before any write.
-      periodLock = await assertPeriodsUnlocked(tx, [locked[0]?.returnDate ?? ret.returnDate], lockOverride);
+      periodLock = await assertPeriodsUnlocked(tx,
+        [locked[0]?.returnDate ?? ret.returnDate, ...(allowanceChange?.lockDates ?? [])], lockOverride);
       if (ret.claimId) {
         await reverseClaimStockMovements(tx, ret.claimId, {
           movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
@@ -989,6 +1132,13 @@ export async function cancelPurchaseReturn(
         for (const productId of affectedProductIds) {
           await recalculateStockCard(tx, productId);
         }
+      }
+
+      if (allowanceChange && !allowanceChange.unchanged) {
+        await reversePurchaseAllowance(tx, allowanceChange);
+        await repostPurchaseAllowance(tx, allowanceChange, { purchaseReturnId: ret.id, itemIds: new Map(), cancelled: true });
+        allowanceState.audit = summarizePurchaseAllowance({ postingDate: allowanceChange.postingDate, lines: [], change: allowanceChange });
+        allowanceState.touched = true;
       }
 
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_PURCHASE, ret.id);
@@ -1017,7 +1167,8 @@ export async function cancelPurchaseReturn(
         entityRef: afterSnapshot.returnNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: parsed.data.cancelNote?.trim() || null, ...periodLockAuditMeta(periodLock, lockOverride) },
+        meta: { cancelNote: parsed.data.cancelNote?.trim() || null, ...periodLockAuditMeta(periodLock, lockOverride),
+          ...(allowanceState.audit ? { purchaseAllowance: allowanceState.audit } : {}) },
       });
     }
     await notifyPeriodLockOverrideUsed({
@@ -1036,10 +1187,16 @@ export async function cancelPurchaseReturn(
     revalidatePath("/admin/products");
     revalidatePath("/admin/cash-bank");
     revalidatePath("/admin/reports");
+    if (allowanceState.touched) revalidateProfitDashboardCache();
     return { success: true };
   } catch (error) {
-    if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof PeriodLockedError) {
+      // X4: the months the lock found, so the dialog can ask for the reason even if its preview missed one.
+      const periodLockView = toPeriodLockView(error.periods, lockOverride.allowed);
+      return { error: error.message, ...(periodLockView ? { periodLock: periodLockView } : {}) };
+    }
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
+    if (error instanceof PurchaseAllowanceError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.cancel" });
@@ -1047,51 +1204,26 @@ export async function cancelPurchaseReturn(
   }
 }
 
-export async function updatePurchaseReturn(
-  id: string,
-  formData: FormData,
-): Promise<{ success?: boolean; error?: string }> {
-  const session = await requirePermission("purchase_returns.update").catch(() => null);
-  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
-
-  if (!id || id.length > 50 || !/^[a-z0-9]+$/.test(id)) {
-    return { error: "รหัสเอกสารไม่ถูกต้อง" };
-  }
-
-  const existing = await db.purchaseReturn.findUnique({
-    where: { id },
-    include: {
-      items: {
-        orderBy: { lineNo: "asc" },
-        select: {
-          id:        true,
-          productId: true,
-          qty:       true,
-          costPrice: true,
-          showQty:   true,
-          showUnitName: true,
-          moreDetail: true,
-          lotItems:  { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
-        },
-      },
-      // V3: a referenced return inherits the purchase's input-VAT recoverability.
-      purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
+/** The stored return an edit (and its preview) compares with and rewrites. */
+const purchaseReturnEditInclude = {
+  items: {
+    orderBy: { lineNo: "asc" },
+    select: {
+      id: true, productId: true, qty: true, costPrice: true, showQty: true, showUnitName: true, moreDetail: true,
+      lotItems: { orderBy: { id: "asc" }, select: { lotNo: true, qty: true } },
     },
-  });
-  if (!existing) return { error: "ไม่พบเอกสาร" };
-  if (existing.status === "CANCELLED") {
-    return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
-  }
-  const mutationBlockMessage = await getDocumentMutationBlockMessage("PurchaseReturn", id, "update");
-  if (mutationBlockMessage) return { error: mutationBlockMessage };
+  },
+  // V3: a referenced return inherits the purchase's input-VAT recoverability.
+  purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
+} satisfies Prisma.PurchaseReturnInclude;
 
-  const activeRefs = await getActiveSupplierPaymentRefs(id);
-  if (activeRefs.length > 0) {
-    return {
-      error: `ไม่สามารถแก้ไขได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
-    };
-  }
+type StoredPurchaseReturnEdit = Prisma.PurchaseReturnGetPayload<{ include: typeof purchaseReturnEditInclude }>;
+type PurchaseReturnEditInput = z.infer<typeof returnSchema>;
 
+const isValidPurchaseReturnId = (id: string): boolean => Boolean(id) && id.length <= 50 && /^[a-z0-9]+$/.test(id);
+
+/** The edit form's header and lines (updatePurchaseReturn and its preview), validated by returnSchema. */
+function parsePurchaseReturnEditForm(formData: FormData): { data: PurchaseReturnEditInput } | { error: string } {
   let items: z.infer<typeof returnItemSchema>[] = [];
   try {
     const raw = formData.get("items");
@@ -1117,6 +1249,198 @@ export async function updatePurchaseReturn(
     items,
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  return { data: parsed.data };
+}
+
+/** A cash refund carries at least one refund channel; a supplier credit carries none. */
+function parsePurchaseReturnRefundPayments(
+  formData: FormData,
+  settlementType: PurchaseReturnSettlementType,
+): { payments: DocumentPaymentRow[] } | { error: string } {
+  if (settlementType !== PurchaseReturnSettlementType.CASH_REFUND) return { payments: [] };
+  let payments: DocumentPaymentRow[];
+  try {
+    payments = parseDocumentPaymentRows(formData.get("payments"));
+  } catch {
+    return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
+  }
+  if (payments.length === 0) return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
+  return { payments };
+}
+
+/** What an edit submits, as the month-lock comparison reads it. */
+type PurchaseReturnEditSubmission = {
+  docDate: Date;
+  input: PurchaseReturnEditInput;
+  taxInvoiceDate: Date | null;
+  sourcePurchaseVat: TaxDocumentVat | null;
+  lineData: LineData[];
+  payments: DocumentPaymentRow[];
+};
+
+/**
+ * Owner decisions ก2/P4/V5 (purchase-return-period-lock.ts): does the edit change only what a locked month allows —
+ * the note, line remarks and the credit-note number/date while input-VAT recoverability stays the same?
+ */
+async function isPurchaseReturnEditNonFinancial(
+  tx: Prisma.TransactionClient,
+  existing: StoredPurchaseReturnEdit,
+  submitted: PurchaseReturnEditSubmission,
+): Promise<boolean> {
+  try {
+    const { input } = submitted;
+    // V5: the credit-note number/date are remarks unless the date flips recoverability.
+    const storedTaxDocument = resolvePurchaseReturnTaxDocument(existing, existing.purchaseId ? existing.purchase : null);
+    const submittedTaxDocument = resolvePurchaseReturnTaxDocument(
+      { vatType: input.vatType, vatRate: input.vatRate, taxInvoiceDate: submitted.taxInvoiceDate },
+      submitted.sourcePurchaseVat,
+    );
+    const registeredFrom = await loadVatRegisteredFromFor(tx, [storedTaxDocument, submittedTaxDocument]);
+    return isPurchaseReturnNonFinancialChange(
+      {
+        returnDate: existing.returnDate,
+        purchaseId: existing.purchaseId,
+        claimId: existing.claimId,
+        supplierId: existing.supplierId,
+        type: existing.type,
+        settlementType: existing.settlementType,
+        vatType: existing.vatType,
+        vatRate: existing.vatRate,
+        inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(storedTaxDocument, registeredFrom)),
+        lines: existing.items.map((item) => ({
+          signature: buildPurchaseReturnItemSignature({
+            productId: item.productId,
+            qtyInBase: Number(item.qty),
+            costPerBase: Number(item.costPrice),
+            lots: item.lotItems.map((lot) => ({ lotNo: lot.lotNo, qtyInBase: Number(lot.qty) })),
+          }),
+          showQty: item.showQty,
+          showUnitName: item.showUnitName,
+        })),
+        payments: await loadStoredPaymentRows(tx, DocumentPaymentDocType.CN_PURCHASE, existing.id),
+      },
+      {
+        returnDate: submitted.docDate,
+        purchaseId: input.purchaseId || null,
+        claimId: input.claimId || null,
+        supplierId: input.supplierId,
+        type: input.type,
+        settlementType: input.settlementType,
+        vatType: input.vatType,
+        vatRate: input.vatRate,
+        inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(submittedTaxDocument, registeredFrom)),
+        lines: submitted.lineData.map((line) => ({
+          signature: buildPurchaseReturnItemSignature({
+            productId: line.productId,
+            qtyInBase: line.qtyInBase,
+            costPerBase: line.costPerBase,
+            lots: line.lotItems.map((lot) => ({ lotNo: lot.lotNo.trim(), qtyInBase: lot.qty * line.unitScale })),
+          }),
+          showQty: line.qty,
+          showUnitName: line.unitName,
+        })),
+        payments: submitted.payments,
+      },
+    );
+  } catch (error) {
+    console.error("[isPurchaseReturnEditNonFinancial]", error);
+    throw error;
+  }
+}
+
+const NO_EDIT_PREVIEW: PurchaseReturnEditPreview = { periodLock: null, nonFinancial: false, restatement: null };
+
+/**
+ * Y2 (owner 2026-09-30): the months saving this edit would touch — the stored and new return date and, for a
+ * DISCOUNT/OTHER return, the ลดราคาซื้อ posting month and the later sales / credit notes the repost restates (the
+ * planner the edit runs, reads only) — so the edit form can ask an owner for the override reason up front. In a locked
+ * return month, a change the month lock treats as non-financial reports `nonFinancial` (it saves without a reason and
+ * reposts nothing). updatePurchaseReturn re-checks everything under its locks and, when it still rejects for the
+ * lock, returns the months too.
+ */
+export async function previewPurchaseReturnUpdate(
+  id: string,
+  formData: FormData,
+): Promise<{ preview?: PurchaseReturnEditPreview; error?: string }> {
+  const session = await requirePermission("purchase_returns.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+  if (!isValidPurchaseReturnId(id)) return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  const form = parsePurchaseReturnEditForm(formData);
+  if ("error" in form) return { error: form.error };
+  const input = form.data;
+  const refund = parsePurchaseReturnRefundPayments(formData, input.settlementType);
+  if ("error" in refund) return { error: refund.error };
+
+  try {
+    const existing = await db.purchaseReturn.findUnique({ where: { id }, include: purchaseReturnEditInclude });
+    if (!existing || existing.status !== "ACTIVE") return { preview: NO_EDIT_PREVIEW };
+    if (!isPurchaseReturnTypeChangeAllowed(existing.type, input.type)) return { error: PURCHASE_RETURN_TYPE_CHANGE_MESSAGE };
+    const docDate = parseDateOnlyToDate(input.returnDate);
+    const taxInvoiceDate = parseTaxInvoiceDate(input.taxInvoiceDate);
+    const canOverride = canOverridePeriodLock(session.user.permissions);
+    const preview = await dbTx(async (tx): Promise<PurchaseReturnEditPreview> => {
+      const sourcePurchaseVat = await validatePurchaseReturnSourcePurchase(tx, input.purchaseId, input.supplierId,
+        { vatType: input.vatType, vatRate: input.vatRate });
+      const lineData = await buildLineData(tx, input.items, input.vatType, input.vatRate);
+      const returnLocked = await findLockedPeriods(tx, [existing.returnDate, docDate]);
+      if (returnLocked.length > 0 && await isPurchaseReturnEditNonFinancial(tx, existing,
+        { docDate, input, taxInvoiceDate, sourcePurchaseVat, lineData, payments: refund.payments })) {
+        return { periodLock: toPeriodLockView(returnLocked, canOverride), nonFinancial: true, restatement: null };
+      }
+      // X3 keeps RETURN vs DISCOUNT/OTHER, so a return with ลดราคาซื้อ rows never had RETURN_OUT rows.
+      const allowance = isPurchaseAllowanceType(existing.type) || postsPurchaseAllowance(input)
+        ? await previewPurchaseAllowanceChange(tx, {
+          returnNo: existing.returnNo,
+          createdAt: existing.createdAt,
+          lines: postsPurchaseAllowance(input)
+            ? await buildPurchaseAllowanceSourceLines(tx, lineData, { vatType: input.vatType, vatRate: input.vatRate, taxInvoiceDate },
+              sourcePurchaseVat)
+            : [],
+        })
+        : null;
+      const locked = allowance && allowance.lockDates.length > 0
+        ? await findLockedPeriods(tx, [existing.returnDate, docDate, ...allowance.lockDates])
+        : returnLocked;
+      return { periodLock: toPeriodLockView(locked, canOverride), nonFinancial: false, restatement: allowance?.restatement ?? null };
+    });
+    return { preview };
+  } catch (error) {
+    if (error instanceof PurchaseAllowanceError) return { error: error.message };
+    const userMessage = getPurchaseUserErrorMessage(error);
+    if (userMessage) return { error: userMessage };
+    console.error("[previewPurchaseReturnUpdate]", error);
+    return { error: "ตรวจสอบเดือนที่ประกาศปันผลแล้วไม่สำเร็จ" };
+  }
+}
+
+export async function updatePurchaseReturn(
+  id: string,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string; periodLock?: PeriodLockView }> {
+  const session = await requirePermission("purchase_returns.update").catch(() => null);
+  if (!session?.user?.id) return { error: "ไม่มีสิทธิ์เข้าถึง" };
+
+  if (!isValidPurchaseReturnId(id)) {
+    return { error: "รหัสเอกสารไม่ถูกต้อง" };
+  }
+
+  const existing = await db.purchaseReturn.findUnique({ where: { id }, include: purchaseReturnEditInclude });
+  if (!existing) return { error: "ไม่พบเอกสาร" };
+  if (existing.status === "CANCELLED") {
+    return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
+  }
+  const mutationBlockMessage = await getDocumentMutationBlockMessage("PurchaseReturn", id, "update");
+  if (mutationBlockMessage) return { error: mutationBlockMessage };
+
+  const activeRefs = await getActiveSupplierPaymentRefs(id);
+  if (activeRefs.length > 0) {
+    return {
+      error: `ไม่สามารถแก้ไขได้ เนื่องจากถูกใช้ในเอกสารจ่ายชำระ: ${activeRefs.join(", ")}`,
+    };
+  }
+
+  const parsed = parsePurchaseReturnEditForm(formData);
+  if ("error" in parsed) return { error: parsed.error };
 
   const {
     returnDate,
@@ -1130,21 +1454,18 @@ export async function updatePurchaseReturn(
     vatRate,
     items: validItems,
   } = parsed.data;
+  // X3: RETURN ↔ DISCOUNT/OTHER is a different document (stock rows vs ลดราคาซื้อ rows); refused before the
+  // transaction. The updatedAt re-check under the row lock below keeps `existing.type` current.
+  if (!isPurchaseReturnTypeChangeAllowed(existing.type, type)) {
+    return { error: PURCHASE_RETURN_TYPE_CHANGE_MESSAGE };
+  }
   const taxInvoiceNo = normalizeTaxInvoiceNo(parsed.data.taxInvoiceNo);
   const taxInvoiceDate = parseTaxInvoiceDate(parsed.data.taxInvoiceDate);
 
   const isCashRefund = settlementType === PurchaseReturnSettlementType.CASH_REFUND;
-  let payments: DocumentPaymentRow[] = [];
-  if (isCashRefund) {
-    try {
-      payments = parseDocumentPaymentRows(formData.get("payments"));
-    } catch {
-      return { error: "รูปแบบข้อมูลช่องทางรับเงินไม่ถูกต้อง" };
-    }
-    if (payments.length === 0) {
-      return { error: "กรุณาระบุช่องทางรับเงินอย่างน้อย 1 ช่องทาง" };
-    }
-  }
+  const refund = parsePurchaseReturnRefundPayments(formData, settlementType);
+  if ("error" in refund) return { error: refund.error };
+  const { payments } = refund;
   const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
 
   // Optimistic concurrency: the updatedAt the edit form loaded, compared under the row lock.
@@ -1153,12 +1474,17 @@ export async function updatePurchaseReturn(
   const docDate = parseDateOnlyToDate(returnDate);
   const oldProductIds = [...new Set(existing.items.map((item) => item.productId))];
   const oldHadStock = existing.type === PurchaseReturnType.RETURN;
+  // V8: ลดราคาซื้อ rows to reverse (a DISCOUNT/OTHER return) and/or to post (the edited return is one).
+  const oldHadAllowance = isPurchaseAllowanceType(existing.type);
+  const newPostsAllowance = postsPurchaseAllowance({ type, claimId });
+  const allowanceInvolved = oldHadAllowance || newPostsAllowance;
+  const allowanceState: PurchaseAllowanceAuditHolder = { audit: null, touched: false };
 
   // ─── Differential decision (header-level triggers) ────────────────────────
   // Falls back to full reset when any of these change, because the change
   // affects every existing line:
   //   - returnDate → docDate of every StockCard row would need to change
-  //   - type (RETURN ↔ DEBIT) → stock effects toggle on/off entirely
+  //   - type (DISCOUNT ↔ OTHER; RETURN ↔ DISCOUNT/OTHER is refused above — X3)
   //   - purchaseId → buildPurchaseReferenceCostMap() shifts → priceIn of
   //     every RETURN_OUT row would need to change
   // claimId change is handled separately (per-document, runs in both paths).
@@ -1196,58 +1522,8 @@ export async function updatePurchaseReturn(
       // stored and the new date. `existing` is current: updatedAt was re-checked above.
       const periodDecision = await resolveDocumentPeriodLock(tx, [existing.returnDate, docDate], {
         override: lockOverride,
-        isNonFinancialOnly: async () => {
-          // V5: the credit-note number/date are remarks unless the date flips recoverability.
-          const storedTaxDocument = resolvePurchaseReturnTaxDocument(existing, existing.purchaseId ? existing.purchase : null);
-          const submittedTaxDocument = resolvePurchaseReturnTaxDocument({ vatType, vatRate, taxInvoiceDate }, sourcePurchaseVat);
-          const registeredFrom = await loadVatRegisteredFromFor(tx, [storedTaxDocument, submittedTaxDocument]);
-          return isPurchaseReturnNonFinancialChange(
-          {
-            returnDate: existing.returnDate,
-            purchaseId: existing.purchaseId,
-            claimId: existing.claimId,
-            supplierId: existing.supplierId,
-            type: existing.type,
-            settlementType: existing.settlementType,
-            vatType: existing.vatType,
-            vatRate: existing.vatRate,
-            inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(storedTaxDocument, registeredFrom)),
-            lines: existing.items.map((item) => ({
-              signature: buildPurchaseReturnItemSignature({
-                productId: item.productId,
-                qtyInBase: Number(item.qty),
-                costPerBase: Number(item.costPrice),
-                lots: item.lotItems.map((lot) => ({ lotNo: lot.lotNo, qtyInBase: Number(lot.qty) })),
-              }),
-              showQty: item.showQty,
-              showUnitName: item.showUnitName,
-            })),
-            payments: await loadStoredPaymentRows(tx, DocumentPaymentDocType.CN_PURCHASE, id),
-          },
-          {
-            returnDate: docDate,
-            purchaseId: purchaseId || null,
-            claimId: claimId || null,
-            supplierId,
-            type,
-            settlementType,
-            vatType,
-            vatRate,
-            inputVatRecoverable: isInputVatRecoverable(toInputVatDecision(submittedTaxDocument, registeredFrom)),
-            lines: lineData.map((line) => ({
-              signature: buildPurchaseReturnItemSignature({
-                productId: line.productId,
-                qtyInBase: line.qtyInBase,
-                costPerBase: line.costPerBase,
-                lots: line.lotItems.map((lot) => ({ lotNo: lot.lotNo.trim(), qtyInBase: lot.qty * line.unitScale })),
-              }),
-              showQty: line.qty,
-              showUnitName: line.unitName,
-            })),
-            payments,
-          },
-          );
-        },
+        isNonFinancialOnly: () => isPurchaseReturnEditNonFinancial(tx, existing,
+          { docDate, input: parsed.data, taxInvoiceDate, sourcePurchaseVat, lineData, payments }),
       });
       if (periodDecision.kind === "non-financial") {
         // Locked month, note / credit-note number+date / line-detail edit (ก2/P4/V5): stock,
@@ -1344,6 +1620,24 @@ export async function updatePurchaseReturn(
           )
         : null);
 
+      // V8 (W5): plan the ลดราคาซื้อ repost at its original posting date/position and the later sales it restates,
+      // and check the month lock over that posting date and those documents — reads only, before any write. A
+      // return that had RETURN_OUT rows is planned once they are removed below, since they change its coverage.
+      const keptItemIds = new Map<number, string>();
+      for (const [newIdx, itemId] of matchedByNewIdx) keptItemIds.set(newIdx + 1, itemId);
+      const planAllowance = async (): Promise<PurchaseAllowanceChange> => {
+        const lines = newPostsAllowance
+          ? await buildPurchaseAllowanceSourceLines(tx, lineData, { vatType, vatRate, taxInvoiceDate }, sourcePurchaseVat)
+          : [];
+        const change = await planPurchaseAllowanceChange(tx, { returnNo: existing.returnNo, createdAt: existing.createdAt,
+          lines, keptItemIds });
+        if (change.lockDates.length > 0) {
+          periodLock = mergePeriodLockResults(periodLock, await assertPeriodsUnlocked(tx, change.lockDates, lockOverride));
+        }
+        return change;
+      };
+      let allowanceChange: PurchaseAllowanceChange | null = allowanceInvolved && !oldHadStock ? await planAllowance() : null;
+
       if (existing.claimId) {
         await reverseClaimStockMovements(tx, existing.claimId, {
           movementTypes: [ClaimStockMovementType.SUPPLIER_CREDIT_SETTLE],
@@ -1387,6 +1681,12 @@ export async function updatePurchaseReturn(
         await tx.purchaseReturnItem.deleteMany({ where: { purchaseReturnId: id } });
       }
 
+      // V8: reverse the stored ลดราคาซื้อ rows before any new stock row of this return is written.
+      if (allowanceInvolved) {
+        allowanceChange ??= await planAllowance();
+        await reversePurchaseAllowance(tx, allowanceChange);
+      }
+
       const rawTotal = lineData.reduce((sum, line) => sum + line.totalAmount, 0);
       const { subtotalAmount, vatAmount, netAmount } = calcVat(rawTotal, vatType, vatRate);
       if (isCashRefund) {
@@ -1422,6 +1722,8 @@ export async function updatePurchaseReturn(
       // differential path. subtotalAmount = calcItemSubtotal(totalAmount,
       // vatType, vatRate) is always recomputed, so it follows header VAT
       // changes and replaces values stored by the former calcItemSubtotal bug.
+      // amount too (X2): a fractional line saved before the exact-quantity fix
+      // is restated with the header; an integer line keeps the same value.
       if (useDifferential && matchedByNewIdx.size > 0) {
         for (const [newIdx, existingItemId] of matchedByNewIdx) {
           const line = lineData[newIdx];
@@ -1434,6 +1736,7 @@ export async function updatePurchaseReturn(
               showPricePerUnit: line.showPricePerUnit,
               unitScale: line.unitScale,
               moreDetail: line.moreDetail,
+              amount: line.totalAmount,
               subtotalAmount: line.subtotalAmount,
             },
           });
@@ -1444,8 +1747,20 @@ export async function updatePurchaseReturn(
       const linesToWrite: { line: LineData; lineNo: number }[] = useDifferential
         ? addedNewItems.map((a) => ({ line: lineData[a.newIdx], lineNo: a.newIdx + 1 }))
         : lineData.map((line, idx) => ({ line, lineNo: idx + 1 }));
+      const itemIdsByLineNo = new Map(keptItemIds);
       if (linesToWrite.length > 0) {
-        await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, linesToWrite, type, purchaseId);
+        const written = await writePurchaseReturnLines(tx, id, existing.returnNo, docDate, linesToWrite, type, purchaseId);
+        for (const [lineNo, itemId] of written) itemIdsByLineNo.set(lineNo, itemId);
+      }
+
+      // V8: repost ลดราคาซื้อ at the original position, restate later sales and rebuild the variance facts.
+      if (allowanceChange && !allowanceChange.unchanged) {
+        await repostPurchaseAllowance(tx, allowanceChange, { purchaseReturnId: id, itemIds: itemIdsByLineNo });
+        allowanceState.touched = true;
+      }
+      if (allowanceChange && (allowanceChange.oldRows.length > 0 || allowanceChange.lines.length > 0)) {
+        allowanceState.audit = summarizePurchaseAllowance({ postingDate: allowanceChange.postingDate,
+          lines: allowanceChange.lines, change: allowanceChange });
       }
 
       if (linkedClaim) {
@@ -1490,6 +1805,10 @@ export async function updatePurchaseReturn(
     const afterSnapshot = await getPurchaseReturnAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
       const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      const updateMeta = {
+        ...(periodLock.overridden ? periodLockAuditMeta(periodLock, lockOverride) : {}),
+        ...(allowanceState.audit ? { purchaseAllowance: allowanceState.audit } : {}),
+      };
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
         ...requestContext,
@@ -1499,7 +1818,7 @@ export async function updatePurchaseReturn(
         entityRef: afterSnapshot.returnNo,
         before: diff.before,
         after: diff.after,
-        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
+        ...(Object.keys(updateMeta).length > 0 ? { meta: updateMeta } : {}),
       });
     }
     await notifyPeriodLockOverrideUsed({
@@ -1518,10 +1837,17 @@ export async function updatePurchaseReturn(
     revalidatePath("/admin/products");
     revalidatePath("/admin/cash-bank");
     revalidatePath("/admin/reports");
+    if (allowanceState.touched) revalidateProfitDashboardCache();
     return { success: true };
   } catch (error) {
-    if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof PeriodLockedError) {
+      // Y2: the months the lock found (return date, or the ลดราคาซื้อ posting and restated documents), so the edit
+      // form asks for the reason even if its preview missed one.
+      const periodLockView = toPeriodLockView(error.periods, lockOverride.allowed);
+      return { error: error.message, ...(periodLockView ? { periodLock: periodLockView } : {}) };
+    }
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
+    if (error instanceof PurchaseAllowanceError) return { error: error.message };
     const userMessage = getPurchaseUserErrorMessage(error);
     if (userMessage) return { error: userMessage };
     await reportCriticalError(error, { scope: "purchase_returns.update" });

@@ -21,6 +21,9 @@ import {
   type SettlementFactDating,
   type SettlementMovedAmount,
 } from "@/lib/marketplace/settlement-fee-dating";
+import {
+  isValueOnlyStockSource, PURCHASE_ALLOWANCE_LABEL, PURCHASE_ALLOWANCE_SOURCE, valueOnlyStockSources,
+} from "@/lib/stock-value-only-source";
 
 type ProfitFactTx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
 
@@ -318,9 +321,9 @@ export async function syncStockValueResidualFacts(tx: ProfitFactTx, productIdsIn
 }
 
 /**
- * Rebuilds residual facts from the stored StockCard rows (append path and backfill). A negative "ปรับยอด DN" row's
- * write-off is not stored on the row (its costVariance is the DN's posted variance) and only a replay can recompute
- * it, so its current fact is carried over: an appended row never changes an earlier row's valuation.
+ * Rebuilds residual facts from the stored StockCard rows (append path and backfill). A negative value-only row's
+ * write-off ("ปรับยอด DN" or ลดราคาซื้อ) is not stored on the row (its costVariance is the posted variance) and only a
+ * replay can recompute it, so its current fact is carried over: an appended row never changes an earlier row's valuation.
  */
 export async function rebuildStockValueResidualFactsForProducts(tx: ProfitFactTx, productIdsInput: readonly string[],
   since: Date): Promise<void> {
@@ -328,20 +331,21 @@ export async function rebuildStockValueResidualFactsForProducts(tx: ProfitFactTx
     const productIds = [...new Set(productIdsInput.filter(Boolean))];
     if (productIds.length === 0) return;
     const rows = await tx.stockCard.findMany({
-      where: { productId: { in: productIds }, docDate: { gte: since }, source: { not: "SUPPLIER_DEBIT" }, costVariance: { not: 0 } },
+      where: { productId: { in: productIds }, docDate: { gte: since }, source: { notIn: valueOnlyStockSources() }, costVariance: { not: 0 } },
       orderBy: [{ productId: "asc" }, { docDate: "asc" }, { sorder: "asc" }],
       select: { id: true, productId: true, docDate: true, source: true, costVariance: true },
     });
     const debitRows = await tx.factProfit.findMany({
       where: { sourceType: ProfitSourceType.STOCK_VALUE_RESIDUAL, sourceId: { in: productIds }, isActive: true,
-        sourceSubtype: "SUPPLIER_DEBIT" },
+        sourceSubtype: { in: valueOnlyStockSources() } },
       select: { sourceId: true, sourceSubtype: true, sourceLineId: true, businessDate: true, costAmount: true },
     });
     await syncStockValueResidualFacts(tx, productIds, [
       ...rows.map((row) => ({ stockCardId: row.id, productId: row.productId,
         docDate: row.docDate, source: row.source, amount: Number(row.costVariance) })),
-      ...debitRows.filter((fact) => fact.sourceSubtype === "SUPPLIER_DEBIT" && fact.sourceLineId).map((fact) => ({ stockCardId: fact.sourceLineId ?? "",
-        productId: fact.sourceId, docDate: fact.businessDate, source: "SUPPLIER_DEBIT", amount: Number(fact.costAmount) })),
+      ...debitRows.filter((fact) => isValueOnlyStockSource(fact.sourceSubtype) && fact.sourceLineId).map((fact) => ({
+        stockCardId: fact.sourceLineId ?? "", productId: fact.sourceId, docDate: fact.businessDate,
+        source: fact.sourceSubtype ?? "SUPPLIER_DEBIT", amount: Number(fact.costAmount) })),
     ]);
   } catch (error) {
     console.error("[rebuildStockValueResidualFactsForProducts]", error);
@@ -351,8 +355,17 @@ export async function rebuildStockValueResidualFactsForProducts(tx: ProfitFactTx
 
 /** Fact subtype and dashboard label of a "ปรับยอด DN" document's cost variance (a regular DN is "SUPPLIER_DN"). */
 export const SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE = "SUPPLIER_DN_ADJUSTMENT";
-export const getSupplierDebitProfitLabel = (subtype: string | null | undefined): string =>
-  subtype === SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE ? "ปรับยอด DN" : "Supplier DN";
+/**
+ * V8 (W4): a DISCOUNT/OTHER purchase return's uncovered allowance is a PURCHASE_COST_VARIANCE fact with this subtype;
+ * its sourceId is the purchase return (dashboard link /admin/purchase-returns/{id}).
+ */
+export const PURCHASE_ALLOWANCE_FACT_SUBTYPE = PURCHASE_ALLOWANCE_SOURCE;
+export const isPurchaseAllowanceFactSubtype = (subtype: string | null | undefined): boolean =>
+  subtype === PURCHASE_ALLOWANCE_FACT_SUBTYPE;
+export const getSupplierDebitProfitLabel = (subtype: string | null | undefined): string => {
+  if (isPurchaseAllowanceFactSubtype(subtype)) return PURCHASE_ALLOWANCE_LABEL;
+  return subtype === SUPPLIER_DEBIT_ADJUSTMENT_FACT_SUBTYPE ? "ปรับยอด DN" : "Supplier DN";
+};
 
 /** Rebuild from the posted allocation snapshot; never allocate DN costs again. */
 export async function rebuildSupplierDebitProfitFacts(tx: ProfitFactTx, debitNoteId: string): Promise<void> {
@@ -385,6 +398,47 @@ export async function rebuildSupplierDebitProfitFacts(tx: ProfitFactTx, debitNot
     await createFactProfitRows(tx, rows);
   } catch (error) {
     console.error("[rebuildSupplierDebitProfitFacts]", error);
+    throw error;
+  }
+}
+
+/**
+ * V8 (W1/W4): one PURCHASE_COST_VARIANCE fact per posted ลดราคาซื้อ row of a DISCOUNT/OTHER purchase return, dated at
+ * the row's posting date, cost = the row's (negative) posted variance. Rebuilt from the stored rows, never re-allocated;
+ * a cancelled return (whose rows are deleted) keeps no active fact.
+ */
+export async function rebuildPurchaseAllowanceProfitFacts(tx: ProfitFactTx, purchaseReturnId: string): Promise<void> {
+  try {
+    const purchaseReturn = await tx.purchaseReturn.findUnique({
+      where: { id: purchaseReturnId },
+      select: { id: true, returnNo: true, status: true, supplierId: true, supplier: { select: { name: true } },
+        purchase: { select: { purchaseNo: true } } },
+    });
+    if (!purchaseReturn) return;
+    await deactivateCurrentFacts(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, purchaseReturnId);
+    if (purchaseReturn.status !== DocStatus.ACTIVE) return;
+    const rows = await tx.stockCard.findMany({
+      where: { docNo: purchaseReturn.returnNo, source: PURCHASE_ALLOWANCE_SOURCE },
+      orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+      select: { id: true, docDate: true, referenceId: true, costVariance: true, productId: true,
+        product: { select: { code: true, name: true } } },
+    });
+    if (rows.length === 0) return;
+    const versionNo = await getNextVersion(tx, ProfitSourceType.PURCHASE_COST_VARIANCE, purchaseReturnId);
+    await createFactProfitRows(tx, rows.map((row): FactProfitRowInput => {
+      const variance = roundMoney(Number(row.costVariance));
+      return { businessDate: row.docDate, sourceType: ProfitSourceType.PURCHASE_COST_VARIANCE,
+        sourceSubtype: PURCHASE_ALLOWANCE_FACT_SUBTYPE, sourceId: purchaseReturn.id, sourceLineId: row.referenceId ?? row.id,
+        sourceDocNo: purchaseReturn.returnNo, referenceDocNo: purchaseReturn.purchase?.purchaseNo ?? null,
+        sourceStatus: purchaseReturn.status, versionNo, productId: row.productId, productCode: row.product.code,
+        productName: row.product.name, supplierId: purchaseReturn.supplierId, supplierName: purchaseReturn.supplier?.name ?? null,
+        lineLabel: `${PURCHASE_ALLOWANCE_LABEL} · ส่วนต่างต้นทุน`,
+        quantity: 0, salesAmountExVat: 0, salesAmountIncVat: 0, salesAmount: 0, costAmount: variance,
+        expenseAmount: 0, grossProfit: roundMoney(-variance), netProfitAmount: roundMoney(-variance),
+        unitSalePriceExVat: 0, unitSalePriceIncVat: 0, unitSalePrice: 0, unitCostPrice: 0, unitProfit: 0, marginPct: 0 };
+    }));
+  } catch (error) {
+    console.error("[rebuildPurchaseAllowanceProfitFacts]", error);
     throw error;
   }
 }

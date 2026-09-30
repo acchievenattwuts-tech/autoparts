@@ -5,6 +5,7 @@ import {
   replayStockCardMavg, sortRowsForReplay, STOCK_REPLAY_SELECT,
   type StockReplayRow, type StockReplayRowResult,
 } from "@/lib/stock-card";
+import { isValueOnlyStockSource, type ValueOnlyStockSource } from "@/lib/stock-value-only-source";
 
 /**
  * T1 option A (owner approved 2026-09-30): when a supplier DN is cancelled or its lines/VAT are
@@ -19,6 +20,10 @@ import {
  * averages, the target replay is repeated until nothing moves. Rows before the DN are identical in
  * both replays, so only documents after the DN position can change. Nothing is written by the
  * planner; the caller checks the month lock with restatementDates() before applying.
+ *
+ * V8 (owner approved 2026-09-30, W5): the same planner restates later sales when a DISCOUNT/OTHER purchase return's
+ * value-only PURCHASE_ALLOWANCE rows ("ลดราคาซื้อ") are reposted or reversed: pass `source` and the return number as
+ * `debitNo`. The default source stays SUPPLIER_DEBIT.
  */
 
 type Tx = Prisma.TransactionClient;
@@ -36,7 +41,7 @@ const roundTo = (value: number, scale: number): number =>
 const round2 = (value: number): number => roundTo(value, MONEY_SCALE);
 const round4 = (value: number): number => roundTo(value, PRICE_SCALE);
 
-/** A value-only DN row the change posts at the DN's original position (edit); none for a cancel. */
+/** A value-only row the change posts at the document's original position (edit); none for a cancel. */
 export type DebitReplacementRow = { productId: string; docDate: Date; valuationEpoch: number; valueAdjustment: number };
 
 export type PlanStockRow = StockReplayRow & { productId: string; docNo: string; referenceId: string | null };
@@ -57,7 +62,10 @@ export type ChangedResidualRow = { stockCardId: string; productId: string; docDa
 
 export type ProductRestatementInput = {
   rows: PlanStockRow[];
+  /** Document number of the value-only rows that change (a DN, or a purchase return for PURCHASE_ALLOWANCE). */
   debitNo: string;
+  /** Source of those rows; SUPPLIER_DEBIT when omitted. */
+  source?: ValueOnlyStockSource;
   replacements: DebitReplacementRow[];
   saleItems: ReadonlyMap<string, PlanSaleItem>;
   returnItems: ReadonlyMap<string, PlanReturnItem>;
@@ -125,12 +133,15 @@ function replayRows(rows: StockReplayRow[]): Map<string, StockReplayRowResult> {
   return results;
 }
 
+const DEFAULT_VALUE_SOURCE: ValueOnlyStockSource = "SUPPLIER_DEBIT";
+
 function buildTargetRows(input: ProductRestatementInput): PlanStockRow[] {
-  const kept = input.rows.filter((row) => !(row.source === "SUPPLIER_DEBIT" && row.docNo === input.debitNo));
+  const source = input.source ?? DEFAULT_VALUE_SOURCE;
+  const kept = input.rows.filter((row) => !(row.source === source && row.docNo === input.debitNo));
   const zero = new Prisma.Decimal(0);
   const added = input.replacements.map((row, index): PlanStockRow => ({
     id: `${RESTATEMENT_ROW_PREFIX}${row.productId}:${index}`, productId: row.productId, docNo: input.debitNo, referenceId: null,
-    docDate: row.docDate, sorder: 0, source: "SUPPLIER_DEBIT", valuationEpoch: row.valuationEpoch,
+    docDate: row.docDate, sorder: 0, source, valuationEpoch: row.valuationEpoch,
     qtyIn: zero, qtyOut: zero, priceIn: zero, landedCost: zero, usesReferenceCost: false,
     qtyBalance: zero, priceBalance: zero, priceOut: zero, valueAdjustment: new Prisma.Decimal(row.valueAdjustment), costVariance: zero,
   }));
@@ -190,7 +201,7 @@ export function planProductRestatement(input: ProductRestatementInput): ProductR
   const residualRows = target.flatMap((row) => {
     const before = baseline.get(row.id)?.costVariance ?? 0;
     const after = targetResults.get(row.id)?.costVariance ?? 0;
-    return !row.id.startsWith(RESTATEMENT_ROW_PREFIX) && row.source !== "SUPPLIER_DEBIT" && round2(before) !== round2(after)
+    return !row.id.startsWith(RESTATEMENT_ROW_PREFIX) && !isValueOnlyStockSource(row.source) && round2(before) !== round2(after)
       ? [{ stockCardId: row.id, productId: row.productId, docDate: row.docDate, before, after }] : [];
   });
   return { saleItems, returnRows, residualRows, unlinkedSaleRows };
@@ -223,15 +234,16 @@ export type SaleCostRestatementSummary = {
 
 const EMPTY_PLAN: SaleCostRestatementPlan = { saleItems: [], returnRows: [], residualRows: [], creditNotes: [], unlinkedSaleRows: 0 };
 
-/** Position of each product's DN (earliest date/epoch); rows before it can never change. */
-function debitBoundaries(rows: PlanStockRow[], debitNo: string, replacements: DebitReplacementRow[]): Map<string, { time: number; epoch: number }> {
+/** Position of each product's value-only rows (earliest date/epoch); rows before it can never change. */
+function debitBoundaries(rows: PlanStockRow[], debitNo: string, replacements: DebitReplacementRow[],
+  source: ValueOnlyStockSource): Map<string, { time: number; epoch: number }> {
   const boundaries = new Map<string, { time: number; epoch: number }>();
   const consider = (productId: string, docDate: Date, epoch: number): void => {
     const current = boundaries.get(productId);
     const time = docDate.getTime();
     if (!current || time < current.time || (time === current.time && epoch < current.epoch)) boundaries.set(productId, { time, epoch });
   };
-  for (const row of rows) if (row.source === "SUPPLIER_DEBIT" && row.docNo === debitNo) consider(row.productId, row.docDate, row.valuationEpoch ?? 0);
+  for (const row of rows) if (row.source === source && row.docNo === debitNo) consider(row.productId, row.docDate, row.valuationEpoch ?? 0);
   for (const row of replacements) consider(row.productId, row.docDate, row.valuationEpoch);
   return boundaries;
 }
@@ -301,10 +313,11 @@ async function findRestatedCreditNotes(client: RestatementClient, saleItems: Res
 
 /**
  * Plans the restatement for a DN cancel (no replacements) or line/VAT edit (replacement rows at the
- * DN's original position). Call after the DN's SKUs are locked; performs reads only.
+ * DN's original position). Call after the DN's SKUs are locked; performs reads only. `source`
+ * PURCHASE_ALLOWANCE (with the return number as `debitNo`) plans a purchase allowance change (V8).
  */
 export async function planSaleCostRestatement(client: RestatementClient, input: {
-  productIds: readonly string[]; debitNo: string; replacements: DebitReplacementRow[];
+  productIds: readonly string[]; debitNo: string; replacements: DebitReplacementRow[]; source?: ValueOnlyStockSource;
 }): Promise<SaleCostRestatementPlan> {
   try {
     const productIds = [...new Set(input.productIds.filter(Boolean))];
@@ -315,11 +328,12 @@ export async function planSaleCostRestatement(client: RestatementClient, input: 
       select: { ...STOCK_REPLAY_SELECT, docNo: true, referenceId: true },
     });
     const rows: PlanStockRow[] = stored.map((row) => ({ ...row, referenceId: row.referenceId ?? null }));
-    const boundaries = debitBoundaries(rows, input.debitNo, input.replacements);
+    const source = input.source ?? DEFAULT_VALUE_SOURCE;
+    const boundaries = debitBoundaries(rows, input.debitNo, input.replacements, source);
     const links = await loadPlanLinks(client, rows.filter((row) => isAfterBoundary(row, boundaries.get(row.productId))));
     const plan: SaleCostRestatementPlan = { saleItems: [], returnRows: [], residualRows: [], creditNotes: [], unlinkedSaleRows: 0 };
     for (const productId of productIds) {
-      const result = planProductRestatement({ rows: rows.filter((row) => row.productId === productId), debitNo: input.debitNo,
+      const result = planProductRestatement({ rows: rows.filter((row) => row.productId === productId), debitNo: input.debitNo, source,
         replacements: input.replacements.filter((row) => row.productId === productId), saleItems: links.saleItems,
         returnItems: links.returnItems, sourceSaleItems: links.sourceSaleItems.filter((item) => item.productId === productId) });
       plan.saleItems.push(...result.saleItems);

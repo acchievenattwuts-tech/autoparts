@@ -861,6 +861,22 @@ export async function getReportsData(filters: ParsedReportFilters,
           ${productCodeRange?.gte ? Prisma.sql`AND f."productCode" >= ${productCodeRange.gte}` : Prisma.empty}
           ${productCodeRange?.lte ? Prisma.sql`AND f."productCode" <= ${productCodeRange.lte}` : Prisma.empty}
       `;
+  // V8: the uncovered part of a DISCOUNT/OTHER purchase return ("ลดราคาซื้อ") is a negative purchase cost variance on its
+  // posting date, read from its PURCHASE_COST_VARIANCE facts (subtype PURCHASE_ALLOWANCE) over the [businessDate,
+  // isActive] index. A supplier filter joins the fact's supplier, a product filter its product code; enum values are
+  // SQL literals, never user input.
+  const purchaseAllowanceVariancePromise: Promise<Array<{ total: Prisma.Decimal | number | null }>> =
+    db.$queryRaw<Array<{ total: Prisma.Decimal | number | null }>>`
+      SELECT SUM(f."costAmount") AS "total"
+      FROM "FactProfit" f
+      ${supplierCodeRange ? Prisma.sql`JOIN "Supplier" s ON s."id" = f."supplierId"` : Prisma.empty}
+      WHERE f."isActive" = true AND f."sourceType" = 'PURCHASE_COST_VARIANCE' AND f."sourceSubtype" = 'PURCHASE_ALLOWANCE'
+        AND f."businessDate" >= ${filters.from} AND f."businessDate" <= ${filters.to}
+        ${productCodeRange?.gte ? Prisma.sql`AND f."productCode" >= ${productCodeRange.gte}` : Prisma.empty}
+        ${productCodeRange?.lte ? Prisma.sql`AND f."productCode" <= ${productCodeRange.lte}` : Prisma.empty}
+        ${supplierCodeRange?.gte ? Prisma.sql`AND s."code" >= ${supplierCodeRange.gte}` : Prisma.empty}
+        ${supplierCodeRange?.lte ? Prisma.sql`AND s."code" <= ${supplierCodeRange.lte}` : Prisma.empty}
+    `;
   // AP side of a DN is dated by receivedDate (วันรับใบ), matching the AP report. A ปรับยอด DN supplier credit is
   // stored as a negative amountRemain, so it reduces debitOutstanding.
   const supplierDebitOutstandingPromise = db.supplierDebitNote.findMany({
@@ -1202,6 +1218,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     supplierDebitOutstanding,
     stockValueResidualRows,
     supplierDebitRefunds,
+    purchaseAllowanceVarianceRows,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise,
     ],
@@ -1219,6 +1236,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       supplierDebitOutstandingPromise,
       stockValueResidualPromise,
       supplierDebitRefundsPromise,
+      purchaseAllowanceVariancePromise,
     ],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -1240,6 +1258,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     Awaited<typeof supplierDebitOutstandingPromise>,
     Awaited<typeof stockValueResidualPromise>,
     Awaited<typeof supplierDebitRefundsPromise>,
+    Awaited<typeof purchaseAllowanceVariancePromise>,
   ];
   const supplierDebitRefundReceiptRows = await buildSupplierDebitRefundReceiptRows(supplierDebitRefunds);
 
@@ -1374,7 +1393,9 @@ export async function getReportsData(filters: ParsedReportFilters,
     (sum, creditNote) => sum + creditNote.cogsReversal,
     0,
   );
-  const purchaseCostVariance = sumSupplierDebitVariance(supplierDebits, Boolean(productCodeRange));
+  // Supplier DN variance plus (V8) the negative ลดราคาซื้อ variance of DISCOUNT/OTHER purchase returns.
+  const purchaseCostVariance = sumSupplierDebitVariance(supplierDebits, Boolean(productCodeRange)) +
+    toNumber(purchaseAllowanceVarianceRows[0]?.total);
   const stockValueResidual = toNumber(stockValueResidualRows[0]?.total);
   const costOfGoodsSold = normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal +
     purchaseCostVariance + stockValueResidual;
@@ -1895,7 +1916,7 @@ export function buildReportsCsv(data: ReportsData): string {
   pushRow(["ยอดคืนขาย/ลดหนี้ก่อน VAT", data.profitLoss.salesReturns.toFixed(2)]);
   pushRow(["รายได้สุทธิก่อน VAT", data.profitLoss.netRevenue.toFixed(2)]);
   pushRow(["ต้นทุนขายรวมส่วนต่าง DN และผลต่างมูลค่าสต็อก", data.profitLoss.costOfGoodsSold.toFixed(2)]);
-  pushRow(["ส่วนต่างต้นทุน DN (รวมในต้นทุนด้านบน)", (data.profitLoss.purchaseCostVariance ?? 0).toFixed(2)]);
+  pushRow(["ส่วนต่างต้นทุน DN / ลดราคาซื้อ (รวมในต้นทุนด้านบน)", (data.profitLoss.purchaseCostVariance ?? 0).toFixed(2)]);
   pushRow(["ผลต่างมูลค่าสต็อก (รวมในต้นทุนด้านบน)", (data.profitLoss.stockValueResidual ?? 0).toFixed(2)]);
   pushRow(["กำไรขั้นต้น", data.profitLoss.grossProfit.toFixed(2)]);
   pushRow(["ค่าใช้จ่าย", data.profitLoss.expenseTotal.toFixed(2)]);

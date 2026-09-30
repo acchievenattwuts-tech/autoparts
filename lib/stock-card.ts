@@ -19,6 +19,7 @@ import { db } from "@/lib/db";
 import { DocumentMutationBlockedError } from "@/lib/document-mutation-guard";
 import { formatDateThai, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 import { rebuildStockValueResidualFactsForProducts, syncStockValueResidualFacts, type StockValueResidual } from "@/lib/profit-fact";
+import { describeValueOnlyStockDocument, isValueOnlyStockSource, valueOnlyStockSources } from "@/lib/stock-value-only-source";
 import {
   enqueueStorefrontStockInvalidation,
   enqueueStorefrontStockInvalidations,
@@ -41,9 +42,9 @@ const STOCK_VALUE_RESIDUAL_START = parseDateOnlyToStartOfDay(STOCK_VALUE_RESIDUA
 const STOCK_VALUE_RESIDUAL_MIN = 0.01;
 const STOCK_MONEY_SCALE = 2;
 
-/** Rows whose costVariance the replay owns (a DN row keeps its own posted variance). */
+/** Rows whose costVariance the replay owns (a value-only DN / ลดราคาซื้อ row keeps its own posted variance). */
 export function isStockValueResidualRow(row: { source: string; docDate: Date }): boolean {
-  return row.source !== "SUPPLIER_DEBIT" && row.docDate.getTime() >= STOCK_VALUE_RESIDUAL_START.getTime();
+  return !isValueOnlyStockSource(row.source) && row.docDate.getTime() >= STOCK_VALUE_RESIDUAL_START.getTime();
 }
 
 /**
@@ -64,7 +65,8 @@ export function computeStockValueResidual(input: {
 }
 
 /**
- * T3 for a negative value-only row (a "ปรับยอด DN" reduction, lib/supplier-debit-adjustment.ts): the running value
+ * T3 for a negative value-only row (a "ปรับยอด DN" reduction, lib/supplier-debit-adjustment.ts, or a "ลดราคาซื้อ"
+ * purchase allowance, lib/purchase-allowance.ts): the running value
  * never goes below zero. The part of the reduction the on-hand value cannot absorb is written off at that row and
  * returned as a negative residual (a cost reduction), read by profit as a STOCK_VALUE_RESIDUAL fact like any other
  * T3 write-off. Positive DN rows and rows dated before the T3 start never produce one.
@@ -167,6 +169,8 @@ const NEUTRAL_IN_SOURCES: string[] = [
  */
 const STOCK_SOURCE_SEQUENCE_GROUP: Record<StockCardSource, number> = {
   SUPPLIER_DEBIT: -1,
+  // V8: a purchase allowance is value-only like a DN: first within its own valuation epoch.
+  PURCHASE_ALLOWANCE: -1,
   BF: 0,
   PURCHASE: 1,
   RETURN_IN: 1,
@@ -326,14 +330,14 @@ export function replayStockCardMavg(rows: StockReplayRow[], onRow?: (result: Sto
     let newBaTotal = 0;
     let priceOut   = baPrice;
 
-    if (row.source === "SUPPLIER_DEBIT") {
+    if (isValueOnlyStockSource(row.source)) {
       if (qIn !== 0 || qOut !== 0) throw new Error("DN must not change stock quantity");
       const adjustment = Number(row.valueAdjustment ?? 0);
       if (baQty <= 0 && adjustment !== 0) throw new Error("DN inventory adjustment requires positive stock");
       newBaTotal = baQty > 0 ? baTotal + adjustment : 0;
       newBaPrice = baQty > 0 ? newBaTotal / baQty : baPrice;
-      // A reduction never takes the value below zero; the unabsorbed part is a T3 write-off (DN rows keep their own
-      // posted costVariance, so the residual travels only through `residuals` into the profit facts).
+      // A reduction never takes the value below zero; the unabsorbed part is a T3 write-off (value-only rows keep their
+      // own posted costVariance, so the residual travels only through `residuals` into the profit facts).
       if (adjustment < 0 && newBaTotal < 0) {
         const writeOff = computeDebitValueResidual({ adjustment, newBaTotal, docDate: row.docDate });
         if (writeOff !== 0) residuals.push({ id: row.id, docDate: row.docDate, source: row.source, amount: writeOff });
@@ -430,7 +434,7 @@ async function flushStockBalanceUpdates(
       )`),
     );
 
-    // A NULL costVariance keeps the stored value (DN rows and rows before the T3 start date).
+    // A NULL costVariance keeps the stored value (value-only rows and rows before the T3 start date).
     await tx.$executeRaw`
       UPDATE "StockCard" AS sc
       SET
@@ -622,16 +626,16 @@ export async function writeStockCard(
   const lc  = input.landedCost ?? 0;
   const usesRef = input.usesReferenceCost === true;
   const valuationEpoch = input.valuationEpoch ?? await getStockValuationEpoch(tx, input.productId, input.docDate);
-  if (input.source !== "SUPPLIER_DEBIT") {
-    // Latest DN first: a date on/after its posting date clears every later DN boundary at once.
+  if (!isValueOnlyStockSource(input.source)) {
+    // Latest value-only posting (DN or ลดราคาซื้อ) first: a date on/after its posting date clears every later boundary.
     const laterDebit = await tx.stockCard.findFirst({
-      where: { productId: input.productId, source: "SUPPLIER_DEBIT", docDate: { gt: input.docDate } },
+      where: { productId: input.productId, source: { in: valueOnlyStockSources() }, docDate: { gt: input.docDate } },
       orderBy: [{ docDate: "desc" }, { sorder: "desc" }],
-      select: { docNo: true, docDate: true },
+      select: { docNo: true, docDate: true, source: true },
     });
     if (laterDebit) {
       const debitDate = formatDateThai(laterDebit.docDate);
-      throw new DocumentMutationBlockedError(`ไม่สามารถลงสต็อกย้อนหลังข้ามใบเพิ่มหนี้ ${laterDebit.docNo} ที่ลงต้นทุนวันที่ ${debitDate} กรุณาใช้วันที่เอกสารตั้งแต่ ${debitDate} เป็นต้นไป`);
+      throw new DocumentMutationBlockedError(`ไม่สามารถลงสต็อกย้อนหลังข้าม${describeValueOnlyStockDocument(laterDebit.source)} ${laterDebit.docNo} ที่ลงต้นทุนวันที่ ${debitDate} กรุณาใช้วันที่เอกสารตั้งแต่ ${debitDate} เป็นต้นไป`);
     }
   }
 
@@ -690,7 +694,7 @@ export async function writeStockCard(
     select: { id: true },
   });
 
-  if (needsFullRecalc || input.source === "SUPPLIER_DEBIT") {
+  if (needsFullRecalc || isValueOnlyStockSource(input.source)) {
     // แถวใหม่ไม่ได้อยู่ท้ายสุด (ลงย้อนหลัง หรือวันเดียวกันแต่ต้องมาก่อนแถวเดิม)
     // → จัดลำดับใหม่ทั้งใบแล้วรีเพลย์ MAVG ตั้งแต่ต้น
     await recalculateStockCard(tx, input.productId);
@@ -702,7 +706,7 @@ export async function writeStockCard(
     });
     const baQty   = product ? product.stock : 0;
     const debitBoundary = await tx.stockCard.findFirst({
-      where: { productId: input.productId, source: "SUPPLIER_DEBIT" },
+      where: { productId: input.productId, source: { in: valueOnlyStockSources() } },
       select: { id: true },
     });
     // Preserve the four-decimal running valuation after a value-only posting.

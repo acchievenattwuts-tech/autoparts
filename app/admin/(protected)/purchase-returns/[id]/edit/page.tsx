@@ -20,6 +20,7 @@ import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 import { getPurchaseReturnProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
 import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
 import { PURCHASE_RETURN_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../purchase-return-period-lock";
+import { postsPurchaseAllowance } from "@/lib/purchase-allowance";
 
 const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const session = await requirePermission("purchase_returns.update");
@@ -69,8 +70,10 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     checkDocumentMutation("PurchaseReturn", id, "update"),
     // Lines before an active supplier DN: a warning only; updatePurchaseReturn blocks just the rows it rewrites.
     checkDocumentStockDebitWarning("PurchaseReturn", id),
-    // Month already distributed: same message updatePurchaseReturn returns (lib/period-lock.ts).
-    getDocumentPeriodLockView([ret.returnDate], session.user.permissions),
+    // Month already distributed: same message updatePurchaseReturn returns (lib/period-lock.ts). A DISCOUNT/OTHER
+    // return's ลดราคาซื้อ is posted on its creation date (V8), whose month a cost change also needs open.
+    getDocumentPeriodLockView(postsPurchaseAllowance(ret) ? [ret.returnDate, ret.createdAt] : [ret.returnDate],
+      session.user.permissions),
   ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);

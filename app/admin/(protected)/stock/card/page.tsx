@@ -20,6 +20,7 @@ import {
   parseDateOnlyToEndOfDay,
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
+import { isValueOnlyStockSource, PURCHASE_ALLOWANCE_LABEL, PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
 import RecalculateButton from "./RecalculateButton";
 
 interface StockCardPageProps {
@@ -35,6 +36,7 @@ const sourceLabel: Record<string, string> = {
   BF: "ยอดยกมา",
   PURCHASE: "ซื้อเข้า",
   SUPPLIER_DEBIT: "ใบเพิ่มหนี้ซัพพลายเออร์ (DN)",
+  PURCHASE_ALLOWANCE: PURCHASE_ALLOWANCE_LABEL,
   SALE: "ขายออก",
   RETURN_IN: "รับคืน",
   RETURN_OUT: "คืนซัพพลายเออร์",
@@ -50,6 +52,7 @@ const sourceBadge: Record<string, string> = {
   BF: "bg-blue-100 text-blue-700",
   PURCHASE: "bg-green-100 text-green-700",
   SUPPLIER_DEBIT: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  PURCHASE_ALLOWANCE: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300",
   SALE: "bg-orange-100 text-orange-700",
   RETURN_IN: "bg-teal-100 text-teal-700",
   RETURN_OUT: "bg-yellow-100 text-yellow-700",
@@ -82,6 +85,7 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
   const { role, permissions } = await getSessionPermissionContext();
   const canManage = hasPermissionAccess(role, permissions, "stock.card.manage");
   const canViewDebit = hasPermissionAccess(role, permissions, "supplier_debit_notes.view");
+  const canViewPurchaseReturns = hasPermissionAccess(role, permissions, "purchase_returns.view");
 
   const { productId, q, from, to } = await searchParams;
   const normalizedQuery = q?.trim() ?? "";
@@ -193,12 +197,20 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
 
   const [cards, openingRow] = await Promise.all([cardsPromise, openingPromise]);
   const debitNumbers = [...new Set(cards.filter((card) => card.source === "SUPPLIER_DEBIT").map((card) => card.docNo))];
-  // T3: a non-DN row with a cost variance carries a stock value written off at zero on-hand.
-  const hasStockValueResidual = cards.some((card) => card.source !== "SUPPLIER_DEBIT" && Number(card.costVariance) !== 0);
+  // V8: ลดราคาซื้อ rows of DISCOUNT/OTHER purchase returns (value-only, like a DN).
+  const allowanceNumbers = [...new Set(cards.filter((card) => card.source === PURCHASE_ALLOWANCE_SOURCE).map((card) => card.docNo))];
+  // T3: a row that is not value-only with a cost variance carries a stock value written off at zero on-hand.
+  const hasStockValueResidual = cards.some((card) => !isValueOnlyStockSource(card.source) && Number(card.costVariance) !== 0);
   const debitDocuments = canViewDebit && debitNumbers.length > 0
     ? await db.supplierDebitNote.findMany({ where: { debitNo: { in: debitNumbers } }, select: { id: true, debitNo: true } })
     : [];
-  const debitHrefByNumber = new Map(debitDocuments.map((debit) => [debit.debitNo, `/admin/supplier-debit-notes/${debit.id}`]));
+  const allowanceDocuments = canViewPurchaseReturns && allowanceNumbers.length > 0
+    ? await db.purchaseReturn.findMany({ where: { returnNo: { in: allowanceNumbers } }, select: { id: true, returnNo: true } })
+    : [];
+  const debitHrefByNumber = new Map<string, string>([
+    ...debitDocuments.map((debit): [string, string] => [debit.debitNo, `/admin/supplier-debit-notes/${debit.id}`]),
+    ...allowanceDocuments.map((doc): [string, string] => [doc.returnNo, `/admin/purchase-returns/${doc.id}`]),
+  ]);
 
   const reportStock = selectedProduct && reportUnit
     ? toReportUnitQty(Number(selectedProduct.stock), reportUnit.scale)
@@ -359,6 +371,9 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
             {debitNumbers.length > 0 && <p className="border-b border-indigo-100 bg-indigo-50 px-5 py-3 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
               DN ไม่เปลี่ยนจำนวนสินค้า: ส่วนเพิ่มมูลค่าสต็อกปรับ MAVG ส่วนต่างต้นทุนลงในงวด DN · การลง DN ไม่เปลี่ยนต้นทุนใบขายก่อนหน้า แต่การแก้รายการหรือยกเลิก DN จะปรับต้นทุนใบขายที่อยู่หลัง DN ย้อนหลัง
             </p>}
+            {allowanceNumbers.length > 0 && <p className="border-b border-cyan-100 bg-cyan-50 px-5 py-3 text-sm text-cyan-900 dark:border-cyan-900 dark:bg-cyan-950 dark:text-cyan-200">
+              {PURCHASE_ALLOWANCE_LABEL} (ใบคืนซื้อประเภทส่วนลดราคา/อื่นๆ) ไม่เปลี่ยนจำนวนสินค้า: ลดมูลค่าสต็อกตามจำนวนคงเหลือ ณ วันที่บันทึกเอกสาร ส่วนที่ขายไปแล้วเป็นส่วนต่างต้นทุน (ติดลบ) ในงวดนั้น · การแก้ไขหรือยกเลิกจะปรับต้นทุนใบขายที่อยู่หลังรายการนี้ย้อนหลัง
+            </p>}
             {hasStockValueResidual && <p className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
               ผลต่างมูลค่าสต็อก: เมื่อจำนวนคงเหลือเป็น 0 แล้วยังมีมูลค่าค้างอยู่ (เช่น คืนซื้อหลังลง DN) ระบบตัดมูลค่านั้นเป็นส่วนต่างต้นทุนของรายการนั้น และรวมในกำไรขาดทุน
             </p>}
@@ -470,10 +485,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                           </td>
                           <td className="px-3 py-2.5 text-gray-500 dark:text-slate-400">{reportUnit.unitName}</td>
                           <td className="px-3 py-2.5 text-right font-medium text-green-700">
-                            {card.source === "SUPPLIER_DEBIT" ? "0" : qtyIn > 0 ? fmtQty(qtyIn) : <span className="text-gray-300 dark:text-slate-600">-</span>}
+                            {isValueOnlyStockSource(card.source) ? "0" : qtyIn > 0 ? fmtQty(qtyIn) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-red-600">
-                            {card.source === "SUPPLIER_DEBIT" ? "0" : qtyOut > 0 ? fmtQty(qtyOut) : <span className="text-gray-300 dark:text-slate-600">-</span>}
+                            {isValueOnlyStockSource(card.source) ? "0" : qtyOut > 0 ? fmtQty(qtyOut) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold text-gray-900 dark:text-slate-100">
                             {fmtQty(qtyBalance)}
@@ -482,10 +497,10 @@ export default async function StockCardPage({ searchParams }: StockCardPageProps
                             {priceIn > 0 ? fmtPrice(priceIn) : <span className="text-gray-300 dark:text-slate-600">-</span>}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-indigo-700 dark:text-indigo-300">
-                            {card.source === "SUPPLIER_DEBIT" ? Number(card.valueAdjustment).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
+                            {isValueOnlyStockSource(card.source) ? Number(card.valueAdjustment).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-amber-700 dark:text-amber-300">
-                            {card.source === "SUPPLIER_DEBIT" || Number(card.costVariance) !== 0
+                            {isValueOnlyStockSource(card.source) || Number(card.costVariance) !== 0
                               ? Number(card.costVariance).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-"}
                           </td>
                           <td className="px-3 py-2.5 text-right font-medium text-[#1e3a5f] dark:text-sky-300">

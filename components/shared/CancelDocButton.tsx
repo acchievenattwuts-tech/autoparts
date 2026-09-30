@@ -14,9 +14,20 @@ interface CancelDocButtonProps {
   /** When set, the cancel note must be filled in before confirming (the server re-checks). */
   noteRequired?: boolean;
   noteMaxLength?: number;
+  /** Called when the dialog opens, e.g. to load a preview of what the cancel touches. */
+  onOpen?: () => void;
+  /** Keeps "ยืนยันยกเลิก" disabled, e.g. while that preview loads or when it blocks the cancel. */
+  confirmDisabled?: boolean;
+  /** "link" (default) for list rows; "outline" for a detail-page header next to "แก้ไข". */
+  variant?: "link" | "outline";
 }
 
 const DEFAULT_NOTE_MAX_LENGTH = 200;
+
+const TRIGGER_CLASS: Record<NonNullable<CancelDocButtonProps["variant"]>, string> = {
+  link: "inline-flex items-center gap-1 text-xs text-red-500 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:text-gray-300 dark:disabled:text-slate-600",
+  outline: "inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:border-gray-200 disabled:text-gray-300 disabled:hover:bg-transparent dark:border-rose-400/30 dark:text-rose-300 dark:hover:bg-rose-500/10 dark:disabled:border-white/10 dark:disabled:text-slate-600",
+};
 
 const CancelDocButton = ({
   docId,
@@ -28,6 +39,9 @@ const CancelDocButton = ({
   description,
   noteRequired = false,
   noteMaxLength = DEFAULT_NOTE_MAX_LENGTH,
+  onOpen,
+  confirmDisabled = false,
+  variant = "link",
 }: CancelDocButtonProps) => {
   const [isPending, startTransition] = useTransition();
   const [showModal, setShowModal]    = useState(false);
@@ -66,9 +80,10 @@ const CancelDocButton = ({
           if (isDisabled) return;
           setShowModal(true);
           setError("");
+          onOpen?.();
         }}
         disabled={isDisabled}
-        className="inline-flex items-center gap-1 text-xs text-red-500 transition-colors hover:text-red-700 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:text-gray-300 dark:disabled:text-slate-600"
+        className={TRIGGER_CLASS[variant]}
         title={disabledReason ?? "ยกเลิกเอกสาร"}
       >
         <XCircle size={14} /> ยกเลิก
@@ -125,7 +140,7 @@ const CancelDocButton = ({
               <button
                 type="button"
                 onClick={handleConfirm}
-                disabled={isPending || isNoteMissing}
+                disabled={isPending || isNoteMissing || confirmDisabled}
                 className="rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:opacity-60 dark:bg-red-600 dark:hover:bg-red-700"
               >
                 {isPending ? "กำลังยกเลิก..." : "ยืนยันยกเลิก"}

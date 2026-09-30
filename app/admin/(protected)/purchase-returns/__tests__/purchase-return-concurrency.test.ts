@@ -77,7 +77,7 @@ const fakeTx: FakeTx = {
     findMany: async (args: unknown) => {
       const { where = {} } = args as { where?: Record<string, unknown> };
       if (!laterDebitActive) return [];
-      if (where.source === "SUPPLIER_DEBIT") {
+      if (JSON.stringify(where.source ?? null).includes("SUPPLIER_DEBIT")) {
         return [{ productId: "p-1", docNo: "SDN26090001", docDate: new Date("2026-09-28T17:00:00.000Z"), sorder: 9, valuationEpoch: 1 }];
       }
       return where.docNo === "PR26090001"
