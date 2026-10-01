@@ -14,10 +14,9 @@ type SettlementGroupArgs = {
   by: string[];
   where: { status: string };
 };
-type PendingSaleGroupArgs = {
-  by: string[];
+type PendingSaleFindArgs = {
   where: { saleDate: DateRange };
-  _count: { _all: boolean };
+  select: { creditNotes: { where: { settlementType: string } } };
 };
 type ProductProfitGroupArgs = {
   by: string[];
@@ -25,7 +24,7 @@ type ProductProfitGroupArgs = {
 };
 
 let settlementGroupArgs: SettlementGroupArgs | null = null;
-let pendingSaleGroupArgs: PendingSaleGroupArgs | null = null;
+let pendingSaleFindArgs: PendingSaleFindArgs | null = null;
 let productProfitGroupArgs: ProductProfitGroupArgs | null = null;
 let estimatePendingChannelFees:
   | typeof import("@/lib/marketplace/queries")["estimatePendingChannelFees"]
@@ -58,11 +57,22 @@ before(async () => {
           },
         },
         sale: {
-          groupBy: async (args: PendingSaleGroupArgs) => {
-            pendingSaleGroupArgs = args;
+          findMany: async (args: PendingSaleFindArgs) => {
+            pendingSaleFindArgs = args;
             return [
-              { channel: SaleChannel.SHOPEE, _count: { _all: 3 }, _sum: { netAmount: 500 } },
-              { channel: SaleChannel.LAZADA, _count: { _all: 2 }, _sum: { netAmount: 400 } },
+              { channel: SaleChannel.SHOPEE, netAmount: 200, creditNotes: [] },
+              { channel: SaleChannel.SHOPEE, netAmount: 200, creditNotes: [] },
+              // คืนบางส่วน — นับเป็นบิลค้าง ด้วยยอดหลังหักใบคืน
+              { channel: SaleChannel.SHOPEE, netAmount: 150, creditNotes: [{ totalAmount: 50 }] },
+              // คืนเต็มจำนวน — ไม่มีเงินค้างโอน ต้องไม่นับเป็นบิลค้าง
+              { channel: SaleChannel.SHOPEE, netAmount: 2_250, creditNotes: [{ totalAmount: 2_250 }] },
+              { channel: SaleChannel.LAZADA, netAmount: 250, creditNotes: [] },
+              { channel: SaleChannel.LAZADA, netAmount: 150, creditNotes: [] },
+              {
+                channel: SaleChannel.LAZADA,
+                netAmount: 300,
+                creditNotes: [{ totalAmount: 100 }, { totalAmount: 200 }],
+              },
             ];
           },
         },
@@ -129,7 +139,7 @@ before(async () => {
 });
 
 test(
-  "estimates pending fees and product profit with separate Shopee and Lazada rates",
+  "estimates pending fees per channel and skips fully returned Shopee and Lazada orders",
   { skip: moduleMocksUnavailable },
   async () => {
     assert.ok(estimatePendingChannelFees);
@@ -221,8 +231,8 @@ test(
       },
     ]);
     assert.deepEqual(settlementGroupArgs?.by, ["channel"]);
-    assert.deepEqual(pendingSaleGroupArgs?.by, ["channel"]);
-    assert.deepEqual(pendingSaleGroupArgs?._count, { _all: true });
+    assert.equal(pendingSaleFindArgs?.where.saleDate.gte, start);
+    assert.equal(pendingSaleFindArgs?.select.creditNotes.where.settlementType, "CASH_REFUND");
     assert.deepEqual(productProfitGroupArgs?.by, [
       "channel",
       "sourceType",

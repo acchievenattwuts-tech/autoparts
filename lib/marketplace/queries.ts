@@ -5,6 +5,7 @@ import {
   CreditNoteType,
   DocStatus,
   MarketplaceSettlementDocType,
+  Prisma,
   ProfitSourceType,
 } from "@/lib/generated/prisma";
 import { planMarketplaceSettlementFacts } from "@/lib/profit-fact";
@@ -82,6 +83,28 @@ export type PendingCreditNoteRow = {
   amount: number;
 };
 
+/** ใบคืนเงินสดของออเดอร์ที่ยังไม่ถูกกระทบยอด — ใช้หักออกจากยอดค้างโอนของใบขาย */
+const UNSETTLED_REFUND_CREDIT_NOTE_WHERE = {
+  status: DocStatus.ACTIVE,
+  settlementType: CNSettlementType.CASH_REFUND,
+  marketplaceSettlementLines: { none: { activeCreditNoteId: { not: null } } },
+};
+
+/** ยอดค้างโอนของออเดอร์หลังหักใบคืน — null เมื่อคืนเต็มจำนวนแล้ว (ไม่มีเงินให้กระทบยอด) */
+function toPendingOrderAmount(
+  saleNetAmount: Prisma.Decimal | number,
+  creditNotes: Array<{ totalAmount: Prisma.Decimal | number }>,
+): { grossAmount: number; returnAmount: number; amount: number } | null {
+  const grossAmount = Number(saleNetAmount);
+  const returnAmount = creditNotes.reduce(
+    (sum, creditNote) => sum + Number(creditNote.totalAmount),
+    0,
+  );
+  const amount = calculateMarketplaceOrderOutstanding(grossAmount, returnAmount);
+  if (Math.abs(amount) < 0.005) return null;
+  return { grossAmount, returnAmount, amount };
+}
+
 /**
  * เอกสารที่ยังไม่ถูกกระทบยอด — ทั้งใบขาย (เงินที่แพลตฟอร์มยังไม่โอน) และใบลดหนี้
  * (ยอดที่จะถูกหักออกจากรอบถัดไป) กรองด้วยบัญชีพักเงินของช่องทางเพื่อไม่ให้ใบที่
@@ -108,11 +131,7 @@ export async function getPendingSettlementDocuments(
         saleDate: true,
         netAmount: true,
         creditNotes: {
-          where: {
-            status: DocStatus.ACTIVE,
-            settlementType: CNSettlementType.CASH_REFUND,
-            marketplaceSettlementLines: { none: { activeCreditNoteId: { not: null } } },
-          },
+          where: UNSETTLED_REFUND_CREDIT_NOTE_WHERE,
           select: { id: true, totalAmount: true },
         },
       },
@@ -150,24 +169,17 @@ export async function getPendingSettlementDocuments(
 
   const pendingSaleIds = new Set(sales.map((sale) => sale.id));
   const groupedSales = sales.flatMap((sale) => {
-    const grossAmount = Number(sale.netAmount);
-    const returnAmount = sale.creditNotes.reduce(
-      (sum, creditNote) => sum + Number(creditNote.totalAmount),
-      0,
-    );
-    const netAmount = calculateMarketplaceOrderOutstanding(grossAmount, returnAmount);
+    const pending = toPendingOrderAmount(sale.netAmount, sale.creditNotes);
     // คืนเต็มจำนวนแล้วไม่ต้องปล่อยใบขาย/ใบคืนค้างในหน้ากระทบยอด ทั้งสองฝั่ง
     // หักล้างกันในบัญชีพักเงินเรียบร้อยแล้ว ส่วนค่าธรรมเนียมภายหลังยังคีย์เป็น
     // บรรทัด Statement ในรอบที่แพลตฟอร์มแจ้งจริงได้ตามปกติ
-    if (Math.abs(netAmount) < 0.005) return [];
+    if (!pending) return [];
     return [{
       id: sale.id,
       saleNo: sale.saleNo,
       orderRefNo: sale.channelRefNo ?? "-",
       saleDate: sale.saleDate,
-      grossAmount,
-      returnAmount,
-      amount: netAmount,
+      ...pending,
       creditNoteIds: sale.creditNotes.map((creditNote) => creditNote.id),
     }];
   });
@@ -455,40 +467,56 @@ export async function estimatePendingChannelFees(
   start: Date,
   end: Date,
 ): Promise<ChannelFeeRateEstimate> {
-  const [settledGroups, pendingSalesGroups] = await Promise.all([
+  const [settledGroups, pendingSales] = await Promise.all([
     db.marketplaceSettlement.groupBy({
       by: ["channel"],
       where: { status: DocStatus.ACTIVE },
       _count: { _all: true },
       _sum: { salesAmount: true, feeAmount: true },
     }),
-    db.sale.groupBy({
-      by: ["channel"],
+    db.sale.findMany({
       where: {
         channel: { in: [...MANUAL_MARKETPLACE_CHANNELS] },
         status: DocStatus.ACTIVE,
         saleDate: { gte: start, lte: end },
         marketplaceSettlementLines: { none: { activeSaleId: { not: null } } },
       },
-      _count: { _all: true },
-      _sum: { netAmount: true },
+      select: {
+        channel: true,
+        netAmount: true,
+        creditNotes: {
+          where: UNSETTLED_REFUND_CREDIT_NOTE_WHERE,
+          select: { totalAmount: true },
+        },
+      },
     }),
   ]);
 
+  // ใช้เกณฑ์เดียวกับหน้ากระทบยอด: ออเดอร์ที่คืนเต็มจำนวนแล้วไม่มีเงินค้างโอน
+  // จึงไม่นับเป็นบิลค้าง และยอดค้างคิดหลังหักใบคืนที่ยังไม่กระทบยอด
+  const pendingByChannel = new Map<string, { count: number; amount: number }>();
+  for (const sale of pendingSales) {
+    const pending = toPendingOrderAmount(sale.netAmount, sale.creditNotes);
+    if (!pending) continue;
+    const row = pendingByChannel.get(sale.channel) ?? { count: 0, amount: 0 };
+    row.count += 1;
+    row.amount += pending.amount;
+    pendingByChannel.set(sale.channel, row);
+  }
+
   const settledByChannel = new Map(settledGroups.map((row) => [row.channel, row]));
-  const pendingByChannel = new Map(pendingSalesGroups.map((row) => [row.channel, row]));
   const byChannel = MANUAL_MARKETPLACE_CHANNELS.map((channel) => {
     const settled = settledByChannel.get(channel);
     const pending = pendingByChannel.get(channel);
     const settledSales = Number(settled?._sum.salesAmount ?? 0);
     const settledFees = Number(settled?._sum.feeAmount ?? 0);
     const averageFeeRate = settledSales > 0 ? settledFees / settledSales : 0;
-    const pendingSalesAmount = Number(pending?._sum.netAmount ?? 0);
+    const pendingSalesAmount = pending?.amount ?? 0;
     return {
       channel,
       averageFeeRate,
       sampleSettlementCount: settled?._count._all ?? 0,
-      pendingSaleCount: pending?._count._all ?? 0,
+      pendingSaleCount: pending?.count ?? 0,
       pendingSalesAmount,
       estimatedPendingFee: pendingSalesAmount * averageFeeRate,
     };
