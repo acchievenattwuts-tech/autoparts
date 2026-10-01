@@ -894,6 +894,7 @@
 - [x] เพิ่ม `lib/__tests__/db-pool.test.ts`: pool เดียวกับ adapter, ไม่เปิด socket ตอน connect, คง config, local ไม่ผูก Fluid, reconnect/dispose ถูกต้อง และ release ส่ง idle-wait promise ให้ Vercel request context
 - [x] ตรวจรอบ lifecycle: tests ใหม่ 4/4 ผ่าน, `npm run verify` ผ่าน (lint 0 errors / 261 warnings เดิม, typecheck ผ่าน, tests 1,644 ผ่าน 0 ล้ม), `npm run check:mojibake` ผ่าน, `npm run build` ผ่าน; reviewer ไม่พบข้อแก้ไข
 - [ ] หลัง deploy ทดสอบ idle → เข้าเว็บใหม่, storefront refresh และบันทึกเอกสาร; ติดตาม `gave-up`, เวลารอผิดปกติ และ connection metrics 2–3 วัน · หากยังค้างหลายนาที ให้ตรวจ lifecycle ของ background revalidation และ event loop ต่อ
+- [ ] ผล log หลัง fix lifecycle (ตรวจ 2026-10-01, ช่วง 29/09 11:52 → 01/10 08:50 เวลาไทย): `[db-retry]` 29 request / 32 attempt ล้ม — **recovered ทุกครั้ง, `gave-up` = 0** · แต่ 16/32 รอ > 60s (สูงสุด 441s เทียบ timeout 20s, wall ≈ mono) และ `callStartedAt` ก่อน request ที่ log เกาะ → instance ยังถูกพักกลางงาน background ต่างจากเดิมแค่ฟื้นได้แทนล้ม · เจ้าของสั่งคง diagnostic log ไว้ก่อน
 
 ## ใบปะหน้ากล่องพัสดุ + ติ๊กเลือกบิลในคิวจัดส่ง (2026-09-02)
 - บริบท: เจ้าของร้านสั่งทำใบสำหรับพิมพ์ติดหน้ากล่องส่งพัสดุ ให้ใกล้เคียงใบสำเร็จรูปที่ใช้อยู่ (รูปตัวอย่างเป็นฟอร์มกรอบมน `ผู้ส่ง From.` / `ผู้รับ To.` เส้นประ + ป้ายโทรศัพท์) · เสนอ mockup 3 แบบแล้วเจ้าของเลือกแบบฟอร์มคลาสสิก
@@ -1370,6 +1371,8 @@
 - [ ] ติดตามนอก Option A: subtotal รายการซื้อเดิมแบบ INCLUDING_VAT ผิด 1 บรรทัด ต้องตรวจแก้ข้อมูลเอกสารแยก; นโยบายสิทธิภาษีซื้อค่าใช้จ่าย/MAVG เดิมและความต่าง scope marketplace ยังไม่เปลี่ยน
 - [x] DN แก้ไขได้ (2026-09-29): สิทธิ์ `supplier_debit_notes.update`; หัวเอกสารแก้ได้ตลอดขณะใช้งาน ไม่กระทบสต็อก/AP; รายการ/ยอด/VAT แก้ได้เมื่อผ่าน guard เดียวกับยกเลิก แล้วกลับรายการและลงใหม่เลขเดิม ณ วันที่แก้; UI list/new/edit/detail ตามธีม admin light/dark; error Zod แสดงเป็นข้อความไทยแทน JSON
 - [x] Shopee ลงใบขาย/StockCard ด้วยต้นวันไทยของวันอนุมัติ (date-only) แทนเวลาจริง — เดิมทำให้ SKU ที่มีออเดอร์ Shopee วันนี้ลง DN ไม่ได้ทั้งวัน; ข้อมูลเก่าไม่แก้ย้อนหลัง
+- [x] Log noise `[previewSupplierDebitNote] ZodError: กรุณาระบุเหตุผล` (29/09 16:45, deploy `4d660a0d` ที่ฟอร์มยังไม่ตรวจก่อนส่ง): `8755a871` เพิ่ม `validateDraft` ตรวจเหตุผลฝั่งฟอร์มแล้ว · 2026-10-01 เจ้าของสั่งให้ preview ไม่ `console.error` เมื่อเป็น `ZodError` (ฟอร์มไม่ครบ) แต่ยังโยนต่อให้ action แปลงเป็นข้อความไทยเหมือนเดิม; error อื่นยัง log ตามเดิม ([lib/supplier-debit-note.ts](lib/supplier-debit-note.ts)) · test ใหม่ใน `supplier-debit-note-service.golden.test.ts` (ล้มบนโค้ดเดิม ผ่านหลังแก้)
+- [ ] ห้ามอัป `pg` เป็น 9.x จนกว่า Prisma จะแก้: log `DeprecationWarning: Calling client.query() when the client is already executing a query` (เช่น POST `/admin/supplier-debit-notes/new` 29/09 17:58) มาจาก query interpreter ของ Prisma 7 (node `join` ใช้ `Promise.all` ดึง relation ที่ `include` ≥2 ตัวพร้อมกัน) บน connection เดียวของ interactive transaction — ไม่ใช่โค้ดเรา, pg 8.x จัดคิวให้ ผลลัพธ์ถูกต้อง แต่ pg@9 จะเป็น error จริง · ยังเกิดใน 7.10.0; รอ [prisma/orm#29979](https://github.com/prisma/orm/pull/29979) merge (issue [prisma#29407](https://github.com/prisma/prisma/issues/29407)) · `package.json` ใช้ `"pg": "^8.20.0"` จึงไม่ขึ้น 9 เอง — อย่าเปลี่ยน range หรืออัปเกรดเองจนกว่าจะอัป Prisma ที่มี fix แล้ว
 
 ## ตรวจ commit 29/09 + แก้ตามผลรีวิว (2026-09-30)
 รายงาน: https://claude.ai/artifact/DWejWkNUKS6rmFsLjeTXvZ (ข้อ A1–F8, คำถาม Q1–Q26) · เจ้าของตอบคำถามแล้ว และสั่งแก้ทุกข้อที่ไม่ต้องรอคำตอบ · ยังไม่ commit / deploy
@@ -1392,6 +1395,7 @@
 - [x] Deploy V8 2026-09-30: verify 2,451/2,451 + build + mojibake ผ่าน → รัน `20261001_purchase_allowance` (อ่านกลับ enum `PURCHASE_ALLOWANCE` มีแล้ว) → commit `d9f42307` push main → Vercel production Ready 19:22 (sriwanparts.com) → schema drift ผ่าน · หน้าเว็บ 200 และไม่มี error log หลัง deploy
 - [x] Z2–Z3 (เจ้าของสั่งทำตามแนะนำ 2026-10-01, deploy 2026-10-01): Z2 ใบลดราคาที่เดือนลงลดราคาซื้อล็อกแต่เดือนใบคืนเปิด ฟอร์มไม่ขอเหตุผลล่วงหน้า หน้าตรวจตอนบันทึกเป็นตัวตัดสิน (แก้ที่ไม่เปลี่ยนยอดลดราคาซื้อ เช่น เปลี่ยนเป็นรับเงินคืน บันทึกได้เลย) · Z3 แก้เฉพาะหมายเหตุ/เลขที่ใบลดหนี้/รายละเอียดบรรทัด ไม่คำนวณลดราคาซื้อใหม่และไม่ตรวจเดือนที่ลงบัญชี แม้มีการลงสต็อกย้อนหลัง
 - [x] Z1 (เจ้าของสั่งทำตามแนะนำ 2026-10-01, deploy 2026-10-01): กล่องยืนยันยกเลิกใบคืนซื้อ (หน้ารายการและหน้ารายละเอียด) ตรวจเอกสารที่อ้างอิงก่อน ถ้าถูกใช้ในเอกสารจ่ายชำระที่ใช้งานอยู่ แสดงเหตุผลเดียวกับหน้ารายละเอียดพร้อมลิงก์ และปิดปุ่มยืนยัน · หน้ารายการไม่เพิ่ม query
+- [x] Deploy Z1–Z3 2026-10-01: verify 2,454/2,454 + build + mojibake ผ่าน → commit `82892660` push main → Vercel production Ready 08:38 (sriwanparts.com) → schema drift ผ่าน (ไม่มี migration) · หน้าเว็บ 200 และไม่มี error log หลัง deploy
 - [ ] หลัง deploy: ทดสอบอัปโหลดสลิป private + รูปสินค้า (A3), เฝ้า `[db-retry]` ต่อ
 
 ## How To Use This Repo As AI

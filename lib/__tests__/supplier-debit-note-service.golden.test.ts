@@ -257,6 +257,14 @@ describe("supplier DN: service golden orchestration with isolated transactional 
     });
     assert.equal(store.heads.length, 0); assert.equal(store.stockWrites, 0); assert.equal(store.notifications, 0);
   });
+  it("preview of an incomplete form (no reason) rejects without an error log; a service failure still logs", async (t) => {
+    const logged = t.mock.method(console, "error", () => undefined);
+    const previewLogs = () => logged.mock.calls.filter((call) => call.arguments[0] === "[previewSupplierDebitNote]").length;
+    await assert.rejects(service.previewSupplierDebitNote({ ...input(), reason: "  " }), /กรุณาระบุเหตุผล/);
+    assert.equal(logged.mock.callCount(), 0);
+    await assert.rejects(service.previewSupplierDebitNote({ ...input(), items: [{ ...input().items[0], affectedQuantity: 11 }] }), /เกินจำนวนรับ/);
+    assert.equal(previewLogs(), 1);
+  });
   it("stale preview after a concurrent stock change rejects before writes", async () => {
     store.skus.sku = { ...store.skus.sku, onHand: 3, productStock: 3 };
     await assert.rejects(service.postSupplierDebitNote(input(), { userId: "actor" }), /ยอดจัดสรรต้นทุนเปลี่ยน/);

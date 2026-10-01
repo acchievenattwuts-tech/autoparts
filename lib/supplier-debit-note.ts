@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { dbTx } from "@/lib/db";
 import { Prisma, AuditAction } from "@/lib/generated/prisma";
 import {
@@ -522,7 +522,8 @@ export async function previewSupplierDebitNote(rawInput: unknown, options?: { de
         lockedPeriods: toSupplierDebitLockedPeriods(locked) };
     });
   } catch (error) {
-    console.error("[previewSupplierDebitNote]", error);
+    // An incomplete form (e.g. no reason) is a user error the action already turns into a Thai message.
+    if (!(error instanceof ZodError)) console.error("[previewSupplierDebitNote]", error);
     throw error;
   }
 }
