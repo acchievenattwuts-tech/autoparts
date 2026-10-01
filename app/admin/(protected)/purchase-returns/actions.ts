@@ -17,6 +17,7 @@ import {
   getDocumentMutationBlockMessage, assertDocumentMutationAllowedInTx,
   lockStockMutationProducts, DocumentMutationBlockedError,
   assertRewrittenStockRowsAllowedInTx, buildRewrittenStockRowsWhere,
+  checkDocumentMutation, buildMutationBlockMessage, buildMutationBlockReferenceLinks,
 } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -1022,13 +1023,15 @@ const cancelReturnSchema = z.object({
 });
 
 const previewReturnIdSchema = z.string().min(1).max(50);
-const NO_CANCEL_PREVIEW: PurchaseReturnCancelPreview = { periodLock: null, restatement: null };
+const NO_CANCEL_PREVIEW: PurchaseReturnCancelPreview = { block: null, periodLock: null, restatement: null };
 
 /**
  * X4 (owner 2026-09-30): the months cancelling this return would touch — its date, and for a DISCOUNT/OTHER return
  * the ลดราคาซื้อ posting month and the restated later sales / credit notes (the planner the cancel runs, reads only) —
- * so the cancel dialog can ask an owner for the override reason up front. cancelPurchaseReturn re-checks under its
- * locks and, when it still rejects for the lock, returns the months too.
+ * so the cancel dialog can ask an owner for the override reason up front. Z1 (owner 2026-10-01): first the
+ * reference-chain guard cancelPurchaseReturn runs, so the dialog (list and detail page alike) shows why a return used
+ * by an active document cannot be cancelled, with the same message and links as the detail page. cancelPurchaseReturn
+ * re-checks under its locks and, when it still rejects for the lock, returns the months too.
  */
 export async function previewPurchaseReturnCancel(
   returnId: string,
@@ -1044,6 +1047,11 @@ export async function previewPurchaseReturnCancel(
       select: { status: true, type: true, returnNo: true, returnDate: true, createdAt: true },
     });
     if (!ret || ret.status !== "ACTIVE") return { preview: NO_CANCEL_PREVIEW };
+    const guard = await checkDocumentMutation("PurchaseReturn", parsedId.data, "cancel");
+    const blockMessage = buildMutationBlockMessage(guard);
+    if (blockMessage) {
+      return { preview: { ...NO_CANCEL_PREVIEW, block: { message: blockMessage, links: buildMutationBlockReferenceLinks(guard) } } };
+    }
     const { locked, restatement } = await dbTx(async (tx) => {
       const allowance = isPurchaseAllowanceType(ret.type)
         ? await previewPurchaseAllowanceCancel(tx, { returnNo: ret.returnNo, createdAt: ret.createdAt })
@@ -1054,7 +1062,7 @@ export async function previewPurchaseReturnCancel(
       };
     });
     return {
-      preview: { periodLock: toPeriodLockView(locked, canOverridePeriodLock(session.user.permissions)), restatement },
+      preview: { block: null, periodLock: toPeriodLockView(locked, canOverridePeriodLock(session.user.permissions)), restatement },
     };
   } catch (error) {
     console.error("[previewPurchaseReturnCancel]", error);
@@ -1353,10 +1361,11 @@ const NO_EDIT_PREVIEW: PurchaseReturnEditPreview = { periodLock: null, nonFinanc
 /**
  * Y2 (owner 2026-09-30): the months saving this edit would touch — the stored and new return date and, for a
  * DISCOUNT/OTHER return, the ลดราคาซื้อ posting month and the later sales / credit notes the repost restates (the
- * planner the edit runs, reads only) — so the edit form can ask an owner for the override reason up front. In a locked
- * return month, a change the month lock treats as non-financial reports `nonFinancial` (it saves without a reason and
- * reposts nothing). updatePurchaseReturn re-checks everything under its locks and, when it still rejects for the
- * lock, returns the months too.
+ * planner the edit runs, reads only) — so the edit form can ask an owner for the override reason up front. A change the
+ * month lock treats as non-financial reports `nonFinancial` (it saves without a reason and reposts nothing) in a locked
+ * return month and, on a DISCOUNT/OTHER return, in an open one too (Z3: ลดราคาซื้อ stays as posted).
+ * updatePurchaseReturn re-checks everything under its locks and, when it still rejects for the lock, returns the
+ * months too.
  */
 export async function previewPurchaseReturnUpdate(
   id: string,
@@ -1383,12 +1392,14 @@ export async function previewPurchaseReturnUpdate(
         { vatType: input.vatType, vatRate: input.vatRate });
       const lineData = await buildLineData(tx, input.items, input.vatType, input.vatRate);
       const returnLocked = await findLockedPeriods(tx, [existing.returnDate, docDate]);
-      if (returnLocked.length > 0 && await isPurchaseReturnEditNonFinancial(tx, existing,
+      const allowanceInvolved = isPurchaseAllowanceType(existing.type) || postsPurchaseAllowance(input);
+      // The note-only path of a locked return month, and Z3: a remark-only edit keeps ลดราคาซื้อ as posted.
+      if ((returnLocked.length > 0 || allowanceInvolved) && await isPurchaseReturnEditNonFinancial(tx, existing,
         { docDate, input, taxInvoiceDate, sourcePurchaseVat, lineData, payments: refund.payments })) {
         return { periodLock: toPeriodLockView(returnLocked, canOverride), nonFinancial: true, restatement: null };
       }
       // X3 keeps RETURN vs DISCOUNT/OTHER, so a return with ลดราคาซื้อ rows never had RETURN_OUT rows.
-      const allowance = isPurchaseAllowanceType(existing.type) || postsPurchaseAllowance(input)
+      const allowance = allowanceInvolved
         ? await previewPurchaseAllowanceChange(tx, {
           returnNo: existing.returnNo,
           createdAt: existing.createdAt,
@@ -1520,10 +1531,12 @@ export async function updatePurchaseReturn(
 
       // Month lock (owner decisions T2/ก1/ก2) — under the row lock, before any write, on the
       // stored and the new date. `existing` is current: updatedAt was re-checked above.
+      let nonFinancialEdit: Promise<boolean> | null = null;
+      const isNonFinancialEdit = (): Promise<boolean> => (nonFinancialEdit ??= isPurchaseReturnEditNonFinancial(tx, existing,
+        { docDate, input: parsed.data, taxInvoiceDate, sourcePurchaseVat, lineData, payments }));
       const periodDecision = await resolveDocumentPeriodLock(tx, [existing.returnDate, docDate], {
         override: lockOverride,
-        isNonFinancialOnly: () => isPurchaseReturnEditNonFinancial(tx, existing,
-          { docDate, input: parsed.data, taxInvoiceDate, sourcePurchaseVat, lineData, payments }),
+        isNonFinancialOnly: isNonFinancialEdit,
       });
       if (periodDecision.kind === "non-financial") {
         // Locked month, note / credit-note number+date / line-detail edit (ก2/P4/V5): stock,
@@ -1538,6 +1551,10 @@ export async function updatePurchaseReturn(
         return;
       }
       periodLock = periodDecision.result;
+      // Z3 (owner 2026-10-01): a remark-only edit of a DISCOUNT/OTHER return in an open return month keeps its
+      // ลดราคาซื้อ rows as posted — not replanned, reposted or month-lock checked — even when stock was backdated before
+      // the posting since then. Same comparison as the locked-month path above; every line is kept (same signatures).
+      const replansAllowance = allowanceInvolved && !(await isNonFinancialEdit());
 
       // ─── Per-line diff (only meaningful when useDifferential) ────────────
       type ExistingPRSig = {
@@ -1636,7 +1653,7 @@ export async function updatePurchaseReturn(
         }
         return change;
       };
-      let allowanceChange: PurchaseAllowanceChange | null = allowanceInvolved && !oldHadStock ? await planAllowance() : null;
+      let allowanceChange: PurchaseAllowanceChange | null = replansAllowance && !oldHadStock ? await planAllowance() : null;
 
       if (existing.claimId) {
         await reverseClaimStockMovements(tx, existing.claimId, {
@@ -1682,7 +1699,7 @@ export async function updatePurchaseReturn(
       }
 
       // V8: reverse the stored ลดราคาซื้อ rows before any new stock row of this return is written.
-      if (allowanceInvolved) {
+      if (replansAllowance) {
         allowanceChange ??= await planAllowance();
         await reversePurchaseAllowance(tx, allowanceChange);
       }

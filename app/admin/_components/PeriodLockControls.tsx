@@ -129,10 +129,12 @@ type PeriodLockFormSectionProps = {
    * field is left out (P3); omitted = always ask, as before.
    */
   financialChange?: boolean;
+  /** Shown to every viewer instead of the default line while no reason is asked — e.g. a check the save runs first. */
+  note?: string;
 };
 
 /** Notice + reason field for edit forms that submit `new FormData(form)`. */
-export const PeriodLockFormSection = ({ lock, hint, financialChange }: PeriodLockFormSectionProps) => {
+export const PeriodLockFormSection = ({ lock, hint, financialChange, note }: PeriodLockFormSectionProps) => {
   if (!lock) return null;
   const asksReason = financialChange !== false;
   return (
@@ -140,6 +142,8 @@ export const PeriodLockFormSection = ({ lock, hint, financialChange }: PeriodLoc
       <PeriodLockNotice lock={lock} hint={hint} />
       {asksReason ? (
         <PeriodLockReasonField lock={lock} />
+      ) : note ? (
+        <p className="text-xs text-gray-500 dark:text-slate-400">{note}</p>
       ) : lock.canOverride ? (
         <p className="text-xs text-gray-500 dark:text-slate-400">
           ตอนนี้แก้เฉพาะข้อมูลที่ไม่กระทบตัวเลข บันทึกได้เลยโดยไม่ต้องระบุเหตุผล — ถ้าแก้วันที่ ยอดเงิน หรือรายการ ช่องเหตุผลจะแสดงขึ้นเอง

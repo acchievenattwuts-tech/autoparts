@@ -1,10 +1,16 @@
+import type { MutationBlockReferenceLink } from "@/lib/document-mutation-guard";
 import type { PeriodLockView } from "@/lib/period-lock-view";
 
 /**
- * X4 (owner 2026-09-30): what cancelling a purchase return would touch, for its cancel dialog. Client-safe — no server
- * imports. previewPurchaseReturnCancel (actions.ts) fills it; cancelPurchaseReturn re-checks everything.
+ * X4 (owner 2026-09-30): what cancelling a purchase return would touch, for its cancel dialog. Client-safe — type-only
+ * server imports. previewPurchaseReturnCancel (actions.ts) fills it; cancelPurchaseReturn re-checks everything.
  */
 export type PurchaseReturnCancelPreview = {
+  /**
+   * Z1 (owner 2026-10-01): the reference-chain guard's message and document links when an active downstream document
+   * blocks the cancel (then nothing else is previewed); null when it does not.
+   */
+  block: { message: string; links: MutationBlockReferenceLink[] } | null;
   /**
    * The declared months among the return month, the ลดราคาซื้อ posting month and the months of the later sales /
    * credit notes whose cost the cancel restates; null when all are open.

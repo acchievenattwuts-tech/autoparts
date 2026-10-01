@@ -18,7 +18,7 @@ import {
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
 import PurchaseReturnForm from "../../new/PurchaseReturnForm";
 import { getPurchaseReturnProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
-import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
+import { getPeriodLockViewResolver } from "@/lib/period-lock-document";
 import { PURCHASE_RETURN_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../purchase-return-period-lock";
 import { postsPurchaseAllowance } from "@/lib/purchase-allowance";
 
@@ -66,15 +66,18 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+  // Month already distributed: same message updatePurchaseReturn returns (lib/period-lock.ts). A DISCOUNT/OTHER
+  // return's ลดราคาซื้อ is posted on its creation date (V8), whose month a cost change also needs open.
+  const lockDates = postsPurchaseAllowance(ret) ? [ret.returnDate, ret.createdAt] : [ret.returnDate];
+  const [mutationBlock, stockDebitWarning, periodLockOf] = await Promise.all([
     checkDocumentMutation("PurchaseReturn", id, "update"),
     // Lines before an active supplier DN: a warning only; updatePurchaseReturn blocks just the rows it rewrites.
     checkDocumentStockDebitWarning("PurchaseReturn", id),
-    // Month already distributed: same message updatePurchaseReturn returns (lib/period-lock.ts). A DISCOUNT/OTHER
-    // return's ลดราคาซื้อ is posted on its creation date (V8), whose month a cost change also needs open.
-    getDocumentPeriodLockView(postsPurchaseAllowance(ret) ? [ret.returnDate, ret.createdAt] : [ret.returnDate],
-      session.user.permissions),
+    getPeriodLockViewResolver(lockDates, session.user.permissions),
   ]);
+  const periodLock = periodLockOf(...lockDates);
+  // Z2: only the posting month is declared — the form's save preview decides whether the edit needs the reason.
+  const periodLockPostingMonthOnly = periodLock !== null && periodLockOf(ret.returnDate) === null;
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
   const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
@@ -203,6 +206,7 @@ const EditPurchaseReturnPage = async ({ params }: { params: Promise<{ id: string
         submitLocked={!!mutationBlockMessage}
         periodLock={periodLock}
         periodLockHint={PURCHASE_RETURN_PERIOD_LOCK_ALLOWED_EDITS_HINT}
+        periodLockPostingMonthOnly={periodLockPostingMonthOnly}
       />
     </div>
   );

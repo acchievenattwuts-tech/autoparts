@@ -7,7 +7,9 @@ import { getThailandDateKey, getThailandMonthKey, parseDateOnlyToDate } from "@/
 import { calcItemSubtotal, calcVat, type VatType } from "@/lib/vat";
 import { PURCHASE_RETURN_TYPE_CHANGE_MESSAGE } from "../purchase-return-presentation";
 import { resolvePurchaseReturnCancelLock } from "../purchase-return-cancel-preview";
-import { needsPurchaseReturnEditPreview, resolvePurchaseReturnEditLock } from "../purchase-return-edit-preview";
+import {
+  asksPurchaseReturnReasonUpfront, describePurchaseReturnPostingMonthLock, needsPurchaseReturnEditPreview, resolvePurchaseReturnEditLock,
+} from "../purchase-return-edit-preview";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PeriodLockFormSection } from "@/app/admin/_components/PeriodLockControls";
@@ -88,6 +90,8 @@ const txOverrides = (): ModelOverrides => ({
   purchase: { findUnique: async () => ({ id: "po-1", status: "ACTIVE", supplierId: "sup-1", purchaseNo: "RR26090001",
     vatType: "INCLUDING_VAT", vatRate: 7, taxInvoiceDate: day("2026-09-01") }) },
   siteContent: { findUnique: async () => (registeredFrom ? { value: registeredFrom } : null) },
+  // Z2: the cash refund account of a supplier-credit → cash-refund edit.
+  cashBankAccount: { findMany: async () => [{ type: "CASH" }] },
   profitDistribution: { findMany: async (args) => {
     const keys = (args as { where: { activePeriodKey: { in: string[] } } }).where.activePeriodKey.in;
     lockMonths.push(keys);
@@ -150,9 +154,13 @@ const makeClient = (overrides: () => ModelOverrides, calls: Call[]) => new Proxy
   },
 });
 
+/** Z1: active supplier payments that use the return (the reference-chain guard reads them). */
+let paymentItems: Array<Record<string, unknown>> = [];
+
 /** Every pre-read of the return (edit, cancel, audit snapshot) sees the stored document. */
 const dbOverrides = (): ModelOverrides => ({
   purchaseReturn: { findUnique: async () => ({ ...storedReturn, supplier: null }) },
+  supplierPaymentItem: { findMany: async () => paymentItems },
 });
 
 before(async () => {
@@ -218,6 +226,7 @@ beforeEach(() => {
   permissions = ["purchase_returns.create", "purchase_returns.update", "purchase_returns.cancel"];
   storedReturn = storedDiscount();
   postedRows = [POSTED_ROW];
+  paymentItems = [];
 });
 
 const form = (fields: Record<string, string>, items: Array<Record<string, unknown>>): FormData => {
@@ -507,7 +516,7 @@ test("X4 preview: nothing declared from the posting month on → no lock, no rea
     permissions = [...permissions, PERIOD_LOCK_OVERRIDE_PERMISSION];
     const { previewPurchaseReturnCancel } = await import("../actions");
     const result = await previewPurchaseReturnCancel("pr1");
-    assert.deepEqual(result, { preview: { periodLock: null, restatement: null } });
+    assert.deepEqual(result, { preview: { block: null, periodLock: null, restatement: null } });
     assert.equal(resolvePurchaseReturnCancelLock({ initial: null, preview: result.preview ?? null, server: null }).asksReason, false);
     assert.equal(txCalls.some((call) => call.method === "saleItem.findMany"), false, "the restatement planner is skipped");
   });
@@ -581,7 +590,8 @@ test("Y2: a remark-only edit needs no reason — no preview, nothing to ask, sav
     const { previewPurchaseReturnUpdate, updatePurchaseReturn } = await import("../actions");
     const remark = editForm({ note: "รอใบลดหนี้ตัวจริง" }, [{ ...discountLine()[0], moreDetail: "กล่องบุบ" }]);
     const preview = await previewPurchaseReturnUpdate("pr1", remark);
-    assert.deepEqual([preview.preview?.periodLock, preview.preview?.nonFinancial], [null, false], String(preview.error));
+    // Z3: in an open return month too, a DISCOUNT return's remark-only edit is reported non-financial.
+    assert.deepEqual([preview.preview?.periodLock, preview.preview?.nonFinancial], [null, true], String(preview.error));
     assert.equal(resolvePurchaseReturnEditLock({ initial: null, initialAsksReason: false, preview: preview.preview ?? null, server: null })
       .asksReason, false);
     assert.deepEqual(await updatePurchaseReturn("pr1", remark), { success: true }, String(criticalReports[0] ?? ""));
@@ -619,4 +629,95 @@ test("Y2 save: the server refuses the same later-sale month without a reason and
     assert.deepEqual(await updatePurchaseReturn("pr1", editForm({ [PERIOD_LOCK_REASON_FIELD]: reason }, discountLine(10))), { success: true });
     assert.equal((audits[0]?.meta as { periodLockOverride?: { reason: string } }).periodLockOverride?.reason, reason);
     assert.equal(alerts.length, 1);
+  });
+
+// ─── Z3 (owner 2026-10-01): a remark-only edit keeps ลดราคาซื้อ as posted ─────────────────────────────────────────
+
+test("Z3: a remark-only edit after stock was backdated keeps ลดราคาซื้อ as posted — no replan, repost or posting-month check",
+  { skip: moduleMocksUnavailable }, async () => {
+    // Stock backdated before the posting since then: a replan would now cover 6 on hand (-120 / -80), not the posted 4.
+    onHand = 6;
+    declared = { "2026-09": "PD2026090001" };
+    const { previewPurchaseReturnUpdate, updatePurchaseReturn } = await import("../actions");
+    const remark = editForm({ note: "รอใบลดหนี้ตัวจริง" }, [{ ...discountLine()[0], moreDetail: "กล่องบุบ" }]);
+    const preview = await previewPurchaseReturnUpdate("pr1", remark);
+    assert.deepEqual([preview.preview?.periodLock, preview.preview?.nonFinancial, preview.preview?.restatement], [null, true, null],
+      String(preview.error));
+    lockMonths.length = 0;
+    assert.deepEqual(await updatePurchaseReturn("pr1", remark), { success: true }, String(criticalReports[0] ?? ""));
+    assert.deepEqual([deletes(), stockWrites, recalculated, saleFacts, allowanceFacts, alerts], [[], [], [], [], [], []],
+      "the posted rows, the later sale and the facts are untouched");
+    assert.deepEqual(lockMonths, [["2026-08"]], "only the return month is lock-checked");
+    assert.equal(audits[0]?.meta, undefined, "no ลดราคาซื้อ change and no override in the audit");
+    const header = txCalls.find((call) => call.method === "purchaseReturn.update")?.args as { data: Record<string, unknown> };
+    assert.equal(header.data.note, "รอใบลดหนี้ตัวจริง", "the remark itself is saved");
+
+    // A cost edit of the same return is still replanned against the posting month and refused without the override.
+    const cost = await updatePurchaseReturn("pr1", editForm({}, discountLine(10)));
+    assert.ok(cost.error?.includes("PD2026090001"), cost.error);
+  });
+
+// ─── Z1 (owner 2026-10-01): the cancel dialog shows the reference-chain guard before confirming ─────────────────
+
+test("Z1 preview: a return used by an active supplier payment says why — the detail page's message and link — and previews nothing else",
+  { skip: moduleMocksUnavailable }, async () => {
+    paymentItems = [{ payment: { id: "sp-1", paymentNo: "SP26090001" } }];
+    declared = { "2026-09": "PD2026090001" };
+    const { previewPurchaseReturnCancel, cancelPurchaseReturn } = await import("../actions");
+    const result = await previewPurchaseReturnCancel("pr1");
+    assert.equal(result.error, undefined, String(result.error));
+    assert.deepEqual(result.preview, { block: { message: "ไม่สามารถดำเนินการได้ เนื่องจากถูกนำไปใช้ที่เอกสารจ่ายชำระ: SP26090001",
+      links: [{ href: "/admin/supplier-payments/sp-1", label: "SP26090001" }] }, periodLock: null, restatement: null });
+    assert.deepEqual([lockMonths, txCalls], [[], []], "no month-lock or restatement work once the guard blocks");
+
+    // The server refuses the cancel with the same message, before any write.
+    const refused = await cancelPurchaseReturn(cancelForm());
+    assert.equal(refused.error, result.preview?.block?.message);
+    assert.deepEqual(txCalls.filter((call) => WRITE_METHOD.test(call.method)), []);
+
+    paymentItems = [];
+    const open = await previewPurchaseReturnCancel("pr1");
+    assert.equal(open.preview?.block, null, "nothing uses the return: no block, the lock preview runs as before");
+    assert.ok(open.preview?.periodLock?.message.includes("PD2026090001"));
+  });
+
+// ─── Z2 (owner 2026-10-01): only the posting month declared — the save preview decides on the reason ──────────────
+
+test("Z2: only the posting month declared — an edit keeping ลดราคาซื้อ asks nothing up front, previews open and saves",
+  { skip: moduleMocksUnavailable }, async () => {
+    declared = { "2026-09": "PD2026090001" };
+    permissions = [...permissions, PERIOD_LOCK_OVERRIDE_PERMISSION];
+    // The edit page's lock covers the posting month only (the return month 2026-08 is open).
+    const pageLock: PeriodLockView = { message: "เอกสารนี้อยู่ในเดือนที่ประกาศปันผลแล้ว: กันยายน 2026 (PD2026090001)",
+      canOverride: true, periodLabels: ["กันยายน 2026"] };
+    const upfront = asksPurchaseReturnReasonUpfront({ financialChange: true, postingMonthOnly: true });
+    assert.equal(upfront, false);
+    assert.equal(asksPurchaseReturnReasonUpfront({ financialChange: true, postingMonthOnly: false }), true,
+      "a declared return month still asks up front");
+    const before = resolvePurchaseReturnEditLock({ initial: pageLock, initialAsksReason: upfront, preview: null, server: null });
+    assert.deepEqual([before.asksReason, before.blocks], [false, false]);
+    const html = renderToStaticMarkup(createElement(PeriodLockFormSection, { lock: before.lock, financialChange: before.asksReason,
+      note: describePurchaseReturnPostingMonthLock(true) }));
+    assert.ok(!html.includes(`name="${PERIOD_LOCK_REASON_FIELD}"`) && html.includes("ระบบจะตรวจตอนกดบันทึก"), html);
+    const staffHtml = renderToStaticMarkup(createElement(PeriodLockFormSection, { lock: { ...pageLock, canOverride: false },
+      financialChange: false, note: describePurchaseReturnPostingMonthLock(false) }));
+    assert.ok(staffHtml.includes("ต้องให้ผู้มีสิทธิ์ปลดล็อกเป็นผู้แก้"), "staff see the note too");
+
+    // Supplier credit → cash refund: a financial edit, but the ลดราคาซื้อ values stay the same.
+    const refund = editForm({ settlementType: "CASH_REFUND", payments: JSON.stringify([{ cashBankAccountId: "cb-1", amount: 200 }]) },
+      discountLine());
+    const { previewPurchaseReturnUpdate, updatePurchaseReturn } = await import("../actions");
+    const preview = await previewPurchaseReturnUpdate("pr1", refund);
+    assert.deepEqual([preview.preview?.periodLock, preview.preview?.nonFinancial], [null, false], String(preview.error));
+    assert.equal(resolvePurchaseReturnEditLock({ initial: pageLock, initialAsksReason: false, preview: preview.preview ?? null,
+      server: null }).asksReason, false, "the preview finds nothing locked, so the save goes ahead without a reason");
+    assert.deepEqual(await updatePurchaseReturn("pr1", refund), { success: true }, String(criticalReports[0] ?? ""));
+    assert.deepEqual([deletes(), stockWrites, alerts], [[], [], []]);
+    assert.equal((audits[0]?.meta as { periodLockOverride?: unknown } | undefined)?.periodLockOverride, undefined, "no override used");
+
+    // A cost edit changes ลดราคาซื้อ: the preview reports the posting month and the owner is asked for the reason.
+    const cost = await previewPurchaseReturnUpdate("pr1", editForm({}, discountLine(10)));
+    const state = resolvePurchaseReturnEditLock({ initial: pageLock, initialAsksReason: false, preview: cost.preview ?? null, server: null });
+    assert.ok(state.lock?.message.includes("PD2026090001"), state.lock?.message);
+    assert.deepEqual([state.asksReason, state.blocks], [true, false]);
   });

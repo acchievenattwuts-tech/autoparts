@@ -10,7 +10,10 @@ export type PurchaseReturnEditPreview = {
    * month and the months of the later sales / credit notes the repost restates; null when all are open.
    */
   periodLock: PeriodLockView | null;
-  /** Only the note, the credit-note number/date or line remarks changed in a locked month: saved without a reason. */
+  /**
+   * Only the note, the credit-note number/date or line remarks changed — in a locked return month, or on a DISCOUNT/OTHER
+   * return whose ลดราคาซื้อ then stays as posted (Z3): saved without a reason.
+   */
   nonFinancial: boolean;
   /** Later sales whose cost the repost restates; null when not planned (no declared month could be touched). */
   restatement: { saleCount: number; delta: number } | null;
@@ -43,6 +46,19 @@ export function resolvePurchaseReturnEditLock(input: {
   }
   return { lock: input.initial, asksReason: input.initialAsksReason, blocks: false };
 }
+
+/**
+ * Z2 (owner 2026-10-01): before the save preview, the reason is asked for up front only when the return's own month is
+ * declared. A declared ลดราคาซื้อ posting month alone (`postingMonthOnly`) is locked by updatePurchaseReturn only when
+ * the edit changes the ลดราคาซื้อ values, which the preview decides on save — a payment-only edit needs no reason.
+ */
+export const asksPurchaseReturnReasonUpfront = (input: { financialChange: boolean; postingMonthOnly: boolean }): boolean =>
+  input.financialChange && !input.postingMonthOnly;
+
+/** Z2: the lock section's line while only the ลดราคาซื้อ posting month is declared and no preview has decided yet. */
+export const describePurchaseReturnPostingMonthLock = (canOverride: boolean): string =>
+  "เดือนที่ลงลดราคาซื้อของใบนี้ประกาศปันผลแล้ว แต่แก้ไขได้ตามปกติ ระบบจะตรวจตอนกดบันทึก ถ้าการแก้เปลี่ยนยอดลดราคาซื้อ" +
+  (canOverride ? " จะขอเหตุผลปลดล็อกก่อนบันทึก" : " จะบันทึกไม่ได้ ต้องให้ผู้มีสิทธิ์ปลดล็อกเป็นผู้แก้");
 
 /**
  * Preview before saving only when it can change the outcome: an edit of a financial field, no lock rejection yet (the

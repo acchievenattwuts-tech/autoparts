@@ -20,6 +20,8 @@ import {
   type PeriodLockView,
 } from "@/lib/period-lock-view";
 import {
+  asksPurchaseReturnReasonUpfront,
+  describePurchaseReturnPostingMonthLock,
   describePurchaseReturnRestatement,
   needsPurchaseReturnEditPreview,
   resolvePurchaseReturnEditLock,
@@ -166,6 +168,7 @@ const PurchaseReturnForm = ({
   submitLocked = false,
   periodLock = null,
   periodLockHint,
+  periodLockPostingMonthOnly = false,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -183,6 +186,8 @@ const PurchaseReturnForm = ({
   /** Edit only: the return's month was already distributed (lib/period-lock.ts). */
   periodLock?: PeriodLockView | null;
   periodLockHint?: string;
+  /** Edit only (Z2): `periodLock` covers just the ลดราคาซื้อ posting month — the save preview decides on the reason. */
+  periodLockPostingMonthOnly?: boolean;
 }) => {
   const router = useRouter();
   const isEdit = !!initialData;
@@ -540,11 +545,18 @@ const PurchaseReturnForm = ({
   const currentEditPreview = editPreview?.key === financialKey ? editPreview.preview : null;
   const editLock = resolvePurchaseReturnEditLock({
     initial: periodLock,
-    initialAsksReason: periodLockFinancialChange,
+    initialAsksReason: asksPurchaseReturnReasonUpfront({
+      financialChange: periodLockFinancialChange,
+      postingMonthOnly: periodLockPostingMonthOnly,
+    }),
     preview: currentEditPreview,
     server: serverLock,
   });
   const restatementNote = editLock.lock ? describePurchaseReturnRestatement(currentEditPreview?.restatement ?? null) : null;
+  // Z2: until a preview or the server decides, say that the save checks the posting month instead of asking up front.
+  const periodLockNote = periodLockPostingMonthOnly && !currentEditPreview && !serverLock && editLock.lock
+    ? describePurchaseReturnPostingMonthLock(editLock.lock.canOverride)
+    : undefined;
 
   /** Y2: false = stop before saving (the reason is now asked for, or the change is blocked and the notice says why). */
   const confirmEditPeriodLock = async (returnId: string, formData: FormData): Promise<boolean> => {
@@ -674,7 +686,7 @@ const PurchaseReturnForm = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <PeriodLockFormSection lock={editLock.lock} hint={periodLockHint} financialChange={editLock.asksReason} />
+      <PeriodLockFormSection lock={editLock.lock} hint={periodLockHint} financialChange={editLock.asksReason} note={periodLockNote} />
       {restatementNote ? (
         <p className="rounded-lg bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">{restatementNote}</p>
       ) : null}

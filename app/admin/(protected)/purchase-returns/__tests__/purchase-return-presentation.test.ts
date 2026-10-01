@@ -60,7 +60,7 @@ test("X3: the edit form disables the other type family with the server's message
 test("X4: the cancel dialog acts on the server's lock, else the loaded preview, else the page's view", () => {
   const view = (label: string, canOverride: boolean): PeriodLockView => ({ message: label, canOverride, periodLabels: [label] });
   const page = view("page", true);
-  const open = { periodLock: null, restatement: null };
+  const open = { block: null, periodLock: null, restatement: null };
   assert.deepEqual(resolvePurchaseReturnCancelLock({ initial: null, preview: open, server: null }),
     { lock: null, asksReason: false, blocks: false }, "no lock: no reason field");
   assert.deepEqual(resolvePurchaseReturnCancelLock({ initial: page, preview: null, server: null }),
@@ -68,7 +68,7 @@ test("X4: the cancel dialog acts on the server's lock, else the loaded preview, 
   assert.equal(resolvePurchaseReturnCancelLock({ initial: page, preview: open, server: null }).lock, null,
     "the preview is exact and replaces the page's view");
   const later = view("later sale", true);
-  assert.deepEqual(resolvePurchaseReturnCancelLock({ initial: null, preview: { periodLock: later, restatement: null }, server: null }),
+  assert.deepEqual(resolvePurchaseReturnCancelLock({ initial: null, preview: { block: null, periodLock: later, restatement: null }, server: null }),
     { lock: later, asksReason: true, blocks: false }, "a locked later-sale month asks an owner for the reason");
   const server = view("server", false);
   assert.deepEqual(resolvePurchaseReturnCancelLock({ initial: null, preview: open, server }),
@@ -79,6 +79,6 @@ test("X4: the cancel button loads the preview when the dialog opens and waits fo
   const button = readRouteFile("PurchaseReturnCancelButton.tsx");
   assert.match(button, /previewPurchaseReturnCancel\(returnId\)/);
   assert.match(button, /onOpen=\{\(\) => \{ void loadPreview\(\); \}\}/);
-  assert.match(button, /confirmDisabled=\{status === "loading" \|\| blocks\}/);
+  assert.match(button, /confirmDisabled=\{status === "loading" \|\| blocks \|\| block !== null\}/);
   assert.match(button, /if \(result\.periodLock\) setServerLock\(result\.periodLock\)/);
 });
