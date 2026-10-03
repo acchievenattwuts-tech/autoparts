@@ -12,7 +12,8 @@ import { checkPurchaseBudgetAlert } from "@/lib/purchase-budget-alerts";
  * previous run. Purely a reader of business data — no purchase, sale or stock flow calls it.
  *
  * Vercel Cron triggers this with a GET and attaches `Authorization: Bearer ${CRON_SECRET}`; the
- * schedule (every 10 minutes) lives in vercel.json.
+ * schedule lives in vercel.json: hourly at :05 during shop hours, 08:05–20:05 Thailand
+ * (01:05–13:05 UTC, owner choice 2026-10-03). A cap change still checks at once.
  */
 
 const isAuthorized = (authHeader: string | null): boolean => {

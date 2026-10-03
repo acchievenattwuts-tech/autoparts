@@ -8,7 +8,8 @@ import {
 } from "@/lib/purchase-budget-core";
 
 /**
- * Purchase budget alert check, run by the cron route every few minutes and right after a cap change.
+ * Purchase budget alert check, run by the cron route hourly during shop hours (08:05–20:05 Thailand)
+ * and right after a cap change.
  * It never touches a document flow: it reads the budget, compares its level with the level the last
  * check stored (SiteContent), stores the new level, and alerts (bell + Telegram) only when the level
  * got worse — ok → low, ok/low → over. An improvement re-arms the alert silently.
