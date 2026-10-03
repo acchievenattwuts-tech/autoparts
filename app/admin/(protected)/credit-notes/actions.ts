@@ -87,6 +87,12 @@ import {
   resolveReferencedReturnSaleItemIds,
   resolveReturnUnitCost,
 } from "@/lib/credit-note-return";
+import {
+  CreditNoteWarrantyClaimBlockedError,
+  syncCreditNoteReturnWarranties,
+  toCreditNoteWarrantyAuditMeta,
+  type CreditNoteWarrantySyncResult,
+} from "@/lib/credit-note-warranty";
 
 type CreditNoteProductOption = {
   id: string;
@@ -735,6 +741,7 @@ export async function createCreditNote(
   }
   let createdCreditNoteId = "";
   let savedCnNo = "";
+  let warrantySync: CreditNoteWarrantySyncResult | null = null;
 
   try {
     // Document numbers are generated inside the try so a DB failure here returns
@@ -894,6 +901,11 @@ export async function createCreditNote(
         }
       }
 
+      // Returned units lose their warranty; an in-progress claim on them blocks the CN.
+      if (type === CreditNoteType.RETURN) {
+        warrantySync = await syncCreditNoteReturnWarranties(tx, cn.id);
+      }
+
       // Initialize amountRemain = totalAmount (no receipts applied yet)
       if (settlementType === CNSettlementType.CREDIT_DEBT) {
         await recalculateCNAmountRemain(tx, cn.id);
@@ -1030,6 +1042,7 @@ export async function createCreditNote(
       run: ({ cnNo, carrierExpenseNo }) => {
         savedCnNo = cnNo;
         createdCreditNoteId = "";
+        warrantySync = null;
         return writeCreditNote(cnNo, carrierExpenseNo);
       },
     });
@@ -1038,6 +1051,7 @@ export async function createCreditNote(
       ? await getCreditNoteAuditSnapshot(createdCreditNoteId)
       : null;
     if (afterSnapshot) {
+      const createMeta = toCreditNoteWarrantyAuditMeta(warrantySync);
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
         ...requestContext,
@@ -1046,6 +1060,7 @@ export async function createCreditNote(
         entityId: afterSnapshot.id,
         entityRef: afterSnapshot.cnNo,
         after: afterSnapshot,
+        ...(Object.keys(createMeta).length > 0 ? { meta: createMeta } : {}),
       });
     }
 
@@ -1073,6 +1088,7 @@ export async function createCreditNote(
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
     revalidatePath("/admin/sales");
+    revalidatePath("/admin/warranties");
     if (afterSnapshot?.saleId) revalidatePath(`/admin/sales/${afterSnapshot.saleId}`);
     if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
       const marketplaceSlug = getMarketplaceChannelConfig(afterSnapshot.channel).slug;
@@ -1085,6 +1101,7 @@ export async function createCreditNote(
   } catch (err) {
     if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
+    if (err instanceof CreditNoteWarrantyClaimBlockedError) return { error: err.message };
     if (err instanceof CreditNoteVatMismatchError) return { error: err.message };
     if (err instanceof CreditNoteSourceSaleError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.create" });
@@ -1150,6 +1167,7 @@ export async function cancelCreditNote(
   ];
   const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
   let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
+  let warrantySync: CreditNoteWarrantySyncResult | null = null;
 
   try {
     const requestContext = await getRequestContext();
@@ -1183,6 +1201,11 @@ export async function cancelCreditNote(
         where: { id: cnId },
         data: { status: "CANCELLED", cancelledAt: new Date(), cancelNote, amountRemain: 0 },
       });
+      // After the status change: the CN is no longer ACTIVE, so this only restores the
+      // warranties it cut.
+      if (cn.type === "RETURN") {
+        warrantySync = await syncCreditNoteReturnWarranties(tx, cnId);
+      }
       await rebuildCreditNoteProfitFacts(tx, cnId);
     }, { timeout: 180_000 });
 
@@ -1198,7 +1221,11 @@ export async function cancelCreditNote(
         entityRef: afterSnapshot.cnNo,
         before: diff.before,
         after: diff.after,
-        meta: { cancelNote: cancelNote ?? null, ...periodLockAuditMeta(periodLock, lockOverride) },
+        meta: {
+          cancelNote: cancelNote ?? null,
+          ...periodLockAuditMeta(periodLock, lockOverride),
+          ...toCreditNoteWarrantyAuditMeta(warrantySync),
+        },
       });
     }
     await notifyPeriodLockOverrideUsed({
@@ -1217,6 +1244,7 @@ export async function cancelCreditNote(
     revalidatePath("/admin/credit-notes");
     revalidatePath("/admin/products");
     revalidatePath("/admin/sales");
+    revalidatePath("/admin/warranties");
     if (afterSnapshot?.saleId) revalidatePath(`/admin/sales/${afterSnapshot.saleId}`);
     if (afterSnapshot?.channel && isManualMarketplaceChannel(afterSnapshot.channel)) {
       const marketplaceSlug = getMarketplaceChannelConfig(afterSnapshot.channel).slug;
@@ -1481,6 +1509,7 @@ export async function updateCreditNote(
 
   const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
   let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
+  let warrantySync: CreditNoteWarrantySyncResult | null = null;
 
   try {
     const requestContext = await getRequestContext();
@@ -1754,6 +1783,12 @@ export async function updateCreditNote(
         }
       }
 
+      // 4b. Re-apply the warranty cut from the saved lines: restores what this CN cut,
+      //     then cuts again (none when it is no longer a RETURN).
+      if (oldHadStock || type === CreditNoteType.RETURN) {
+        warrantySync = await syncCreditNoteReturnWarranties(tx, id);
+      }
+
       // 5. Recalculate CN amountRemain (totalAmount may have changed)
       await recalculateCNAmountRemain(tx, id);
 
@@ -1785,6 +1820,10 @@ export async function updateCreditNote(
     const afterSnapshot = await getCreditNoteAuditSnapshot(id);
     if (beforeSnapshot && afterSnapshot) {
       const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      const updateMeta = {
+        ...(periodLock.overridden ? periodLockAuditMeta(periodLock, lockOverride) : {}),
+        ...toCreditNoteWarrantyAuditMeta(warrantySync),
+      };
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
         ...requestContext,
@@ -1794,7 +1833,7 @@ export async function updateCreditNote(
         entityRef: afterSnapshot.cnNo,
         before: diff.before,
         after: diff.after,
-        ...(periodLock.overridden ? { meta: periodLockAuditMeta(periodLock, lockOverride) } : {}),
+        ...(Object.keys(updateMeta).length > 0 ? { meta: updateMeta } : {}),
       });
     }
     await notifyPeriodLockOverrideUsed({
@@ -1813,6 +1852,7 @@ export async function updateCreditNote(
     revalidatePath("/admin/credit-notes");
     revalidatePath(`/admin/credit-notes/${id}`);
     revalidatePath("/admin/products");
+    revalidatePath("/admin/warranties");
     return { success: true };
   } catch (err) {
     if (err instanceof PeriodLockedError) return { error: err.message };
@@ -1820,6 +1860,7 @@ export async function updateCreditNote(
       return { error: "เอกสารถูกยกเลิกแล้ว ไม่สามารถแก้ไขได้" };
     }
     if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
+    if (err instanceof CreditNoteWarrantyClaimBlockedError) return { error: err.message };
     // e.g. writeStockCard refusing a backdated RETURN_IN across a supplier DN: a user-facing block, not a system failure.
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     if (err instanceof CreditNoteVatMismatchError) return { error: err.message };

@@ -490,8 +490,25 @@ async function getCreditNoteRelationEvents(id: string,
       status: true,
     },
   });
+  // Warranties of the returned units this RETURN CN cancelled (restored when the CN is cancelled).
+  const cutWarranties = await db.warranty.findMany({
+    where: { cancelledByCreditNoteId: id },
+    orderBy: { cancelledAt: "desc" },
+    select: { cancelledAt: true },
+  });
+  const lastWarrantyCutAt = cutWarranties[0]?.cancelledAt ?? null;
 
   return [
+    ...(cn?.sale && lastWarrantyCutAt ? [buildRelationActivityEvent({
+      id: `credit-note-${id}-warranties`,
+      kind: "USED_BY",
+      occurredAt: lastWarrantyCutAt,
+      title: "สิ้นสุดประกันของสินค้าที่รับคืน",
+      description: `${cutWarranties.length} รายการ`,
+      href: `/admin/warranties?status=cancelled&q=${encodeURIComponent(cn.sale.saleNo)}`,
+      hrefLabel: "ดูรายการประกัน",
+      tone: "cancel",
+    })] : []),
     ...(cn?.sale ? [buildRelationActivityEvent({
       id: `credit-note-${id}-sale-${cn.sale.id}`,
       kind: "USES_SOURCE",

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ShieldCheck } from "lucide-react";
+import { ChevronLeft, ShieldCheck, ShieldOff } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
@@ -10,6 +10,57 @@ import {
   getCustomerClaimStatusBadgeClass,
   getCustomerClaimStatusLabel,
 } from "@/lib/warranty-claim-i18n";
+
+const ReturnedWarrantyNotice = ({
+  productCode,
+  productName,
+  saleNo,
+  cnNo,
+  cnDate,
+}: {
+  productCode: string;
+  productName: string;
+  saleNo: string | null;
+  cnNo: string;
+  cnDate: Date;
+}) => (
+  <main className="min-h-dvh bg-gradient-to-b from-white via-sky-50 to-white pb-10 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+    <section className="overflow-hidden rounded-b-[28px] border-b border-blue-100 bg-gradient-to-br from-white via-sky-50 to-blue-100 px-5 pb-6 pt-6 text-[#083a78] shadow-sm dark:border-slate-700 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 dark:text-sky-200">
+      <Link href="/liff/warranties" className="mb-5 inline-flex items-center gap-1 text-sm font-semibold text-blue-700 dark:text-sky-400">
+        <ChevronLeft size={16} />
+        กลับไปประกัน
+      </Link>
+      <p className="text-sm text-slate-500 dark:text-slate-400">{productCode}</p>
+      <h1 className="mt-1 font-kanit text-2xl font-bold dark:text-slate-100">{productName}</h1>
+    </section>
+
+    <section className="px-5 py-5">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex gap-3">
+          <ShieldOff className="h-6 w-6 shrink-0 text-slate-500 dark:text-slate-400" />
+          <div>
+            <p className="font-kanit text-lg font-bold text-slate-950 dark:text-slate-100">ประกันสิ้นสุดแล้ว</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              สินค้าชิ้นนี้ถูกคืนให้ร้านแล้ว จึงสิ้นสุดการรับประกัน
+            </p>
+          </div>
+        </div>
+        <dl className="mt-4 space-y-3 text-sm">
+          <div>
+            <dt className="text-slate-500 dark:text-slate-400">เลขที่บิล</dt>
+            <dd className="font-mono font-semibold text-slate-950 dark:text-slate-100">{saleNo ?? "-"}</dd>
+          </div>
+          <div>
+            <dt className="text-slate-500 dark:text-slate-400">คืนสินค้าตามใบลดหนี้</dt>
+            <dd className="font-semibold text-slate-950 dark:text-slate-100">
+              <span className="font-mono">{cnNo}</span> · {formatDateThai(cnDate)}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </section>
+  </main>
+);
 
 export default async function LiffWarrantyDetailPage({
   params,
@@ -61,7 +112,32 @@ export default async function LiffWarrantyDetailPage({
     },
   });
 
-  if (!warranty) notFound();
+  if (!warranty) {
+    // A unit returned with a credit note: explain why the warranty ended instead of a bare 404.
+    const returnedWarranty = await db.warranty.findFirst({
+      where: {
+        id,
+        status: "CANCELLED",
+        cancelledByCreditNote: { status: "ACTIVE" },
+        sale: { customerId: customer.id, status: "ACTIVE" },
+      },
+      select: {
+        product: { select: { code: true, name: true } },
+        sale: { select: { saleNo: true } },
+        cancelledByCreditNote: { select: { cnNo: true, cnDate: true } },
+      },
+    });
+    if (!returnedWarranty?.cancelledByCreditNote) notFound();
+    return (
+      <ReturnedWarrantyNotice
+        productCode={returnedWarranty.product.code}
+        productName={returnedWarranty.product.name}
+        saleNo={returnedWarranty.sale?.saleNo ?? null}
+        cnNo={returnedWarranty.cancelledByCreditNote.cnNo}
+        cnDate={returnedWarranty.cancelledByCreditNote.cnDate}
+      />
+    );
+  }
 
   const expired = warranty.endDate < parseDateOnlyToDate(getThailandDateKey());
 

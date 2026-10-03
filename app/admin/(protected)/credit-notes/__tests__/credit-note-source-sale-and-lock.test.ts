@@ -214,6 +214,14 @@ before(async () => {
       dbTx: async (fn: (tx: FakeTx) => Promise<unknown>) => fn(fakeTx),
     },
   });
+  // The warranty cut has its own tests (lib/__tests__/credit-note-warranty.test.ts).
+  const realCreditNoteWarranty = await import("@/lib/credit-note-warranty");
+  await mock.module("@/lib/credit-note-warranty", {
+    namedExports: {
+      ...realCreditNoteWarranty,
+      syncCreditNoteReturnWarranties: async () => ({ restoredWarrantyIds: [], cancelledWarrantyIds: [] }),
+    },
+  });
   actions = await import("../actions");
 });
 

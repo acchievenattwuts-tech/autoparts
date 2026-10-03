@@ -110,6 +110,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
         createdVia: true,
         status: true,
         cancelNote: true,
+        cancelledByCreditNote: { select: { id: true, cnNo: true } },
         product:  { select: { code: true, name: true } },
         sale:     { select: { saleNo: true, saleDate: true, customerName: true } },
         customer: { select: { name: true } },
@@ -331,6 +332,15 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
                           >
                             <Ban size={11} /> ยกเลิก
                           </span>
+                        )}
+                        {w.wStatus === "cancelled" && w.cancelledByCreditNote && (
+                          <Link
+                            href={`/admin/credit-notes/${w.cancelledByCreditNote.id}`}
+                            className="mt-1 block whitespace-nowrap text-[10px] text-[#1e3a5f] hover:underline dark:text-sky-300"
+                            title="ประกันสิ้นสุดเพราะคืนสินค้าตามใบลดหนี้นี้"
+                          >
+                            คืนสินค้า <span className="font-mono">{w.cancelledByCreditNote.cnNo}</span>
+                          </Link>
                         )}
                         {w.wStatus === "expired" && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">

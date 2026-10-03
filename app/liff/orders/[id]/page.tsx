@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import LiffLinkRequired from "@/components/liff/LiffLinkRequired";
 import OrderStatusTimeline from "@/components/liff/OrderStatusTimeline";
 import TrackingSmartLink from "@/components/liff/TrackingSmartLink";
+import { GOODS_RECEIVED_RETURN_DISPOSITIONS } from "@/lib/credit-note-warranty";
 import { db } from "@/lib/db";
 import { getTrackingContactPhone, isTrackingExpired } from "@/lib/delivery-tracking";
 import { getLiffCustomer } from "@/lib/liff-data";
@@ -81,6 +82,14 @@ export default async function LiffOrderDetailPage({
             quantity: true,
             salePrice: true,
             totalAmount: true,
+            // Units the shop received back on an ACTIVE return credit note (same base unit as quantity).
+            creditNoteItems: {
+              where: {
+                stockDisposition: { in: [...GOODS_RECEIVED_RETURN_DISPOSITIONS] },
+                creditNote: { status: "ACTIVE", type: "RETURN" },
+              },
+              select: { qty: true },
+            },
           },
           orderBy: [{ lineNo: "asc" }, { id: "asc" }],
         },
@@ -308,19 +317,27 @@ export default async function LiffOrderDetailPage({
             <h2 className="font-kanit text-lg font-bold text-slate-950 dark:text-slate-100">รายการสินค้า</h2>
           </div>
           <div className="divide-y divide-slate-100 dark:divide-slate-700">
-            {order.items.map((item) => (
-              <div key={item.id} className="py-3 first:pt-0 last:pb-0">
-                <div className="flex justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900 dark:text-slate-200">{item.product.name}</p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {formatSaleQuantity(item.quantity)} {item.product.saleUnitName} x {money(item.salePrice)}
-                    </p>
+            {order.items.map((item) => {
+              const returnedQty = item.creditNoteItems.reduce((sum, cnItem) => sum + Number(cnItem.qty), 0);
+              return (
+                <div key={item.id} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-slate-200">{item.product.name}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {formatSaleQuantity(item.quantity)} {item.product.saleUnitName} x {money(item.salePrice)}
+                      </p>
+                      {returnedQty > 0 ? (
+                        <span className="mt-1.5 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                          คืนสินค้าแล้ว {formatSaleQuantity(returnedQty)} {item.product.saleUnitName}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="shrink-0 font-bold text-slate-950 dark:text-slate-100">{money(item.totalAmount)}</p>
                   </div>
-                  <p className="shrink-0 font-bold text-slate-950 dark:text-slate-100">{money(item.totalAmount)}</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

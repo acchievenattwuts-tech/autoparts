@@ -1843,10 +1843,14 @@ model Warranty {
   unitSeq      Int                    @default(1)
   lotNo        String?
   createdVia   WarrantyCreationSource @default(AUTO_FROM_SALE)
-  /// Only on-site warranties (MANUAL, no sale) are ever cancelled; sale-linked rows are deleted instead.
+  /// Cancelled in place: on-site warranties (MANUAL, no sale), and sale-linked units returned by a
+  /// RETURN credit note (cancelledByCreditNoteId set; cancelling that CN restores them). A cancelled
+  /// or edited sale still deletes its rows.
   status       WarrantyStatus         @default(ACTIVE)
   cancelledAt  DateTime?              @db.Timestamptz(3)
   cancelNote   String?
+  cancelledByCreditNoteId String?
+  cancelledByCreditNote   CreditNote? @relation(fields: [cancelledByCreditNoteId], references: [id], onDelete: SetNull)
   product      Product                @relation(fields: [productId], references: [id])
   sale         Sale?                  @relation(fields: [saleId], references: [id])
   saleItem     SaleItem?              @relation(fields: [saleItemId], references: [id])
@@ -1860,6 +1864,7 @@ model Warranty {
   @@index([customerId])
   @@index([createdVia])
   @@index([status, endDate])
+  @@index([cancelledByCreditNoteId])
 }
 
 enum WarrantyCreationSource {
@@ -2221,6 +2226,7 @@ model CreditNote {
   receiptItems               ReceiptItem[]
   marketplaceSettlementLines MarketplaceSettlementLine[]
   marketplaceReturnExpenses  Expense[]                   @relation("MarketplaceReturnExpenses")
+  cancelledWarranties        Warranty[]
 
   @@unique([channel, marketplaceReturnRef])
   @@index([cashBankAccountId])
