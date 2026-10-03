@@ -32,6 +32,7 @@ const ENTITY_LABELS: Record<string, string> = {
   Product: "สินค้า",
   ProfitDistribution: "แบ่งกำไรผู้ร่วมทุน",
   Purchase: "ใบซื้อ",
+  PurchaseBudget: "งบสั่งซื้อ",
   PurchaseReturn: "ใบคืนซื้อ",
   Receipt: "ใบรับชำระ",
   ReportExport: "การส่งออกรายงาน",

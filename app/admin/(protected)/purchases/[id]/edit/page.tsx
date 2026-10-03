@@ -20,13 +20,16 @@ import PurchaseForm from "../../new/PurchaseForm";
 import { getPurchaseProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
 import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
 import { PURCHASE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../purchase-period-lock";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getPurchaseBudgetFormViewSafe } from "@/lib/purchase-budget";
 
 const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const session = await requirePermission("purchases.update");
+  const canViewBudget = hasPermissionAccess(session.user.role, session.user.permissions, "purchase_budget.view");
 
   const { id } = await params;
 
-  const [purchase, config, cashBankAccounts] = await Promise.all([
+  const [purchase, config, cashBankAccounts, purchaseBudget] = await Promise.all([
     db.purchase.findUnique({
       where: { id },
       include: {
@@ -45,6 +48,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     }),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
+    canViewBudget ? getPurchaseBudgetFormViewSafe() : Promise.resolve(null),
   ]);
 
   if (!purchase) notFound();
@@ -161,6 +165,7 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
         submitLocked={!!mutationBlockMessage}
         periodLock={periodLock}
         periodLockHint={PURCHASE_PERIOD_LOCK_ALLOWED_EDITS_HINT}
+        purchaseBudget={purchaseBudget}
       />
     </div>
   );

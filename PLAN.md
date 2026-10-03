@@ -1407,6 +1407,19 @@
 - [x] Deploy Z1–Z3 2026-10-01: verify 2,454/2,454 + build + mojibake ผ่าน → commit `82892660` push main → Vercel production Ready 08:38 (sriwanparts.com) → schema drift ผ่าน (ไม่มี migration) · หน้าเว็บ 200 และไม่มี error log หลัง deploy
 - [ ] หลัง deploy: ทดสอบอัปโหลดสลิป private + รูปสินค้า (A3), เฝ้า `[db-retry]` ต่อ
 
+## งบสั่งซื้อคงเหลือ — Purchase Budget / Open-to-Buy (2026-10-03)
+เจ้าของยืนยัน: ขายแล้วคืนงบเท่าต้นทุน (แบบ A) · ปรับเพดานเพิ่ม/ลด/ตั้งใหม่ได้เอง · มัดจำซัพพลายเออร์หักงบทันที · เกินงบเตือนอย่างเดียว ไม่บล็อก · งบทั้งร้าน · สินค้าไม่คำนวณสต็อกหักด้วย · แท็บใหม่ "Purchase Budget" ต่อจาก Profit Dashboard · สิทธิ์ดู/ปรับแยก · เก็บส่วนเทียบกับเงินจริง · แจ้งเตือนกระดิ่ง + Telegram · [mockup](https://claude.ai/artifact/1XnpiJAK8mdcZa39dxCGtt) · เจ้าของสั่ง "อย่าให้กระทบ logic หลัก": ไม่แตะ flow ซื้อ/ขาย/สต็อก/MAVG/ลูกหนี้/เจ้าหนี้
+- [x] งบคงเหลือ = เพดาน − มูลค่าสต็อก (Σ stock × avgCost ของสินค้า TRACKED) − มัดจำซัพที่ยังไม่ตัด − สินค้าไม่คำนวณสต็อก (ยอดซื้อ − ต้นทุนขาย นับจากวันตั้งเพดานครั้งแรก) คำนวณสดจากข้อมูลเดิม ไม่มีสมุดงบแยก ([purchase-budget-core.ts](lib/purchase-budget-core.ts), [purchase-budget.ts](lib/purchase-budget.ts))
+- [x] แท็บ Purchase Budget (`/admin/dashboard?tab=budget`, ต้องมี `purchase_budget.view`): การ์ดงบ แถบพร้อมเส้นเตือน ที่มาของตัวเลข วิธีคำนวณ เทียบกับเงินจริง (เงินสดแสดงเมื่อมี `cash_bank.view`) งบขยับเดือนนี้ (สต็อกการ์ด + มัดจำ + ปรับเพดาน · งบต้นเดือน = งบตอนนี้ − ผลรวม) มัดจำรอรับของ (เตือนเมื่อซัพมีใบซื้อค้างจ่ายหลังวันมัดจำ) ประวัติปรับเพดานจาก Audit log · โหมดสว่าง/มืด ([_purchase-budget](app/admin/(protected)/dashboard/_purchase-budget/))
+- [x] ปรับเพดาน (`purchase_budget.manage`): เพิ่ม/ลด/กำหนดใหม่ + เส้นเตือน (เริ่ม 10%, 0–50%) + เหตุผลบังคับ · เก็บใน `SiteContent` (`purchase_budget_cap`, `purchase_budget_threshold_pct`, `purchase_budget_started_on`) · AuditLog `PurchaseBudget` ใน transaction เดียว + advisory lock ([purchase-budget-actions.ts](app/admin/(protected)/dashboard/purchase-budget-actions.ts))
+- [x] กล่องงบท้ายฟอร์มใบซื้อ (สร้าง/แก้ไข) แสดงผลอย่างเดียว: งบก่อนบิล · บิลนี้ใช้งบ (= มูลค่าเข้าสต็อกตามสูตร landed cost เดิม) · คงเหลือหลังบันทึก · ใบที่บันทึกแล้วคิดส่วนต่าง · ไม่บล็อกและไม่เปลี่ยนข้อมูลที่บันทึก
+- [x] แจ้งเตือน `PURCHASE_BUDGET_LOW` / `PURCHASE_BUDGET_EXCEEDED` (กระดิ่ง + Telegram) จาก cron `/api/purchase-budget/cron/check` ทุก 10 นาที + ตรวจทันทีหลังปรับเพดาน · เตือนเฉพาะเมื่อสถานะแย่ลง (สถานะล่าสุดเก็บใน `purchase_budget_alert_level`) · ไม่เสียบในขั้นตอนบันทึกใบซื้อ/มัดจำ ([purchase-budget-alerts.ts](lib/purchase-budget-alerts.ts))
+- [x] สิทธิ์ใหม่ `purchase_budget.view` / `purchase_budget.manage` + สคริปต์ลงทะเบียนให้ ADMIN [setup-purchase-budget.ts](prisma/scripts/setup-purchase-budget.ts) · tests ใหม่ 21 ข้อ (สูตร, เปลี่ยนสถานะเตือน, action สิทธิ์/validation/audit, cron route)
+- [x] DB 2026-10-03 (เจ้าของอนุมัติ): รัน migration [20261003_purchase_budget_notifications](prisma/migrations/20261003_purchase_budget_notifications/migration.sql) (อ่านกลับ enum 2 ค่า) + `prisma/scripts/setup-purchase-budget.ts` (ADMIN ได้ 2 สิทธิ์ + audit 1 แถว) · schema drift ผ่าน
+- [x] verify: lint 0 errors / 260 warnings เดิม, typecheck ผ่าน, tests 2,491/2,491, mojibake ผ่าน (รวมไฟล์ใหม่), `npm run build` ผ่าน · ทดลอง query กับ DB แบบอ่านอย่างเดียว: ทั้งแท็บ ~0.2–0.3 วินาที · commit + push main 2026-10-03 (เจ้าของสั่ง)
+- [ ] ข้อจำกัดที่รู้: สินค้าไม่คำนวณสต็อกนับเฉพาะใบซื้อ/บิลขาย (ใบคืนซื้อ/ใบลดหนี้ของสินค้ากลุ่มนี้ยังไม่นับ — ตอนนี้มีแค่ P0000 ทุน 0 และไม่เคยซื้อเข้า) · บันทึกใบซื้อก่อนตัดมัดจำ งบถูกหักซ้ำชั่วคราวจนกว่าจะตัดมัดจำ
+- [ ] หลัง deploy: ตั้งเพดานครั้งแรก (ณ 2026-10-03 มูลค่าสต็อก ≈ 1,229,263 + มัดจำ 24,850) แล้วเฝ้าดู cron + แจ้งเตือน
+
 ## How To Use This Repo As AI
 1. อ่าน [AGENTS.md](/D:/autoparts/AGENTS.md) ก่อนเสมอ
 2. อ่านไฟล์นี้เพื่อดู current focus และ source of truth

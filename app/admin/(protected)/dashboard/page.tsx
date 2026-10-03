@@ -1,11 +1,15 @@
 export const dynamic = "force-dynamic";
 
+import { Suspense } from "react";
+
 import DailyOperationsDashboard from "../DailyOperationsDashboard";
-import DashboardTabs from "../DashboardTabs";
+import DashboardTabs, { type DashboardTabKey } from "../DashboardTabs";
 import ProfitDashboard from "../ProfitDashboard";
 import ShopeeChannelSummary from "./ShopeeChannelSummary";
+import PurchaseBudgetTab, { PurchaseBudgetTabSkeleton } from "./_purchase-budget/PurchaseBudgetTab";
 
-import { requirePermission } from "@/lib/require-auth";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 
 type AdminDashboardPageProps = {
   searchParams?: Promise<{
@@ -20,14 +24,21 @@ type AdminDashboardPageProps = {
   }>;
 };
 
+const resolveInitialTab = (tab: string | undefined): DashboardTabKey => {
+  if (tab === "profit" || tab === "budget") return tab;
+  return "daily";
+};
+
 const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => {
   await requirePermission("dashboard.view");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const { role, permissions } = await getSessionPermissionContext();
+  const canViewBudget = hasPermissionAccess(role, permissions, "purchase_budget.view");
 
   return (
     <DashboardTabs
-      initialTab={resolvedSearchParams?.tab === "profit" ? "profit" : "daily"}
+      initialTab={resolveInitialTab(resolvedSearchParams?.tab)}
       dailyContent={
         <div className="space-y-4">
           <ShopeeChannelSummary />
@@ -52,6 +63,17 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
           profitInvoicePage={resolvedSearchParams?.profitInvoicePage}
           profitAlertPage={resolvedSearchParams?.profitAlertPage}
         />
+      }
+      budgetContent={
+        canViewBudget ? (
+          <Suspense fallback={<PurchaseBudgetTabSkeleton />}>
+            <PurchaseBudgetTab
+              canManage={hasPermissionAccess(role, permissions, "purchase_budget.manage")}
+              canViewCash={hasPermissionAccess(role, permissions, "cash_bank.view")}
+              canViewAuditLog={hasPermissionAccess(role, permissions, "audit_log.view")}
+            />
+          </Suspense>
+        ) : undefined
       }
     />
   );

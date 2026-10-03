@@ -48,6 +48,10 @@
     {
       "path": "/api/storefront/cron/sync-products",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/purchase-budget/cron/check",
+      "schedule": "5-59/10 * * * *"
     }
   ]
 }

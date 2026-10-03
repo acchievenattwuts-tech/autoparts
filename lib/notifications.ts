@@ -4,6 +4,7 @@ import { getLineDeliveryReasonLabel } from "@/lib/line-delivery-status";
 import { getDeliveryErrorLogCode } from "@/lib/line-delivery-transport";
 import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
+import { PURCHASE_BUDGET_AUDIT_ENTITY, PURCHASE_BUDGET_LINK } from "@/lib/purchase-budget-core";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
@@ -889,4 +890,32 @@ export async function notifySupplierDebitNote(
       title: `${SUPPLIER_DEBIT_EVENT_LABEL[event]}${subject}${change}${restated}`,
       link: `/admin/supplier-debit-notes/${debit.id}`, entityType: "SupplierDebitNote", entityId: debit.id });
   } catch (error) { console.error("[supplier-DN notification]", error); }
+}
+
+const formatPurchaseBudgetAmount = (value: number): string =>
+  value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * The purchase budget dropped below its warning line (LOW) or past its cap (EXCEEDED) since the last
+ * check (lib/purchase-budget-alerts.ts). Bell + Telegram together, like every other alert (.rules §10).
+ */
+export async function notifyPurchaseBudgetAlert(figures: {
+  level: "low" | "over";
+  cap: number;
+  remaining: number;
+  remainingPct: number;
+  thresholdPct: number;
+}): Promise<number> {
+  const isOver = figures.level === "over";
+  const cap = formatPurchaseBudgetAmount(figures.cap);
+  return createNotification({
+    type: isOver ? NotificationType.PURCHASE_BUDGET_EXCEEDED : NotificationType.PURCHASE_BUDGET_LOW,
+    severity: NotificationSeverity.WARNING,
+    title: isOver ? "งบสั่งซื้อเกินเพดาน" : "งบสั่งซื้อใกล้หมด",
+    body: isOver
+      ? `เกินเพดาน ${formatPurchaseBudgetAmount(-figures.remaining)} บาท (เพดาน ${cap} บาท) · ควรชะลอการสั่งซื้อหรือปรับเพดาน`
+      : `งบคงเหลือ ${formatPurchaseBudgetAmount(figures.remaining)} บาท หรือ ${figures.remainingPct.toFixed(1)}% ของเพดาน ${cap} บาท (ต่ำกว่าเส้นเตือน ${figures.thresholdPct}%)`,
+    link: PURCHASE_BUDGET_LINK,
+    entityType: PURCHASE_BUDGET_AUDIT_ENTITY,
+  });
 }

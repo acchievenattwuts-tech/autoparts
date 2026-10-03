@@ -8,14 +8,18 @@ import { ChevronLeft } from "lucide-react";
 import PurchaseForm from "./PurchaseForm";
 import { getActiveCashBankAccountOptions } from "@/lib/cash-bank-accounts";
 import { getTransactionSuppliers } from "@/lib/transaction-options";
+import { hasPermissionAccess } from "@/lib/access-control";
+import { getPurchaseBudgetFormViewSafe } from "@/lib/purchase-budget";
 
 const NewPurchasePage = async () => {
-  await requirePermission("purchases.create");
+  const session = await requirePermission("purchases.create");
+  const canViewBudget = hasPermissionAccess(session.user.role, session.user.permissions, "purchase_budget.view");
 
-  const [suppliers, config, cashBankAccounts] = await Promise.all([
+  const [suppliers, config, cashBankAccounts, purchaseBudget] = await Promise.all([
     getTransactionSuppliers(),
     getSiteConfig(),
     getActiveCashBankAccountOptions(),
+    canViewBudget ? getPurchaseBudgetFormViewSafe() : Promise.resolve(null),
   ]);
 
   return (
@@ -29,7 +33,7 @@ const NewPurchasePage = async () => {
         <span className="text-sm font-medium text-gray-700 dark:text-slate-300">สร้างใบซื้อใหม่</span>
       </div>
       <h1 className="font-kanit text-2xl font-bold text-gray-900 dark:text-slate-100 mb-6">สร้างใบซื้อสินค้า</h1>
-      <PurchaseForm products={[]} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} vatRegisteredFrom={config.vatRegisteredFrom} />
+      <PurchaseForm products={[]} suppliers={suppliers} cashBankAccounts={cashBankAccounts} defaultVatType={config.vatType} defaultVatRate={config.vatRate} vatRegisteredFrom={config.vatRegisteredFrom} purchaseBudget={purchaseBudget} />
     </div>
   );
 };

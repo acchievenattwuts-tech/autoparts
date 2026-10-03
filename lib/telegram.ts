@@ -37,6 +37,8 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   MARKETPLACE_SETTLEMENT_RECORDED: "บันทึกรอบรับเงินช่องทางขาย",
   MARKETPLACE_SETTLEMENT_CANCELLED: "ยกเลิกรอบรับเงินช่องทางขาย",
   MARKETPLACE_RETURN_RECORDED: "บันทึกคืนสินค้าช่องทางขาย",
+  PURCHASE_BUDGET_LOW: "งบสั่งซื้อใกล้หมด",
+  PURCHASE_BUDGET_EXCEEDED: "งบสั่งซื้อเกินเพดาน",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -117,6 +119,8 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   MARKETPLACE_SETTLEMENT_RECORDED: "🏦",
   MARKETPLACE_SETTLEMENT_CANCELLED: "🚫",
   MARKETPLACE_RETURN_RECORDED: "↩️",
+  PURCHASE_BUDGET_LOW: "💰",
+  PURCHASE_BUDGET_EXCEEDED: "💰",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

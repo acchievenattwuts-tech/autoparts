@@ -23,6 +23,8 @@ import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
 import type { PeriodLockView } from "@/lib/period-lock-view";
+import { computePurchaseBudgetUsage, type PurchaseBudgetFormView } from "@/lib/purchase-budget-core";
+import PurchaseBudgetBox from "./PurchaseBudgetBox";
 import {
   isItemQuantityInputValid,
   ITEM_QUANTITY_DECIMALS_ERROR,
@@ -92,6 +94,7 @@ const PurchaseForm = ({
   submitLocked = false,
   periodLock = null,
   periodLockHint,
+  purchaseBudget = null,
 }: {
   products: ProductOption[];
   suppliers: SupplierOption[];
@@ -106,6 +109,8 @@ const PurchaseForm = ({
   /** Edit only: the purchase's month was already distributed (lib/period-lock.ts). */
   periodLock?: PeriodLockView | null;
   periodLockHint?: string;
+  /** Purchase budget box (display only) — null without purchase_budget.view or while no cap is set. */
+  purchaseBudget?: PurchaseBudgetFormView | null;
 }) => {
   const isEdit = !!initialData;
   const showReadonlyLots = isEdit && !editableLotOnEdit;
@@ -405,6 +410,25 @@ const PurchaseForm = ({
   const inputVatRecoverable = isInputVatRecoverable(inputVatDecision);
   const isVatDocument = vatType !== "NO_VAT";
 
+  // Purchase budget box — display only, never part of what is saved (lib/purchase-budget-core.ts).
+  const budgetUsage = purchaseBudget
+    ? computePurchaseBudgetUsage({
+        lines: items.map((item) => ({ qty: item.qty, costPrice: item.costPrice })),
+        shippingFee,
+        discount,
+        vatType: vatType as VatType,
+        vatRate,
+        inputVatRecoverable,
+      })
+    : 0;
+  // The first render holds the saved bill (edit) or nothing saved yet (new): the preview's baseline.
+  const [budgetBaseline, setBudgetBaseline] = useState(() => ({
+    remaining: purchaseBudget?.remaining ?? 0,
+    savedUsage: initialData ? budgetUsage : 0,
+  }));
+  const markBudgetSaved = () =>
+    setBudgetBaseline((prev) => ({ remaining: prev.remaining - (budgetUsage - prev.savedUsage), savedUsage: budgetUsage }));
+
   // P3: what updatePurchase compares in a locked month (purchase-period-lock.ts). The note, the
   // reference number and the line detail text are left out; landed cost is recomputed server-side.
   const { financialChange: periodLockFinancialChange, markSaved: markPeriodLockSaved } = usePeriodLockFinancialChange(
@@ -490,6 +514,7 @@ const PurchaseForm = ({
           window.localStorage.removeItem(draftKey);
           lastPersistedDraftRef.current = getDraftSnapshot();
           setDraftStatus("");
+          markBudgetSaved();
           setSuccess("บันทึกการแก้ไขสำเร็จ");
         }
       } else {
@@ -503,6 +528,7 @@ const PurchaseForm = ({
           }
           lastPersistedDraftRef.current = getDraftSnapshot();
           setDraftStatus("");
+          markBudgetSaved();
           setSuccess(`บันทึกสำเร็จ เลขที่ใบซื้อ: ${result.purchaseNo}`);
         }
       }
@@ -1019,6 +1045,14 @@ const PurchaseForm = ({
         </div>
       </div>
 
+      {purchaseBudget ? (
+        <PurchaseBudgetBox
+          view={purchaseBudget}
+          remainingBefore={budgetBaseline.remaining}
+          usage={budgetUsage - budgetBaseline.savedUsage}
+          hasSavedVersion={isEdit || Boolean(persistedPurchaseId)}
+        />
+      ) : null}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 dark:bg-red-500/10 dark:border-red-400/30">
           <p className="text-sm text-red-600 dark:text-red-400">{error}</p>

@@ -1,0 +1,170 @@
+import type { ReactNode } from "react";
+import { CircleCheck, Info, OctagonAlert, TriangleAlert, Wallet } from "lucide-react";
+
+import type { PurchaseBudgetFigures, PurchaseBudgetLevel } from "@/lib/purchase-budget-core";
+import type { PurchaseBudgetCashView } from "@/lib/purchase-budget-dashboard";
+
+import {
+  BUDGET_MUTED_PANEL_CLASS,
+  BUDGET_PANEL_CLASS,
+  BUDGET_PANEL_TITLE_CLASS,
+  BUDGET_ROW_CLASS,
+  BUDGET_STATUS_STYLE,
+  formatBaht,
+  formatPercent,
+} from "@/components/shared/purchase-budget-ui";
+
+const METER_MAX_PCT = 100;
+
+export const BudgetStatusChip = ({ level }: { level: PurchaseBudgetLevel | "unset" }) => {
+  const style = BUDGET_STATUS_STYLE[level];
+  const Icon = level === "ok" ? CircleCheck : level === "low" ? TriangleAlert : level === "over" ? OctagonAlert : Info;
+  return (
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-bold ${style.chip}`}>
+      <Icon size={14} aria-hidden />
+      {style.label}
+    </span>
+  );
+};
+
+export const BudgetCardHeader = ({ subtitle, level, action }: { subtitle: string; level: PurchaseBudgetLevel | "unset"; action?: ReactNode }) => (
+  <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-400/30 dark:bg-indigo-400/10 dark:text-indigo-300">
+        <Wallet size={20} aria-hidden />
+      </div>
+      <div className="min-w-0">
+        <h2 className="font-kanit text-base font-semibold text-slate-900 dark:text-slate-100">งบสั่งซื้อคงเหลือ</h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400">{subtitle}</p>
+      </div>
+    </div>
+    <div className="flex flex-wrap items-center gap-2">
+      <BudgetStatusChip level={level} />
+      {action}
+    </div>
+  </div>
+);
+
+const statusMessage = (figures: PurchaseBudgetFigures): string => {
+  if (figures.level === "over") {
+    return `เกินเพดาน ${formatBaht(-figures.remaining)} บาท · ยังบันทึกใบซื้อได้ แต่ควรชะลอการสั่งหรือปรับเพดาน`;
+  }
+  if (figures.level === "low") {
+    return `เหลือ ${formatPercent(figures.remainingPct)}% ของเพดาน ต่ำกว่าเส้นเตือน ${figures.thresholdPct}% · ควรสั่งเฉพาะของที่จำเป็น`;
+  }
+  return `สั่งซื้อเพิ่มได้อีก ${formatBaht(figures.remaining)} บาท ก่อนถึงเพดาน`;
+};
+
+export const BudgetHero = ({ figures }: { figures: PurchaseBudgetFigures }) => {
+  const style = BUDGET_STATUS_STYLE[figures.level];
+  const usedPct = Math.min(METER_MAX_PCT, Math.max(0, figures.usedPct));
+  const markerPct = Math.min(METER_MAX_PCT, Math.max(0, METER_MAX_PCT - figures.thresholdPct));
+  return (
+    <div className="flex min-w-0 grow basis-[340px] flex-col gap-2">
+      <p className="text-sm text-slate-500 dark:text-slate-400">งบที่ยังสั่งซื้อได้</p>
+      <p className="font-kanit font-semibold leading-tight text-slate-900 dark:text-slate-100">
+        <span className="text-4xl sm:text-[44px]">{formatBaht(figures.remaining)}</span>{" "}
+        <span className="text-base font-medium text-slate-600 dark:text-slate-300">บาท</span>
+      </p>
+      <p className="text-sm text-slate-600 dark:text-slate-300">
+        จากเพดาน {formatBaht(figures.cap)} บาท · ใช้ไปแล้ว {formatPercent(figures.usedPct)}%
+      </p>
+      <div
+        role="meter"
+        aria-label="สัดส่วนเพดานที่ใช้ไปแล้ว"
+        aria-valuemin={0}
+        aria-valuemax={METER_MAX_PCT}
+        aria-valuenow={Math.round(usedPct)}
+        title={`ใช้ไป ${formatBaht(figures.used)} จากเพดาน ${formatBaht(figures.cap)} (${formatPercent(figures.usedPct)}%)`}
+        className={`relative mt-1.5 h-2.5 rounded-full ${style.track}`}
+      >
+        <div className={`absolute inset-y-0 left-0 rounded-full ${style.fill}`} style={{ width: `${usedPct}%` }} />
+        <div className="absolute -inset-y-1 w-0.5 rounded-sm bg-slate-900/55 dark:bg-slate-100/60" style={{ left: `${markerPct}%` }} />
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+        <span>ใช้ไป {formatBaht(figures.used)} บาท</span>
+        <span>เส้นเตือน: งบเหลือ {figures.thresholdPct}%</span>
+      </div>
+      <p className={`mt-1 text-sm font-semibold ${style.message}`}>{statusMessage(figures)}</p>
+    </div>
+  );
+};
+
+export const BudgetBreakdown = ({ figures, depositCount }: { figures: PurchaseBudgetFigures; depositCount: number }) => {
+  const rows = [
+    { label: "เพดานงบสั่งซื้อ", amount: formatBaht(figures.cap) },
+    { label: "หัก มูลค่าสต็อกคงเหลือ (ราคาทุน)", amount: `−${formatBaht(figures.stockValue)}` },
+    { label: `หัก มัดจำซัพพลายเออร์ที่รอรับของ · ${depositCount} ใบ`, amount: `−${formatBaht(figures.depositOutstanding)}` },
+    { label: "หัก สินค้าไม่คำนวณสต็อก (ซื้อ − ต้นทุนขาย)", amount: formatBaht(-figures.nonTrackedNet) },
+  ];
+  return (
+    <div className={`min-w-0 grow basis-[360px] ${BUDGET_MUTED_PANEL_CLASS}`}>
+      <p className={`mb-1 ${BUDGET_PANEL_TITLE_CLASS}`}>ที่มาของตัวเลข</p>
+      {rows.map((row) => (
+        <div key={row.label} className={BUDGET_ROW_CLASS}>
+          <span className="min-w-0 text-slate-600 dark:text-slate-300">{row.label}</span>
+          <span className="shrink-0 whitespace-nowrap tabular-nums text-slate-900 dark:text-slate-100">{row.amount}</span>
+        </div>
+      ))}
+      <div className="flex items-baseline justify-between gap-3 pt-2 text-sm font-bold text-slate-900 dark:text-slate-100">
+        <span>งบคงเหลือ</span>
+        <span className="whitespace-nowrap tabular-nums">{formatBaht(figures.remaining)}</span>
+      </div>
+    </div>
+  );
+};
+
+const RULES: { title: string; text: string }[] = [
+  { title: "ซื้อสินค้า", text: "หักงบทันทีที่บันทึกใบซื้อ ทั้งซื้อสดและซื้อเชื่อ ตามมูลค่าที่เข้าสต็อก" },
+  { title: "ขายสินค้า", text: "คืนงบเท่าต้นทุนของสินค้าที่ขาย ไม่ใช่ราคาขาย" },
+  { title: "จ่ายมัดจำซัพพลายเออร์", text: "หักงบทันที แล้วคืนให้เองเมื่อตัดมัดจำตอนจ่ายชำระ หรือได้เงินมัดจำคืน" },
+  { title: "ลูกค้าคืนสินค้า", text: "ของกลับเข้าสต็อก งบลดลง" },
+  { title: "คืนสินค้าให้ซัพพลายเออร์", text: "ของออกจากสต็อก งบเพิ่มขึ้น" },
+  { title: "ปรับปรุงสต็อก ของเสีย เคลม", text: "งบขยับตามมูลค่าสต็อกที่เปลี่ยนไป" },
+  { title: "ยกเลิกหรือแก้ไขเอกสาร", text: "คำนวณใหม่ให้อัตโนมัติจากสต็อกจริง ไม่ต้องแก้งบเอง" },
+  { title: "สินค้าไม่คำนวณสต็อก", text: "หักงบตอนซื้อ และคืนงบตอนขายตามต้นทุนที่บันทึกในบิลขาย" },
+  { title: "VAT ค่าขนส่ง ส่วนลด", text: "ไม่นับ VAT ที่ขอคืนได้ · นับค่าขนส่งในใบซื้อ · หักส่วนลดท้ายบิล" },
+];
+
+export const BudgetRules = () => (
+  <details className="group rounded-xl border border-blue-200 bg-blue-50 p-3 sm:p-4 dark:border-sky-400/30 dark:bg-sky-400/10">
+    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-bold text-blue-700 dark:text-sky-300">
+      <Info size={16} aria-hidden />
+      วิธีคำนวณ: งบขยับเมื่อไหร่
+      <span className="ml-auto text-xs font-medium text-blue-600 group-open:hidden dark:text-sky-300">กดเพื่อดู</span>
+    </summary>
+    <div className="mt-2 grid grid-cols-1 gap-x-5 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
+      {RULES.map((rule) => (
+        <p key={rule.title} className="text-sm leading-relaxed">
+          <span className="font-bold text-slate-900 dark:text-slate-100">{rule.title}</span>
+          <span className="text-slate-600 dark:text-slate-300"> — {rule.text}</span>
+        </p>
+      ))}
+    </div>
+  </details>
+);
+
+export const BudgetCashCompare = ({ cash }: { cash: PurchaseBudgetCashView }) => {
+  const stats = [
+    ...(cash.cashBankBalance !== null ? [{ label: "เงินสด + ธนาคาร", value: cash.cashBankBalance }] : []),
+    { label: "เจ้าหนี้คงค้าง", value: cash.apOutstanding },
+    ...(cash.cashBankBalance !== null ? [{ label: "เงินสดหลังจ่ายเจ้าหนี้ครบ", value: cash.cashBankBalance - cash.apOutstanding }] : []),
+    { label: "ลูกหนี้คงค้าง (รวม COD)", value: cash.arOutstanding },
+  ];
+  return (
+    <div className={`flex flex-col gap-2.5 ${BUDGET_PANEL_CLASS}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className={BUDGET_PANEL_TITLE_CLASS}>เทียบกับเงินจริง</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">งบบอกว่าสั่งเพิ่มได้อีกเท่าไรตามเพดาน ส่วนเงินที่จ่ายได้จริงให้ดูเงินสดประกอบ</p>
+      </div>
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-white/5">
+            <p className="text-xs text-slate-500 dark:text-slate-400">{stat.label}</p>
+            <p className="mt-0.5 font-kanit text-[17px] font-semibold text-slate-900 dark:text-slate-100">{formatBaht(stat.value)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
