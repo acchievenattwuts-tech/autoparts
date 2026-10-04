@@ -1915,18 +1915,9 @@ const SaleForm = ({
         </div>
       )}
       {success && (
-        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between dark:bg-green-500/10 dark:border-green-400/30">
-          <div className="flex items-center gap-2">
-            <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
-            <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
-          </div>
-          {canPrint && persistedSaleId && (
-            <PrintCopyModeLink
-              href={`/admin/sales/${persistedSaleId}?print=1`}
-              label="พิมพ์แบบฟอร์ม"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900"
-            />
-          )}
+        <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 flex items-center gap-2 dark:bg-green-500/10 dark:border-green-400/30">
+          <CheckCircle size={16} className="text-green-600 dark:text-green-400" />
+          <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
         </div>
       )}
 

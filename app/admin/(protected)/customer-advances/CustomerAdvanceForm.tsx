@@ -111,9 +111,7 @@ export default function CustomerAdvanceForm({ customers, cashBankAccounts, initi
           <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-300">{error}</p>
         ) : null}
       {success ? (
-          <div className="mb-4 flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-green-400/30 dark:bg-green-500/10"><div className="flex items-center gap-2"><CheckCircle size={16} className="text-green-700 dark:text-green-300" /><p className="text-sm text-green-700 dark:text-green-300">{success}</p></div>{canPrint && persistedAdvanceId ? (
-              <PrintCopyModeLink href={`/admin/customer-advances/${persistedAdvanceId}?print=1`} label="พิมพ์แบบฟอร์ม" className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900" />
-            ) : null}</div>
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-400/30 dark:bg-green-500/10"><CheckCircle size={16} className="text-green-700 dark:text-green-300" /><p className="text-sm text-green-700 dark:text-green-300">{success}</p></div>
         ) : null}
       <div className="flex justify-end gap-3"><button type="button" onClick={() => router.back()} className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm text-gray-600 hover:bg-gray-50 dark:border-white/20 dark:text-slate-300 dark:hover:bg-white/5">ยกเลิก</button>{canPrint && persistedAdvanceId ? (
             <PrintCopyModeLink href={`/admin/customer-advances/${persistedAdvanceId}?print=1`} label="พิมพ์" className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-900" />

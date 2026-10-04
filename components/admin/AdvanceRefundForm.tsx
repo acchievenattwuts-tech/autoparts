@@ -159,23 +159,14 @@ export default function AdvanceRefundForm({
         </div>
       ) : null}
       {success ? (
-        <div className="flex flex-col gap-3 rounded-lg border border-green-200 bg-green-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between dark:border-green-400/30 dark:bg-green-500/10">
-          <div className="flex items-center gap-2">
-            <CheckCircle
-              size={16}
-              className="text-green-700 dark:text-green-300"
-            />
-            <p className="text-sm text-green-700 dark:text-green-300">
-              {success}
-            </p>
-          </div>
-          {isCustomer && canPrint && persistedRefundId ? (
-            <PrintCopyModeLink
-              href={`${listPath}/${persistedRefundId}?print=1`}
-              label="พิมพ์แบบฟอร์ม"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1e3a5f] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-900 dark:bg-sky-700 dark:hover:bg-sky-600"
-            />
-          ) : null}
+        <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-400/30 dark:bg-green-500/10">
+          <CheckCircle
+            size={16}
+            className="text-green-700 dark:text-green-300"
+          />
+          <p className="text-sm text-green-700 dark:text-green-300">
+            {success}
+          </p>
         </div>
       ) : null}
       <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#101b2e]">
