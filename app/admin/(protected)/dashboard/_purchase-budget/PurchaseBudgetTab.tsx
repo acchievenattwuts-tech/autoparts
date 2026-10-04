@@ -86,6 +86,7 @@ const PurchaseBudgetTab = async ({ canManage, canViewCash, canViewAuditLog }: Pu
   return (
     <div className="space-y-4">
       <PageHeader />
+      <BudgetRules />
       <section className={`flex flex-col gap-4 ${BUDGET_SECTION_CLASS}`}>
         <BudgetCardHeader
           subtitle={`งบที่ตั้ง − ซื้อเข้า + ต้นทุนสินค้าที่ขาย ± รายการสต็อกอื่น ตั้งแต่ ${startedOnLabel} · ข้อมูล ณ ${data.asOf}`}
@@ -97,7 +98,6 @@ const PurchaseBudgetTab = async ({ canManage, canViewCash, canViewAuditLog }: Pu
           <BudgetBreakdown figures={figures} startedOnLabel={startedOnLabel} />
         </div>
         <PurchaseBudgetLedger />
-        <BudgetRules />
         <BudgetCashCompare cash={data.cash} />
         <div className="flex flex-wrap items-start gap-3">
           <BudgetDepositsPanel deposits={data.deposits} total={data.depositsTotalRemaining} truncated={data.depositsTruncated} />

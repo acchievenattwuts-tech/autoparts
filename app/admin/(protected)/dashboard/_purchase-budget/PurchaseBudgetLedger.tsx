@@ -2,18 +2,12 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, EyeOff, Loader2, RefreshCw, ScrollText } from "lucide-react";
 
 import type { PurchaseBudgetLedgerDayRow, PurchaseBudgetLedgerDoc } from "@/lib/purchase-budget-ledger";
 
 import { loadPurchaseBudgetLedgerDay, loadPurchaseBudgetLedgerPage } from "../purchase-budget-ledger-actions";
-import {
-  BUDGET_PANEL_CLASS,
-  BUDGET_PANEL_TITLE_CLASS,
-  budgetAmountTone,
-  formatBaht,
-  formatSignedBaht,
-} from "@/components/shared/purchase-budget-ui";
+import { budgetAmountTone, formatBaht, formatSignedBaht } from "@/components/shared/purchase-budget-ui";
 
 /**
  * The entries that moved the purchase budget, hidden until asked for: "แสดงรายการ" loads the days
@@ -29,8 +23,14 @@ type DayState =
 const LIST_ERROR = "โหลดรายการไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
 const DAY_ERROR = "โหลดเอกสารไม่สำเร็จ กรุณาลองใหม่อีกครั้ง";
 
-const buttonCls =
-  "inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/20 dark:text-slate-200 dark:hover:bg-white/5";
+/** The ledger card is tinted indigo (the tab's accent) so it stands out from the plain panels. */
+const CARD_CLS =
+  "flex flex-col gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-3 shadow-sm sm:p-4 dark:border-indigo-400/30 dark:bg-indigo-400/10";
+const LIST_PANEL_CLS = "rounded-lg border border-indigo-100 bg-white px-2 py-1 dark:border-white/10 dark:bg-[#0d1728]";
+const buttonBaseCls =
+  "inline-flex min-h-10 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+const primaryButtonCls = `${buttonBaseCls} bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-400 dark:text-slate-950 dark:hover:bg-indigo-300`;
+const buttonCls = `${buttonBaseCls} border border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-100 dark:border-indigo-400/40 dark:bg-transparent dark:text-indigo-200 dark:hover:bg-indigo-400/15`;
 const mutedTextCls = "text-sm text-slate-500 dark:text-slate-400";
 const alertCls =
   "flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-rose-400/30 dark:bg-rose-500/10 dark:text-rose-300";
@@ -190,13 +190,18 @@ const PurchaseBudgetLedger = () => {
   const retryList = () => loadPage(days && days.length > 0 && nextOffset !== null ? nextOffset : 0);
 
   return (
-    <div className={`flex flex-col gap-3 ${BUDGET_PANEL_CLASS}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className={BUDGET_PANEL_TITLE_CLASS}>รายการที่หักและเพิ่มงบ</p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            {open && startedOnLabel ? `ตั้งแต่ ${startedOnLabel} · ` : ""}แยกตามวันที่ กดวันที่เพื่อดูเอกสาร กดเลขที่เอกสารเพื่อเปิดเอกสาร
-          </p>
+    <div className={CARD_CLS}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white dark:bg-indigo-400 dark:text-slate-950">
+            <ScrollText size={18} aria-hidden />
+          </div>
+          <div className="min-w-0">
+            <p className="font-kanit text-[15px] font-semibold text-indigo-950 dark:text-indigo-100">รายการที่หักและเพิ่มงบ</p>
+            <p className="text-xs text-indigo-700 dark:text-indigo-300">
+              {open && startedOnLabel ? `ตั้งแต่ ${startedOnLabel} · ` : ""}แยกตามวันที่ กดวันที่เพื่อดูเอกสาร กดเลขที่เอกสารเพื่อเปิดเอกสาร
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {open ? (
@@ -204,7 +209,7 @@ const PurchaseBudgetLedger = () => {
               <RefreshCw size={15} aria-hidden /> โหลดใหม่
             </button>
           ) : null}
-          <button type="button" onClick={open ? () => setOpen(false) : show} aria-expanded={open} className={buttonCls}>
+          <button type="button" onClick={open ? () => setOpen(false) : show} aria-expanded={open} className={open ? buttonCls : primaryButtonCls}>
             {open ? <EyeOff size={15} aria-hidden /> : <Eye size={15} aria-hidden />}
             {open ? "ซ่อนรายการ" : "แสดงรายการ"}
           </button>
@@ -212,7 +217,7 @@ const PurchaseBudgetLedger = () => {
       </div>
 
       {open ? (
-        <div aria-busy={listPending}>
+        <div aria-busy={listPending} className={LIST_PANEL_CLS}>
           {days === null ? (
             listError ? null : <Loading text="กำลังโหลดรายการ…" />
           ) : days.length === 0 ? (
@@ -242,14 +247,14 @@ const PurchaseBudgetLedger = () => {
             </ul>
           )}
           {listError ? (
-            <div role="alert" className={`mt-2 ${alertCls}`}>
+            <div role="alert" className={`my-2 ${alertCls}`}>
               {listError}
               <button type="button" onClick={retryList} disabled={listPending} className="font-semibold underline">ลองใหม่</button>
             </div>
           ) : null}
           {days !== null && listPending ? <Loading text="กำลังโหลดรายการ…" /> : null}
           {days !== null && nextOffset !== null && !listPending ? (
-            <button type="button" onClick={() => loadPage(nextOffset)} className={`mt-2 ${buttonCls}`}>
+            <button type="button" onClick={() => loadPage(nextOffset)} className={`my-2 ${buttonCls}`}>
               โหลดวันที่เก่ากว่า
             </button>
           ) : null}

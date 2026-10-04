@@ -10,6 +10,7 @@ import {
   BUDGET_PANEL_TITLE_CLASS,
   BUDGET_ROW_CLASS,
   BUDGET_STATUS_STYLE,
+  budgetAmountTone,
   formatBaht,
   formatPercent,
   formatSignedBaht,
@@ -96,11 +97,12 @@ export const BudgetHero = ({ figures, startedOnLabel }: { figures: PurchaseBudge
 };
 
 export const BudgetBreakdown = ({ figures, startedOnLabel }: { figures: PurchaseBudgetFigures; startedOnLabel: string }) => {
+  // Deductions read red and additions green (budgetAmountTone); the budget set stays neutral.
   const rows = [
-    { label: "งบที่ตั้ง (รวมเพิ่ม/ลดงบ)", amount: formatBaht(figures.budget) },
-    { label: "หัก ซื้อสินค้าเข้า", amount: formatSignedBaht(-figures.purchases) },
-    { label: "บวก ต้นทุนสินค้าที่ขาย", amount: formatSignedBaht(figures.salesCost) },
-    { label: "คืนสินค้า / ปรับสต็อก / เคลม / ใบเพิ่มหนี้", amount: formatSignedBaht(figures.otherEffect) },
+    { label: "งบที่ตั้ง (รวมเพิ่ม/ลดงบ)", amount: formatBaht(figures.budget), tone: budgetAmountTone(0) },
+    { label: "หัก ซื้อสินค้าเข้า", amount: formatSignedBaht(-figures.purchases), tone: budgetAmountTone(-figures.purchases) },
+    { label: "บวก ต้นทุนสินค้าที่ขาย", amount: formatSignedBaht(figures.salesCost), tone: budgetAmountTone(figures.salesCost) },
+    { label: "คืนสินค้า / ปรับสต็อก / เคลม / ใบเพิ่มหนี้", amount: formatSignedBaht(figures.otherEffect), tone: budgetAmountTone(figures.otherEffect) },
   ];
   return (
     <div className={`min-w-0 grow basis-[360px] ${BUDGET_MUTED_PANEL_CLASS}`}>
@@ -108,7 +110,7 @@ export const BudgetBreakdown = ({ figures, startedOnLabel }: { figures: Purchase
       {rows.map((row) => (
         <div key={row.label} className={BUDGET_ROW_CLASS}>
           <span className="min-w-0 text-slate-600 dark:text-slate-300">{row.label}</span>
-          <span className="shrink-0 whitespace-nowrap tabular-nums text-slate-900 dark:text-slate-100">{row.amount}</span>
+          <span className={`shrink-0 whitespace-nowrap font-semibold tabular-nums ${row.tone}`}>{row.amount}</span>
         </div>
       ))}
       <div className="flex items-baseline justify-between gap-3 pt-2 text-sm font-bold text-slate-900 dark:text-slate-100">
@@ -133,18 +135,19 @@ const RULES: { title: string; text: string }[] = [
   { title: "VAT ค่าขนส่ง ส่วนลด", text: "ไม่นับ VAT ที่ขอคืนได้ · นับค่าขนส่งในใบซื้อ · หักส่วนลดท้ายบิล" },
 ];
 
+/** Quiet, collapsed by default: reference text that sits under the page header. */
 export const BudgetRules = () => (
-  <details className="group rounded-xl border border-blue-200 bg-blue-50 p-3 sm:p-4 dark:border-sky-400/30 dark:bg-sky-400/10">
-    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-bold text-blue-700 dark:text-sky-300">
-      <Info size={16} aria-hidden />
+  <details className="group rounded-xl border border-slate-200 bg-white px-3 sm:px-4 dark:border-white/10 dark:bg-[#0d1728]">
+    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300">
+      <Info size={15} aria-hidden className="text-slate-400 dark:text-slate-500" />
       วิธีคำนวณ: งบขยับเมื่อไหร่
-      <span className="ml-auto text-xs font-medium text-blue-600 group-open:hidden dark:text-sky-300">กดเพื่อดู</span>
+      <span className="ml-auto text-xs font-normal text-slate-400 group-open:hidden dark:text-slate-500">กดเพื่อดู</span>
     </summary>
-    <div className="mt-2 grid grid-cols-1 gap-x-5 gap-y-2 md:grid-cols-2 xl:grid-cols-3">
+    <div className="mb-3 grid grid-cols-1 gap-x-5 gap-y-2 border-t border-slate-100 pt-3 md:grid-cols-2 xl:grid-cols-3 dark:border-white/10">
       {RULES.map((rule) => (
         <p key={rule.title} className="text-sm leading-relaxed">
-          <span className="font-bold text-slate-900 dark:text-slate-100">{rule.title}</span>
-          <span className="text-slate-600 dark:text-slate-300"> — {rule.text}</span>
+          <span className="font-semibold text-slate-700 dark:text-slate-200">{rule.title}</span>
+          <span className="text-slate-500 dark:text-slate-400"> — {rule.text}</span>
         </p>
       ))}
     </div>
