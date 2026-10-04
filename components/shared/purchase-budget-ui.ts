@@ -51,3 +51,11 @@ export const BUDGET_MUTED_PANEL_CLASS =
 export const BUDGET_PANEL_TITLE_CLASS = "text-sm font-semibold text-slate-600 dark:text-slate-300";
 export const BUDGET_ROW_CLASS =
   "flex items-baseline justify-between gap-3 border-b border-slate-100 py-1.5 text-sm last:border-b-0 dark:border-white/10";
+
+/** Text colour of a budget effect: green gives budget back, red uses it. */
+export const budgetAmountTone = (value: number): string =>
+  value > 0
+    ? "text-emerald-700 dark:text-emerald-300"
+    : value < 0
+      ? "text-rose-700 dark:text-rose-300"
+      : "text-slate-900 dark:text-slate-100";

@@ -9,10 +9,11 @@ import {
 
 /**
  * Purchase budget alert check, run by the cron route hourly during shop hours (08:05–20:05 Thailand)
- * and right after a cap change.
+ * and right after a budget change.
  * It never touches a document flow: it reads the budget, compares its level with the level the last
  * check stored (SiteContent), stores the new level, and alerts (bell + Telegram) only when the level
- * got worse — ok → low, ok/low → over. An improvement re-arms the alert silently.
+ * got worse — ok → low (below the warning line), ok/low → over (below zero). An improvement re-arms
+ * the alert silently.
  */
 
 export type PurchaseBudgetAlertResult = {
@@ -53,7 +54,7 @@ export async function checkPurchaseBudgetAlert(): Promise<PurchaseBudgetAlertRes
   }
   await notifyPurchaseBudgetAlert({
     level: figures.level,
-    cap: figures.cap,
+    budget: figures.budget,
     remaining: figures.remaining,
     remainingPct: figures.remainingPct,
     thresholdPct: figures.thresholdPct,
@@ -61,7 +62,7 @@ export async function checkPurchaseBudgetAlert(): Promise<PurchaseBudgetAlertRes
   return { checked: true, previous, current: figures.level, notified: true };
 }
 
-/** For callers outside the cron (cap change): a failed check is logged, never thrown (.rules §10). */
+/** For callers outside the cron (budget change): a failed check is logged, never thrown (.rules §10). */
 export async function safeCheckPurchaseBudgetAlert(): Promise<void> {
   try {
     await checkPurchaseBudgetAlert();

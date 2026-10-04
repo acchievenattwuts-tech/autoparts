@@ -16,7 +16,7 @@ export const PERMISSION_CATALOG: readonly PermissionCatalogItem[] = [
   { key: "workboard.view", group: "ภาพรวม", label: "ดู Today Workboard" },
   { key: "dashboard.view", group: "ภาพรวม", label: "ดู Dashboard" },
   { key: "purchase_budget.view", group: "ภาพรวม", label: "ดูงบสั่งซื้อ (แท็บ Purchase Budget และกล่องงบในใบซื้อ)" },
-  { key: "purchase_budget.manage", group: "ภาพรวม", label: "ปรับเพดานงบสั่งซื้อ" },
+  { key: "purchase_budget.manage", group: "ภาพรวม", label: "ปรับงบสั่งซื้อ (เพิ่ม/ลดงบ เริ่มรอบใหม่)" },
 
   { key: "products.view", group: "ข้อมูลหลัก", label: "ดูสินค้า" },
   { key: "products.create", group: "ข้อมูลหลัก", label: "เพิ่มสินค้า" },

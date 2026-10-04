@@ -13,10 +13,11 @@ import {
   type PurchaseBudgetFormView,
   type PurchaseBudgetLevel,
 } from "@/lib/purchase-budget-core";
+import { formatDateThai, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
 /**
- * Display only (owner decision 2026-10-03): how much purchase budget this bill uses and what is left
- * after saving. It never blocks or changes the save — the purchase flow is untouched.
+ * Display only (owner decisions 2026-10-03 / 2026-10-04): how much purchase budget this bill uses and
+ * what is left after saving. It never blocks or changes the save — the purchase flow is untouched.
  */
 
 type PurchaseBudgetBoxProps = {
@@ -27,7 +28,11 @@ type PurchaseBudgetBoxProps = {
   usage: number;
   /** The bill already exists, so the middle figure is a difference against the saved bill. */
   hasSavedVersion: boolean;
+  /** False when the bill is dated before the budget's start date: it uses no budget. */
+  counted: boolean;
 };
+
+const START_DATE_FORMAT: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
 
 const BOX_TONE: Record<PurchaseBudgetLevel, string> = {
   ok: "border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5",
@@ -36,12 +41,12 @@ const BOX_TONE: Record<PurchaseBudgetLevel, string> = {
 };
 
 const messageFor = (level: PurchaseBudgetLevel, remainingAfter: number, remainingAfterPct: number, thresholdPct: number): string => {
-  if (level === "over") return `หลังบันทึก งบจะเกินเพดาน ${formatBaht(-remainingAfter)} บาท · ยังบันทึกใบซื้อได้ตามปกติ ระบบไม่บล็อก`;
-  if (level === "low") return `หลังบันทึก งบจะเหลือ ${formatPercent(remainingAfterPct)}% ของเพดาน ต่ำกว่าเส้นเตือน ${thresholdPct}%`;
-  return `หลังบันทึก งบยังเหลือ ${formatPercent(remainingAfterPct)}% ของเพดาน`;
+  if (level === "over") return `หลังบันทึก ใช้เกินงบ ${formatBaht(-remainingAfter)} บาท · ยังบันทึกใบซื้อได้ตามปกติ ระบบไม่บล็อก`;
+  if (level === "low") return `หลังบันทึก งบจะเหลือ ${formatPercent(remainingAfterPct)}% ของงบที่ตั้ง ต่ำกว่าเส้นเตือน ${thresholdPct}%`;
+  return `หลังบันทึก งบยังเหลือ ${formatPercent(remainingAfterPct)}% ของงบที่ตั้ง`;
 };
 
-const PurchaseBudgetBox = ({ view, remainingBefore, usage, hasSavedVersion }: PurchaseBudgetBoxProps) => {
+const PurchaseBudgetBox = ({ view, remainingBefore, usage, hasSavedVersion, counted }: PurchaseBudgetBoxProps) => {
   const preview = previewPurchaseBudget(view, remainingBefore, usage);
   const style = BUDGET_STATUS_STYLE[preview.levelAfter];
   const Icon = preview.levelAfter === "ok" ? CircleCheck : preview.levelAfter === "low" ? TriangleAlert : OctagonAlert;
@@ -77,6 +82,11 @@ const PurchaseBudgetBox = ({ view, remainingBefore, usage, hasSavedVersion }: Pu
       <p className={`text-sm font-semibold ${style.message}`}>
         {messageFor(preview.levelAfter, preview.remainingAfter, preview.remainingAfterPct, view.thresholdPct)}
       </p>
+      {counted ? null : (
+        <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+          ใบซื้อลงวันที่ก่อนวันเริ่มนับงบ ({formatDateThai(parseDateOnlyToStartOfDay(view.startedOn), START_DATE_FORMAT)}) จึงไม่หักงบ
+        </p>
+      )}
       <p className="text-xs text-slate-500 dark:text-slate-400">บิลนี้ใช้งบ = มูลค่าที่เข้าสต็อก ไม่นับ VAT ที่ขอคืนได้ · รวมค่าขนส่ง · หักส่วนลดท้ายบิล</p>
     </div>
   );

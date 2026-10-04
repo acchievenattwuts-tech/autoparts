@@ -23,7 +23,7 @@ import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
 import { formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
 import type { PeriodLockView } from "@/lib/period-lock-view";
-import { computePurchaseBudgetUsage, type PurchaseBudgetFormView } from "@/lib/purchase-budget-core";
+import { computePurchaseBudgetUsage, isCountedInPurchaseBudget, type PurchaseBudgetFormView } from "@/lib/purchase-budget-core";
 import PurchaseBudgetBox from "./PurchaseBudgetBox";
 import {
   isItemQuantityInputValid,
@@ -109,7 +109,7 @@ const PurchaseForm = ({
   /** Edit only: the purchase's month was already distributed (lib/period-lock.ts). */
   periodLock?: PeriodLockView | null;
   periodLockHint?: string;
-  /** Purchase budget box (display only) — null without purchase_budget.view or while no cap is set. */
+  /** Purchase budget box (display only) — null without purchase_budget.view or while no budget is set. */
   purchaseBudget?: PurchaseBudgetFormView | null;
 }) => {
   const isEdit = !!initialData;
@@ -411,7 +411,9 @@ const PurchaseForm = ({
   const isVatDocument = vatType !== "NO_VAT";
 
   // Purchase budget box — display only, never part of what is saved (lib/purchase-budget-core.ts).
-  const budgetUsage = purchaseBudget
+  // A bill dated before the budget's start date uses none of it.
+  const budgetCounted = purchaseBudget ? isCountedInPurchaseBudget(purchaseDate, purchaseBudget.startedOn) : false;
+  const budgetUsage = purchaseBudget && budgetCounted
     ? computePurchaseBudgetUsage({
         lines: items.map((item) => ({ qty: item.qty, costPrice: item.costPrice })),
         shippingFee,
@@ -1051,6 +1053,7 @@ const PurchaseForm = ({
           remainingBefore={budgetBaseline.remaining}
           usage={budgetUsage - budgetBaseline.savedUsage}
           hasSavedVersion={isEdit || Boolean(persistedPurchaseId)}
+          counted={budgetCounted}
         />
       ) : null}
       {error && (

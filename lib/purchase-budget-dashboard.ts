@@ -2,41 +2,29 @@ import { db } from "@/lib/db";
 import { DocStatus, PurchaseType, SalePaymentType, type Prisma } from "@/lib/generated/prisma";
 import { getCashHealth } from "@/lib/profit-distribution";
 import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
-import {
-  buildPurchaseBudgetFigures,
-  getPurchaseBudgetSettings,
-  getPurchaseBudgetStartedAt,
-  loadPurchaseBudgetTotals,
-  type PurchaseBudgetTotals,
-} from "@/lib/purchase-budget";
+import { getPurchaseBudgetSnapshot, getPurchaseBudgetSettings } from "@/lib/purchase-budget";
 import {
   PURCHASE_BUDGET_AUDIT_ENTITY,
   roundBaht,
   type PurchaseBudgetFigures,
   type PurchaseBudgetSettings,
 } from "@/lib/purchase-budget-core";
-import { loadPurchaseBudgetMovements, type PurchaseBudgetMovementRow } from "@/lib/purchase-budget-movements";
-import {
-  formatDateThai,
-  formatDateTimeThai,
-  getThailandMonthStartDateKey,
-  parseDateOnlyToStartOfDay,
-} from "@/lib/th-date";
+import { formatDateThai, formatDateTimeThai, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
-/** Everything the "Purchase Budget" dashboard tab shows, already serializable for Server Components. */
+/** Everything the "Purchase Budget" dashboard tab renders on load (the ledger loads on demand). */
 
 const DEPOSIT_LIST_LIMIT = 20;
 const HISTORY_LIMIT = 5;
-const OVERLAP_PURCHASE_SCAN_LIMIT = 200;
 
 export type PurchaseBudgetDepositRow = {
   id: string;
   advanceNo: string;
   supplierName: string;
   advanceDate: string;
-  amount: number;
-  /** An unpaid purchase from the same supplier dated on/after the deposit: the deposit may be its goods. */
-  overlapPurchaseNo: string | null;
+  total: number;
+  /** Applied in supplier payments or refunded. */
+  used: number;
+  remaining: number;
 };
 
 export type PurchaseBudgetHistoryRow = {
@@ -54,89 +42,75 @@ export type PurchaseBudgetCashView = {
   arOutstanding: number;
 };
 
-export type PurchaseBudgetMovementView = {
-  periodLabel: string;
-  openingLabel: string;
-  opening: number;
-  rows: PurchaseBudgetMovementRow[];
-};
-
 export type PurchaseBudgetDashboardData = {
   settings: PurchaseBudgetSettings;
-  totals: PurchaseBudgetTotals;
   figures: PurchaseBudgetFigures | null;
+  startedOnLabel: string | null;
   deposits: PurchaseBudgetDepositRow[];
+  depositsTotalRemaining: number;
   depositsTruncated: boolean;
   cash: PurchaseBudgetCashView;
   history: PurchaseBudgetHistoryRow[];
-  movements: PurchaseBudgetMovementView | null;
   asOf: string;
 };
 
-async function loadDeposits(): Promise<{ rows: PurchaseBudgetDepositRow[]; truncated: boolean }> {
-  const advances = await db.supplierAdvance.findMany({
-    where: { status: DocStatus.ACTIVE, amountRemain: { gt: 0 } },
-    orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
-    take: DEPOSIT_LIST_LIMIT + 1,
-    select: { id: true, advanceNo: true, advanceDate: true, amountRemain: true, supplierId: true, supplier: { select: { name: true } } },
-  });
-  const shown = advances.slice(0, DEPOSIT_LIST_LIMIT);
-  const supplierIds = [...new Set(shown.map((advance) => advance.supplierId))];
-  const earliest = shown[0]?.advanceDate;
-  const unpaidPurchases = supplierIds.length === 0 || !earliest
-    ? []
-    : await db.purchase.findMany({
-        where: { status: DocStatus.ACTIVE, amountRemain: { gt: 0 }, supplierId: { in: supplierIds }, purchaseDate: { gte: earliest } },
-        orderBy: [{ purchaseDate: "asc" }, { purchaseNo: "asc" }],
-        take: OVERLAP_PURCHASE_SCAN_LIMIT,
-        select: { purchaseNo: true, supplierId: true, purchaseDate: true },
-      });
-  const rows = shown.map((advance): PurchaseBudgetDepositRow => ({
+/** Open supplier deposits — information only, they never use the budget (owner decision 2026-10-04). */
+async function loadDeposits(): Promise<{ rows: PurchaseBudgetDepositRow[]; totalRemaining: number; truncated: boolean }> {
+  const where = { status: DocStatus.ACTIVE, amountRemain: { gt: 0 } };
+  const [advances, total] = await Promise.all([
+    db.supplierAdvance.findMany({
+      where,
+      orderBy: [{ advanceDate: "asc" }, { advanceNo: "asc" }],
+      take: DEPOSIT_LIST_LIMIT + 1,
+      select: { id: true, advanceNo: true, advanceDate: true, totalAmount: true, amountRemain: true, supplier: { select: { name: true } } },
+    }),
+    db.supplierAdvance.aggregate({ where, _sum: { amountRemain: true } }),
+  ]);
+  const rows = advances.slice(0, DEPOSIT_LIST_LIMIT).map((advance): PurchaseBudgetDepositRow => ({
     id: advance.id,
     advanceNo: advance.advanceNo,
     supplierName: advance.supplier.name,
     advanceDate: formatDateThai(advance.advanceDate),
-    amount: Number(advance.amountRemain),
-    overlapPurchaseNo:
-      unpaidPurchases.find((purchase) => purchase.supplierId === advance.supplierId && purchase.purchaseDate >= advance.advanceDate)
-        ?.purchaseNo ?? null,
+    total: Number(advance.totalAmount),
+    used: roundBaht(Number(advance.totalAmount) - Number(advance.amountRemain)),
+    remaining: Number(advance.amountRemain),
   }));
-  return { rows, truncated: advances.length > DEPOSIT_LIST_LIMIT };
+  return { rows, totalRemaining: roundBaht(Number(total._sum.amountRemain ?? 0)), truncated: advances.length > DEPOSIT_LIST_LIMIT };
 }
 
-function readSettingsJson(value: Prisma.JsonValue | null): { cap: number | null; thresholdPct: number | null } {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return { cap: null, thresholdPct: null };
-  const object = value as Prisma.JsonObject;
-  const cap = Number(object.cap);
-  const thresholdPct = Number(object.thresholdPct);
-  return {
-    cap: object.cap === null || object.cap === undefined || !Number.isFinite(cap) ? null : cap,
-    thresholdPct: Number.isFinite(thresholdPct) ? thresholdPct : null,
-  };
+const isRecord = (value: Prisma.JsonValue | null): value is Prisma.JsonObject =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+function readNumber(value: Prisma.JsonValue | null, key: string): number | null {
+  if (!isRecord(value) || value[key] === null || value[key] === undefined) return null;
+  const parsed = Number(value[key]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readText(value: Prisma.JsonValue | null, key: string): string | null {
+  return isRecord(value) && typeof value[key] === "string" ? (value[key] as string) : null;
 }
 
 function money(value: number): string {
   return value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function describeChange(before: Prisma.JsonValue | null, after: Prisma.JsonValue | null): string {
-  const from = readSettingsJson(before);
-  const to = readSettingsJson(after);
+function describeChange(before: Prisma.JsonValue | null, after: Prisma.JsonValue | null, meta: Prisma.JsonValue | null): string {
+  const mode = readText(meta, "mode");
+  const from = readNumber(before, "cap");
+  const to = readNumber(after, "cap");
+  const startedOn = readText(meta, "startedOn");
   const parts: string[] = [];
-  if (from.cap === null && to.cap !== null) parts.push(`ตั้งครั้งแรก ${money(to.cap)}`);
-  else if (to.cap !== null && from.cap !== to.cap) parts.push(`${money(from.cap ?? 0)} → ${money(to.cap)}`);
-  if (to.thresholdPct !== null && from.thresholdPct !== null && from.thresholdPct !== to.thresholdPct) {
-    parts.push(`เส้นเตือน ${from.thresholdPct}% → ${to.thresholdPct}%`);
-  } else if (from.cap === null && to.thresholdPct !== null) {
-    parts.push(`เส้นเตือน ${to.thresholdPct}%`);
+  if ((mode === "set" || mode === "restart") && to !== null) {
+    const startLabel = startedOn ? ` เริ่มนับ ${formatDateThai(parseDateOnlyToStartOfDay(startedOn))}` : "";
+    parts.push(`${from === null ? "ตั้งงบ" : "เริ่มรอบใหม่"} ${money(to)}${startLabel}`);
+  } else if (from !== null && to !== null && from !== to) {
+    parts.push(`${to > from ? "เพิ่มงบ" : "ลดงบ"} ${money(Math.abs(to - from))} (${money(from)} → ${money(to)})`);
   }
+  const thresholdFrom = readNumber(before, "thresholdPct");
+  const thresholdTo = readNumber(after, "thresholdPct");
+  if (thresholdTo !== null && thresholdFrom !== null && thresholdFrom !== thresholdTo) parts.push(`เส้นเตือน ${thresholdFrom}% → ${thresholdTo}%`);
   return parts.length > 0 ? parts.join(" · ") : "ไม่มีการเปลี่ยนค่า";
-}
-
-function readReason(meta: Prisma.JsonValue | null): string {
-  if (meta === null || typeof meta !== "object" || Array.isArray(meta)) return "-";
-  const reason = (meta as Prisma.JsonObject).reason;
-  return typeof reason === "string" && reason.trim() ? reason : "-";
 }
 
 async function loadHistory(): Promise<PurchaseBudgetHistoryRow[]> {
@@ -150,8 +124,8 @@ async function loadHistory(): Promise<PurchaseBudgetHistoryRow[]> {
     id: entry.id,
     when: formatDateTimeThai(entry.createdAt),
     who: entry.userName ?? "-",
-    change: describeChange(entry.before, entry.after),
-    reason: readReason(entry.meta),
+    change: describeChange(entry.before, entry.after, entry.meta),
+    reason: readText(entry.meta, "reason") ?? "-",
   }));
 }
 
@@ -179,49 +153,24 @@ async function loadCashView(canViewCash: boolean): Promise<PurchaseBudgetCashVie
   };
 }
 
-/** Month start, or the day the budget started when that is later — the movement panel's opening point. */
-function resolveMovementPeriod(settings: PurchaseBudgetSettings, now: Date): { start: Date; startedThisPeriod: boolean } {
-  const monthStartKey = getThailandMonthStartDateKey(now);
-  const startedLater = settings.startedOn !== null && settings.startedOn > monthStartKey;
-  return {
-    start: parseDateOnlyToStartOfDay(startedLater && settings.startedOn ? settings.startedOn : monthStartKey),
-    startedThisPeriod: startedLater,
-  };
-}
-
-async function loadMovementView(settings: PurchaseBudgetSettings, figures: PurchaseBudgetFigures, now: Date): Promise<PurchaseBudgetMovementView> {
-  const period = resolveMovementPeriod(settings, now);
-  const rows = await loadPurchaseBudgetMovements(period.start);
-  const totalMove = rows.reduce((sum, row) => sum + row.amount, 0);
-  const startLabel = formatDateThai(period.start, { day: "numeric", month: "short" });
-  return {
-    periodLabel: `${formatDateThai(period.start, { day: "numeric" })}–${formatDateThai(now, { day: "numeric", month: "short", year: "numeric" })}`,
-    openingLabel: period.startedThisPeriod ? `งบตอนเริ่มใช้ (${startLabel})` : `งบต้นเดือน (${startLabel})`,
-    opening: roundBaht(figures.remaining - totalMove),
-    rows,
-  };
-}
-
 export async function getPurchaseBudgetDashboardData(options: { canViewCash: boolean; now?: Date }): Promise<PurchaseBudgetDashboardData> {
   const now = options.now ?? new Date();
-  const settings = await runAdminDashboardRead(() => getPurchaseBudgetSettings());
-  const [totals, deposits, cash, history] = await Promise.all([
-    runAdminDashboardRead(() => loadPurchaseBudgetTotals(getPurchaseBudgetStartedAt(settings))),
+  const [settings, snapshot, deposits, cash, history] = await Promise.all([
+    runAdminDashboardRead(() => getPurchaseBudgetSettings()),
+    runAdminDashboardRead(() => getPurchaseBudgetSnapshot()),
     runAdminDashboardRead(() => loadDeposits()),
     loadCashView(options.canViewCash),
     runAdminDashboardRead(() => loadHistory()),
   ]);
-  const figures = settings.cap === null ? null : buildPurchaseBudgetFigures(settings.cap, settings.thresholdPct, totals);
-  const movements = figures ? await loadMovementView(settings, figures, now) : null;
   return {
     settings,
-    totals,
-    figures,
+    figures: snapshot?.figures ?? null,
+    startedOnLabel: settings.startedOn ? formatDateThai(parseDateOnlyToStartOfDay(settings.startedOn), { day: "numeric", month: "short", year: "numeric" }) : null,
     deposits: deposits.rows,
+    depositsTotalRemaining: deposits.totalRemaining,
     depositsTruncated: deposits.truncated,
     cash,
     history,
-    movements,
     asOf: formatDateTimeThai(now),
   };
 }

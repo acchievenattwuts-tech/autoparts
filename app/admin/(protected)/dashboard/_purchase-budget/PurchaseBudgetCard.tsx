@@ -12,6 +12,7 @@ import {
   BUDGET_STATUS_STYLE,
   formatBaht,
   formatPercent,
+  formatSignedBaht,
 } from "@/components/shared/purchase-budget-ui";
 
 const METER_MAX_PCT = 100;
@@ -47,17 +48,17 @@ export const BudgetCardHeader = ({ subtitle, level, action }: { subtitle: string
 
 const statusMessage = (figures: PurchaseBudgetFigures): string => {
   if (figures.level === "over") {
-    return `เกินเพดาน ${formatBaht(-figures.remaining)} บาท · ยังบันทึกใบซื้อได้ แต่ควรชะลอการสั่งหรือปรับเพดาน`;
+    return `ใช้เกินงบ ${formatBaht(-figures.remaining)} บาท · ยังบันทึกใบซื้อได้ แต่ควรชะลอการสั่งหรือเพิ่มงบ`;
   }
   if (figures.level === "low") {
-    return `เหลือ ${formatPercent(figures.remainingPct)}% ของเพดาน ต่ำกว่าเส้นเตือน ${figures.thresholdPct}% · ควรสั่งเฉพาะของที่จำเป็น`;
+    return `เหลือ ${formatPercent(figures.remainingPct)}% ของงบที่ตั้ง ต่ำกว่าเส้นเตือน ${figures.thresholdPct}% · ควรสั่งเฉพาะของที่จำเป็น`;
   }
-  return `สั่งซื้อเพิ่มได้อีก ${formatBaht(figures.remaining)} บาท ก่อนถึงเพดาน`;
+  return `สั่งซื้อเพิ่มได้อีก ${formatBaht(figures.remaining)} บาท`;
 };
 
-export const BudgetHero = ({ figures }: { figures: PurchaseBudgetFigures }) => {
+export const BudgetHero = ({ figures, startedOnLabel }: { figures: PurchaseBudgetFigures; startedOnLabel: string }) => {
   const style = BUDGET_STATUS_STYLE[figures.level];
-  const usedPct = Math.min(METER_MAX_PCT, Math.max(0, figures.usedPct));
+  const usedPct = figures.budget > 0 ? Math.min(METER_MAX_PCT, Math.max(0, (figures.used / figures.budget) * METER_MAX_PCT)) : METER_MAX_PCT;
   const markerPct = Math.min(METER_MAX_PCT, Math.max(0, METER_MAX_PCT - figures.thresholdPct));
   return (
     <div className="flex min-w-0 grow basis-[340px] flex-col gap-2">
@@ -67,22 +68,26 @@ export const BudgetHero = ({ figures }: { figures: PurchaseBudgetFigures }) => {
         <span className="text-base font-medium text-slate-600 dark:text-slate-300">บาท</span>
       </p>
       <p className="text-sm text-slate-600 dark:text-slate-300">
-        จากเพดาน {formatBaht(figures.cap)} บาท · ใช้ไปแล้ว {formatPercent(figures.usedPct)}%
+        จากงบที่ตั้ง {formatBaht(figures.budget)} บาท · เริ่มนับ {startedOnLabel}
       </p>
       <div
         role="meter"
-        aria-label="สัดส่วนเพดานที่ใช้ไปแล้ว"
+        aria-label="สัดส่วนงบที่ใช้ไปแล้ว"
         aria-valuemin={0}
         aria-valuemax={METER_MAX_PCT}
         aria-valuenow={Math.round(usedPct)}
-        title={`ใช้ไป ${formatBaht(figures.used)} จากเพดาน ${formatBaht(figures.cap)} (${formatPercent(figures.usedPct)}%)`}
+        title={`ใช้ไปสุทธิ ${formatBaht(figures.used)} จากงบ ${formatBaht(figures.budget)} (${formatPercent(usedPct)}%)`}
         className={`relative mt-1.5 h-2.5 rounded-full ${style.track}`}
       >
         <div className={`absolute inset-y-0 left-0 rounded-full ${style.fill}`} style={{ width: `${usedPct}%` }} />
         <div className="absolute -inset-y-1 w-0.5 rounded-sm bg-slate-900/55 dark:bg-slate-100/60" style={{ left: `${markerPct}%` }} />
       </div>
       <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-        <span>ใช้ไป {formatBaht(figures.used)} บาท</span>
+        <span>
+          {figures.used >= 0
+            ? `ใช้ไปสุทธิ ${formatBaht(figures.used)} บาท`
+            : `ได้งบเพิ่มจากยอดขาย ${formatBaht(-figures.used)} บาท`}
+        </span>
         <span>เส้นเตือน: งบเหลือ {figures.thresholdPct}%</span>
       </div>
       <p className={`mt-1 text-sm font-semibold ${style.message}`}>{statusMessage(figures)}</p>
@@ -90,16 +95,16 @@ export const BudgetHero = ({ figures }: { figures: PurchaseBudgetFigures }) => {
   );
 };
 
-export const BudgetBreakdown = ({ figures, depositCount }: { figures: PurchaseBudgetFigures; depositCount: number }) => {
+export const BudgetBreakdown = ({ figures, startedOnLabel }: { figures: PurchaseBudgetFigures; startedOnLabel: string }) => {
   const rows = [
-    { label: "เพดานงบสั่งซื้อ", amount: formatBaht(figures.cap) },
-    { label: "หัก มูลค่าสต็อกคงเหลือ (ราคาทุน)", amount: `−${formatBaht(figures.stockValue)}` },
-    { label: `หัก มัดจำซัพพลายเออร์ที่รอรับของ · ${depositCount} ใบ`, amount: `−${formatBaht(figures.depositOutstanding)}` },
-    { label: "หัก สินค้าไม่คำนวณสต็อก (ซื้อ − ต้นทุนขาย)", amount: formatBaht(-figures.nonTrackedNet) },
+    { label: "งบที่ตั้ง (รวมเพิ่ม/ลดงบ)", amount: formatBaht(figures.budget) },
+    { label: "หัก ซื้อสินค้าเข้า", amount: formatSignedBaht(-figures.purchases) },
+    { label: "บวก ต้นทุนสินค้าที่ขาย", amount: formatSignedBaht(figures.salesCost) },
+    { label: "คืนสินค้า / ปรับสต็อก / เคลม / ใบเพิ่มหนี้", amount: formatSignedBaht(figures.otherEffect) },
   ];
   return (
     <div className={`min-w-0 grow basis-[360px] ${BUDGET_MUTED_PANEL_CLASS}`}>
-      <p className={`mb-1 ${BUDGET_PANEL_TITLE_CLASS}`}>ที่มาของตัวเลข</p>
+      <p className={`mb-1 ${BUDGET_PANEL_TITLE_CLASS}`}>ที่มาของตัวเลข (ตั้งแต่ {startedOnLabel})</p>
       {rows.map((row) => (
         <div key={row.label} className={BUDGET_ROW_CLASS}>
           <span className="min-w-0 text-slate-600 dark:text-slate-300">{row.label}</span>
@@ -115,14 +120,16 @@ export const BudgetBreakdown = ({ figures, depositCount }: { figures: PurchaseBu
 };
 
 const RULES: { title: string; text: string }[] = [
-  { title: "ซื้อสินค้า", text: "หักงบทันทีที่บันทึกใบซื้อ ทั้งซื้อสดและซื้อเชื่อ ตามมูลค่าที่เข้าสต็อก" },
-  { title: "ขายสินค้า", text: "คืนงบเท่าต้นทุนของสินค้าที่ขาย ไม่ใช่ราคาขาย" },
-  { title: "จ่ายมัดจำซัพพลายเออร์", text: "หักงบทันที แล้วคืนให้เองเมื่อตัดมัดจำตอนจ่ายชำระ หรือได้เงินมัดจำคืน" },
-  { title: "ลูกค้าคืนสินค้า", text: "ของกลับเข้าสต็อก งบลดลง" },
-  { title: "คืนสินค้าให้ซัพพลายเออร์", text: "ของออกจากสต็อก งบเพิ่มขึ้น" },
-  { title: "ปรับปรุงสต็อก ของเสีย เคลม", text: "งบขยับตามมูลค่าสต็อกที่เปลี่ยนไป" },
-  { title: "ยกเลิกหรือแก้ไขเอกสาร", text: "คำนวณใหม่ให้อัตโนมัติจากสต็อกจริง ไม่ต้องแก้งบเอง" },
-  { title: "สินค้าไม่คำนวณสต็อก", text: "หักงบตอนซื้อ และคืนงบตอนขายตามต้นทุนที่บันทึกในบิลขาย" },
+  { title: "นับตั้งแต่วันเริ่มนับ", text: "นับเฉพาะเอกสารที่ลงวันที่ตั้งแต่วันเริ่มนับ ของในสต็อกเดิมไม่หักงบ" },
+  { title: "ซื้อสินค้า", text: "หักงบเมื่อบันทึกใบซื้อ ทั้งซื้อสดและซื้อเชื่อ ตามมูลค่าที่เข้าสต็อก" },
+  { title: "ขายสินค้า", text: "บวกงบเท่าต้นทุนของสินค้าที่ขาย รวมของที่ซื้อก่อนวันเริ่มนับ ไม่ใช่ราคาขาย" },
+  { title: "มัดจำซัพพลายเออร์", text: "ไม่หักงบ แสดงไว้ดูเท่านั้น งบจะหักตอนบันทึกใบซื้อ" },
+  { title: "ลูกค้าคืนสินค้า", text: "ของกลับเข้าสต็อก หักงบ" },
+  { title: "คืนสินค้าให้ซัพพลายเออร์", text: "ของออกจากสต็อก บวกงบ" },
+  { title: "ปรับปรุงสต็อก ของเสีย เคลม", text: "งบขยับตามมูลค่าสต็อกที่เปลี่ยน (ยอดยกมาไม่นับ)" },
+  { title: "ใบเพิ่มหนี้ / ลดราคาซื้อ", text: "ต้นทุนเพิ่มหักงบ ต้นทุนลดบวกงบ" },
+  { title: "ยกเลิกหรือแก้ไขเอกสาร", text: "คำนวณใหม่ให้อัตโนมัติ ไม่ต้องแก้งบเอง" },
+  { title: "สินค้าไม่คำนวณสต็อก", text: "หักงบตอนซื้อ และบวกงบตอนขายตามต้นทุนในบิลขาย" },
   { title: "VAT ค่าขนส่ง ส่วนลด", text: "ไม่นับ VAT ที่ขอคืนได้ · นับค่าขนส่งในใบซื้อ · หักส่วนลดท้ายบิล" },
 ];
 
@@ -155,7 +162,7 @@ export const BudgetCashCompare = ({ cash }: { cash: PurchaseBudgetCashView }) =>
     <div className={`flex flex-col gap-2.5 ${BUDGET_PANEL_CLASS}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className={BUDGET_PANEL_TITLE_CLASS}>เทียบกับเงินจริง</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">งบบอกว่าสั่งเพิ่มได้อีกเท่าไรตามเพดาน ส่วนเงินที่จ่ายได้จริงให้ดูเงินสดประกอบ</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">งบบอกว่าสั่งเพิ่มได้อีกเท่าไร ส่วนเงินที่จ่ายได้จริงให้ดูเงินสดประกอบ</p>
       </div>
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {stats.map((stat) => (

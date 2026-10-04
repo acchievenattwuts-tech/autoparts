@@ -896,25 +896,25 @@ const formatPurchaseBudgetAmount = (value: number): string =>
   value.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /**
- * The purchase budget dropped below its warning line (LOW) or past its cap (EXCEEDED) since the last
+ * The purchase budget dropped below its warning line (LOW) or below zero (EXCEEDED) since the last
  * check (lib/purchase-budget-alerts.ts). Bell + Telegram together, like every other alert (.rules §10).
  */
 export async function notifyPurchaseBudgetAlert(figures: {
   level: "low" | "over";
-  cap: number;
+  budget: number;
   remaining: number;
   remainingPct: number;
   thresholdPct: number;
 }): Promise<number> {
   const isOver = figures.level === "over";
-  const cap = formatPurchaseBudgetAmount(figures.cap);
+  const budget = formatPurchaseBudgetAmount(figures.budget);
   return createNotification({
     type: isOver ? NotificationType.PURCHASE_BUDGET_EXCEEDED : NotificationType.PURCHASE_BUDGET_LOW,
     severity: NotificationSeverity.WARNING,
-    title: isOver ? "งบสั่งซื้อเกินเพดาน" : "งบสั่งซื้อใกล้หมด",
+    title: isOver ? "งบสั่งซื้อติดลบ" : "งบสั่งซื้อใกล้หมด",
     body: isOver
-      ? `เกินเพดาน ${formatPurchaseBudgetAmount(-figures.remaining)} บาท (เพดาน ${cap} บาท) · ควรชะลอการสั่งซื้อหรือปรับเพดาน`
-      : `งบคงเหลือ ${formatPurchaseBudgetAmount(figures.remaining)} บาท หรือ ${figures.remainingPct.toFixed(1)}% ของเพดาน ${cap} บาท (ต่ำกว่าเส้นเตือน ${figures.thresholdPct}%)`,
+      ? `ใช้เกินงบ ${formatPurchaseBudgetAmount(-figures.remaining)} บาท (งบที่ตั้ง ${budget} บาท) · ควรชะลอการสั่งซื้อหรือเพิ่มงบ`
+      : `งบคงเหลือ ${formatPurchaseBudgetAmount(figures.remaining)} บาท หรือ ${figures.remainingPct.toFixed(1)}% ของงบที่ตั้ง ${budget} บาท (ต่ำกว่าเส้นเตือน ${figures.thresholdPct}%)`,
     link: PURCHASE_BUDGET_LINK,
     entityType: PURCHASE_BUDGET_AUDIT_ENTITY,
   });

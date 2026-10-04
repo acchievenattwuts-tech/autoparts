@@ -13,7 +13,7 @@ type FakeTx = {
 
 let storedLevel: string | null = null;
 let currentLevel: PurchaseBudgetLevel | null = "ok";
-let alerts: Array<{ level: string; remaining: number }> = [];
+let alerts: Array<{ level: string; remaining: number; budget: number }> = [];
 let checkPurchaseBudgetAlert: typeof import("@/lib/purchase-budget-alerts").checkPurchaseBudgetAlert;
 
 const fakeTx: FakeTx = {
@@ -24,7 +24,8 @@ const fakeTx: FakeTx = {
   },
 };
 
-const remainingFor = (level: PurchaseBudgetLevel): number => (level === "over" ? -35_750 : level === "low" ? 92_400 : 196_180);
+const BUDGET = 50_000;
+const remainingFor = (level: PurchaseBudgetLevel): number => (level === "over" ? -1_250 : level === "low" ? 4_200 : 31_500);
 
 before(async () => {
   mock.module("@/lib/db", {
@@ -38,9 +39,9 @@ before(async () => {
           : {
               figures: {
                 level: currentLevel,
-                cap: 1_400_000,
+                budget: BUDGET,
                 remaining: remainingFor(currentLevel),
-                remainingPct: (remainingFor(currentLevel) / 1_400_000) * 100,
+                remainingPct: (remainingFor(currentLevel) / BUDGET) * 100,
                 thresholdPct: 10,
               },
             },
@@ -48,8 +49,8 @@ before(async () => {
   });
   mock.module("@/lib/notifications", {
     namedExports: {
-      notifyPurchaseBudgetAlert: async (figures: { level: string; remaining: number }) => {
-        alerts.push({ level: figures.level, remaining: figures.remaining });
+      notifyPurchaseBudgetAlert: async (figures: { level: string; remaining: number; budget: number }) => {
+        alerts.push({ level: figures.level, remaining: figures.remaining, budget: figures.budget });
         return 1;
       },
     },
@@ -63,7 +64,7 @@ beforeEach(() => {
   alerts = [];
 });
 
-test("no cap yet: nothing is checked, stored or sent", async () => {
+test("no budget yet: nothing is checked, stored or sent", async () => {
   currentLevel = null;
   assert.deepEqual(await checkPurchaseBudgetAlert(), { checked: false, previous: null, current: null, notified: false });
   assert.equal(storedLevel, null);
@@ -74,7 +75,7 @@ test("ok → low alerts once; staying low stays quiet", async () => {
   currentLevel = "low";
   const first = await checkPurchaseBudgetAlert();
   assert.equal(first.notified, true);
-  assert.deepEqual(alerts, [{ level: "low", remaining: 92_400 }]);
+  assert.deepEqual(alerts, [{ level: "low", remaining: 4_200, budget: BUDGET }]);
   assert.equal(storedLevel, "low");
 
   const second = await checkPurchaseBudgetAlert();
@@ -87,7 +88,7 @@ test("low → over alerts again", async () => {
   currentLevel = "over";
   const result = await checkPurchaseBudgetAlert();
   assert.equal(result.notified, true);
-  assert.deepEqual(alerts, [{ level: "over", remaining: -35_750 }]);
+  assert.deepEqual(alerts, [{ level: "over", remaining: -1_250, budget: BUDGET }]);
   assert.equal(storedLevel, "over");
 });
 
@@ -101,7 +102,7 @@ test("an improvement re-arms silently, so the next drop alerts", async () => {
   currentLevel = "low";
   const dropped = await checkPurchaseBudgetAlert();
   assert.equal(dropped.notified, true);
-  assert.deepEqual(alerts, [{ level: "low", remaining: 92_400 }]);
+  assert.deepEqual(alerts, [{ level: "low", remaining: 4_200, budget: BUDGET }]);
 });
 
 test("over → low (an improvement) never alerts", async () => {

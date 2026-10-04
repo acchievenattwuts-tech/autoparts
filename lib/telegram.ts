@@ -38,7 +38,7 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   MARKETPLACE_SETTLEMENT_CANCELLED: "ยกเลิกรอบรับเงินช่องทางขาย",
   MARKETPLACE_RETURN_RECORDED: "บันทึกคืนสินค้าช่องทางขาย",
   PURCHASE_BUDGET_LOW: "งบสั่งซื้อใกล้หมด",
-  PURCHASE_BUDGET_EXCEEDED: "งบสั่งซื้อเกินเพดาน",
+  PURCHASE_BUDGET_EXCEEDED: "งบสั่งซื้อติดลบ (ใช้เกินงบ)",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {

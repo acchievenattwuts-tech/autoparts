@@ -3,10 +3,11 @@ import { Lock } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { getPurchaseBudgetDashboardData, type PurchaseBudgetDashboardData } from "@/lib/purchase-budget-dashboard";
 
-import { BUDGET_MUTED_PANEL_CLASS, BUDGET_SECTION_CLASS, formatBaht } from "@/components/shared/purchase-budget-ui";
+import { BUDGET_SECTION_CLASS } from "@/components/shared/purchase-budget-ui";
 import { BudgetBreakdown, BudgetCardHeader, BudgetCashCompare, BudgetHero, BudgetRules } from "./PurchaseBudgetCard";
 import PurchaseBudgetCapDialog from "./PurchaseBudgetCapDialog";
-import { BudgetDepositsPanel, BudgetHistoryPanel, BudgetMovementsPanel } from "./PurchaseBudgetPanels";
+import PurchaseBudgetLedger from "./PurchaseBudgetLedger";
+import { BudgetDepositsPanel, BudgetHistoryPanel } from "./PurchaseBudgetPanels";
 
 type PurchaseBudgetTabProps = {
   canManage: boolean;
@@ -19,7 +20,7 @@ const PageHeader = () => (
     className="mb-0"
     eyebrow="Dashboard"
     title="Purchase Budget"
-    description="ดูว่ายังสั่งซื้อสินค้าได้อีกเท่าไรก่อนถึงเพดานที่ตั้งไว้"
+    description="ดูว่ายังสั่งซื้อสินค้าได้อีกเท่าไรจากงบที่ตั้ง นับเฉพาะเอกสารตั้งแต่วันเริ่มนับ"
   />
 );
 
@@ -35,31 +36,25 @@ export const PurchaseBudgetTabSkeleton = () => (
   </div>
 );
 
-const UnsetCard = ({ data, canManage }: { data: PurchaseBudgetDashboardData; canManage: boolean }) => {
-  const used = data.totals.stockValue + data.totals.depositOutstanding;
-  return (
-    <section className={`flex flex-col gap-4 ${BUDGET_SECTION_CLASS}`}>
-      <BudgetCardHeader
-        subtitle={`ข้อมูล ณ ${data.asOf}`}
-        level="unset"
-        action={canManage ? <PurchaseBudgetCapDialog variant="setup" cap={null} thresholdPct={data.settings.thresholdPct} used={used} /> : null}
-      />
-      <p className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">ยังไม่ได้ตั้งเพดานงบสั่งซื้อ</p>
-      <div className={`max-w-md text-sm ${BUDGET_MUTED_PANEL_CLASS}`}>
-        <p className="mb-1 text-xs text-slate-500 dark:text-slate-400">มูลค่าที่ใช้อยู่ตอนนี้</p>
-        <div className="flex justify-between gap-2"><span className="text-slate-600 dark:text-slate-300">สต็อก (ราคาทุน)</span><span className="tabular-nums">{formatBaht(data.totals.stockValue)}</span></div>
-        <div className="flex justify-between gap-2"><span className="text-slate-600 dark:text-slate-300">มัดจำรอรับของ</span><span className="tabular-nums">{formatBaht(data.totals.depositOutstanding)}</span></div>
-        <div className="mt-1 flex justify-between gap-2 border-t border-slate-200 pt-1 font-bold dark:border-white/10"><span>รวม</span><span className="tabular-nums">{formatBaht(used)}</span></div>
-      </div>
-      <p className="text-sm text-slate-600 dark:text-slate-300">ตั้งเพดานให้สูงกว่ายอดรวมนี้ ส่วนที่เกินคืองบที่ยังสั่งซื้อได้</p>
-      {canManage ? null : (
-        <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-          <Lock size={14} aria-hidden /> ให้ผู้ที่มีสิทธิ์ปรับงบเป็นผู้ตั้งเพดาน
-        </p>
-      )}
-    </section>
-  );
-};
+const UnsetCard = ({ data, canManage }: { data: PurchaseBudgetDashboardData; canManage: boolean }) => (
+  <section className={`flex flex-col gap-4 ${BUDGET_SECTION_CLASS}`}>
+    <BudgetCardHeader
+      subtitle={`ข้อมูล ณ ${data.asOf}`}
+      level="unset"
+      action={canManage ? <PurchaseBudgetCapDialog variant="setup" budget={null} thresholdPct={data.settings.thresholdPct} remaining={null} /> : null}
+    />
+    <p className="font-kanit text-lg font-semibold text-slate-900 dark:text-slate-100">ยังไม่ได้ตั้งงบสั่งซื้อ</p>
+    <p className="max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+      ตั้งงบและวันที่เริ่มนับ แล้วระบบจะหักงบเมื่อบันทึกใบซื้อ และบวกงบเท่าต้นทุนของสินค้าที่ขาย
+      นับเฉพาะเอกสารที่ลงวันที่ตั้งแต่วันเริ่มนับ ของในสต็อกเดิมไม่หักงบ
+    </p>
+    {canManage ? null : (
+      <p className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        <Lock size={14} aria-hidden /> ให้ผู้ที่มีสิทธิ์ปรับงบเป็นผู้ตั้งงบ
+      </p>
+    )}
+  </section>
+);
 
 const PurchaseBudgetTab = async ({ canManage, canViewCash, canViewAuditLog }: PurchaseBudgetTabProps) => {
   let data: PurchaseBudgetDashboardData;
@@ -87,24 +82,25 @@ const PurchaseBudgetTab = async ({ canManage, canViewCash, canViewAuditLog }: Pu
     );
   }
 
+  const startedOnLabel = data.startedOnLabel ?? "-";
   return (
     <div className="space-y-4">
       <PageHeader />
       <section className={`flex flex-col gap-4 ${BUDGET_SECTION_CLASS}`}>
         <BudgetCardHeader
-          subtitle={`เพดานงบ ลบมูลค่าสต็อก (ราคาทุน) และมัดจำที่รอรับของ · ข้อมูล ณ ${data.asOf}`}
+          subtitle={`งบที่ตั้ง − ซื้อเข้า + ต้นทุนสินค้าที่ขาย ± รายการสต็อกอื่น ตั้งแต่ ${startedOnLabel} · ข้อมูล ณ ${data.asOf}`}
           level={figures.level}
-          action={canManage ? <PurchaseBudgetCapDialog variant="adjust" cap={figures.cap} thresholdPct={figures.thresholdPct} used={figures.used} /> : null}
+          action={canManage ? <PurchaseBudgetCapDialog variant="adjust" budget={figures.budget} thresholdPct={figures.thresholdPct} remaining={figures.remaining} /> : null}
         />
         <div className="flex flex-wrap gap-4">
-          <BudgetHero figures={figures} />
-          <BudgetBreakdown figures={figures} depositCount={data.totals.depositCount} />
+          <BudgetHero figures={figures} startedOnLabel={startedOnLabel} />
+          <BudgetBreakdown figures={figures} startedOnLabel={startedOnLabel} />
         </div>
+        <PurchaseBudgetLedger />
         <BudgetRules />
         <BudgetCashCompare cash={data.cash} />
         <div className="flex flex-wrap items-start gap-3">
-          {data.movements ? <BudgetMovementsPanel movements={data.movements} remaining={figures.remaining} /> : null}
-          <BudgetDepositsPanel deposits={data.deposits} total={data.totals.depositOutstanding} truncated={data.depositsTruncated} />
+          <BudgetDepositsPanel deposits={data.deposits} total={data.depositsTotalRemaining} truncated={data.depositsTruncated} />
           <BudgetHistoryPanel history={data.history} canViewAuditLog={canViewAuditLog} />
         </div>
       </section>
