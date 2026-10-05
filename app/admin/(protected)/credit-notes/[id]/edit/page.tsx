@@ -22,6 +22,13 @@ import { getCreditNoteProductOptionsByIds, getTransactionCustomers } from "@/lib
 import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
 import { CREDIT_NOTE_PERIOD_LOCK_ALLOWED_EDITS_HINT } from "../../credit-note-period-lock";
+import { loadSaleLineLotBalances, toSaleLotOptions, type SaleLineLotBalance } from "../../credit-note-sale-lots";
+import { creditNoteSourceLotNo } from "@/lib/credit-note-return-lots";
+import {
+  buildCreditNoteLotEditWarning,
+  checkCreditNoteLotReversal,
+  type CreditNoteLotGuardDb,
+} from "@/lib/credit-note-lot-guard";
 
 const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> }) => {
   const session = await requirePermission("credit_notes.update");
@@ -58,17 +65,21 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+  const [mutationBlock, stockDebitWarning, periodLock, lotReversal] = await Promise.all([
     checkDocumentMutation("CreditNote", id, "update"),
     // Lines before an active supplier DN: a warning only; updateCreditNote blocks just the rows it rewrites.
     checkDocumentStockDebitWarning("CreditNote", id),
     // Month already distributed: same message updateCreditNote returns (lib/period-lock.ts).
     getDocumentPeriodLockView([cn.cnDate], session.user.permissions),
+    // Returned lots already used later: a warning only; updateCreditNote blocks just the lines it rewrites.
+    checkCreditNoteLotReversal(db as unknown as CreditNoteLotGuardDb, { creditNoteId: id }),
   ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
   const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
   const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
+  const lotReversalWarningMessage = mutationBlockMessage ? null : buildCreditNoteLotEditWarning(lotReversal);
+  const lotReversalWarningReferences = buildMutationBlockReferenceLinks(lotReversal);
 
   const [products, customers, config, cashBankAccounts] = await Promise.all([
     getCreditNoteProductOptionsByIds(cn.items.map((item) => item.productId).filter((productId): productId is string => !!productId)),
@@ -86,6 +97,20 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
       })
     : [];
 
+  // Lots the referenced sale lines sold, still returnable when this CN is set aside,
+  // so a sale-linked RETURN line picks its lots from the sale (as on the create form).
+  const saleLotBalances =
+    cn.saleId && cn.type === CreditNoteType.RETURN
+      ? await loadSaleLineLotBalances(db, {
+          saleId: cn.saleId,
+          saleLines: await db.saleItem.findMany({
+            where: { saleId: cn.saleId },
+            select: { id: true, productId: true },
+          }),
+          excludeCreditNoteId: id,
+        })
+      : new Map<string, SaleLineLotBalance[]>();
+
   const initialItems = cn.items
     .filter((item) => item.productId !== null)
     .map((item) => {
@@ -99,6 +124,9 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         item.showPricePerUnit != null
           ? Number(item.showPricePerUnit)
           : Number(item.unitPrice);
+      const saleLots = item.saleItemId
+        ? toSaleLotOptions(saleLotBalances.get(item.saleItemId) ?? [])
+        : [];
       return {
         saleItemId: item.saleItemId ?? undefined,
         productId: item.productId ?? "",
@@ -108,14 +136,20 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
         moreDetail: item.moreDetail ?? "",
         stockDisposition: item.stockDisposition,
         stockDispositionNote: item.stockDispositionNote ?? "",
-        lotItems: item.lotItems.map((lot) => ({
-          lotNo: lot.isReturnLot ? lot.lotNo.replace(/^RET-/, "") : lot.lotNo,
-          qty: Number(lot.qty) / scale,
-          unitCost: displaySalePrice,
-          mfgDate: "",
-          expDate: "",
-          isReturnLot: lot.isReturnLot,
-        })),
+        saleLots,
+        lotItems: item.lotItems.map((lot) => {
+          // The source lot, without the RET- prefix and line-id suffix that saving adds again.
+          const lotNo = creditNoteSourceLotNo(lot.lotNo, lot.isReturnLot, item.id);
+          const saleLot = saleLots.find((option) => option.lotNo === lotNo);
+          return {
+            lotNo,
+            qty: Number(lot.qty) / scale,
+            unitCost: saleLot ? saleLot.unitCostBase * scale : displaySalePrice,
+            mfgDate: saleLot?.mfgDate ?? "",
+            expDate: saleLot?.expDate ?? "",
+            isReturnLot: lot.isReturnLot,
+          };
+        }),
       };
     });
 
@@ -164,6 +198,14 @@ const EditCreditNotePage = async ({ params }: { params: Promise<{ id: string }> 
           <DocumentMutationBlockedNotice
             message={stockDebitWarningMessage}
             references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
+      {lotReversalWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={lotReversalWarningMessage}
+            references={lotReversalWarningReferences}
           />
         </div>
       )}

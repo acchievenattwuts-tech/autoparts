@@ -15,11 +15,13 @@ import { writeStockCard, recalculateStockCardMany } from "@/lib/stock-card";
 import { generateCNNo, generateExpenseNo } from "@/lib/doc-number";
 import { isUniqueViolationOnAny, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
+  buildMutationBlockMessage,
   buildRewrittenStockRowsWhere,
   getDocumentMutationBlockMessage,
   lockStockMutationProducts,
   DocumentMutationBlockedError,
 } from "@/lib/document-mutation-guard";
+import { checkCreditNoteLotReversal, type CreditNoteLotGuardDb } from "@/lib/credit-note-lot-guard";
 import {
   AuditAction,
   CNRefundMethod,
@@ -45,6 +47,18 @@ import {
   loadCreditNoteLineRefs,
   lockMutableCreditNote,
 } from "./credit-note-action-helpers";
+import {
+  assertReturnLotsWithinSale,
+  CreditNoteReturnLotError,
+  loadSaleLineLotBalances,
+  toSaleLotOptions,
+} from "./credit-note-sale-lots";
+import {
+  allocateSaleLots,
+  creditNoteSourceLotNo,
+  type CreditNoteReturnLotRow,
+  type SaleLotOption,
+} from "@/lib/credit-note-return-lots";
 import { reverseCreditNoteLotBalance, validateLotRows, writeCreditNoteLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
 import {
   getTransactionProductDetailRowsByIds,
@@ -766,6 +780,9 @@ export async function createCreditNote(
         type === CreditNoteType.RETURN && saleId
           ? await validateReferencedReturnItems(tx, saleId, validItems)
           : new Map<number, string>();
+      if (type === CreditNoteType.RETURN && saleId) {
+        await assertReturnLotsWithinSale(tx, { saleId, items: validItems, resolvedSaleItemIds });
+      }
       const referenceCostMaps = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
         : { bySaleItemId: new Map<string, number>(), byProductId: new Map<string, number>() };
@@ -1104,6 +1121,7 @@ export async function createCreditNote(
     if (err instanceof CreditNoteWarrantyClaimBlockedError) return { error: err.message };
     if (err instanceof CreditNoteVatMismatchError) return { error: err.message };
     if (err instanceof CreditNoteSourceSaleError) return { error: err.message };
+    if (err instanceof CreditNoteReturnLotError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.create" });
     // Checked before getCreditNoteReturnError, which maps every other P2002 to the
     // duplicate marketplace-return-case message.
@@ -1438,8 +1456,10 @@ export async function updateCreditNote(
           stockDisposition: item.stockDisposition,
           qtyInBase: Number(item.qty),
           salePrice: Number(item.unitPrice),
+          // A RET- lot is compared by its source lot: the form submits the source lot
+          // and writeCreditNoteLots rebuilds the RET- name, so an unchanged line matches.
           lots: item.lotItems.map((l) => ({
-            lotNo:       l.lotNo,
+            lotNo:       creditNoteSourceLotNo(l.lotNo, l.isReturnLot, item.id),
             qtyInBase:   Number(l.qty),
             isReturnLot: l.isReturnLot,
           })),
@@ -1571,11 +1591,31 @@ export async function updateCreditNote(
         type === CreditNoteType.RETURN && saleId
           ? await validateReferencedReturnItems(tx, saleId, validItems, id)
           : new Map<number, string>();
+      if (type === CreditNoteType.RETURN && saleId) {
+        await assertReturnLotsWithinSale(tx, {
+          saleId,
+          items: validItems,
+          resolvedSaleItemIds,
+          excludeCreditNoteId: id,
+        });
+      }
       const referenceCostMaps = type === CreditNoteType.RETURN
         ? await buildSaleReferenceCostMap(tx, saleId)
         : { bySaleItemId: new Map<string, number>(), byProductId: new Map<string, number>() };
 
       const resolvedRefundMethod = await resolveCreditNoteRefundMethod(tx, payments);
+
+      // Step 1 takes the returned lots of these lines back out of LotBalance; when later
+      // documents already used that stock, block before any write (products are locked).
+      const reversedItemIds = !oldHadStock
+        ? []
+        : useDifferential
+          ? removedExistingItems.map((removed) => removed.existingItemId)
+          : existing.items.map((item) => item.id);
+      const lotReversalMessage = buildMutationBlockMessage(
+        await checkCreditNoteLotReversal(tx as unknown as CreditNoteLotGuardDb, { creditNoteItemIds: reversedItemIds }),
+      );
+      if (lotReversalMessage) throw new CreditNoteMutationBlockedError(lotReversalMessage);
 
       // 1. Reverse stock effects + delete items.
       //    Differential: only removed lines (and recalc only affected products).
@@ -1865,6 +1905,7 @@ export async function updateCreditNote(
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     if (err instanceof CreditNoteVatMismatchError) return { error: err.message };
     if (err instanceof CreditNoteSourceSaleError) return { error: err.message };
+    if (err instanceof CreditNoteReturnLotError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.update" });
     const returnError = getCreditNoteReturnError(err);
     if (returnError) return { error: returnError };
@@ -1904,6 +1945,10 @@ export type SaleDetailResult = {
     salePrice: number;
     stockDisposition: MarketplaceReturnStockDisposition;
     stockDispositionNote: string;
+    /** Lots the sale line sold that can still be returned (empty when sold without lots). */
+    saleLots: SaleLotOption[];
+    /** Pre-filled return lots for the full remaining quantity, in sale order. */
+    lotItems: CreditNoteReturnLotRow[];
   }[];
   products: CreditNoteProductOption[];
 } | null;
@@ -1982,6 +2027,11 @@ export async function getSaleDetail(
       _sum: { qty: true },
     }),
   ]);
+  const lotBalancesBySaleItemId = await loadSaleLineLotBalances(db, {
+    saleId,
+    saleLines: sale.items.map((item) => ({ id: item.id, productId: item.productId })),
+    excludeCreditNoteId,
+  });
   const returnedBySaleItemId = new Map(
     returnedRows.map((row) => [row.saleItemId as string, Number(row._sum.qty ?? 0)]),
   );
@@ -2019,14 +2069,18 @@ export async function getSaleDetail(
       Number(item.quantity) - (returnedBySaleItemId.get(item.id) ?? 0) - legacyReturned,
     ));
     if (remainingBaseQty <= 0.0001) return [];
+    const qty = remainingBaseQty / scale;
+    const saleLots = toSaleLotOptions(lotBalancesBySaleItemId.get(item.id) ?? []);
     return [{
       saleItemId: item.id,
       productId: item.productId,
       unitName: item.showUnitName ?? unitName,
-      qty: remainingBaseQty / scale,
+      qty,
       salePrice: item.showPricePerUnit != null ? Number(item.showPricePerUnit) : Number(item.salePrice),
       stockDisposition: MarketplaceReturnStockDisposition.RESTOCK,
       stockDispositionNote: "",
+      saleLots,
+      lotItems: allocateSaleLots(saleLots, qty, scale),
     }];
   });
 

@@ -1,5 +1,6 @@
 import { Prisma } from "@/lib/generated/prisma";
 import { isValueOnlyStockSource, PURCHASE_ALLOWANCE_SOURCE, valueOnlyStockSources } from "@/lib/stock-value-only-source";
+import { checkCreditNoteLotReversal, type CreditNoteLotGuardDb } from "@/lib/credit-note-lot-guard";
 
 export type MutableDocumentEntityType =
   | "SalesQuotation"
@@ -60,7 +61,7 @@ export type GuardDb = {
   expense?: { findMany(args: FindManyArgs): FindManyResult };
   deliveryCommissionItem?: { findMany(args: FindManyArgs): FindManyResult };
   deliveryCommissionRun?: { findMany(args: FindManyArgs): FindManyResult };
-};
+} & CreditNoteLotGuardDb;
 
 /** Reason for documents a marketplace settlement round created (fee expense, transfer, adjustment). */
 export const MARKETPLACE_SETTLEMENT_SOURCE_REASON =
@@ -560,11 +561,14 @@ export function createDocumentMutationGuard(database: GuardDb) {
             select: { id: true, expenseNo: true },
           }) ?? Promise.resolve([]),
         ]);
-        return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
+        const downstream = block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
           ...mapNestedRefs(receiptItems, "receipt", "Receipt", "receiptNo"),
           ...mapNestedRefs(settlements, "settlement", "MarketplaceSettlement", "settlementNo"),
           ...mapDirectRefs(expenses, "Expense", "expenseNo"),
         ]);
+        // Cancel takes every returned lot back out; an edit checks only the lines it rewrites (updateCreditNote).
+        if (downstream.blocked || action !== "cancel") return downstream;
+        return checkCreditNoteLotReversal(database, { creditNoteId: entityId });
       }
 
       // ใบค่าธรรมเนียม / ใบโอนเงิน / ใบปรับยอด ที่ถูกสร้างโดยรอบรับเงิน marketplace

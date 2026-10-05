@@ -10,6 +10,14 @@ import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import PaymentChannelsInput, { type PaymentChannelRow } from "@/components/shared/PaymentChannelsInput";
 import { validateLotRows, type LotSubRow } from "@/lib/lot-control-client";
+import {
+  allocateSaleLots,
+  findSaleLotRowError,
+  remainingSaleLots,
+  saleLotToRow,
+  sumLotBaseQty,
+  type SaleLotOption,
+} from "@/lib/credit-note-return-lots";
 import { PeriodLockFormSection, usePeriodLockFinancialChange } from "@/app/admin/_components/PeriodLockControls";
 import type { PeriodLockView } from "@/lib/period-lock-view";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
@@ -86,6 +94,8 @@ interface LineItem {
   stockDisposition?: "RESTOCK" | "REFUND_ONLY" | "DAMAGED_NO_RESTOCK";
   stockDispositionNote?: string;
   lotItems: CreditNoteLotRow[];
+  /** Lots the referenced sale line sold and can still return; lot rows pick from these. */
+  saleLots?: SaleLotOption[];
 }
 
 interface InitialData {
@@ -256,7 +266,52 @@ const CreditNoteForm = ({
     setVatType(detail.vatType);
     setVatRate(detail.vatRate);
     setSaleReturnWarning(detail.returnWarning);
-    setItems(detail.items.map((item) => ({ ...item, lotItems: [] })));
+    // Lot-controlled lines arrive with their sale lots already spread over the quantity.
+    setItems(detail.items);
+  };
+
+  const getUnitScale = (productId: string, unitName: string): number =>
+    productMap.get(productId)?.units.find((unit) => unit.name === unitName)?.scale ?? 1;
+
+  // The sale lots one line can still take: what the sale line can return minus the lots
+  // the other restocked lines of the same sale line use (after a split, for example).
+  const saleLotsLeftForLine = (lines: LineItem[], index: number): SaleLotOption[] => {
+    const line = lines[index];
+    if (!line?.saleLots) return [];
+    const otherLines = lines.filter(
+      (other, otherIndex) =>
+        otherIndex !== index &&
+        other.saleItemId === line.saleItemId &&
+        other.stockDisposition === "RESTOCK",
+    );
+    return remainingSaleLots(
+      line.saleLots,
+      sumLotBaseQty(
+        otherLines.map((other) => ({
+          lotItems: other.lotItems,
+          scale: getUnitScale(other.productId, other.unitName),
+        })),
+      ),
+    );
+  };
+
+  // A line linked to a sale line that sold lots re-spreads its quantity over those lots
+  // whenever its quantity, unit or stock result changes; a line not restocked has no lots.
+  const reallocateSaleLots = (lines: LineItem[], index: number): LineItem[] => {
+    const line = lines[index];
+    if (!line?.saleItemId || !line.saleLots?.length) return lines;
+    const lotItems =
+      line.stockDisposition === "RESTOCK"
+        ? allocateSaleLots(
+            saleLotsLeftForLine(lines, index),
+            line.qty,
+            getUnitScale(line.productId, line.unitName),
+            line.lotItems,
+          )
+        : [];
+    return lines.map((candidate, candidateIndex) =>
+      candidateIndex === index ? { ...candidate, lotItems } : candidate,
+    );
   };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
@@ -276,7 +331,8 @@ const CreditNoteForm = ({
         stockDispositionNote: "",
         lotItems: [],
       };
-      return [...prev.slice(0, itemIndex), original, split, ...prev.slice(itemIndex + 1)];
+      const next = [...prev.slice(0, itemIndex), original, split, ...prev.slice(itemIndex + 1)];
+      return reallocateSaleLots(reallocateSaleLots(next, itemIndex), itemIndex + 1);
     });
   };
 
@@ -302,6 +358,7 @@ const CreditNoteForm = ({
               unitName: "",
               salePrice: 0,
               lotItems: [],
+              saleLots: undefined,
             },
       ),
     );
@@ -322,14 +379,15 @@ const CreditNoteForm = ({
               lotItems: product.isLotControl
                 ? [{ lotNo: "", qty: item.qty, unitCost: product.salePrice, mfgDate: "", expDate: "", isReturnLot: false }]
                 : [],
+              saleLots: undefined,
             },
       ),
     );
   };
 
-  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems">, value: string | number) => {
-    setItems((prev) =>
-      prev.map((item, idx) => {
+  const updateItem = (i: number, field: keyof Omit<LineItem, "lotItems" | "saleLots">, value: string | number) => {
+    setItems((prev) => {
+      const next = prev.map((item, idx) => {
         if (idx !== i) return item;
         const updated = { ...item, [field]: value };
         if (field === "qty" && item.productId) {
@@ -339,8 +397,11 @@ const CreditNoteForm = ({
           }
         }
         return updated;
-      })
-    );
+      });
+      return field === "qty" || field === "unitName" || field === "stockDisposition"
+        ? reallocateSaleLots(next, i)
+        : next;
+    });
   };
 
   const addLotRow = (itemIdx: number) => {
@@ -380,6 +441,26 @@ const CreditNoteForm = ({
           lotItems: item.lotItems.map((lot, index) => (index === lotIdx ? { ...lot, [field]: value } : lot)),
         };
       })
+    );
+  };
+
+  // Choosing a sale lot also takes its sale-time cost and MFG/EXP dates.
+  const selectSaleLot = (itemIdx: number, lotIdx: number, lotNo: string) => {
+    setItems((prev) =>
+      prev.map((item, idx) => {
+        if (idx !== itemIdx) return item;
+        const saleLot = item.saleLots?.find((lot) => lot.lotNo === lotNo);
+        return {
+          ...item,
+          lotItems: item.lotItems.map((lot, index) =>
+            index !== lotIdx
+              ? lot
+              : saleLot
+                ? saleLotToRow(saleLot, lot.qty, getUnitScale(item.productId, item.unitName), lot.isReturnLot)
+                : { ...lot, lotNo },
+          ),
+        };
+      }),
     );
   };
 
@@ -440,7 +521,7 @@ const CreditNoteForm = ({
       );
       return;
     }
-    for (const item of items) {
+    for (const [itemIndex, item] of items.entries()) {
       if (!item.productId) {
         setError("กรุณาเลือกสินค้าทุกรายการ");
         return;
@@ -459,7 +540,16 @@ const CreditNoteForm = ({
         product?.isLotControl &&
         item.stockDisposition === "RESTOCK"
       ) {
-        const lotErr = validateCreditNoteLots(item);
+        const lotErr =
+          validateCreditNoteLots(item) ??
+          (item.saleLots?.length
+            ? findSaleLotRowError(
+                saleLotsLeftForLine(items, itemIndex),
+                item.lotItems,
+                getUnitScale(item.productId, item.unitName),
+                item.unitName,
+              )
+            : null);
         if (lotErr) {
           setError(lotErr);
           return;
@@ -826,6 +916,21 @@ const CreditNoteForm = ({
                   cnType === "RETURN" &&
                   !!product?.isLotControl &&
                   item.stockDisposition === "RESTOCK";
+                // Sale-linked lines pick lots from the sale; cost and MFG/EXP follow the chosen lot.
+                const usesSaleLots = showLots && !!item.saleItemId && !!item.saleLots?.length;
+                const unitScale = getUnitScale(item.productId, item.unitName);
+                const saleLotSelectOptions: SelectOption[] = usesSaleLots
+                  ? saleLotsLeftForLine(items, i).map((lot) => ({
+                      id: lot.lotNo,
+                      label: lot.lotNo,
+                      sublabel: [
+                        `คืนได้ ${Math.round((lot.baseQty / (unitScale || 1)) * 10000) / 10000} ${item.unitName}`,
+                        lot.expDate ? `EXP ${formatDateThai(lot.expDate)}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · "),
+                    }))
+                  : [];
 
                 return (
                   <>
@@ -955,7 +1060,14 @@ const CreditNoteForm = ({
                       <tr key={`lot-${i}`} className="bg-amber-50/60 border-b border-gray-50 dark:bg-amber-500/10 dark:border-white/5">
                         <td colSpan={7} className="px-3 py-3">
                           <div className="flex items-center justify-between mb-2">
-                            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">Lot Control</div>
+                            <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                              Lot Control
+                              {usesSaleLots ? (
+                                <span className="ml-2 font-normal text-amber-700/80 dark:text-amber-300/80">
+                                  ดึง Lot จากใบขายต้นทาง — เลือกได้เฉพาะ Lot ที่ขายออกไป
+                                </span>
+                              ) : null}
+                            </div>
                             <button
                               type="button"
                               onClick={() => addLotRow(i)}
@@ -967,13 +1079,26 @@ const CreditNoteForm = ({
                           <div className="space-y-2">
                             {item.lotItems.map((lot, lotIdx) => (
                               <div key={`${i}-${lotIdx}`} className="grid grid-cols-1 md:grid-cols-[2fr_110px_120px_120px_130px_130px_40px_32px] gap-2 items-center">
-                                <input
-                                  type="text"
-                                  value={lot.lotNo}
-                                  onChange={(e) => updateLotRow(i, lotIdx, "lotNo", e.target.value)}
-                                  className={inputCls}
-                                  placeholder="Lot No"
-                                />
+                                {usesSaleLots ? (
+                                  <SearchableSelect
+                                    options={
+                                      lot.lotNo && !saleLotSelectOptions.some((option) => option.id === lot.lotNo)
+                                        ? [...saleLotSelectOptions, { id: lot.lotNo, label: lot.lotNo, sublabel: "ไม่อยู่ในใบขายต้นทาง" }]
+                                        : saleLotSelectOptions
+                                    }
+                                    value={lot.lotNo}
+                                    onChange={(lotNo) => selectSaleLot(i, lotIdx, lotNo)}
+                                    placeholder="เลือก Lot จากใบขาย"
+                                  />
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={lot.lotNo}
+                                    onChange={(e) => updateLotRow(i, lotIdx, "lotNo", e.target.value)}
+                                    className={inputCls}
+                                    placeholder="Lot No"
+                                  />
+                                )}
                                 <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-slate-300">
                                   <input
                                     type="checkbox"
@@ -995,18 +1120,22 @@ const CreditNoteForm = ({
                                   step={0.01}
                                   onValueChange={(value) => updateLotRow(i, lotIdx, "unitCost", value)}
                                   className={inputCls}
+                                  disabled={usesSaleLots}
+                                  title={usesSaleLots ? "ต้นทุนตาม Lot ในใบขาย" : undefined}
                                 />
                                 <input
                                   type="date"
                                   value={lot.mfgDate}
                                   onChange={(e) => updateLotRow(i, lotIdx, "mfgDate", e.target.value)}
                                   className={inputCls}
+                                  disabled={usesSaleLots}
                                 />
                                 <input
                                   type="date"
                                   value={lot.expDate}
                                   onChange={(e) => updateLotRow(i, lotIdx, "expDate", e.target.value)}
                                   className={inputCls}
+                                  disabled={usesSaleLots}
                                 />
                                 <div className="text-[11px] text-gray-500 dark:text-slate-400">
                                   {lot.isReturnLot ? "จะบันทึกเป็น RET-lot" : "จะ merge กลับ lot เดิม"}

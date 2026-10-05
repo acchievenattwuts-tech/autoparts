@@ -2,6 +2,7 @@ import { Prisma } from "@/lib/generated/prisma";
 import { db } from "@/lib/db";
 import { formatDateOnlyForInput } from "@/lib/th-date";
 import { LotStockInsufficientError } from "@/lib/lot-stock-error";
+import { buildReturnLotNo } from "@/lib/credit-note-return-lots";
 
 // Re-export client-safe types and pure functions
 export type { LotSubRow, LotAvailable } from "@/lib/lot-control-client";
@@ -387,11 +388,7 @@ export async function writeCreditNoteLots(
   lots: (LotSubRowBase & { isReturnLot: boolean })[]
 ): Promise<void> {
   for (const lot of lots) {
-    const returnSuffix = `-${cnItemId.slice(-8)}`;
-    const maxSourceLength = Math.max(1, 100 - "RET-".length - returnSuffix.length);
-    const effectiveLotNo = lot.isReturnLot
-      ? `RET-${lot.lotNo.slice(0, maxSourceLength)}${returnSuffix}`
-      : lot.lotNo;
+    const effectiveLotNo = lot.isReturnLot ? buildReturnLotNo(lot.lotNo, cnItemId) : lot.lotNo;
 
     if (lot.isReturnLot) {
       // สร้าง ProductLot ใหม่สำหรับ RET-lot ถ้ายังไม่มี

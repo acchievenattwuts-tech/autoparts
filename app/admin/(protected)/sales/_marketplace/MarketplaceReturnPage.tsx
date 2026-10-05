@@ -234,7 +234,7 @@ export default async function MarketplaceReturnPage({
           customerName: setting.defaultCustomerName,
           cashBankAccountId: selectedSale.cashBankAccountId,
           holdingAccountLabel: `${selectedSale.cashBankAccount.code} — ${selectedSale.cashBankAccount.name}`,
-          items: saleDetail.items.map((item) => ({ ...item, lotItems: [] })),
+          items: saleDetail.items,
           products: saleDetail.products,
           vatType: saleDetail.vatType,
           vatRate: saleDetail.vatRate,
