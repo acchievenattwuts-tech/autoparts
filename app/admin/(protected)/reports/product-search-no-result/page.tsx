@@ -12,6 +12,7 @@ import AdminStatCard from "@/components/shared/AdminStatCard";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import FormSubmitButton from "@/components/shared/FormSubmitButton";
 import { db } from "@/lib/db";
+import { getActiveCarBrandFilterOptions } from "@/lib/admin-master-options";
 import { ProductSearchReviewStatus as PrismaProductSearchReviewStatus } from "@/lib/generated/prisma";
 import {
   buildAutoApplySearchSynonymPlan,
@@ -247,19 +248,7 @@ export default async function ProductSearchNoResultPage({ searchParams }: PagePr
         : {},
       _count: { _all: true },
     }),
-    db.carBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        carModels: {
-          where: { isActive: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        },
-      },
-    }),
+    getActiveCarBrandFilterOptions(),
   ]);
 
   // Aggregate the 5 log counts from a single groupBy result instead of 5 separate queries.

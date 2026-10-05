@@ -20,6 +20,7 @@
   - refresh: upsert (ON CONFLICT (normalized,kind)) + ลบเฉพาะ stale ใน transaction เดียว — คง id/createdAt, ไม่ truncate
   - กลไกเรียก refresh (best-effort + safety net):
     - **best-effort ต่อการแก้ข้อมูล** ผ่าน `triggerSearchKeywordRefresh()` (fire-and-forget) ที่ฝังใน `revalidateStorefrontCaches()` (ครอบคลุมการแก้สินค้า) และใน helper revalidate ของ master actions: categories / car-brands (รวมรุ่นรถ) / parts-brands / search-synonyms
+    - ตั้งแต่ 2026-10-05 การบันทึกสินค้า (`updateProduct`) สร้างดัชนีใหม่เฉพาะเมื่อ field ที่ดัชนีอ่านเปลี่ยน (`SEARCH_KEYWORD_PRODUCT_FIELDS` = `name`, `isActive`, `isStorefrontVisible`, `stock` ใน [lib/product-cache-refresh-scope.ts](/D:/autoparts/lib/product-cache-refresh-scope.ts)) — แก้แค่ราคาไม่สร้างใหม่ (วันที่ 3 ต.ค. สร้างใหม่ 92 รอบ รอบละ ~0.3 MB) · แก้ query สินค้าใน `buildSearchKeywordRows()` ต้องแก้รายการนี้ด้วย (golden test `lib/__tests__/product-cache-refresh-scope.golden.test.ts` ตรวจให้)
     - **safety net** cron `/api/search/cron/refresh-keywords` (vercel.json 18:30 UTC daily) + manual `npm run refresh:search-keywords` — ครอบคลุมทุกชนิดข้อมูล
     - หมายเหตุ: บน serverless การ fire-and-forget อาจถูกตัดก่อนจบ → cron คือกลไกที่การันตี
 - endpoint เบา: [app/api/search/keywords/route.ts](/D:/autoparts/app/api/search/keywords/route.ts) — prefix lookup เดียว (btree) คืน "คำ" ล้วน → วัดได้ ~40ms (เทียบ 139–475ms เดิม)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isMetaPlatformsIp } from "@/lib/meta-platforms-network";
 import {
   getBangkokDayKey,
   isStorefrontPath,
@@ -69,8 +70,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false }, { status: 400 });
   }
 
+  const ip = clientIp(request);
+  // Meta's ad-review crawler runs real headless Chrome, so it passes every check above;
+  // accept the beacon without counting it (no throttle row, no visit row).
+  if (isMetaPlatformsIp(ip)) {
+    return NextResponse.json({ ok: true }, { status: 202 });
+  }
+
   const rate = await checkRateLimit({
-    key: `storefront-visit:${clientIp(request)}`,
+    key: `storefront-visit:${ip}`,
     limit: RATE_LIMIT_MAX_REQUESTS,
     windowMs: RATE_LIMIT_WINDOW_MS,
   });

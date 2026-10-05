@@ -8,7 +8,7 @@ import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import AdminExportLink from "@/components/shared/AdminExportLink";
 import SearchableSelectFilter from "@/components/shared/SearchableSelectFilter";
-import { db } from "@/lib/db";
+import { getAllCategoryFilterOptions } from "@/lib/admin-master-options";
 import { requirePermission } from "@/lib/require-auth";
 import { parseARAPStockFilters } from "@/lib/ar-ap-stock-report-queries";
 
@@ -25,10 +25,7 @@ export default async function StockReportPage({ searchParams }: PageProps) {
 
   // Only the category dropdown the filter form needs is awaited here; the stock
   // rows stream in behind <Suspense>.
-  const categories = await db.category.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  const categories = await getAllCategoryFilterOptions();
 
   const exportQuery = new URLSearchParams({
     ...(params.categoryId ? { categoryId: params.categoryId } : {}),

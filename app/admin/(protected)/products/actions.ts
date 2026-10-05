@@ -30,6 +30,13 @@ import {
   isAllowedProductImageUrl,
 } from "@/lib/product-image-storage";
 import { revalidateStorefrontCaches } from "@/lib/storefront-revalidation";
+import { triggerSearchKeywordRefresh } from "@/lib/search-keyword-index";
+import {
+  FULL_PRODUCT_CACHE_REFRESH,
+  listChangedSnapshotFields,
+  resolveProductCacheRefreshScope,
+  type ProductCacheRefreshScope,
+} from "@/lib/product-cache-refresh-scope";
 import {
   enqueueProductStorefrontSync,
   getProductStorefrontPath,
@@ -234,17 +241,30 @@ async function syncProductPrices(
   }
 }
 
-const revalidateStorefrontProductCaches = async (productId?: string, canonicalPath?: string) => {
+const revalidateStorefrontProductCaches = async (
+  productId?: string,
+  canonicalPath?: string,
+  scope: ProductCacheRefreshScope = FULL_PRODUCT_CACHE_REFRESH,
+) => {
   revalidatePath("/admin/products");
   updateProductSearchCache();
-  invalidateTransactionProductOptions();
   if (productId) {
     updateTag(`storefront-product:${productId}`);
   }
   if (canonicalPath) {
     revalidatePath(canonicalPath);
   }
-  await revalidateStorefrontCaches();
+  // The picker catalog, storefront-wide expiry and the keyword rebuild are the
+  // expensive steps; a save that only touched admin-only fields (e.g. price lists)
+  // skips them.
+  if (scope.transactionProductCatalog) {
+    invalidateTransactionProductOptions();
+  }
+  if (scope.storefrontWide) {
+    await revalidateStorefrontCaches(undefined, { refreshSearchKeywordIndex: scope.searchKeywordIndex });
+  } else if (scope.searchKeywordIndex) {
+    triggerSearchKeywordRefresh();
+  }
 };
 
 const getStringFormValue = (formData: FormData, key: string): string => {
@@ -1184,9 +1204,12 @@ export const updateProduct = async (
     });
 
     const afterSnapshot = await getProductAuditSnapshot(id);
+    // null (unknown) refreshes every cache — see lib/product-cache-refresh-scope.ts.
+    let changedFields: string[] | null = null;
 
     if (beforeSnapshot && afterSnapshot) {
       const diff = diffEntity(beforeSnapshot, afterSnapshot);
+      changedFields = listChangedSnapshotFields(diff);
 
       await safeWriteAuditLog({
         ...getAuditActorFromSession(session),
@@ -1202,7 +1225,11 @@ export const updateProduct = async (
 
     await cleanupProductImageObjects([...removedImageUrls, ...normalizedImages.orphanedSourceUrls]);
     revalidatePath(`/admin/products/${id}/edit`);
-    await revalidateStorefrontProductCaches(id, updatedProductPath);
+    await revalidateStorefrontProductCaches(
+      id,
+      updatedProductPath,
+      resolveProductCacheRefreshScope(changedFields),
+    );
     // Refresh the semantic embedding off the response path (text/fitment may have
     // changed). No-op when semantic search is off.
     after(() => reembedProductSearchDocument(id));

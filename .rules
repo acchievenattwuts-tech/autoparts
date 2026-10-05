@@ -219,6 +219,9 @@ Targets: page load under 3 seconds (TTFB + render) on admin and storefront; LCP 
 - Frequently changing data: `export const dynamic = "force-dynamic"` (mandatory for admin DB pages, §12).
 - Stable storefront data: static generation or `revalidate`.
 - `revalidatePath()` after mutations, scoped to affected pages — never the whole cache.
+- Product-master saves expire storefront-wide caches, rebuild the search-keyword index and expire the transaction product-picker catalog **only when a field that cache uses changed** — route them through `revalidateStorefrontProductCaches(id, path, resolveProductCacheRefreshScope(changedFields))`. Admin product search and the product's own storefront entry are refreshed on every save. Sync triggers: `AGENTS.md` §8.11.
+- Admin dropdown and filter options for categories, parts brands and car brands/models come from the cached helpers in `lib/admin-master-options.ts` (`getAdminProductFilterOptions()`, `getActiveCategoryFilterOptions()`, `getActiveCarBrandFilterOptions()`, `getAllCategoryFilterOptions()` when inactive rows must stay) — never re-query those master tables on every render. Pages that manage the master data itself are the exception.
+- Every database byte counts as Supabase egress, including pooler traffic from scripts and local dev (`.env.local` points at production). Before adding a query on a page that re-renders often (list pages, polled endpoints, crons that run every minute), estimate its result size; prefer cached master data and `select` only rendered columns. Truncate long text in SQL (`left(column, n)`) instead of fetching it whole and slicing in JavaScript.
 - `useTransition` around Server Action calls so the UI does not block.
 
 ### Assets & bundle
@@ -247,6 +250,11 @@ Targets: page load under 3 seconds (TTFB + render) on admin and storefront; LCP 
 ### Phased rollout
 
 Follow the SEO rollout plan in `PLAN.md` strictly. Do not skip phases or bundle work from several phases into one deployment. Each phase is deployed, verified, and monitored for 3–5 days before the next begins. If a phase causes a regression — traffic drop, CWV degradation, crawl errors — pause the next phase and investigate.
+
+### Crawlers and visitor analytics
+
+- The shop runs Facebook ads. **Never block, rate-limit or firewall Meta's network or user agents** — Meta's ad review must reach the landing pages. Its review crawler runs headless Chrome with an ordinary Chrome user agent, so user-agent bot checks do not catch it.
+- Storefront visitor analytics (`StorefrontVisitDaily`, `/api/storefront-visit`) exclude Meta's network with `isMetaPlatformsIp()` from `lib/meta-platforms-network.ts`. Use that helper for analytics filtering only. Any new visitor or conversion counter applies the same filter.
 
 ## 15. Absolute prohibitions
 

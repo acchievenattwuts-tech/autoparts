@@ -38,12 +38,19 @@ export const refreshCategoryStorefrontCaches = async (categoryId?: string) => {
   updateTag(`storefront-category:${categoryId}`);
 };
 
-export const revalidateStorefrontCaches = async (categoryId?: string) => {
+export const revalidateStorefrontCaches = async (
+  categoryId?: string,
+  options: { refreshSearchKeywordIndex?: boolean } = {},
+) => {
   revalidateStorefrontTags();
   revalidateStorefrontPaths();
   // Keep the keyword-first autocomplete index fresh after catalog mutations
-  // (best-effort; the daily cron guarantees eventual consistency).
-  triggerSearchKeywordRefresh();
+  // (best-effort; the daily cron guarantees eventual consistency). Product saves
+  // pass false when nothing the index reads changed — see
+  // lib/product-cache-refresh-scope.ts.
+  if (options.refreshSearchKeywordIndex ?? true) {
+    triggerSearchKeywordRefresh();
+  }
 
   if (!categoryId) {
     return;

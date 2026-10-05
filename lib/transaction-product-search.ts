@@ -226,19 +226,24 @@ export const getTransactionProductDetailRowsByIds = async (
 };
 
 export const buildTransactionProductCatalog = async (): Promise<TransactionProductCatalogItem[]> => {
-  const [products, aliases] = await Promise.all([
+  const [products, descriptions, aliases] = await Promise.all([
     withDbRetry(() => db.product.findMany({
       orderBy: [{ code: "asc" }, { id: "asc" }],
       select: {
         id: true,
         code: true,
         name: true,
-        description: true,
         isActive: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
       },
     })),
+    // Truncated in SQL: full descriptions were ~4 MB of the ~5.5 MB a rebuild read
+    // from the database, only to be cut to DESCRIPTION_MAX_CHARS below.
+    withDbRetry(() => db.$queryRaw<Array<{ id: string; description: string | null }>>`
+      SELECT id, left(description, ${DESCRIPTION_MAX_CHARS}) AS description
+      FROM "Product"
+    `),
     withDbRetry(() => db.$queryRaw<Array<{ productId: string; aliasSearchText: string | null }>>`
       SELECT
         "productId",
@@ -247,12 +252,15 @@ export const buildTransactionProductCatalog = async (): Promise<TransactionProdu
       GROUP BY "productId"
     `),
   ]);
+  const descriptionById = new Map(descriptions.map((row) => [row.id, row.description]));
   const aliasByProduct = new Map(aliases.map((row) => [row.productId, row.aliasSearchText ?? ""]));
   return products.map((product) => ({
     id: product.id,
     code: product.code,
     name: product.name,
-    description: product.description?.slice(0, DESCRIPTION_MAX_CHARS) ?? null,
+    // SQL left() counts code points, so this JS slice keeps the exact UTF-16 cut
+    // the catalog always used.
+    description: descriptionById.get(product.id)?.slice(0, DESCRIPTION_MAX_CHARS) ?? null,
     categoryName: product.category.name,
     brandName: product.brand?.name ?? null,
     aliasSearchText: aliasByProduct.get(product.id) ?? "",

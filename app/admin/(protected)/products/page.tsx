@@ -2,6 +2,7 @@
 
 import { getSession } from "@/lib/auth-session";
 import { db } from "@/lib/db";
+import { getAdminProductFilterOptions } from "@/lib/admin-master-options";
 import {
   buildAdminProductFilterQueryString,
   buildAdminProductFilterSearchParams,
@@ -146,31 +147,9 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
   };
 
-  const [searchResult, categories, partsBrands, carBrands] = await Promise.all([
+  const [searchResult, { categories, partsBrands, carBrands }] = await Promise.all([
     searchProductIds(productSearchInput),
-    db.category.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    db.partsBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    db.carBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        carModels: {
-          where: { isActive: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        },
-      },
-    }),
+    getAdminProductFilterOptions(),
   ]);
 
   await logProductSearchTelemetry({

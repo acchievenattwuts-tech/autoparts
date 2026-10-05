@@ -52,6 +52,60 @@ export const getActivePartsBrandOptions = unstable_cache(
   { tags: [ADMIN_MASTER_OPTION_TAGS.partsBrands], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
 );
 
+type MasterOption = { id: string; name: string };
+
+export type AdminProductFilterOptions = {
+  categories: MasterOption[];
+  partsBrands: MasterOption[];
+  carBrands: Array<MasterOption & { carModels: MasterOption[] }>;
+};
+
+const toMasterOption = ({ id, name }: MasterOption): MasterOption => ({ id, name });
+
+/** Active categories as id/name filter options (cached master list). */
+export const getActiveCategoryFilterOptions = async (): Promise<MasterOption[]> =>
+  (await getActiveCategoryOptions()).map(toMasterOption);
+
+/** Active car brands with their active models as id/name filter options (cached master list). */
+export const getActiveCarBrandFilterOptions = async (): Promise<AdminProductFilterOptions["carBrands"]> =>
+  (await getActiveCarBrandOptionsWithModels()).map(({ id, name, carModels }) => ({
+    id,
+    name,
+    carModels: carModels.map(toMasterOption),
+  }));
+
+/**
+ * Category / parts-brand / car-brand+model options for the admin product list and
+ * product search filters, served from the cached master lists above. Those two
+ * pages re-render on every filter change and pagination, and querying the three
+ * tables directly cost ~16.5 KB of database egress per render (462 renders on
+ * 2026-10-03). Trimmed to id/name so the RSC payload stays small too.
+ */
+export const getAdminProductFilterOptions = async (): Promise<AdminProductFilterOptions> => {
+  const [categories, partsBrands, carBrands] = await Promise.all([
+    getActiveCategoryFilterOptions(),
+    getActivePartsBrandOptions(),
+    getActiveCarBrandFilterOptions(),
+  ]);
+  return {
+    categories,
+    partsBrands: partsBrands.map(toMasterOption),
+    carBrands,
+  };
+};
+
+/**
+ * Every category, inactive ones included, as id/name options — for report filters
+ * where products in a retired category still carry stock or history. Shares the
+ * categories tag, so every category mutation refreshes it too.
+ */
+export const getAllCategoryFilterOptions = unstable_cache(
+  async (): Promise<MasterOption[]> =>
+    withDbRetry(() => db.category.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } })),
+  ["admin-master-categories-all-v1"],
+  { tags: [ADMIN_MASTER_OPTION_TAGS.categories], revalidate: MASTER_OPTIONS_REVALIDATE_SECONDS },
+);
+
 export const loadActiveCustomerTypeOptions = async () =>
   withDbRetry(() =>
     db.customerType.findMany({

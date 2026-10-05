@@ -5,6 +5,7 @@ import { ArrowLeft, ReceiptText } from "lucide-react";
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import ReportTableShell from "@/components/shared/ReportTableShell";
 import { db } from "@/lib/db";
+import { getActiveCategoryFilterOptions } from "@/lib/admin-master-options";
 import { saleChannelLabel } from "@/lib/report-queries";
 import { requirePermission } from "@/lib/require-auth";
 import {
@@ -127,11 +128,7 @@ export default async function SalesLineProfitPage({
       select: { id: true, code: true, name: true },
       take: 1_000,
     }),
-    db.category.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+    getActiveCategoryFilterOptions(),
     db.product.findMany({
       where: { isActive: true },
       orderBy: { code: "asc" },

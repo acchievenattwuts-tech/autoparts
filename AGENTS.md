@@ -203,6 +203,17 @@ If a change adds a Server Action rendered on `/`, a webhook targeting `/`, or an
 
 Every notification goes to **both** the in-app bell and Telegram in a single `createNotification()` call. Every admin mutation writes an `AuditLog` entry. Both are detailed in `.rules` — wiring them is part of the definition of done, not a follow-up.
 
+### 8.11 Product cache scope
+
+A product save skips the storefront-wide cache expiry, the keyword-index rebuild and the transaction product-picker catalog rebuild when only fields they do not use changed (`lib/product-cache-refresh-scope.ts`). The decision is only as correct as four lists, so in the same round:
+
+- Changing the product query in `buildSearchKeywordRows()` (`lib/search-keyword-index.ts`) → update `SEARCH_KEYWORD_PRODUCT_FIELDS`.
+- Changing what `buildTransactionProductCatalog()` (`lib/transaction-product-search.ts`) loads — for example caching prices or units in the picker catalog — → update `TRANSACTION_CATALOG_PRODUCT_FIELDS`.
+- Making any storefront loader, storefront route, or cache under a `storefront:*` / `storefront-product:` / `storefront-category:` tag read a field listed in `STOREFRONT_HIDDEN_PRODUCT_FIELDS` (for example showing member or price-list prices on the storefront) → remove that field from the list.
+- Adding a column that `updateProduct` writes → add it to `getProductAuditSnapshot()` in `app/admin/(protected)/products/actions.ts`. A change the snapshot cannot see is treated as "nothing changed" for cache purposes.
+
+Run `lib/__tests__/product-cache-refresh-scope.golden.test.ts`; it fails on each of these drifts.
+
 ---
 
 ## 9. Roadmap maintenance

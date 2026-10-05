@@ -16,6 +16,7 @@ import type { Prisma } from "@/lib/generated/prisma";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { db } from "@/lib/db";
+import { getAdminProductFilterOptions } from "@/lib/admin-master-options";
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
@@ -120,31 +121,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     ...(requiredTokens.length > 0 ? { requiredTokens } : {}),
   };
 
-  const [searchResult, categories, partsBrands, carBrands] = await Promise.all([
+  const [searchResult, { categories, partsBrands, carBrands }] = await Promise.all([
     searchProductIds(productSearchInput),
-    db.category.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    db.partsBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    db.carBrand.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        carModels: {
-          where: { isActive: true },
-          orderBy: { name: "asc" },
-          select: { id: true, name: true },
-        },
-      },
-    }),
+    getAdminProductFilterOptions(),
   ]);
 
   await logProductSearchTelemetry({
