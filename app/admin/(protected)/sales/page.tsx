@@ -32,6 +32,7 @@ import {
   parseDateOnlyToStartOfDay,
 } from "@/lib/th-date";
 import { getReferencedReturnProgress } from "@/lib/credit-note-return";
+import { normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const PAGE_SIZE = 30;
 
@@ -160,6 +161,15 @@ const SalesPage = async ({
     where.shippingStatus  = shippingStatusFilter as ShippingStatus;
   }
   if (q) {
+    // Customer phones are stored as 081-234-5678, so also try the normalized form of what was typed.
+    const normalizedPhone = (() => {
+      try {
+        return normalizeCustomerPhone(q);
+      } catch {
+        return undefined;
+      }
+    })();
+    const phoneTerms = normalizedPhone && normalizedPhone !== q ? [q, normalizedPhone] : [q];
     where.AND = [
       ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
       {
@@ -168,6 +178,11 @@ const SalesPage = async ({
           { channelRefNo: { contains: q, mode: "insensitive" } },
           { customerName: { contains: q, mode: "insensitive" } },
           { customer:     { name: { contains: q, mode: "insensitive" } } },
+          { note:         { contains: q, mode: "insensitive" } },
+          ...phoneTerms.flatMap((term) => [
+            { customerPhone: { contains: term } },
+            { customer:      { phone: { contains: term } } },
+          ]),
         ],
       },
     ];
@@ -301,8 +316,8 @@ const SalesPage = async ({
           <SearchBar
             placeholder={
               marketplaceConfig
-                ? `ค้นหาเลขที่ใบขาย, ${marketplaceConfig.orderRefLabel}, ชื่อผู้ซื้อ...`
-                : "ค้นหาเลขที่ใบขาย, ชื่อลูกค้า..."
+                ? `ค้นหาเลขที่ใบขาย, ${marketplaceConfig.orderRefLabel}, ชื่อผู้ซื้อ, เบอร์โทร, หมายเหตุ...`
+                : "ค้นหาเลขที่ใบขาย, ชื่อลูกค้า, เบอร์โทร, หมายเหตุ..."
             }
           />
         </div>
