@@ -7,7 +7,7 @@ dotenv.config({ path: ".env" });
  * อัปเดต "ราคาขายปลีก" (Product.retailPrice) จาก "ราคาขายส่ง" (Product.salePrice)
  * ด้วยสูตรเดียวกับ Lazada:
  *
- *   retailPrice = (salePrice + 60) / 0.7218  ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
+ *   retailPrice = (salePrice + 60) / 0.7218 x 1.05  ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)
  *
  * สูตรเดียวกับฟอร์มสินค้า (lib/product-pricing.ts → deriveRetailPriceFromWholesale)
  *
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
   console.log("=".repeat(90));
   console.log(apply ? "APPLY MODE — จะเขียนลง DB จริง" : "DRY RUN — ยังไม่เขียน DB (ใส่ --apply เพื่อรันจริง)");
   console.log("=".repeat(90));
-  console.log("สูตร: ราคาขายปลีก = (ขายส่ง + 60) / 0.7218 ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)");
+  console.log("สูตร: ราคาขายปลีก = (ขายส่ง + 60) / 0.7218 x 1.05 ปัดขึ้นลงท้ายด้วย 5 หรือ 0 (เพิ่มขึ้นเสมอ)");
   console.log("เขียนทับราคาปลีกเดิมทั้งหมด — ไม่แตะราคาสมาชิก\n");
   console.log(`สินค้าทั้งหมด: ${products.length} รายการ`);
   console.log(`ข้าม (ยังไม่มีราคาขายส่ง): ${skippedNoWholesale} รายการ`);
@@ -147,7 +147,7 @@ async function main(): Promise<void> {
             entityType: "Product",
             entityRef: "bulk-recalc-retail-price-lazada-formula",
             meta: {
-              rule: "retailPrice = (salePrice + 60) / 0.7218, round up to next multiple of 5",
+              rule: "retailPrice = (salePrice + 60) / 0.7218 * 1.05, round up to next multiple of 5",
               scope: "สินค้าทุกตัว (active + inactive) ที่ salePrice > 0 — เขียนทับราคาปลีกเดิมทั้งหมด",
               scannedCount: products.length,
               skippedNoWholesaleCount: skippedNoWholesale,

@@ -1607,7 +1607,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
               onChange={(e) => setRetailPriceInput(e.target.value)}
               min={0} step={0.01} className={inputCls} />
             <p className={helpCls}>
-              ราคาสำหรับลูกค้าทั่วไป — คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218
+              ราคาสำหรับลูกค้าทั่วไป — คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218 × 1.05
               ปัดขึ้นลงท้าย 5/0 (สูตรเดียวกับ Lazada) — เว้น 0 ระบบจะแสดง “สอบถามราคา”
             </p>
           </div>
@@ -1644,7 +1644,7 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
                   {priceList.channel === "SHOPEE"
                     ? "คำนวณอัตโนมัติจากราคาขายส่ง: ขายส่ง × 1.40 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
                     : priceList.channel === "LAZADA"
-                      ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
+                      ? "คำนวณอัตโนมัติจากราคาขายส่ง: (ขายส่ง + 60) ÷ 0.7218 × 1.05 ปัดขึ้นลงท้าย 5/0 — แก้ไขเองได้"
                       : priceList.channel
                         ? `ราคาเติมเริ่มต้นสำหรับ ${priceList.channel}; พนักงานแก้ราคาจริงในบิลได้`
                         : `ราคาในระดับราคา ${priceList.code}`}

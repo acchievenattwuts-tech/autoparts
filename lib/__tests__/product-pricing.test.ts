@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyLazadaPriceUplift,
   deriveLazadaPriceFromWholesale,
   deriveMarketplacePricesFromWholesale,
+  deriveRetailPriceFromWholesale,
   deriveShopeePriceFromWholesale,
 } from "../product-pricing";
 
@@ -30,5 +32,19 @@ test("combined marketplace pricing uses the new Shopee formula without changing 
     shopeePrice: 410,
     lazadaPrice: deriveLazadaPriceFromWholesale(290),
   });
-  assert.equal(deriveLazadaPriceFromWholesale(290), 485);
+  assert.equal(deriveLazadaPriceFromWholesale(290), 510);
+});
+
+test("Lazada price adds 5% on top of the fee formula and retail follows it", () => {
+  assert.equal(deriveLazadaPriceFromWholesale(100), 235);
+  assert.equal(deriveLazadaPriceFromWholesale(1_000), 1_545);
+  assert.equal(deriveRetailPriceFromWholesale(1_000), deriveLazadaPriceFromWholesale(1_000));
+  assert.equal(deriveLazadaPriceFromWholesale(0), 0);
+});
+
+test("Lazada uplift raises a stored price by 5% with the always-advance rounding", () => {
+  assert.equal(applyLazadaPriceUplift(1_470), 1_545);
+  assert.equal(applyLazadaPriceUplift(1_500), 1_580);
+  assert.equal(applyLazadaPriceUplift(0), 0);
+  assert.equal(applyLazadaPriceUplift(Number.NaN), 0);
 });

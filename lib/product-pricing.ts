@@ -6,7 +6,7 @@
  *
  * ลำดับราคา: ขายส่ง < สมาชิก < ขายปลีก
  *
- * ราคาขายปลีก ใช้สูตรเดียวกับ Lazada: (ขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0
+ * ราคาขายปลีก ใช้สูตรเดียวกับ Lazada: (ขายส่ง + 60) ÷ 0.7218 × 1.05 ปัดขึ้นลงท้าย 5/0
  * ราคาสมาชิก  คงสูตรเดิม: (ขายส่ง x 1.70 ปัดขึ้นลงท้าย 0) - 30% ปัดขึ้นลงท้าย 0
  *              — ไม่ผูกกับราคาขายปลีกใหม่ เพื่อให้ระดับราคาสมาชิกเท่าเดิม
  */
@@ -55,7 +55,7 @@ export function deriveMemberPriceFromRetail(basePrice: number): number {
  * ราคา Marketplace (Shopee / Lazada) คิดจาก "ราคาขายส่ง"
  *
  *   Shopee = ราคาขายส่ง × 1.40
- *   Lazada = (ราคาขายส่ง + 60)        ÷ 0.7218
+ *   Lazada = (ราคาขายส่ง + 60)        ÷ 0.7218 × 1.05
  *
  * ทั้งสองช่องปัดขึ้นให้ลงท้ายด้วย 5 หรือ 0 แบบ "เพิ่มขึ้นเสมอ"
  * (182.19 → 185, 185 → 190, 180 → 185)
@@ -67,6 +67,8 @@ const MARKETPLACE_SHIPPING_COST = 60;
 const SHOPEE_MARKUP_MULTIPLIER = 1.4;
 /** สัดส่วนเงินที่ร้านได้รับจริงหลังหักค่าธรรมเนียม Lazada */
 const LAZADA_NET_RATIO = 0.7218;
+/** ราคา Lazada บวกเพิ่มอีก 5% จากสูตรค่าธรรมเนียม (ตั้งแต่ 2026-10-12) */
+export const LAZADA_PRICE_UPLIFT_MULTIPLIER = 1.05;
 /** ขั้นการปัดราคา Marketplace */
 const MARKETPLACE_ROUND_STEP = 5;
 
@@ -90,13 +92,21 @@ export function deriveShopeePriceFromWholesale(wholesalePrice: number): number {
   return roundUpToNextFive(wholesalePrice * SHOPEE_MARKUP_MULTIPLIER);
 }
 
-/** ราคา Lazada = (ราคาขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 */
+/** ราคา Lazada = (ราคาขายส่ง + 60) ÷ 0.7218 × 1.05 ปัดขึ้นลงท้าย 5/0 */
 export function deriveLazadaPriceFromWholesale(wholesalePrice: number): number {
   if (!Number.isFinite(wholesalePrice) || wholesalePrice <= 0) return 0;
-  return roundUpToNextFive((wholesalePrice + MARKETPLACE_SHIPPING_COST) / LAZADA_NET_RATIO);
+  return roundUpToNextFive(
+    ((wholesalePrice + MARKETPLACE_SHIPPING_COST) / LAZADA_NET_RATIO) * LAZADA_PRICE_UPLIFT_MULTIPLIER,
+  );
 }
 
-/** ราคาขายปลีก = ใช้สูตรเดียวกับ Lazada: (ขายส่ง + 60) ÷ 0.7218 ปัดขึ้นลงท้าย 5/0 */
+/** ปรับราคาที่ตั้งไว้แล้วขึ้น 5% ปัดขึ้นลงท้าย 5/0 — ใช้ย้ายราคาเดิมเข้าสูตร Lazada ใหม่ */
+export function applyLazadaPriceUplift(currentPrice: number): number {
+  if (!Number.isFinite(currentPrice) || currentPrice <= 0) return 0;
+  return roundUpToNextFive(currentPrice * LAZADA_PRICE_UPLIFT_MULTIPLIER);
+}
+
+/** ราคาขายปลีก = ใช้สูตรเดียวกับ Lazada: (ขายส่ง + 60) ÷ 0.7218 × 1.05 ปัดขึ้นลงท้าย 5/0 */
 export function deriveRetailPriceFromWholesale(wholesalePrice: number): number {
   return deriveLazadaPriceFromWholesale(wholesalePrice);
 }
