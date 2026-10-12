@@ -14,6 +14,9 @@
 // high one is 1900+. 40 is the split point (2040 vs 1941) — comfortably past the
 // newest plausible model year while still reading "41".."99" as 1941..1999.
 const TWO_DIGIT_CENTURY_SPLIT = 40;
+// Two-digit years from here up read as 19xx without doubt; 41..69 could be either
+// 19xx or a พ.ศ. shorthand ("ปี 55" = 2555 = 2012). Only scanCarYearMentions uses it.
+const TWO_DIGIT_TWENTIETH_CENTURY_FROM = 70;
 
 // Plausible car model-year window. Matches the intent of isPlausibleCarYear in
 // product-search-required-tokens.ts (1980–2035) but a touch wider on the low end
@@ -96,4 +99,73 @@ export const parseCarYearRangeStart = (text?: string | null): number | null => {
     if (from !== null && to !== null && from <= to) return from;
   }
   return null;
+};
+
+/** One car year found in free text; a range reports its start year. */
+export type CarYearMention = { year: number; start: number; end: number };
+
+/**
+ * Every car year a customer typed, for the deterministic price-subject fallback
+ * (the Gemini classifier normally reads the year). Stricter than
+ * {@link parseCarYearRangeStart} because a wrong year becomes a hard fitment
+ * filter:
+ * - "ปี 2012" / "ปี2555" (พ.ศ.) / "ปี12" / "2012" / "12-15" / "ปี 2012-2015"
+ * - a two-digit year from 41 to 69 is ambiguous: "ปี 55" is usually พ.ศ. 2555
+ *   (= 2012) but could be 1955/1960s. It sets `ambiguous` instead of guessing;
+ *   ≤ 40 reads as 20xx, ≥ 70 as 19xx.
+ * - a bare four-digit number next to a price or engine word ("2000 บาท",
+ *   "ราคา 2000", "2000cc") is not a year.
+ */
+export const scanCarYearMentions = (
+  text?: string | null,
+): { years: CarYearMention[]; ambiguous: boolean } => {
+  const value = text ?? "";
+  const years: CarYearMention[] = [];
+  let ambiguous = false;
+
+  const readYear = (raw: string): number | null | "ambiguous" => {
+    if (raw.length === 4) {
+      const year = toGregorianCarYear(Number(raw));
+      return year >= MIN_CAR_YEAR && year <= MAX_CAR_YEAR ? year : null;
+    }
+    const yy = Number(raw);
+    if (yy <= TWO_DIGIT_CENTURY_SPLIT) return 2000 + yy;
+    if (yy < TWO_DIGIT_TWENTIETH_CENTURY_FROM) return "ambiguous";
+    return 1900 + yy;
+  };
+
+  const record = (fromRaw: string, toRaw: string | undefined, start: number, end: number) => {
+    if (years.some((other) => start < other.end && other.start < end)) return;
+    const from = readYear(fromRaw);
+    const to = toRaw === undefined ? null : readYear(toRaw);
+    if (from === "ambiguous" || to === "ambiguous") {
+      ambiguous = true;
+      return;
+    }
+    if (from === null) return;
+    if (toRaw !== undefined && (to === null || to < from)) return;
+    years.push({ year: from, start, end });
+  };
+
+  // "ปี" anchors a year even inside run-on Thai ("ราคาปี12").
+  for (const match of value.matchAll(/ปี\s*(\d{4}|\d{2})(?:\s*-\s*(\d{4}|\d{2}))?(?!\d)/gu)) {
+    const start = match.index ?? 0;
+    record(match[1], match[2], start, start + match[0].length);
+  }
+  // A bare four-digit year, optionally a range.
+  for (const match of value.matchAll(
+    /(?<![\p{N}A-Za-z\-/.฿])(\d{4})(?:\s*-\s*(\d{4}|\d{2}))?(?![\p{N}A-Za-z])(?!\s*(?:บาท|฿|cc|ซีซี|ml))/gu,
+  )) {
+    const start = match.index ?? 0;
+    if (/(?:ราคา|งบ|฿)\s*$/u.test(value.slice(Math.max(0, start - 6), start))) continue;
+    record(match[1], match[2], start, start + match[0].length);
+  }
+  // A bare two-digit range ("12-15"); a lone two-digit number is never a year.
+  for (const match of value.matchAll(/(?<![\p{N}A-Za-z\-/.])(\d{2})-(\d{2})(?![\p{N}A-Za-z\-])/gu)) {
+    const start = match.index ?? 0;
+    record(match[1], match[2], start, start + match[0].length);
+  }
+
+  years.sort((a, b) => a.start - b.start);
+  return { years, ambiguous };
 };

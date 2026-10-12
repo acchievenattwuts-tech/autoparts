@@ -4,6 +4,9 @@ import { matchCategoryAliasRows } from "@/lib/category-alias-resolver";
 import { loadCarModelVariantLookup } from "@/lib/car-model-alias-loader";
 import type { CarModelVariantLookup } from "@/lib/car-model-alias-cache";
 import { resolveChatProductSpecs } from "@/lib/chat-core/product-spec-resolve";
+import { resolveColloquialCarModelAlias } from "@/lib/chat-core/colloquial-car-model-aliases";
+
+export { resolveColloquialCarModelAlias };
 
 /**
  * Resolves the AI-extracted fitment hints (free-text brand/model/part type) to the
@@ -59,12 +62,6 @@ const trimOrNull = (value?: string | null): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
-
-const normalizeAliasText = (value?: string | null): string =>
-  (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s_-]+/g, "");
 
 const normalizeModelSpelling = (value?: string | null): string =>
   (value ?? "")
@@ -193,108 +190,6 @@ export function resolveCanonicalCarModelHint(
     .map((cluster) => cluster[0]?.trim())
     .find((term) => term?.toLowerCase() === canonicalKey);
   return canonicalModel ? { canonicalModel, qualifier } : null;
-}
-
-type HardModelAliasRule = {
-  brandName: string;
-  modelName: string;
-  aliases: string[];
-  brandScopes?: string[];
-  requiresHiluxContext?: boolean;
-};
-
-const HARD_MODEL_ALIAS_RULES: HardModelAliasRule[] = [
-  {
-    brandName: "Isuzu",
-    modelName: "D-Max",
-    brandScopes: ["isuzu", "อีซูซุ", "อีซูสุ", "อิซูซุ", "อิซูสุ"],
-    aliases: [
-      "ออนิว",
-      "ออลนิว",
-      "allnew",
-      "allnewdmax",
-      "allnewd-max",
-      "ออนิวดีแม็ก",
-      "ออนิวดีแมค",
-      "ดีแม็กออนิว",
-      "ดีแมคออนิว",
-      "allnewdmax",
-      "dmaxallnew",
-      "d-maxallnew",
-      "vcross",
-      "วีครอส",
-      "hilander",
-      "ไฮแลนเดอร์",
-    ],
-  },
-  {
-    brandName: "Toyota",
-    modelName: "Hilux Revo",
-    brandScopes: ["toyota", "โตโยต้า", "โตโยตา"],
-    aliases: ["revo", "รีโว่", "รีโว", "รีโว้", "hiluxrevo", "rocco", "ร็อคโค่", "ร็อคโค", "รอคโค", "grsport", "gr-s", "จีอาร์สปอร์ต"],
-  },
-  {
-    brandName: "Toyota",
-    modelName: "Hilux Vigo",
-    brandScopes: ["toyota", "โตโยต้า", "โตโยตา"],
-    aliases: ["vigo", "วีโก้", "วีโก", "hiluxvigo", "vigochamp", "วีโก้แชมป์", "วีโกแชมป์"],
-  },
-  {
-    brandName: "Toyota",
-    modelName: "Hilux Mighty-X",
-    brandScopes: ["toyota", "โตโยต้า", "โตโยตา"],
-    aliases: ["mightyx", "mightyx", "ไมตี้เอ็กซ์", "ไมตี้เอ๊กซ์", "ไมตี้x", "hiluxmightyx"],
-  },
-  {
-    brandName: "Toyota",
-    modelName: "Hilux Champ",
-    brandScopes: ["toyota", "โตโยต้า", "โตโยตา"],
-    aliases: ["hiluxchamp", "ไฮลักซ์แชมป์", "imv0", "imv 0"],
-  },
-  {
-    brandName: "Nissan",
-    modelName: "NP300",
-    brandScopes: ["nissan", "นิสสัน", "นิสัน", "นิสสน"],
-    aliases: ["np300", "np 300", "เอ็นพี300", "เอ็นพี 300", "เอ็นพีสามร้อย", "np300navara"],
-  },
-  {
-    brandName: "Nissan",
-    modelName: "Frontier",
-    brandScopes: ["nissan", "นิสสัน", "นิสัน", "นิสสน"],
-    aliases: ["frontier", "ฟรอนเทียร์", "ฟรอนเทีย", "ฟ้อนเทีย", "frontiernavara"],
-  },
-  {
-    brandName: "Ford",
-    modelName: "Ranger",
-    brandScopes: ["ford", "ฟอร์ด"],
-    aliases: ["wildtrak", "ไวลด์แทรค", "raptor", "แรพเตอร์", "แร็พเตอร์", "rangerraptor"],
-  },
-];
-
-const HARD_MODEL_ALIAS_BY_VALUE = new Map<string, HardModelAliasRule>(
-  HARD_MODEL_ALIAS_RULES.flatMap((rule) => rule.aliases.map((alias) => [normalizeAliasText(alias), rule] as const)),
-);
-
-const includesHiluxContext = (values: string[]) =>
-  values.some((value) => value.includes("hilux") || value.includes("ไฮลัก") || value.includes("ไฮลักซ์"));
-
-export function resolveColloquialCarModelAlias(input: {
-  carBrand?: string | null;
-  carModel?: string | null;
-  rawText?: string | null;
-}): { brandName: string; modelName: string } | null {
-  const brand = normalizeAliasText(input.carBrand);
-  const candidates = [input.carModel, input.rawText].map(normalizeAliasText).filter(Boolean);
-
-  for (const candidate of candidates) {
-    const rule = HARD_MODEL_ALIAS_BY_VALUE.get(candidate);
-    if (!rule) continue;
-    if (rule.brandScopes?.length && brand && !rule.brandScopes.includes(brand)) continue;
-    if (rule.requiresHiluxContext && !includesHiluxContext(candidates)) continue;
-    return { brandName: rule.brandName, modelName: rule.modelName };
-  }
-
-  return null;
 }
 
 /**

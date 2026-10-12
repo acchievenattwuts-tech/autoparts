@@ -5,6 +5,11 @@ import type { ChatProductSearchBridgeResult } from "@/lib/chat-core/product-sear
 import { isChatMessageGroup, type ChatMessageGroup } from "@/lib/chat-core/intent-groups";
 import { toGregorianCarYear } from "@/lib/car-year-shorthand";
 import {
+  classifyChatAiError,
+  reportChatAiFailure,
+  type ChatAiFailureListener,
+} from "@/lib/chat-core/ai-call-failure";
+import {
   buildChatSearchIntentCacheKey,
   readChatSearchIntentCache,
   writeChatSearchIntentCache,
@@ -128,6 +133,8 @@ export async function generateChatSuggestion(input: {
   history?: ChatReplyHistoryItem[];
   /** Matched catalog products to present to the customer (real names from the DB). */
   products?: ChatProductSummary[];
+  /** Told when Gemini fails and the template reply is used instead. */
+  onFailure?: ChatAiFailureListener;
 }): Promise<ChatAiSuggestionDraft> {
   const fallback = buildConservativeChatSuggestion(input);
 
@@ -135,13 +142,17 @@ export async function generateChatSuggestion(input: {
   // deterministic policy already decided this must go to an admin (e.g. a part
   // image with image-search disabled) — saves a wasted Gemini call.
   if (
-    !hasGeminiKeysConfigured() ||
     !GEMINI_REPLYABLE_INTENTS.has(input.intent) ||
     fallback.confidence === LineAiConfidence.ADMIN_REQUIRED
   ) {
     return fallback;
   }
+  if (!hasGeminiKeysConfigured()) {
+    reportChatAiFailure(input.onFailure, { stage: "reply", kind: "NO_KEYS", detail: null, durationMs: 0 });
+    return fallback;
+  }
 
+  const startedAt = Date.now();
   try {
     const prompt = buildLineReplyPrompt(input);
     const { suggestedReply } = await generateGeminiContent({
@@ -157,6 +168,12 @@ export async function generateChatSuggestion(input: {
     }).then((result) => ({ suggestedReply: result.text.trim() }));
 
     if (!suggestedReply) {
+      reportChatAiFailure(input.onFailure, {
+        stage: "reply",
+        kind: "EMPTY_REPLY",
+        detail: null,
+        durationMs: Date.now() - startedAt,
+      });
       return fallback;
     }
 
@@ -180,7 +197,12 @@ export async function generateChatSuggestion(input: {
       reasoningSummary: `Gemini reply (intent=${input.intent}); confidence from rule-based policy.`,
       matchedProducts: fallback.matchedProducts,
     };
-  } catch {
+  } catch (error) {
+    reportChatAiFailure(input.onFailure, {
+      stage: "reply",
+      ...classifyChatAiError(error),
+      durationMs: Date.now() - startedAt,
+    });
     return fallback;
   }
 }
@@ -415,8 +437,11 @@ export async function extractChatSearchIntent(input: {
   intent: LineIntent;
   latestText?: string | null;
   history?: ChatReplyHistoryItem[];
+  /** Told why the classifier produced nothing, so the caller can audit it. */
+  onFailure?: ChatAiFailureListener;
 }): Promise<ChatSearchIntent | null> {
   if (!hasGeminiKeysConfigured()) {
+    reportChatAiFailure(input.onFailure, { stage: "classify", kind: "NO_KEYS", detail: null, durationMs: 0 });
     return null;
   }
 
@@ -428,6 +453,7 @@ export async function extractChatSearchIntent(input: {
   const cached = readChatSearchIntentCache(cacheKey);
   if (cached) return cached;
 
+  const startedAt = Date.now();
   try {
     const history = input.history ?? [];
     const lines: string[] = [
@@ -450,9 +476,24 @@ export async function extractChatSearchIntent(input: {
     });
 
     const parsed = parseChatSearchIntent(text);
+    if (!parsed) {
+      // Customer words are not stored: the reply length is enough to spot a
+      // reply cut off at the output-token limit.
+      reportChatAiFailure(input.onFailure, {
+        stage: "classify",
+        kind: text.trim() ? "UNPARSEABLE" : "EMPTY_REPLY",
+        detail: text.trim() ? `replyChars=${text.length}` : null,
+        durationMs: Date.now() - startedAt,
+      });
+    }
     writeChatSearchIntentCache(cacheKey, parsed);
     return parsed;
-  } catch {
+  } catch (error) {
+    reportChatAiFailure(input.onFailure, {
+      stage: "classify",
+      ...classifyChatAiError(error),
+      durationMs: Date.now() - startedAt,
+    });
     return null;
   }
 }
@@ -830,12 +871,19 @@ export async function generateScopedConversationalReply(input: {
   group: ChatMessageGroup;
   latestText?: string | null;
   history?: ChatReplyHistoryItem[];
+  /** Told when Gemini fails and the template reply is used instead. */
+  onFailure?: ChatAiFailureListener;
 }): Promise<string> {
   const fallback =
     input.group === "out_of_scope" ? buildJuneOutOfScopeReply() : buildJuneSmalltalkReply();
   const directive = SCOPED_CONVERSATIONAL_DIRECTIVE[input.group];
-  if (!directive || !hasGeminiKeysConfigured()) return fallback;
+  if (!directive) return fallback;
+  if (!hasGeminiKeysConfigured()) {
+    reportChatAiFailure(input.onFailure, { stage: "scoped_reply", kind: "NO_KEYS", detail: null, durationMs: 0 });
+    return fallback;
+  }
 
+  const startedAt = Date.now();
   try {
     const lines: string[] = [];
     if (input.history && input.history.length > 0) {
@@ -860,8 +908,22 @@ export async function generateScopedConversationalReply(input: {
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
     });
 
-    return text.trim() || fallback;
-  } catch {
+    if (!text.trim()) {
+      reportChatAiFailure(input.onFailure, {
+        stage: "scoped_reply",
+        kind: "EMPTY_REPLY",
+        detail: null,
+        durationMs: Date.now() - startedAt,
+      });
+      return fallback;
+    }
+    return text.trim();
+  } catch (error) {
+    reportChatAiFailure(input.onFailure, {
+      stage: "scoped_reply",
+      ...classifyChatAiError(error),
+      durationMs: Date.now() - startedAt,
+    });
     return fallback;
   }
 }

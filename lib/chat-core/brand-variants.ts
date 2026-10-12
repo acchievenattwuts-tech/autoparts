@@ -60,6 +60,44 @@ export function getBrandVariants(brandName: string | null | undefined): string[]
   return Array.from(new Set(BRAND_VARIANTS[key]?.map((v) => v.trim().toLowerCase()) ?? [lower]));
 }
 
+const LATIN_SPELLING_RE = /^[a-z0-9]+$/;
+
+/**
+ * Car brands named in free text, from the hardcoded map above (no DB). Latin
+ * spellings need a word boundary ("mg" must not match inside "img"); Thai
+ * spellings match anywhere, since Thai runs words together. `key` is the
+ * lowercased English brand ("isuzu").
+ */
+export function findCarBrandMentions(
+  text: string | null | undefined,
+): Array<{ key: string; text: string; start: number; end: number }> {
+  const haystack = (text ?? "").toLowerCase();
+  if (!haystack.trim()) return [];
+  const found: Array<{ key: string; text: string; start: number; end: number }> = [];
+  for (const [key, variants] of Object.entries(BRAND_VARIANTS)) {
+    for (const variant of variants) {
+      const spelling = variant.trim().toLowerCase();
+      if (!spelling) continue;
+      const escaped = spelling.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = LATIN_SPELLING_RE.test(spelling)
+        ? new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "g")
+        : new RegExp(escaped, "gu");
+      for (const match of haystack.matchAll(pattern)) {
+        const start = match.index ?? 0;
+        found.push({ key, text: match[0], start, end: start + match[0].length });
+      }
+    }
+  }
+  // A shorter spelling inside a longer one ("เชฟ" in "เชฟโรเลต") is the same mention.
+  found.sort((a, b) => b.end - b.start - (a.end - a.start) || a.start - b.start);
+  const kept: typeof found = [];
+  for (const mention of found) {
+    if (kept.some((other) => mention.start < other.end && other.start < mention.end)) continue;
+    kept.push(mention);
+  }
+  return kept.sort((a, b) => a.start - b.start);
+}
+
 /**
  * Resolves all accepted spellings of a brand, preferring the DB-backed lookup
  * (admin-editable) and unioning the hardcoded {@link getBrandVariants} map as a

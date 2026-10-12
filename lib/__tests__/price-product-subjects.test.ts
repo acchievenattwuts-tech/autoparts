@@ -45,16 +45,25 @@ test("a real ตู้แอร์ ask still extracts the cooling-unit subject",
 });
 
 test("ตู้แอร์ + วีโก้ still locks the Vigo fitment subject", () => {
+  // The nickname stays in the customer's words ("วีโก้") so the evidence guard and
+  // the shared alias resolver read it like a classifier reply; the query uses the
+  // catalog model name.
   const subjects = extractPriceProductSubjectsFromText("ตู้แอร์วีโก้ราคาเท่าไหร่");
   assert.equal(subjects.length, 1);
-  assert.equal(subjects[0].carModel, "Vigo");
+  assert.equal(subjects[0].carBrand, "Toyota");
+  assert.equal(subjects[0].carModel, "วีโก้");
   assert.equal(subjects[0].partKind, "fitment");
+  assert.equal(subjects[0].query, "ตู้แอร์ Hilux Vigo");
 });
 
-test("คอยเย็น colloquial still extracts the cooling-unit subject", () => {
+test("คอยเย็น colloquial extracts the evaporator as a fitment part, not a universal ตู้แอร์", () => {
+  // Incident 2026-10-09: คอยล์เย็น used to collapse into the universal ตู้แอร์
+  // subject. With no car named, it stays a fitment part so the gate asks for it.
   const subjects = extractPriceProductSubjectsFromText("คอยเย็นราคาประมาณเท่าไหร่");
   assert.equal(subjects.length, 1);
-  assert.equal(subjects[0].partType, "ตู้แอร์");
+  assert.equal(subjects[0].partType, "คอยล์เย็น");
+  assert.equal(subjects[0].partKind, "fitment");
+  assert.equal(subjects[0].carModel, null);
 });
 
 test("น้ำยาแอร์ ask still extracts the refrigerant subject", () => {

@@ -21,6 +21,22 @@ const YEAR_RE = /\b(19[89]\d|20[0-3]\d)\b/g;
 const SHORT_YEAR_RE = /ปี\s*(\d{2})\b/g;
 const SHORT_YEAR_MAX = 35;
 
+/**
+ * Car brand/model keywords in the text with their positions. The price-subject
+ * fallback uses them as "the customer named a car" evidence: a car it cannot
+ * resolve means hand off instead of answering with an unscoped search.
+ */
+export function findCarKeywordMentions(
+  text: string | null | undefined,
+): Array<{ text: string; start: number; end: number }> {
+  const value = text ?? "";
+  return Array.from(value.matchAll(new RegExp(CAR_KEYWORD_RE.source, "gi")), (match) => ({
+    text: match[0],
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }));
+}
+
 export function extractFitmentTerms(text: string | null | undefined): string[] {
   const value = text?.trim();
   if (!value) return [];

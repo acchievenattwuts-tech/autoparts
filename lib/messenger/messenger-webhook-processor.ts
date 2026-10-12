@@ -70,7 +70,9 @@ import {
   type ChatProductSearchBridgeInput,
   type ChatMatchedProductSummary,
 } from "@/lib/chat-core/product-search-bridge";
-import { extractPriceProductSubjectsFromText } from "@/lib/chat-core/price-product-subjects";
+import { analyzePriceProductText } from "@/lib/chat-core/price-product-subjects";
+import type { ChatAiFailureListener } from "@/lib/chat-core/ai-call-failure";
+import { logMessengerChatAiFailure } from "@/lib/chat-core/ai-failure-telemetry";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { detectChatMultiSubjects } from "@/lib/chat-core/multi-subject-detector";
@@ -179,6 +181,13 @@ async function safeNotify(promise: Promise<unknown>): Promise<void> {
       error: error instanceof Error ? error.message : "unknown",
     });
   }
+}
+
+/** Stores each failed Gemini call as an AI_GEMINI_CALL_FAILED audit row (Messenger convention). */
+function buildMessengerGeminiFailureRecorder(conversationId: string): ChatAiFailureListener {
+  return (failure) => {
+    void logMessengerChatAiFailure({ messengerConversationId: conversationId, failure });
+  };
 }
 
 async function handoffUncertainMessengerProduct(input: {
@@ -484,6 +493,8 @@ async function replyToMessengerTurn(params: {
 }): Promise<void> {
   const { conversationId, psid, config } = params;
   const pageAccessToken = config.pageAccessToken;
+  // Every Gemini call below falls back silently; record why (parity with LINE).
+  const recordGeminiFailure = buildMessengerGeminiFailureRecorder(conversationId);
 
   const unanswered = await getUnansweredMessengerMessages(conversationId);
   if (unanswered.length === 0) return;
@@ -661,7 +672,7 @@ async function replyToMessengerTurn(params: {
     segments: textSegments,
     history,
     classify: ({ intent, latestText, history: segmentHistory }) =>
-      extractChatSearchIntent({ intent, latestText, history: segmentHistory }),
+      extractChatSearchIntent({ intent, latestText, history: segmentHistory, onFailure: recordGeminiFailure }),
   }).catch(() => null);
   const processText = normalizeInboundChatQuery(mixedIntentPlan?.productText ?? mergedText);
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
@@ -669,11 +680,48 @@ async function replyToMessengerTurn(params: {
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
   // status…) escalate to a human admin instead of the AI guessing ──
   if (route.intent === LineIntent.PRICE_NEGOTIATION) {
-    const priceSubjects = extractPriceProductSubjectsFromText(processText);
+    const priceAnalysis = analyzePriceProductText(processText);
+    // Parity with LINE: a cooling part next to a car/year the rule cannot read is
+    // handed off with what we understood — never searched without that car
+    // (incident 2026-10-09: an All New D-Max coil answered with hanging units).
+    if (priceAnalysis.unreadable) {
+      await handoffUncertainMessengerProduct({
+        pageAccessToken,
+        conversationId,
+        psid,
+        originalText: mergedText,
+        intent: route.intent,
+        text: buildJuneTextNoMatchHandoffReply({
+          partType: priceAnalysis.unreadable.partType,
+          carBrand: null,
+          carModel: priceAnalysis.unreadable.vehicleMention,
+          year: priceAnalysis.unreadable.year,
+        }),
+      });
+      return;
+    }
+    const priceSubjects = priceAnalysis.subjects;
     if (priceSubjects.length > 0) {
       let repliedWithAnySearch = false;
       for (const subject of priceSubjects.slice(0, 3)) {
         const query = subject.query || subject.partType || processText;
+        const fitmentHints = await resolveMessengerPriceSubjectHints(subject);
+        if (!fitmentHints) {
+          await handoffUncertainMessengerProduct({
+            pageAccessToken,
+            conversationId,
+            psid,
+            originalText: mergedText,
+            intent: route.intent,
+            text: buildJuneTextNoMatchHandoffReply({
+              partType: subject.partType,
+              carBrand: subject.carBrand,
+              carModel: subject.carModel,
+              year: subject.year,
+            }),
+          });
+          return;
+        }
         const outcome = await replyWithProductSearch({
           pageAccessToken,
           conversationId,
@@ -683,12 +731,7 @@ async function replyToMessengerTurn(params: {
             route: MESSENGER_PRODUCT_ROUTE,
             text: query,
             customerText: query,
-            fitmentHints: {
-              categoryName: subject.partType,
-              carBrandName: subject.carBrand,
-              carModelName: subject.carModel,
-              fitmentYear: subject.year,
-            },
+            fitmentHints,
           },
           originalText: mergedText,
           history,
@@ -742,6 +785,7 @@ async function replyToMessengerTurn(params: {
           intent: route.intent,
           latestText: processText,
           history,
+          onFailure: recordGeminiFailure,
         }).catch(() => null)
       : null);
 
@@ -932,9 +976,19 @@ async function replyToMessengerTurn(params: {
   const group = classifiedIntent?.group ?? intentToGroup(effectiveRoute.intent);
   let reply: string;
   if (group === "smalltalk" || group === "out_of_scope") {
-    reply = await generateScopedConversationalReply({ group, latestText: mergedText, history });
+    reply = await generateScopedConversationalReply({
+      group,
+      latestText: mergedText,
+      history,
+      onFailure: recordGeminiFailure,
+    });
   } else {
-    const suggestion = await generateChatSuggestion({ intent: effectiveRoute.intent, originalText: mergedText, history });
+    const suggestion = await generateChatSuggestion({
+      intent: effectiveRoute.intent,
+      originalText: mergedText,
+      history,
+      onFailure: recordGeminiFailure,
+    });
     reply = suggestion.suggestedReply;
   }
 
@@ -1009,6 +1063,33 @@ async function resolveDirectProductCode(sources: Array<string | null | undefined
  * Messenger has no persistent inquiry-frame, so resolution is scoped to the
  * current turn's text (with history only for the classifier's own context).
  */
+/**
+ * Catalog filters for one price-rule subject. The rule speaks the customer's
+ * words ("คอยล์เย็น", "all new"), while search filters by exact catalog names
+ * ("คอยล์เย็น (Evaporator)", "D-Max") — passing the words straight through
+ * matched no category at all. Returns null for a fitment part whose car is
+ * missing or did not lock to the catalog: an unscoped search would list other
+ * cars' parts as if they fit.
+ */
+async function resolveMessengerPriceSubjectHints(
+  subject: ChatSubject,
+): Promise<NonNullable<ChatProductSearchBridgeInput["fitmentHints"]> | null> {
+  const filters = await resolveChatFitmentFilters({
+    partType: subject.partType,
+    carBrand: subject.carBrand,
+    carModel: subject.carModel,
+    queryText: subject.query,
+    rawText: subject.query,
+  }).catch((): ChatFitmentFilters => ({}));
+  if (subject.partKind === "fitment" && !filters.carModelName) return null;
+  return {
+    categoryName: filters.categoryName ?? null,
+    carBrandName: filters.carBrandName ?? null,
+    carModelName: filters.carModelName ?? null,
+    fitmentYear: subject.year,
+  };
+}
+
 async function resolveMessengerFitmentHints(
   processText: string,
   history: ChatHistoryItem[],
@@ -1438,6 +1519,7 @@ async function replyWithProductSearch(params: {
   await logSearchTelemetry(products.length);
 
   const generatedSuggestion = await generateChatSuggestion({
+    onFailure: buildMessengerGeminiFailureRecorder(params.conversationId),
     intent: params.route.intent,
     originalText: params.originalText,
     productSearch: displayProductSearch,

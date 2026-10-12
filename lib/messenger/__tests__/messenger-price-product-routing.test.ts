@@ -7,6 +7,9 @@ import {
   LineMessageDirection,
   LineMessageType,
 } from "@/lib/generated/prisma";
+// Loaded for real before the ai-service mock below, so the mock can reuse the
+// deterministic hand-off wording instead of re-implementing it.
+import { buildJuneTextNoMatchHandoffReply } from "@/lib/chat-core/ai-service";
 import {
   buildPriceProductSearchIntent,
   extractPriceProductSubjectsFromText,
@@ -44,8 +47,15 @@ test("price product subject helper does not guess from uncertain typo-heavy text
   assert.equal(buildPriceProductSearchIntent(subjects), null);
 });
 
+type SearchFitmentHints = {
+  categoryName?: string | null;
+  carBrandName?: string | null;
+  carModelName?: string | null;
+  fitmentYear?: number | null;
+} | null;
+
 type RoutingCalls = {
-  searches: Array<{ text?: string | null }>;
+  searches: Array<{ text?: string | null; fitmentHints?: SearchFitmentHints }>;
   textReplies: string[];
   escalations: string[];
   outboundMessages: string[];
@@ -58,7 +68,7 @@ let mocksInstalled = false;
 
 async function setupMessengerPriceRoutingTest(unansweredText: string) {
   const calls = {
-    searches: [] as Array<{ text?: string | null }>,
+    searches: [] as Array<{ text?: string | null; fitmentHints?: SearchFitmentHints }>,
     textReplies: [] as string[],
     escalations: [] as string[],
     outboundMessages: [] as string[],
@@ -136,13 +146,16 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
       getChatProductSummaries: async (ids: string[]) =>
         ids.map((id) => ({ id, code: id, name: `product ${id}`, salePrice: 100, imageUrl: null })),
       resolveCatalogCodes: async () => [],
-      searchChatProductInquiry: async (input: { text?: string | null }) => {
-        activeCalls.searches.push({ text: input.text });
+      searchChatProductInquiry: async (input: { text?: string | null; fitmentHints?: SearchFitmentHints }) => {
+        activeCalls.searches.push({ text: input.text, fitmentHints: input.fitmentHints ?? null });
+        const id = `id-${activeCalls.searches.length}`;
         return {
           searched: true,
           reason: "SEARCHED_PRODUCT_INQUIRY",
           query: input.text ?? "",
-          result: { ids: [`id-${activeCalls.searches.length}`], total: 1, mode: "v2" },
+          // The real engine always reports per-id match reasons; a strong name match
+          // keeps the category-less relevance gate from handing these rows off.
+          result: { ids: [id], total: 1, mode: "v2", matchReasons: { [id]: ["name"] } },
           needsMoreInfo: false,
           appliedFilters: {
             categoryName: null,
@@ -165,6 +178,7 @@ async function setupMessengerPriceRoutingTest(unansweredText: string) {
         reasoningSummary: "test",
       }),
       generateScopedConversationalReply: async () => "scoped reply",
+      buildJuneTextNoMatchHandoffReply,
     },
   });
 
@@ -225,6 +239,10 @@ test("Messenger price turn with three product subjects searches each subject bef
 
   assert.equal(calls.searches.length, 3);
   assert.ok(calls.searches.some((call) => /Vigo|วีโก้/i.test(call.text ?? "")));
+  // The subject's words are resolved to catalog filters, never passed raw.
+  const vigoSearch = calls.searches.find((call) => /Vigo/i.test(call.text ?? ""));
+  assert.equal(vigoSearch?.fitmentHints?.carBrandName, "Toyota");
+  assert.equal(vigoSearch?.fitmentHints?.carModelName, "Hilux Vigo");
   assert.ok(calls.searches.some((call) => /DENSO/i.test(call.text ?? "")));
   assert.ok(calls.searches.some((call) => /น้ำยาแอร์/i.test(call.text ?? "")));
   assert.deepEqual(calls.escalations, ["conversation-1"]);
@@ -251,4 +269,57 @@ test("Messenger bare price-only turn does not resurrect old product context into
 
   assert.equal(calls.searches.length, 0);
   assert.deepEqual(calls.escalations, ["conversation-1"]);
+});
+
+async function runMessengerPriceTurn(text: string): Promise<RoutingCalls> {
+  const calls = await setupMessengerPriceRoutingTest(text);
+  const { processMessengerBatch } = await import("@/lib/messenger/messenger-webhook-processor");
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-1",
+        fbEventId: "event-1",
+        text,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+  return calls;
+}
+
+test("golden 2026-10-09 (Messenger): a price-haggle on an All New coil searches the D-Max coil for 2012", async () => {
+  // The LINE incident text with a haggle word, which routes Messenger straight to
+  // the price rule. "all new" means Isuzu D-Max (owner decision 2026-10-12).
+  const calls = await runMessengerPriceTurn("คอยล์เย็น all new ปี 2012 ลดได้ไหมครับ");
+
+  assert.equal(calls.searches.length, 1, JSON.stringify(calls));
+  assert.equal(calls.searches[0]?.text, "คอยล์เย็น D-Max 2012");
+  assert.equal(calls.searches[0]?.fitmentHints?.carBrandName, "Isuzu");
+  assert.equal(calls.searches[0]?.fitmentHints?.carModelName, "D-Max");
+  assert.equal(calls.searches[0]?.fitmentHints?.fitmentYear, 2012);
+  assert.ok(!calls.searches.some((call) => /ตู้แอร์/.test(call.text ?? "")), "never the universal ตู้แอร์");
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+});
+
+test("Messenger price-haggle naming a car the rule cannot read hands off instead of searching", async () => {
+  const calls = await runMessengerPriceTurn("คอยเย็น vios 2010 ลดได้ไหม");
+
+  assert.equal(calls.searches.length, 0);
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.equal(calls.textReplies.length, 1);
+  assert.match(calls.textReplies[0] ?? "", /สำหรับคอยล์เย็น vios ปี 2010/);
+});
+
+test("Messenger price-haggle on a coil with no car hands off with the part named", async () => {
+  // A coil only fits a given car; Messenger price turns end with an admin anyway,
+  // so it hands off rather than listing every coil in the shop.
+  const calls = await runMessengerPriceTurn("คอยเย็น ลดได้ไหมครับ");
+
+  assert.equal(calls.searches.length, 0);
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
+  assert.match(calls.textReplies[0] ?? "", /สำหรับคอยล์เย็น/);
 });

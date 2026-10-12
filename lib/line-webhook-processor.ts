@@ -133,9 +133,10 @@ import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
 import {
+  analyzePriceProductText,
   buildPriceProductSearchIntent,
-  extractPriceProductSubjectsFromText,
 } from "@/lib/chat-core/price-product-subjects";
+import { CHAT_AI_CALL_FAILED_AUDIT_ACTION, type ChatAiFailureListener } from "@/lib/chat-core/ai-call-failure";
 import {
   chatCarMentionOccursInLatest,
   extractChatRequiredSearchTokens,
@@ -607,6 +608,7 @@ async function handleScopedConversationalTurn(
         group,
         latestText: input.text,
         history,
+        onFailure: buildLineGeminiFailureRecorder(dependencies, input),
       }).catch(() => template)
     : template;
 
@@ -721,6 +723,19 @@ function fireAndForgetAudit(
       error instanceof Error ? error.message : "unknown",
     );
   });
+}
+
+/** Stores each failed Gemini call of this turn as an AI_GEMINI_CALL_FAILED audit row. */
+function buildLineGeminiFailureRecorder(
+  dependencies: LineWebhookProcessorDependencies,
+  input: Pick<ProcessLineAiReplyInput, "conversation" | "lineEventId">,
+): ChatAiFailureListener {
+  return (failure) =>
+    fireAndForgetAudit(dependencies, {
+      conversationId: input.conversation.id,
+      action: CHAT_AI_CALL_FAILED_AUDIT_ACTION,
+      payload: { lineEventId: input.lineEventId ?? null, ...failure },
+    });
 }
 
 /** Most recent customer turn's fitment terms (car/year), for search memory. */
@@ -1407,6 +1422,9 @@ export async function processLineAiReply(
     ).catch(() => []);
     const recentMessages = boundMessagesToSession(recentMessagesRaw);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
+    // Every Gemini call below falls back silently (rule routing / template reply);
+    // this records why, so an outage is visible in the audit log (incident 2026-10-09).
+    const recordGeminiFailure = buildLineGeminiFailureRecorder(dependencies, input);
 
     // ── Routing: AI intent classification (Layer-2) ───────────────────────────
     // Layer-1 (regex) already produced input.route. For high-stakes groups
@@ -1442,6 +1460,7 @@ export async function processLineAiReply(
                 intent,
                 latestText,
                 history: segmentHistory,
+                onFailure: recordGeminiFailure,
               });
             },
           }).catch(() => null)
@@ -1522,8 +1541,9 @@ export async function processLineAiReply(
           }
         : null;
 
-    const extractedPriceSubjects =
-      regexPriceIntent || priceQuestionIntent ? extractPriceProductSubjectsFromText(processText) : [];
+    const priceTextAnalysis =
+      regexPriceIntent || priceQuestionIntent ? analyzePriceProductText(processText) : null;
+    const extractedPriceSubjects = priceTextAnalysis?.subjects ?? [];
     const priceSubjectIntent = buildPriceProductSearchIntent(extractedPriceSubjects);
 
     const classifiedSearchIntent = mixedIntentPlan?.productSearchIntent
@@ -1535,6 +1555,7 @@ export async function processLineAiReply(
             intent: baseRoute.intent,
             latestText: processText,
             history,
+            onFailure: recordGeminiFailure,
           }).catch(() => null)
         : null;
     // Stock-availability ask ("มีของไหม") — the LLM group (Option C) OR the
@@ -1560,6 +1581,12 @@ export async function processLineAiReply(
     const searchIntent = classifierHasProductSubject
       ? rawSearchIntent
       : priceSubjectIntent ?? rawSearchIntent;
+    // The rule recognised a cooling part but the message also names a car or year
+    // it cannot read. With no classifier subject to lean on, any search would
+    // ignore that car — the 2026-10-09 incident ("คอยล์เย็น all new ปี 2012"
+    // answered with universal hanging units). Hand the turn to an admin instead.
+    const priceRuleUnreadable =
+      shouldClassify && !classifierHasProductSubject ? priceTextAnalysis?.unreadable ?? null : null;
     const classifierProductHasCurrentEvidence =
       priceQuestionIntent &&
       searchIntent?.group === "product" &&
@@ -1633,6 +1660,8 @@ export async function processLineAiReply(
             ? "image_route"
             : usedRuleIntent
               ? "rule_dictionary"
+              : priceRuleUnreadable
+                ? "price_subject_rule_handoff"
               : priceSubjectIntent && !classifierHasProductSubject
                 ? "price_subject_rule"
               : classifyFailed
@@ -2478,6 +2507,7 @@ export async function processLineAiReply(
     const productSearch =
       isNonProductTurn ||
       imageRequiresAdminReview ||
+      priceRuleUnreadable !== null ||
       (!directProductCode &&
         (classifierUncertain ||
           gateBlocksSearch ||
@@ -2487,6 +2517,8 @@ export async function processLineAiReply(
           searched: false,
           reason: imageRequiresAdminReview
             ? "IMAGE_CONFIDENCE_ADMIN_REVIEW"
+            : priceRuleUnreadable
+              ? "PRICE_RULE_UNREADABLE"
             : classifierUncertain
               ? "CLASSIFIER_UNCERTAIN"
             // "มีของไหม" ล้วน — จะจบที่ handoff แอดมินเสมอ ไม่ต้องเสีย search
@@ -3013,6 +3045,7 @@ export async function processLineAiReply(
           productSearch: displayProductSearch,
           history,
           products,
+          onFailure: recordGeminiFailure,
         }).catch(() => null)
       : null;
 
@@ -3164,6 +3197,28 @@ export async function processLineAiReply(
             auditPayload: {
               lineEventId: input.lineEventId,
               confidence: input.imageClassification?.confidence ?? "LOW",
+            },
+          }
+      // The price-subject fallback saw a cooling part with a car/year it cannot
+      // read (and no classifier subject): name what we understood and hand off,
+      // never a search that ignores the car.
+      : liveMode && priceRuleUnreadable
+        ? {
+            message: buildJuneTextNoMatchHandoffReply({
+              partType: priceRuleUnreadable.partType,
+              carBrand: null,
+              carModel: priceRuleUnreadable.vehicleMention,
+              year: priceRuleUnreadable.year,
+            }),
+            reason: "PRICE_RULE_UNREADABLE_HANDOFF",
+            handoff: true,
+            audit: "AI_PRICE_RULE_UNREADABLE_HANDOFF",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              reason: priceRuleUnreadable.reason,
+              partType: priceRuleUnreadable.partType,
+              vehicleMention: priceRuleUnreadable.vehicleMention,
+              year: priceRuleUnreadable.year,
             },
           }
       // Never a hand-off — the AI stays active and waits for the answer.
@@ -3491,6 +3546,7 @@ export async function processLineAiReply(
             productSearch: displayProductSearch,
             history,
             products,
+            onFailure: recordGeminiFailure,
           }).catch(() => null);
 
       const tokenBudgetMs = config.replyTokenMaxAgeMs ?? 45_000;

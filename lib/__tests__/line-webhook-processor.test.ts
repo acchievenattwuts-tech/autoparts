@@ -3087,6 +3087,148 @@ test("price turn: the price-subject rule still drives when the classifier return
   assert.equal(calls.searches.at(-1), "ตู้แอร์", "extractor fallback still searches the cooling unit");
 });
 
+/** Captures audit payloads (the shared helper keeps only action names). */
+function captureAuditPayloads(dependencies: LineWebhookProcessorDependencies) {
+  const payloads: Array<{ action: string; payload: unknown }> = [];
+  const store = dependencies.storeLineAiAudit;
+  dependencies.storeLineAiAudit = async (auditInput) => {
+    payloads.push({ action: auditInput.action, payload: auditInput.payload ?? null });
+    return store(auditInput);
+  };
+  return payloads;
+}
+
+test("golden 2026-10-09: Gemini down — the price rule searches the All New D-Max coil for 2012, not universal ตู้แอร์", async () => {
+  // Production turn (conv cmqyvxy5a, 2026-10-09 15:47): the classifier call timed
+  // out, the price rule took over and answered "ตู้แอร์ฝัง 432" hanging units.
+  // "all new" means Isuzu D-Max (owner decision 2026-10-12).
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Isuzu", carModelName: "D-Max" },
+  });
+  const fitmentInputs: Array<{ carBrand?: string | null; carModel?: string | null }> = [];
+  const resolveFilters = dependencies.resolveChatFitmentFilters!;
+  dependencies.resolveChatFitmentFilters = async (filterInput) => {
+    fitmentInputs.push({ carBrand: filterInput.carBrand, carModel: filterInput.carModel });
+    return resolveFilters(filterInput);
+  };
+  dependencies.extractChatSearchIntent = async (intentInput) => {
+    intentInput.onFailure?.({
+      stage: "classify",
+      kind: "TIMEOUT",
+      detail: "ALL_GEMINI_KEYS_FAILED:This operation was aborted",
+      durationMs: 16_000,
+    });
+    return null;
+  };
+  const audits = captureAuditPayloads(dependencies);
+
+  await processLineWebhookPayload(
+    textPayload("คอยล์เย็น all new ปี 2012 ราคาเท่าไหร่ครับงาน ถูกสุด"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.doesNotMatch(calls.searches[0] ?? "", /ตู้แอร์/, "never the universal hanging unit");
+  assert.match(calls.searches[0] ?? "", /คอยล์เย็น/);
+  assert.equal(calls.searchFitmentHints[0]?.categoryName, "คอยล์เย็น (Evaporator)");
+  assert.equal(calls.searchFitmentHints[0]?.carBrandName, "Isuzu");
+  assert.equal(calls.searchFitmentHints[0]?.carModelName, "D-Max");
+  assert.equal(calls.searchFitmentHints[0]?.fitmentYear, 2012, "the year the customer typed survives");
+  assert.equal(fitmentInputs.at(-1)?.carModel, "all new", "resolved by the shared colloquial alias");
+  assert.equal(calls.savedFrames.at(-1)?.year, 2012);
+
+  const classified = audits.find((entry) => entry.action === "INTENT_CLASSIFIED");
+  assert.equal((classified?.payload as { source?: string } | null)?.source, "price_subject_rule");
+  const failure = audits.find((entry) => entry.action === "AI_GEMINI_CALL_FAILED");
+  assert.deepEqual(
+    failure?.payload,
+    {
+      lineEventId: "event-1",
+      stage: "classify",
+      kind: "TIMEOUT",
+      detail: "ALL_GEMINI_KEYS_FAILED:This operation was aborted",
+      durationMs: 16_000,
+    },
+    "the silent classifier fallback is now visible in the audit log",
+  );
+});
+
+test("Gemini down + a car the price rule cannot read → part-aware hand-off, no search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({});
+  const audits = captureAuditPayloads(dependencies);
+
+  await processLineWebhookPayload(
+    textPayload("คอยเย็น vios 2010 ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 0, "an unscoped search would ignore the Vios");
+  assert.match(calls.replies.at(-1)?.text ?? "", /สำหรับคอยล์เย็น vios ปี 2010/);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  assert.equal(calls.notifyHandoffs.length, 1);
+  const handoff = audits.find((entry) => entry.action === "AI_PRICE_RULE_UNREADABLE_HANDOFF");
+  assert.equal((handoff?.payload as { reason?: string } | null)?.reason, "UNREADABLE_VEHICLE");
+  const classified = audits.find((entry) => entry.action === "INTENT_CLASSIFIED");
+  assert.equal((classified?.payload as { source?: string } | null)?.source, "price_subject_rule_handoff");
+});
+
+test("a healthy classifier still beats the price rule when the rule cannot read the car", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "คอยเย็น vios 2010",
+    intentPartType: "คอยเย็น",
+    intentCarBrand: "Toyota",
+    intentCarModel: "Vios",
+    intentYear: 2010,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Toyota", carModelName: "Vios" },
+  });
+
+  await processLineWebhookPayload(
+    textPayload("คอยเย็น vios 2010 ราคาเท่าไหร่ครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searches.at(-1), "คอยเย็น vios 2010");
+  assert.ok(!calls.auditActions.includes("AI_PRICE_RULE_UNREADABLE_HANDOFF"));
+});
+
+test("a failed Gemini reply is audited while the template reply still goes out", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { buildConservativeChatSuggestion } = await import("@/lib/chat-core/ai-service");
+  const { calls, dependencies } = createProcessorTestDeps({
+    consolidatedQuery: "หม้อน้ำ vios 2010",
+    intentPartType: "หม้อน้ำ",
+    intentCarBrand: "Toyota",
+    intentCarModel: "Vios",
+    intentYear: 2010,
+    intentPartKind: "fitment",
+    fitmentFilters: { categoryName: "หม้อน้ำ (Radiator)", carBrandName: "Toyota", carModelName: "Vios" },
+  });
+  dependencies.generateChatSuggestion = async (replyInput) => {
+    replyInput.onFailure?.({ stage: "reply", kind: "RATE_LIMITED", detail: "GEMINI_HTTP_429", durationMs: 900 });
+    return buildConservativeChatSuggestion(replyInput);
+  };
+  const audits = captureAuditPayloads(dependencies);
+
+  await processLineWebhookPayload(
+    textPayload("หม้อน้ำ vios 2010"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.replies.length, 1);
+  const failure = audits.find((entry) => entry.action === "AI_GEMINI_CALL_FAILED");
+  assert.equal((failure?.payload as { stage?: string } | null)?.stage, "reply");
+  assert.equal((failure?.payload as { kind?: string } | null)?.kind, "RATE_LIMITED");
+});
+
 test("Fix 1: a fresh (stale-session) turn keeps the classifier's spell-corrected part — no re-ask (คอล์ยเย็น case)", async () => {
   // Real case (conv cmr2xbf16): a NEW session ("คอล์ยเย็นนิสสันมาร์ค") after a
   // 9-day gap. The classifier spell-corrects to "คอยล์เย็น", but a STALE stored part
