@@ -30,6 +30,11 @@ This feature must read all credentials server-side only. Do not expose these var
   - Gemini model id. Defaults to `gemini-3.5-flash-lite`. Use a multimodal model for image/OCR steps.
 - `GOOGLE_AI_THINKING_LEVEL`
   - Gemini 3 reasoning depth: `HIGH` (default), `LOW`, or `NONE` (disables thinking). Case-insensitive; sent upper-case to the API.
+- `GOOGLE_AI_FALLBACK_MODEL`
+  - Second model for LINE/Messenger chat calls when the primary returns 5xx ("high demand") or times out. Defaults to `gemini-3.5-flash`. `off` disables it; a value equal to `GOOGLE_AI_MODEL` also disables it.
+  - After the primary is overloaded, chat calls on that server instance start on the fallback for 60 seconds. A fallback that rejects the request (400/404) is skipped for 10 minutes. Background jobs never switch model.
+- `GOOGLE_AI_FALLBACK_THINKING_LEVEL`
+  - Thinking level sent to the fallback model when the caller asked for `NONE`. Defaults to `LOW` — flash (non-lite) models think by default when no level is sent.
 - `GOOGLE_AI_DAILY_COOLDOWN_MINUTES`
   - Minutes a key stays on cooldown after a daily-quota (`PerDay`) 429. Defaults to `60`.
   - Per-minute (RPM) 429s use a fixed 60-second cooldown; transient 5xx/network errors use 20 seconds.

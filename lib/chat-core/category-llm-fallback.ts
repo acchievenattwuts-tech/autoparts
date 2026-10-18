@@ -56,6 +56,7 @@ export async function correctPartSpelling(
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+      fallbackModelOnOverload: true,
     });
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");

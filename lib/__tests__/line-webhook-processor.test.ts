@@ -279,6 +279,8 @@ function createProcessorTestDeps(input?: {
     },
     // Never hit the live LLM fallback in unit tests — keep the flow deterministic.
     correctPartSpelling: async () => null,
+    // Hermetic: the glued-Thai dictionary fallback reads SearchKeyword; tests opt in.
+    resolveGluedKnownQueryIntent: async () => null,
     storeLineAiSuggestion: async (input) => {
       calls.suggestions.push({
         confidence: input.confidence,
@@ -4374,4 +4376,102 @@ test("a bare availability ask with NO parts word keeps its stock hand-off", asyn
 
   assert.ok(calls.auditActions.includes("AI_STOCK_AVAILABILITY_HANDOFF"), "unchanged behaviour");
   assert.equal(calls.auditActions.includes("AI_BROAD_PART_TYPE_ASK"), false);
+});
+
+const failingClassifier: NonNullable<LineWebhookProcessorDependencies["extractChatSearchIntent"]> = async (
+  intentInput,
+) => {
+  intentInput.onFailure?.({
+    stage: "classify",
+    kind: "TIMEOUT",
+    detail: "ALL_GEMINI_KEYS_FAILED:This operation was aborted",
+    durationMs: 9_553,
+  });
+  return null;
+};
+
+test("golden 2026-10-18: Gemini down — a glued Thai question is read from the dictionary and searched", async () => {
+  // Production turn (conv cmu7tkr5a, 2026-10-18 06:49): the classifier timed out on
+  // "มีคอยเย็นมิราจไหมครับ" and the turn was handed to an admin unsearched, although
+  // the shop stocks two Mirage evaporators and both words are in SearchKeyword.
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Mitsubishi", carModelName: "Mirage" },
+  });
+  dependencies.extractChatSearchIntent = failingClassifier;
+  dependencies.loadCarModelVariantLookup = async () => new Map([["mirage", ["มิราจ"]]]);
+  const gluedInputs: string[] = [];
+  dependencies.resolveGluedKnownQueryIntent = async (text) => {
+    gluedInputs.push(text ?? "");
+    return {
+      query: "คอยเย็น มิราจ",
+      requiredTokens: [],
+      categoryName: "คอยล์เย็น (Evaporator)",
+      carBrandName: null,
+      carModelName: "Mirage",
+      fitmentYear: null,
+      contextFree: true,
+    };
+  };
+  const audits = captureAuditPayloads(dependencies);
+
+  await processLineWebhookPayload(
+    textPayload("มีคอยเย็นมิราจไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.deepEqual(gluedInputs, ["มีคอยเย็นมิราจไหมครับ"]);
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searchFitmentHints[0]?.categoryName, "คอยล์เย็น (Evaporator)");
+  assert.equal(calls.searchFitmentHints[0]?.carModelName, "Mirage");
+  assert.equal(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"), false);
+  assert.equal(calls.statePatchTypes.includes("waiting_admin"), false);
+  assert.equal(calls.notifyHandoffs.length, 0);
+  const classified = audits.find((entry) => entry.action === "INTENT_CLASSIFIED");
+  assert.equal((classified?.payload as { source?: string } | null)?.source, "glued_rule_fallback");
+  assert.ok(calls.auditActions.includes("AI_GEMINI_CALL_FAILED"), "the outage stays visible");
+});
+
+test("Gemini down + a glued question that names only the part keeps the uncertain hand-off", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({});
+  dependencies.extractChatSearchIntent = failingClassifier;
+  dependencies.resolveGluedKnownQueryIntent = async () => ({
+    query: "คอยเย็น",
+    requiredTokens: [],
+    categoryName: "คอยล์เย็น (Evaporator)",
+    carBrandName: null,
+    carModelName: null,
+    fitmentYear: null,
+    contextFree: false,
+  });
+
+  await processLineWebhookPayload(
+    textPayload("มีคอยเย็นไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.deepEqual(calls.searches, [], "a part without its car could match any car's part");
+  assert.ok(calls.auditActions.includes("AI_UNCERTAIN_PRODUCT_HANDOFF"));
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+});
+
+test("a working classifier never pays the glued dictionary lookup", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { dependencies } = createProcessorTestDeps({ consolidatedQuery: "คอยเย็น มิราจ" });
+  let gluedCalls = 0;
+  dependencies.resolveGluedKnownQueryIntent = async () => {
+    gluedCalls += 1;
+    return null;
+  };
+
+  await processLineWebhookPayload(
+    textPayload("มีคอยเย็นมิราจไหมครับ"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(gluedCalls, 0);
 });

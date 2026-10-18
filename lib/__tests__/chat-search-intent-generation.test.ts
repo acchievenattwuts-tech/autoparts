@@ -66,8 +66,9 @@ test(
     });
     const captured = capturedInputs[0];
 
-    assert.equal(CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS, 512);
-    assert.equal(captured.maxOutputTokens, 512);
+    assert.equal(CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS, 1536);
+    assert.equal(captured.maxOutputTokens, 1536);
+    assert.equal(captured.fallbackModelOnOverload, true);
     assert.equal(captured.json, true);
     assert.equal(captured.temperature, 0);
     assert.equal(captured.thinkingLevel, "NONE");

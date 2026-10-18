@@ -27,7 +27,11 @@ import {
   type ChatReplyHistoryItem,
   type ChatSearchIntent,
 } from "@/lib/chat-core/ai-service";
-import { resolveKnownQueryIntent } from "@/lib/chat-core/known-query-intent";
+import {
+  knownQueryIntentToChatSearchIntent,
+  resolveGluedKnownQueryIntent,
+  resolveKnownQueryIntent,
+} from "@/lib/chat-core/known-query-intent";
 import {
   isAccessoryOrChemicalIntent,
   resolveChatFitmentFilters,
@@ -249,6 +253,8 @@ export type LineWebhookProcessorDependencies = {
   /** Optional override; extracts the running search subject + structured fitment
    *  hints from conversation history (search-side memory for drip-fed details). */
   extractChatSearchIntent?: typeof extractChatSearchIntent;
+  /** Optional override; reads a glued Thai question against the dictionary when the classifier failed. */
+  resolveGluedKnownQueryIntent?: typeof resolveGluedKnownQueryIntent;
   /** Optional override for the shared LLM + canonical-category multi detector. */
   detectChatMultiSubjects?: typeof detectChatMultiSubjects;
   /** Optional override; resolves AI fitment hints to canonical master-data names
@@ -1558,6 +1564,19 @@ export async function processLineAiReply(
             onFailure: recordGeminiFailure,
           }).catch(() => null)
         : null;
+    // Classifier down (Gemini 503 / timeout) and nothing else read the turn: try
+    // the dictionary on a question typed without spaces ("มีคอยเย็นมิราจไหมครับ")
+    // before the classifier-uncertain hand-off. Only a self-contained part +
+    // vehicle (or code) is used; anything partial keeps the hand-off.
+    const gluedKnownIntent =
+      shouldClassify && classifiedSearchIntent === null && priceSubjectIntent === null
+        ? await (dependencies.resolveGluedKnownQueryIntent ?? resolveGluedKnownQueryIntent)(
+            processText,
+          ).catch(() => null)
+        : null;
+    const gluedRuleIntent: ChatSearchIntent | null = gluedKnownIntent?.contextFree
+      ? knownQueryIntentToChatSearchIntent(gluedKnownIntent)
+      : null;
     // Stock-availability ask ("มีของไหม") — the LLM group (Option C) OR the
     // deterministic regex backstop (Option A, catches LLM misfiles to `product`).
     // The intent is normalized to a PRODUCT turn so the pipeline (frame/guards/
@@ -1566,8 +1585,8 @@ export async function processLineAiReply(
     const stockAvailabilityClassified = classifiedSearchIntent?.group === "stock_availability";
     const rawSearchIntent: ChatSearchIntent | null = stockAvailabilityClassified
       ? { ...classifiedSearchIntent!, group: "product", isProductQuery: true }
-      : classifiedSearchIntent;
-    const usedRuleIntent = ruleSearchIntent !== null;
+      : classifiedSearchIntent ?? gluedRuleIntent;
+    const usedRuleIntent = ruleSearchIntent !== null || gluedRuleIntent !== null;
     // The LLM classifier reads the customer's ACTUAL wording (live-verified: it
     // keeps compound part words like "มอเตอร์ตู้แอร์" and the car/year, and
     // returns proper multi-subjects), while the deterministic price-subject rule
@@ -1658,6 +1677,8 @@ export async function processLineAiReply(
           ? "regex_guard"
           : !isTextTurn
             ? "image_route"
+            : gluedRuleIntent
+              ? "glued_rule_fallback"
             : usedRuleIntent
               ? "rule_dictionary"
               : priceRuleUnreadable

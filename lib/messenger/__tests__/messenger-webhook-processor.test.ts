@@ -42,6 +42,19 @@ test(
   let currentTexts: string[] | null = null;
   let searchHasResults = false;
   let classifiedGroup: "product" | "purchase" = "product";
+  // Gemini down: the classifier returns null and the glued-Thai dictionary
+  // fallback answers with `gluedIntent`.
+  let classifierDown = false;
+  let gluedIntent: {
+    query: string;
+    requiredTokens: string[];
+    categoryName: string | null;
+    carBrandName: string | null;
+    carModelName: string | null;
+    fitmentYear: number | null;
+    contextFree: boolean;
+  } | null = null;
+  const gluedInputs: string[] = [];
   let detectedSubjects: Array<{
     partType: string;
     carBrand: string | null;
@@ -174,7 +187,9 @@ test(
       },
       generateScopedConversationalReply: async () => "scoped reply",
       extractChatSearchIntent: async (input: { latestText: string }) =>
-        input.latestText.includes("ส่งที่อู่")
+        classifierDown
+          ? null
+          : input.latestText.includes("ส่งที่อู่")
           ? {
               group: "shipping_address",
               query: "",
@@ -235,6 +250,27 @@ test(
             },
       buildJuneTextNoMatchHandoffReply: (known?: { partType?: string | null } | null) =>
         `สำหรับ${known?.partType ?? "รายการที่แจ้ง"} จูนขอให้แอดมินช่วยเช็กสต็อกและตัวที่เข้ากันให้ชัวร์ก่อนนะคะ`,
+    },
+  });
+
+  await mock.module("@/lib/chat-core/known-query-intent", {
+    namedExports: {
+      resolveKnownQueryIntent: async () => null,
+      resolveGluedKnownQueryIntent: async (text: string) => {
+        gluedInputs.push(text);
+        return gluedIntent;
+      },
+      knownQueryIntentToChatSearchIntent: (known: NonNullable<typeof gluedIntent>) => ({
+        group: "product",
+        query: known.query,
+        isProductQuery: true,
+        partType: known.categoryName,
+        carBrand: known.carBrandName,
+        carModel: known.carModelName,
+        year: known.fitmentYear,
+        partKind: null,
+        tooBroad: false,
+      }),
     },
   });
 
@@ -578,4 +614,71 @@ test(
   assert.deepEqual(calls.escalations, ["conversation-1"]);
   assert.equal(calls.notifications.length, 1);
   assert.match(calls.textReplies[0] ?? "", /แอดมิน/);
+  assert.deepEqual(gluedInputs, [], "a working classifier never pays the glued lookup");
+
+  // Gemini down (parity with LINE 2026-10-18): the dictionary reads part + car from
+  // the glued question, so the turn is searched instead of handed off.
+  const resetCalls = () => {
+    calls.searches.length = 0;
+    calls.textReplies.length = 0;
+    calls.escalations.length = 0;
+    calls.notifications.length = 0;
+    calls.outboundMessages.length = 0;
+  };
+  resetCalls();
+  classifiedGroup = "product";
+  classifierDown = true;
+  searchHasResults = true;
+  currentText = "มีคอมแอร์ triton ไหมครับ";
+  gluedIntent = {
+    query: "คอมแอร์ triton",
+    requiredTokens: [],
+    categoryName: "คอมแอร์ (Compressor)",
+    carBrandName: null,
+    carModelName: "Triton",
+    fitmentYear: null,
+    contextFree: true,
+  };
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-glued",
+        fbEventId: "event-glued",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(gluedInputs, ["มีคอมแอร์ triton ไหมครับ"]);
+  assert.equal(calls.searches.length, 1, "classifier down + dictionary hit still searches");
+  assert.deepEqual(calls.escalations, []);
+
+  // …but a message the dictionary cannot read fully keeps the uncertain hand-off.
+  resetCalls();
+  currentText = "มีของแปลกๆไหมครับ";
+  gluedIntent = null;
+
+  await processMessengerBatch(
+    [
+      {
+        pageId: "page-1",
+        psid: "psid-1",
+        mid: "mid-glued-unknown",
+        fbEventId: "event-glued-unknown",
+        text: currentText,
+        hasAttachment: false,
+        attachmentUrls: [],
+      },
+    ],
+    { pageAccessToken: "token" },
+  );
+
+  assert.deepEqual(calls.searches, []);
+  assert.deepEqual(calls.escalations, ["conversation-1"]);
 });

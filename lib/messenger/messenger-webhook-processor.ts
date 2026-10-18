@@ -35,6 +35,10 @@ import {
 } from "@/lib/chat-core/search-gate";
 import { routeChatIntent, type ChatIntentRouteResult } from "@/lib/chat-core/intent-router";
 import { guardChatSearchIntent } from "@/lib/chat-core/search-guards";
+import {
+  knownQueryIntentToChatSearchIntent,
+  resolveGluedKnownQueryIntent,
+} from "@/lib/chat-core/known-query-intent";
 import { logMessengerModelGroundingShadow } from "@/lib/chat-core/model-grounding-shadow-telemetry";
 import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
 import {
@@ -778,9 +782,10 @@ async function replyToMessengerTurn(params: {
   // Classify UNKNOWN turns as well as search-capable turns. This keeps general
   // questions out of catalog search and routes them to a human, while preserving
   // deterministic greeting/shop-info/smalltalk routes.
-  const classifiedIntent =
+  const shouldClassify = route.allowsSearch || route.intent === LineIntent.UNKNOWN;
+  const llmClassifiedIntent =
     mixedIntentPlan?.productSearchIntent ??
-    (route.allowsSearch || route.intent === LineIntent.UNKNOWN
+    (shouldClassify
       ? await extractChatSearchIntent({
           intent: route.intent,
           latestText: processText,
@@ -788,6 +793,16 @@ async function replyToMessengerTurn(params: {
           onFailure: recordGeminiFailure,
         }).catch(() => null)
       : null);
+  // Parity with LINE: classifier down (Gemini 503 / timeout) → read a question
+  // typed without spaces ("มีคอยเย็นมิราจไหมครับ") against the dictionary before
+  // the uncertain hand-off. Only a self-contained part + vehicle (or code) is used.
+  const gluedKnownIntent =
+    shouldClassify && !llmClassifiedIntent
+      ? await resolveGluedKnownQueryIntent(processText).catch(() => null)
+      : null;
+  const classifiedIntent =
+    llmClassifiedIntent ??
+    (gluedKnownIntent?.contextFree ? knownQueryIntentToChatSearchIntent(gluedKnownIntent) : null);
 
   // Apply the LLM's interpreted purpose through the same shared group routing
   // used by LINE. This is especially important for contextual follow-ups such as

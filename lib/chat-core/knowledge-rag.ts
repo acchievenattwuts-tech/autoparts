@@ -283,6 +283,7 @@ export async function answerFromKnowledgeRag(input: {
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+      fallbackModelOnOverload: true,
     });
     const answer = parseGroundedKnowledgeAnswer(text, rows);
     return finish(answer.answered ? "ANSWERED" : "UNSUPPORTED", answer, rows);

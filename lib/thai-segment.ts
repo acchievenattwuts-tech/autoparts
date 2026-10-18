@@ -49,6 +49,34 @@ const getThaiSegmenter = (): Intl.Segmenter | null => {
   return cachedSegmenter;
 };
 
+let cachedGraphemeSegmenter: Intl.Segmenter | null | undefined;
+
+/**
+ * The grapheme clusters of a normalized text, in order (a consonant with its
+ * vowel and tone marks stays one piece). For dictionary maximal matching, where
+ * ICU word segmentation cuts across real word boundaries ("วีออสมี" →
+ * "วี|ออ|สมี"). Whitespace is dropped. [] when ICU is unavailable.
+ */
+export function splitThaiGraphemes(text?: string | null): string[] {
+  const normalized = normalizeSearchText(text);
+  if (!normalized) return [];
+
+  if (cachedGraphemeSegmenter === undefined) {
+    try {
+      cachedGraphemeSegmenter = new Intl.Segmenter("th", { granularity: "grapheme" });
+    } catch {
+      cachedGraphemeSegmenter = null;
+    }
+  }
+  if (!cachedGraphemeSegmenter) return [];
+
+  const graphemes: string[] = [];
+  for (const part of cachedGraphemeSegmenter.segment(normalized)) {
+    if (part.segment.trim()) graphemes.push(part.segment);
+  }
+  return graphemes;
+}
+
 /**
  * Segment the Thai-script portions of a query into words. Returns normalized,
  * deduped Thai words (≥2 chars, non-stopword). Latin/numeric tokens are ignored

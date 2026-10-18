@@ -18,6 +18,22 @@ export const GEMINI_EMBEDDING_DIMENSIONS = 768;
 const DEFAULT_THINKING_LEVEL = "HIGH";
 const DEFAULT_MAX_OUTPUT_TOKENS = 800;
 const REQUEST_TIMEOUT_MS = 30_000;
+// Second model for interactive chat calls when the primary is overloaded (HTTP
+// 5xx "high demand") or times out. A capacity spike is per model — every key of
+// the same model fails together (LINE incidents 2026-10-12..18) — so retrying the
+// same model on another key rarely helps. gemini-3.5-flash is a separate pool,
+// verified live 2026-10-18 on the classify prompt while 3.1/3.7/3.8 returned 503.
+const DEFAULT_FALLBACK_MODEL = "gemini-3.5-flash";
+// Flash (non-lite) models think when thinkingConfig is omitted (~600 thought
+// tokens, ~5s on the classify prompt); LOW measured 0 thought tokens. Sent in
+// place of "NONE" when the fallback model serves the call.
+const DEFAULT_FALLBACK_THINKING_LEVEL = "LOW";
+// After the primary model is overloaded, chat calls on this server instance start
+// on the fallback for this long, so each turn stops burning a full timeout first.
+const PRIMARY_OVERLOAD_WINDOW_MS = 60_000;
+// A fallback model that rejects the request (400/404 — retired id, unsupported
+// thinking level) is skipped for this long instead of failing chat calls.
+const FALLBACK_REJECTED_WINDOW_MS = 10 * 60_000;
 
 export class AllGeminiKeysExhaustedError extends Error {
   constructor(message: string) {
@@ -70,11 +86,19 @@ export type GeminiGenerateInput = {
    * calls cap this low so a bad streak can't stack many timeouts in one turn.
    */
   maxKeyAttempts?: number;
+  /**
+   * When the primary model is overloaded (5xx) or times out, run the next key
+   * attempt on the fallback model (`GOOGLE_AI_FALLBACK_MODEL`). Interactive chat
+   * calls opt in; background jobs keep a single model.
+   */
+  fallbackModelOnOverload?: boolean;
 };
 
 export type GeminiGenerateResult = {
   text: string;
   keyRef: string;
+  /** The model that produced `text` (the fallback when the primary was overloaded). */
+  model: string;
 };
 
 type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
@@ -101,6 +125,86 @@ export function getGeminiKnowledgeEmbeddingModel(): string {
 
 function getThinkingLevel(): string {
   return process.env.GOOGLE_AI_THINKING_LEVEL?.trim().toUpperCase() || DEFAULT_THINKING_LEVEL;
+}
+
+/** The chat fallback model, or null when disabled ("off") or equal to the primary. */
+function getFallbackModel(): string | null {
+  const configured = process.env.GOOGLE_AI_FALLBACK_MODEL?.trim() || DEFAULT_FALLBACK_MODEL;
+  if (/^(off|none|false)$/i.test(configured) || configured === getModel()) return null;
+  return configured;
+}
+
+function getFallbackThinkingLevel(): string {
+  return (
+    process.env.GOOGLE_AI_FALLBACK_THINKING_LEVEL?.trim().toUpperCase() ||
+    DEFAULT_FALLBACK_THINKING_LEVEL
+  );
+}
+
+type GeminiModelAttempt = { model: string; thinkingLevel: string; isFallback: boolean };
+
+let primaryOverloadedUntil = 0;
+let fallbackRejectedUntil = 0;
+
+/** Test seam: clears the per-instance overload / rejected-fallback windows. */
+export function resetGeminiModelFallbackStateForTest(): void {
+  primaryOverloadedUntil = 0;
+  fallbackRejectedUntil = 0;
+}
+
+/**
+ * Model order for one call. Without the opt-in (or with no usable fallback) it is
+ * the primary alone. With it, the primary leads unless it was overloaded within
+ * {@link PRIMARY_OVERLOAD_WINDOW_MS}, in which case the fallback leads.
+ */
+function buildModelPlan(input: GeminiGenerateInput): GeminiModelAttempt[] {
+  const thinkingLevel = input.thinkingLevel?.trim().toUpperCase() || getThinkingLevel();
+  const primary: GeminiModelAttempt = { model: getModel(), thinkingLevel, isFallback: false };
+  const fallbackModel = input.fallbackModelOnOverload ? getFallbackModel() : null;
+  const now = Date.now();
+  if (!fallbackModel || now < fallbackRejectedUntil) return [primary];
+
+  const fallback: GeminiModelAttempt = {
+    model: fallbackModel,
+    thinkingLevel: thinkingLevel === "NONE" ? getFallbackThinkingLevel() : thinkingLevel,
+    isFallback: true,
+  };
+  return now < primaryOverloadedUntil ? [fallback, primary] : [primary, fallback];
+}
+
+/** 5xx, timeout/abort or a network failure: the model may serve on another try. */
+function isModelOverloadError(error: unknown): boolean {
+  if (error instanceof GeminiHttpError) return error.status >= 500;
+  return true;
+}
+
+/**
+ * The model for the next key attempt after `failed` threw. An overload switches
+ * to the other model in the plan (and opens the primary-overloaded window); a
+ * fallback that rejects the request is skipped for a while; a key problem (429,
+ * 401/403, invalid key) keeps the same model for the next key.
+ */
+function selectNextModelAttempt(
+  plan: GeminiModelAttempt[],
+  failed: GeminiModelAttempt,
+  error: unknown,
+): GeminiModelAttempt {
+  const other = plan.find((candidate) => candidate !== failed);
+  if (!other) return failed;
+
+  const fallbackRejected =
+    failed.isFallback &&
+    error instanceof GeminiHttpError &&
+    (error.status === 404 || (error.status === 400 && !isGeminiInvalidKeyError(error.message)));
+  if (fallbackRejected) {
+    fallbackRejectedUntil = Date.now() + FALLBACK_REJECTED_WINDOW_MS;
+    console.warn("[google-ai-client] fallback model rejected the request", failed.model, error.status);
+    return other;
+  }
+
+  if (!isModelOverloadError(error)) return failed;
+  if (!failed.isFallback) primaryOverloadedUntil = Date.now() + PRIMARY_OVERLOAD_WINDOW_MS;
+  return other;
 }
 
 function buildParts(input: GeminiGenerateInput): GeminiPart[] {
@@ -142,11 +246,14 @@ function extractText(payload: unknown): string {
     .trim();
 }
 
-async function callGeminiOnce(secret: string, input: GeminiGenerateInput): Promise<string> {
-  const model = getModel();
+async function callGeminiOnce(
+  secret: string,
+  input: GeminiGenerateInput,
+  attempt: GeminiModelAttempt,
+): Promise<string> {
+  const { model, thinkingLevel } = attempt;
   const url = `${GEMINI_BASE_URL}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(secret)}`;
 
-  const thinkingLevel = input.thinkingLevel?.trim().toUpperCase() || getThinkingLevel();
   const body: Record<string, unknown> = {
     contents: [{ role: "user", parts: buildParts(input) }],
     generationConfig: {
@@ -215,17 +322,24 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
   // Cap how many keys we'll try in one call so a bad streak can't stack many
   // timeouts into a single (interactive) turn.
   const attemptKeys = input.maxKeyAttempts ? keys.slice(0, Math.max(1, input.maxKeyAttempts)) : keys;
+  const plan = buildModelPlan(input);
+  let attempt = plan[0];
 
   for (const key of attemptKeys) {
     try {
-      const text = await callGeminiOnce(key.secret, input);
+      const text = await callGeminiOnce(key.secret, input, attempt);
       // Fire-and-forget: the success stamp is telemetry (counters/lastUsedAt),
       // not selection-critical state, so the interactive turn shouldn't pay its
       // DB round-trip. Error marks below stay awaited — they gate key selection.
       void markGeminiKeySuccess(key.keyRef).catch(() => undefined);
-      return { text, keyRef: key.keyRef };
+      if (attempt.isFallback) {
+        console.warn("[google-ai-client] served by fallback model", attempt.model);
+      }
+      return { text, keyRef: key.keyRef, model: attempt.model };
     } catch (error) {
       lastError = error;
+      const failedAttempt = attempt;
+      attempt = selectNextModelAttempt(plan, failedAttempt, error);
 
       if (error instanceof GeminiHttpError) {
         if (error.status === 429) {
@@ -246,6 +360,11 @@ export async function generateGeminiContent(input: GeminiGenerateInput): Promise
         ) {
           // Invalid / revoked / unauthorized key — stop using it until fixed.
           await markGeminiKeyDisabled(key.keyRef, error.message);
+          continue;
+        }
+        if ((error.status === 400 || error.status === 404) && failedAttempt.isFallback) {
+          // The fallback model rejected the request (retired id, unsupported
+          // thinking level): not a key problem — go on with the primary model.
           continue;
         }
         if (error.status === 400 || error.status === 404) {

@@ -55,7 +55,10 @@ export const CHAT_MAX_KEY_ATTEMPTS = 2;
 // valid Gemini JSON mid-object, which made the caller treat a successful
 // classification as unavailable and skip search entirely. This only expands the
 // extraction response envelope; it does not change catalog query/ranking logic.
-export const CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS = 512;
+// 512 still cut off a 14-line parts list (finishReason MAX_TOKENS at 508 tokens;
+// the full reply needs ~830 — production UNPARSEABLE 2026-10-15), so 1536 leaves
+// headroom. Billing and latency follow the tokens actually produced.
+export const CHAT_SEARCH_INTENT_MAX_OUTPUT_TOKENS = 1536;
 
 const GEMINI_REPLYABLE_INTENTS = new Set<LineIntent>([
   LineIntent.PRODUCT_INQUIRY_TEXT,
@@ -165,6 +168,7 @@ export async function generateChatSuggestion(input: {
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+      fallbackModelOnOverload: true,
     }).then((result) => ({ suggestedReply: result.text.trim() }));
 
     if (!suggestedReply) {
@@ -473,6 +477,7 @@ export async function extractChatSearchIntent(input: {
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+      fallbackModelOnOverload: true,
     });
 
     const parsed = parseChatSearchIntent(text);
@@ -906,6 +911,7 @@ export async function generateScopedConversationalReply(input: {
       thinkingLevel: "NONE",
       timeoutMs: CHAT_CALL_TIMEOUT_MS,
       maxKeyAttempts: CHAT_MAX_KEY_ATTEMPTS,
+      fallbackModelOnOverload: true,
     });
 
     if (!text.trim()) {
