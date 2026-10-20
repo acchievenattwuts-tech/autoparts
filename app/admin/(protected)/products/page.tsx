@@ -35,6 +35,8 @@ import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import ProductFitmentSummary from "./ProductFitmentSummary";
 import { getAdminActiveBadgeTone, getAdminMasterRowClass } from "@/lib/admin-status-presentation";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import ShelfLocationBadges from "@/components/shared/ShelfLocationBadges";
+import { loadProductShelfLocationViews } from "@/lib/shelf-map";
 
 const PAGE_SIZE = 30;
 
@@ -159,8 +161,8 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
     path: "/admin/products",
   });
 
-  const rawProducts = sortProductsByIds(
-    await db.product.findMany({
+  const [productRows, shelfLocationsByProduct] = await Promise.all([
+    db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
       },
@@ -173,7 +175,6 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         },
         code: true,
         name: true,
-        shelfLocation: true,
         salePrice: true,
         retailPrice: true,
         memberPrice: true,
@@ -206,10 +207,10 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
         },
       },
     }),
-    searchResult.ids,
-  );
+    loadProductShelfLocationViews(db, searchResult.ids),
+  ]);
 
-  const products = rawProducts;
+  const products = sortProductsByIds(productRows, searchResult.ids);
 
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -375,7 +376,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                 <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">หมวดหมู่</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">การคำนวณ</th>
                 <th className="px-4 py-3 text-center font-medium text-gray-600 dark:text-slate-300">หน้าบ้าน</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ตำแหน่ง Shelf</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-600 dark:text-slate-300">ที่เก็บ</th>
                 <th className="px-4 py-3 text-right font-medium text-gray-600 dark:text-slate-300">
                   ราคาขาย
                   <span className="block text-xs font-normal text-gray-400 dark:text-slate-500">ส่ง / ปลีก</span>
@@ -475,7 +476,7 @@ const ProductsPage = async ({ searchParams }: ProductsPageProps) => {
                         </AdminStatusBadge>
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-slate-300">
-                        {product.shelfLocation ?? <span className="text-gray-300 dark:text-slate-500">-</span>}
+                        <ShelfLocationBadges locations={shelfLocationsByProduct.get(product.id) ?? []} emptyLabel="-" />
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex flex-col items-end gap-0.5">

@@ -33,7 +33,8 @@ export const STOREFRONT_HIDDEN_PRODUCT_FIELDS: ReadonlySet<string> = new Set([
   "memberPrice",
   "priceListPrices",
   "minStock",
-  "shelfLocation",
+  // Described shelf locations ("A-2 (ประจำ)"); the storefront never shows where stock is kept.
+  "shelfLocations",
   "preferredSupplierId",
   "purchaseUnitName",
   "reportUnitName",

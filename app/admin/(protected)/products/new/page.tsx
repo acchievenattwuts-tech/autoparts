@@ -17,7 +17,7 @@ import { getActivePriceListOptions } from "@/lib/pricing/price-list-repository";
 const NewProductPage = async () => {
   await requirePermission("products.create");
 
-  const [categories, carBrands, partsBrands, suppliers, priceLists] = await Promise.all([
+  const [categories, carBrands, partsBrands, suppliers, priceLists, shelfRacks] = await Promise.all([
     getActiveCategoryOptions(),
     getActiveCarBrandOptionsWithModels(),
     getActivePartsBrandOptions(),
@@ -27,6 +27,11 @@ const NewProductPage = async () => {
       select: { id: true, name: true, phone: true },
     }),
     getActivePriceListOptions(),
+    db.shelfRack.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: { id: true, code: true, name: true, levels: true },
+    }),
   ]);
 
   return (
@@ -46,7 +51,7 @@ const NewProductPage = async () => {
         description="บันทึกรายละเอียดสินค้า หน่วยนับ สต็อก และการผูกกับรถ"
       />
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} shelfRacks={shelfRacks} />
     </div>
   );
 };

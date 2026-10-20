@@ -235,6 +235,15 @@ export async function writeAuditLogTx(
   await tx.auditLog.create({ data: payload, select: { id: true } });
 }
 
+/** One INSERT for many entries, inside the caller's transaction (bulk imports). */
+export async function writeAuditLogManyTx(
+  tx: Prisma.TransactionClient,
+  inputs: readonly AuditLogInput[],
+): Promise<void> {
+  if (inputs.length === 0) return;
+  await tx.auditLog.createMany({ data: inputs.map(normalizeAuditPayload) });
+}
+
 export async function safeWriteAuditLog(input: AuditLogInput): Promise<void> {
   try {
     await writeAuditLog(input);

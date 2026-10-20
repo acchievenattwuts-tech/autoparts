@@ -7,12 +7,20 @@ import {
 } from "@/scripts/check-schema-drift";
 
 const T4_INDEX_DROP = 'DROP INDEX "SupplierDebitNote_active_supplier_reference_key"';
+const SHELF_PRIMARY_INDEX_DROP = 'DROP INDEX "ProductShelfLocation_one_primary_per_product_key"';
 const script = (...statements: string[]): string =>
   ["-- DropIndex", ...statements.map((statement) => `${statement};`)].join("\n");
 const searchDrift = (): string[] => [...KNOWN_SEARCH_DRIFT_STATEMENTS];
 
-test("T4: the allowlist holds exactly the partial expression index drop", () => {
-  assert.deepEqual(KNOWN_UNMODELED_DRIFT_STATEMENTS, [T4_INDEX_DROP]);
+test("T4: the allowlist holds exactly the two partial index drops", () => {
+  assert.deepEqual(KNOWN_UNMODELED_DRIFT_STATEMENTS, [T4_INDEX_DROP, SHELF_PRIMARY_INDEX_DROP]);
+});
+
+test("shelf map: the one-primary-per-product partial index drop is expected and exits 0", () => {
+  const report = classifySchemaDrift(script(...searchDrift(), T4_INDEX_DROP, SHELF_PRIMARY_INDEX_DROP));
+  assert.deepEqual(report.unexpected, []);
+  assert.deepEqual(report.unmodeledPresent, [T4_INDEX_DROP, SHELF_PRIMARY_INDEX_DROP]);
+  assert.equal(driftExitCode(report), EXIT_OK);
 });
 
 test("T4: search drift plus the index drop is fully expected and exits 0", () => {

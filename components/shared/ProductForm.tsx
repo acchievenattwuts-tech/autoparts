@@ -8,6 +8,8 @@ import { createProduct, researchProductWithAi, updateProduct, uploadProductImage
 import { isLegacyFieldPriceListCode } from "@/lib/pricing/price-lists";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import CropImageDialog from "@/components/shared/CropImageDialog";
+import ShelfPrimaryLocationField from "@/components/shared/ShelfPrimaryLocationField";
+import type { ShelfFormLocation, ShelfRackOption } from "@/lib/shelf-product-form";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { derivePricesFromWholesale, deriveMarketplacePricesFromWholesale } from "@/lib/product-pricing";
 import {
@@ -99,7 +101,8 @@ export interface ProductFormData {
   priceListPrices: Record<string, number>;
   minStock:        number;
   warrantyDays:    number;
-  shelfLocation:   string | null;
+  /** Home first, then newest overflow location (lib/shelf-product-form.ts toShelfFormLocations). */
+  shelfLocations:  ShelfFormLocation[];
   saleUnitName:    string | null;
   purchaseUnitName: string | null;
   reportUnitName:  string | null;
@@ -125,6 +128,8 @@ interface ProductFormProps {
   partsBrands: PartsBrandOption[];
   suppliers:   SupplierOption[];
   priceLists:  PriceListOption[];
+  /** Active shelf racks for the "ที่เก็บประจำ" picker. */
+  shelfRacks:  ShelfRackOption[];
   product?:    ProductFormData;
   returnTo?:    string;
 }
@@ -165,7 +170,7 @@ const checkboxCls =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists, product, returnTo = "/admin/products" }: ProductFormProps) => {
+const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists, shelfRacks, product, returnTo = "/admin/products" }: ProductFormProps) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -1112,11 +1117,13 @@ const ProductForm = ({ categories, carBrands, partsBrands, suppliers, priceLists
               placeholder="-- ไม่ระบุผู้จำหน่าย --"
             />
           </div>
-          <div>
-            <label className={labelCls}>ตำแหน่ง Shelf</label>
-            <input type="text" name="shelfLocation" defaultValue={product?.shelfLocation ?? ""}
-              placeholder="เช่น A-01" className={inputCls} />
-          </div>
+          <ShelfPrimaryLocationField
+            racks={shelfRacks}
+            locations={product?.shelfLocations}
+            labelClassName={labelCls}
+            helpClassName={helpCls}
+            checkboxClassName={checkboxCls}
+          />
         </div>
         <div className="mt-5">
           <label className={labelCls}>คำอธิบาย</label>

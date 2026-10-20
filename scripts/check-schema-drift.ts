@@ -30,9 +30,13 @@ import { classifyDriftStatements, type DriftClassification } from "../lib/prisma
  *   number unique among ACTIVE DNs only (see normalizeSupplierReferenceKey in lib/supplier-debit-note.ts). The diff
  *   proposes dropping it. Prisma may also skip expression indexes when it introspects, so its absence from the diff
  *   says nothing about whether the index exists, and is not reported as missing.
+ * - "ProductShelfLocation_one_primary_per_product_key" (shelf map, 2026-10-19,
+ *   prisma/migrations/20261019_shelf_map/indexes/05.sql): partial unique index allowing at most one primary
+ *   location per product. The diff proposes dropping it; like the DN index, its absence is not reported as missing.
  */
 export const KNOWN_UNMODELED_DRIFT_STATEMENTS: readonly string[] = [
   'DROP INDEX "SupplierDebitNote_active_supplier_reference_key"',
+  'DROP INDEX "ProductShelfLocation_one_primary_per_product_key"',
 ];
 
 export type SchemaDriftReport = DriftClassification & { unmodeledPresent: string[] };

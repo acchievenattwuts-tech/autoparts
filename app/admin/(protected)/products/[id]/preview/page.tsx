@@ -13,6 +13,8 @@ import { getAllPermissionKeys, hasPermissionAccess } from "@/lib/access-control"
 import { buildAdminProductFitmentSummary } from "@/lib/admin-product-fitment";
 import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { formatDateThai, formatDateTimeThai } from "@/lib/th-date";
+import ShelfLocationBadges from "@/components/shared/ShelfLocationBadges";
+import { loadProductShelfLocationViews } from "@/lib/shelf-map";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -40,61 +42,64 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
   const safeReturnTo = getSafeProductReturnTo(returnTo);
   const editHref = `/admin/products/${id}/edit?returnTo=${encodeURIComponent(safeReturnTo)}`;
 
-  const product = await db.product.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      code: true,
-      name: true,
-      description: true,
-      imageUrl: true,
-      isActive: true,
-      salePrice: true,
-      retailPrice: true,
-      memberPrice: true,
-      costPrice: true,
-      purchaseLastPrice: true,
-      purchaseLastDate: true,
-      avgCost: true,
-      stock: true,
-      minStock: true,
-      shelfLocation: true,
-      warrantyDays: true,
-      reportUnitName: true,
-      saleUnitName: true,
-      purchaseUnitName: true,
-      inventoryTracking: true,
-      isLotControl: true,
-      lotIssueMethod: true,
-      requireExpiryDate: true,
-      createdAt: true,
-      updatedAt: true,
-      category: { select: { name: true } },
-      brand: { select: { name: true } },
-      preferredSupplier: { select: { name: true } },
-      images: {
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        select: { url: true, alt: true },
-      },
-      aliases: { select: { alias: true } },
-      carModels: {
-        select: {
-          fitmentType: true,
-          yearStart: true,
-          yearEnd: true,
-          carModel: {
-            select: {
-              name: true,
-              carBrand: { select: { name: true } },
+  const [product, shelfLocationsByProduct] = await Promise.all([
+    db.product.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        description: true,
+        imageUrl: true,
+        isActive: true,
+        salePrice: true,
+        retailPrice: true,
+        memberPrice: true,
+        costPrice: true,
+        purchaseLastPrice: true,
+        purchaseLastDate: true,
+        avgCost: true,
+        stock: true,
+        minStock: true,
+        warrantyDays: true,
+        reportUnitName: true,
+        saleUnitName: true,
+        purchaseUnitName: true,
+        inventoryTracking: true,
+        isLotControl: true,
+        lotIssueMethod: true,
+        requireExpiryDate: true,
+        createdAt: true,
+        updatedAt: true,
+        category: { select: { name: true } },
+        brand: { select: { name: true } },
+        preferredSupplier: { select: { name: true } },
+        images: {
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: { url: true, alt: true },
+        },
+        aliases: { select: { alias: true } },
+        carModels: {
+          select: {
+            fitmentType: true,
+            yearStart: true,
+            yearEnd: true,
+            carModel: {
+              select: {
+                name: true,
+                carBrand: { select: { name: true } },
+              },
             },
           },
+          orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
         },
-        orderBy: [{ fitmentType: "asc" }, { carModelId: "asc" }, { yearStart: "asc" }],
       },
-    },
-  });
+    }),
+    loadProductShelfLocationViews(db, [id]),
+  ]);
 
   if (!product) notFound();
+  const shelfLocations = shelfLocationsByProduct.get(product.id) ?? [];
 
   const hasImage = !!product.imageUrl || product.images.length > 0;
   const directFitments = product.carModels.filter((f) => f.fitmentType === "DIRECT");
@@ -184,17 +189,34 @@ const ProductPreviewPage = async ({ params, searchParams }: Props) => {
                   {product.brand.name}
                 </span>
               )}
-              {product.shelfLocation && (
-                <span className="flex items-center gap-1">
-                  <MapPin size={13} />
-                  {product.shelfLocation}
-                </span>
-              )}
               {product.warrantyDays > 0 && (
                 <span className="flex items-center gap-1">
                   <ShieldCheck size={13} />
                   ประกัน {product.warrantyDays} วัน
                 </span>
+              )}
+            </div>
+            <div className="space-y-1.5 rounded-lg border border-sky-100 bg-sky-50/70 px-3 py-2 dark:border-sky-400/20 dark:bg-sky-500/10">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-sky-800 dark:text-sky-200">
+                  <MapPin size={13} />
+                  ที่เก็บ
+                </span>
+                <ShelfLocationBadges locations={shelfLocations} size="md" />
+              </div>
+              {shelfLocations.length > 0 && (
+                <ul className="space-y-0.5 text-xs text-gray-600 dark:text-slate-300">
+                  {shelfLocations.map((location) => (
+                    <li key={location.id} className="flex flex-wrap items-baseline gap-x-1.5">
+                      <span className="font-mono font-semibold text-[#1e3a5f] dark:text-sky-200">{location.code}</span>
+                      <span className="text-gray-400 dark:text-slate-500">{location.isPrimary ? "ที่เก็บประจำ" : "ที่เก็บเพิ่ม"}</span>
+                      {location.note && <span>· {location.note}</span>}
+                      <span className="text-gray-400 dark:text-slate-500">
+                        · ตรวจล่าสุด {location.verifiedAt ? formatDateTimeThai(location.verifiedAt) : "-"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               )}
             </div>
             {product.description && (

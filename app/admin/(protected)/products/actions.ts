@@ -51,6 +51,19 @@ import {
 } from "@/lib/products-bucket-storage";
 import { runProductAiResearch, type ProductAiResearchDraft, type ProductAiResearchInput } from "@/lib/product-ai-research";
 import { planCollectionSync } from "@/lib/collection-sync";
+import { changeProductShelfLocation } from "@/lib/shelf-map";
+import { SHELF_RULE_ERROR_MESSAGES } from "@/lib/shelf-location-rules";
+import {
+  describeShelfLocationRows,
+  isShelfPrimaryFieldChanged,
+  isValidShelfPrimaryValue,
+  parseShelfPrimaryValue,
+  planProductFormShelfChanges,
+  SHELF_KEEP_OLD_AS_SECONDARY_FIELD,
+  SHELF_PRIMARY_FIELD,
+  SHELF_PRIMARY_ORIGINAL_FIELD,
+  ShelfFormRuleError,
+} from "@/lib/shelf-product-form";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -132,12 +145,22 @@ const productFitmentSchema = z.object({
   note: z.string().max(200).nullable().optional(),
 });
 
+// ที่เก็บประจำ: "rackId:level" or "" (lib/shelf-product-form.ts) -> target or null.
+const shelfPrimaryValueSchema = z
+  .string()
+  .max(80)
+  .refine(isValidShelfPrimaryValue, "ที่เก็บประจำไม่ถูกต้อง กรุณาเลือกใหม่")
+  .transform(parseShelfPrimaryValue);
+
 const productSchema = z.object({
   name: z.string().min(1, "กรุณากรอกชื่อสินค้า").max(200),
   categoryId: z.string().min(1, "กรุณาเลือกหมวดหมู่").max(50),
   brandId: z.string().max(50).optional(),
   preferredSupplierId: z.string().max(50).optional(),
-  shelfLocation: z.string().max(50).optional(),
+  // Shelf locations live in ProductShelfLocation; the legacy Product.shelfLocation column is retired.
+  shelfPrimary: shelfPrimaryValueSchema,
+  shelfPrimaryOriginal: shelfPrimaryValueSchema,
+  shelfKeepOldAsSecondary: z.preprocess((v) => v === "true", z.boolean()).default(false),
   inventoryTracking: z.enum([INVENTORY_TRACKING_TRACKED, INVENTORY_TRACKING_NON_TRACKED]).default(INVENTORY_TRACKING_TRACKED),
   isStorefrontVisible: z.preprocess((v) => v !== "false", z.boolean()).default(true),
   costPrice: z.coerce.number().min(0).max(9_999_999).default(0),
@@ -409,6 +432,9 @@ async function getProductAuditSnapshot(productId: string) {
         select: { priceListId: true, amount: true },
         orderBy: { priceListId: "asc" },
       },
+      shelfLocations: {
+        select: { rackId: true, level: true, isPrimary: true, createdAt: true, rack: { select: { code: true } } },
+      },
     },
   });
 
@@ -436,7 +462,8 @@ async function getProductAuditSnapshot(productId: string) {
     categoryId: product.categoryId,
     brandId: product.brandId,
     preferredSupplierId: product.preferredSupplierId,
-    shelfLocation: product.shelfLocation,
+    // "A-2 (ประจำ)", "Z-1 (เพิ่ม)": a location change shows in this product's audit diff.
+    shelfLocations: describeShelfLocationRows(product.shelfLocations),
     inventoryTracking: product.inventoryTracking,
     isStorefrontVisible: product.isStorefrontVisible,
     costPrice: product.costPrice,
@@ -651,7 +678,9 @@ const parseProductFormData = (
     categoryId: formData.get("categoryId"),
     brandId: formData.get("brandId") || undefined,
     preferredSupplierId: formData.get("preferredSupplierId") || undefined,
-    shelfLocation: formData.get("shelfLocation") || undefined,
+    shelfPrimary: formData.get(SHELF_PRIMARY_FIELD) ?? "",
+    shelfPrimaryOriginal: formData.get(SHELF_PRIMARY_ORIGINAL_FIELD) ?? "",
+    shelfKeepOldAsSecondary: formData.get(SHELF_KEEP_OLD_AS_SECONDARY_FIELD) ?? "false",
     inventoryTracking: formData.get("inventoryTracking") || INVENTORY_TRACKING_TRACKED,
     isStorefrontVisible: formData.get("isStorefrontVisible") ?? "true",
     costPrice: formData.get("costPrice"),
@@ -711,6 +740,32 @@ async function assertCanSetInventoryTracking(
   if (openLot) {
     throw new Error("สินค้านี้มี Lot คงเหลือ กรุณาปรับ Lot ให้เป็นศูนย์ก่อนเปลี่ยนเป็นไม่คำนวณสต็อก");
   }
+}
+
+/**
+ * Applies the form's "ที่เก็บประจำ" field inside the product save transaction. An untouched
+ * field costs no query; a rejected location throws ShelfFormRuleError so the whole save
+ * rolls back. The product's own audit entry records the change via snapshot.shelfLocations.
+ */
+async function applyProductFormShelfLocation(
+  tx: Prisma.TransactionClient,
+  productId: string,
+  form: Pick<ProductInput, "shelfPrimary" | "shelfPrimaryOriginal" | "shelfKeepOldAsSecondary">,
+): Promise<void> {
+  if (!isShelfPrimaryFieldChanged(form.shelfPrimary, form.shelfPrimaryOriginal)) return;
+  const current = await tx.productShelfLocation.findFirst({
+    where: { productId, isPrimary: true },
+    select: { id: true, rackId: true, level: true },
+  });
+  const changes = planProductFormShelfChanges({
+    current,
+    submitted: form.shelfPrimary,
+    original: form.shelfPrimaryOriginal,
+    keepOldAsSecondary: form.shelfKeepOldAsSecondary,
+  });
+  if (changes.length === 0) return;
+  const outcome = await changeProductShelfLocation(tx, { productId, changes, now: new Date() });
+  if (!outcome.ok) throw new ShelfFormRuleError(outcome.error);
 }
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
@@ -829,7 +884,6 @@ export const createProduct = async (
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,
           preferredSupplierId: productData.preferredSupplierId || null,
-          shelfLocation: productData.shelfLocation,
           inventoryTracking: productData.inventoryTracking,
           isStorefrontVisible: productData.isStorefrontVisible,
           costPrice: productData.costPrice,
@@ -891,6 +945,8 @@ export const createProduct = async (
         });
       }
 
+      await applyProductFormShelfLocation(tx, product.id, productData);
+
       await enqueueProductStorefrontSync(tx, product);
       createdProductPath = getProductStorefrontPath(product);
     });
@@ -921,6 +977,9 @@ export const createProduct = async (
     }
     return {};
   } catch (err) {
+    if (err instanceof ShelfFormRuleError) {
+      return { error: `ที่เก็บประจำ: ${SHELF_RULE_ERROR_MESSAGES[err.ruleError]}` };
+    }
     if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
       return { error: "มีระดับราคาถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
     }
@@ -1039,7 +1098,6 @@ export const updateProduct = async (
           categoryId: productData.categoryId,
           brandId: productData.brandId || null,
           preferredSupplierId: productData.preferredSupplierId || null,
-          shelfLocation: productData.shelfLocation,
           inventoryTracking: productData.inventoryTracking,
           isStorefrontVisible: productData.isStorefrontVisible,
           costPrice: productData.costPrice,
@@ -1199,6 +1257,8 @@ export const updateProduct = async (
         await tx.productFitment.createMany({ data: fitmentPlan.create, skipDuplicates: true });
       }
 
+      await applyProductFormShelfLocation(tx, id, productData);
+
       await enqueueProductStorefrontSync(tx, updatedProduct);
       updatedProductPath = getProductStorefrontPath(updatedProduct);
     });
@@ -1235,6 +1295,9 @@ export const updateProduct = async (
     after(() => reembedProductSearchDocument(id));
     return {};
   } catch (err) {
+    if (err instanceof ShelfFormRuleError) {
+      return { error: `ที่เก็บประจำ: ${SHELF_RULE_ERROR_MESSAGES[err.ruleError]}` };
+    }
     if (err instanceof Error && err.message === "PRODUCT_PRICE_LIST_NOT_ACTIVE") {
       return { error: "มีระดับราคาถูกปิดหรือเปลี่ยนแปลง กรุณาโหลดหน้าใหม่" };
     }

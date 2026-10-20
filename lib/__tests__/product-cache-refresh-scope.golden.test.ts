@@ -67,9 +67,11 @@ const GOLDEN_CHANGE_SETS: Array<{
   { name: "wholesale + cost only", changed: ["costPrice", "salePrice"], expected: { storefrontWide: false, searchKeywordIndex: false, transactionProductCatalog: false } },
   {
     name: "stock control + purchasing defaults",
-    changed: ["minStock", "preferredSupplierId", "purchaseUnitName", "reportUnitName", "shelfLocation", "units"],
+    changed: ["minStock", "preferredSupplierId", "purchaseUnitName", "reportUnitName", "shelfLocations", "units"],
     expected: { storefrontWide: false, searchKeywordIndex: false, transactionProductCatalog: false },
   },
+  // ที่เก็บประจำ moved from the product form: only the snapshot's described locations change.
+  { name: "shelf home moved", changed: ["shelfLocations"], expected: { storefrontWide: false, searchKeywordIndex: false, transactionProductCatalog: false } },
   {
     name: "lot policy",
     changed: ["allowExpiredIssue", "isLotControl", "lotIssueMethod", "requireExpiryDate"],

@@ -17,6 +17,7 @@ import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import { partitionProductFitments } from "@/lib/product-fitment";
 import { getActivePriceListOptions } from "@/lib/pricing/price-list-repository";
+import { toShelfFormLocations } from "@/lib/shelf-product-form";
 
 interface EditProductPageProps {
   params: Promise<{ id: string }>;
@@ -37,7 +38,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
   const { returnTo } = await searchParams;
   const safeReturnTo = getSafeProductReturnTo(returnTo);
 
-  const [product, categories, carBrands, partsBrands, suppliers, priceLists] = await Promise.all([
+  const [product, categories, carBrands, partsBrands, suppliers, priceLists, shelfRacks] = await Promise.all([
     db.product.findUnique({
       where: { id },
       include: {
@@ -59,6 +60,17 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
         units: { orderBy: { isBase: "desc" } },
         images: { orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] },
         prices: { select: { priceListId: true, amount: true } },
+        shelfLocations: {
+          select: {
+            id: true,
+            rackId: true,
+            level: true,
+            isPrimary: true,
+            note: true,
+            createdAt: true,
+            rack: { select: { code: true } },
+          },
+        },
       },
     }),
     getActiveCategoryOptions(),
@@ -70,6 +82,11 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
       select: { id: true, name: true, phone: true },
     }),
     getActivePriceListOptions(),
+    db.shelfRack.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: { id: true, code: true, name: true, levels: true },
+    }),
   ]);
 
   if (!product) {
@@ -94,7 +111,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
     ),
     minStock:         product.minStock,
     warrantyDays:     product.warrantyDays,
-    shelfLocation:    product.shelfLocation,
+    shelfLocations:   toShelfFormLocations(product.shelfLocations),
     saleUnitName:     product.saleUnitName,
     purchaseUnitName: product.purchaseUnitName,
     reportUnitName:   product.reportUnitName,
@@ -163,7 +180,7 @@ const EditProductPage = async ({ params, searchParams }: EditProductPageProps) =
         }
       />
 
-      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} product={productData} returnTo={safeReturnTo} />
+      <ProductForm categories={categories} carBrands={carBrands} partsBrands={partsBrands} suppliers={suppliers} priceLists={priceLists} shelfRacks={shelfRacks} product={productData} returnTo={safeReturnTo} />
     </div>
   );
 };

@@ -135,6 +135,12 @@ export const ADMIN_NAVIGATION: readonly AdminNavSection[] = [
       },
       { label: "Stock Card Lot", href: "/admin/lots/balance", icon: Layers, permission: "lot_reports.view", keywords: "stock card lot lots",
       },
+      { label: "ผังชั้นวาง", href: "/admin/stock/shelf-map", icon: MapPin, permission: "stock.shelf_map.view", keywords: "shelf map rack location ผังชั้นวาง ชั้นวาง ตำแหน่ง ที่เก็บ หาของ",
+      },
+      { label: "ตั้งค่าชั้นวาง", href: "/admin/stock/shelf-map/racks", icon: MapPin, permission: "stock.shelf_map.view", keywords: "shelf rack setup ตั้งค่าชั้นวาง เพิ่มชั้นวาง จำนวนชั้น", showInSidebar: false,
+      },
+      { label: "นำเข้าตำแหน่งชั้นวาง (Excel)", href: "/admin/stock/shelf-map/import", icon: MapPin, permission: "stock.shelf_map.manage", keywords: "shelf import excel นำเข้า ตำแหน่ง ชั้นวาง ใบสำรวจ ใบตรวจ", showInSidebar: false,
+      },
     ],
   },
   {

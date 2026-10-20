@@ -22,6 +22,9 @@ import { INVENTORY_TRACKING_NON_TRACKED } from "@/lib/inventory-tracking";
 import { logProductSearchTelemetry } from "@/lib/product-search-telemetry";
 import { searchProductIds, sortProductsByIds, suggestDidYouMean } from "@/lib/product-search";
 import { extractProductSearchRequiredTokens } from "@/lib/product-search-required-tokens";
+import ShelfLocationBadgeMenu from "@/components/shared/ShelfLocationBadgeMenu";
+import ShelfLocationBadges, { type ShelfLocationBadgeItem } from "@/components/shared/ShelfLocationBadges";
+import { loadProductShelfLocationViews } from "@/lib/shelf-map";
 
 import MobileProductSearchForm from "./MobileProductSearchForm";
 import ProductCardImage from "./ProductCardImage";
@@ -70,6 +73,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
 
   const { role, permissions } = await getSessionPermissionContext();
   const canUpdate = hasPermissionAccess(role, permissions, "products.update");
+  const canManageShelf = hasPermissionAccess(role, permissions, "stock.shelf_map.manage");
 
   const rawParams = await searchParams;
   const { page } = rawParams;
@@ -133,8 +137,8 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     path: "/admin/products/search",
   });
 
-  const products = sortProductsByIds(
-    await db.product.findMany({
+  const [productRows, shelfLocationsByProduct] = await Promise.all([
+    db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
       },
@@ -147,7 +151,6 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         },
         code: true,
         name: true,
-        shelfLocation: true,
         salePrice: true,
         memberPrice: true,
         retailPrice: true,
@@ -178,8 +181,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         },
       },
     }),
-    searchResult.ids,
-  );
+    loadProductShelfLocationViews(db, searchResult.ids),
+  ]);
+  const products = sortProductsByIds(productRows, searchResult.ids);
 
   const total = searchResult.total;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -252,6 +256,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                 stockNum <= minStockNum ? "low" :
                 "ok";
               const displayUnit = product.saleUnitName || product.reportUnitName;
+              const shelfLocations = (shelfLocationsByProduct.get(product.id) ?? []).map(
+                ({ id, code, isPrimary, note }): ShelfLocationBadgeItem => ({ id, code, isPrimary, note }),
+              );
 
               return (
                 <article
@@ -353,10 +360,16 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                       </div>
 
                       <div className="mt-2 space-y-2 text-xs text-gray-500 dark:text-slate-400">
-                        <div className="flex items-center gap-1.5 rounded-xl bg-sky-50 px-2.5 py-1.5 font-semibold text-sky-800 dark:bg-sky-500/10 dark:text-sky-200">
-                          <MapPin size={13} />
-                          <span>Shelf</span>
-                          <span className="font-mono">{product.shelfLocation?.trim() || "-"}</span>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-sky-100 bg-sky-50 px-2.5 py-2 text-sky-800 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-200">
+                          <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-semibold">
+                            <MapPin size={14} />
+                            ที่เก็บ
+                          </span>
+                          {canManageShelf ? (
+                            <ShelfLocationBadgeMenu productId={product.id} locations={shelfLocations} size="md" className="min-w-0" />
+                          ) : (
+                            <ShelfLocationBadges locations={shelfLocations} size="md" className="min-w-0" />
+                          )}
                         </div>
                         {product.warrantyDays > 0 ? (
                           <p className="flex items-center gap-1.5">

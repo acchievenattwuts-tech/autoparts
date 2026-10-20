@@ -6,6 +6,7 @@ import {
 } from "@/lib/admin-product-filter-params";
 import { db } from "@/lib/db";
 import { searchProductIds, sortProductsByIds } from "@/lib/product-search";
+import { loadProductShelfLocationViews, type ShelfLocationView } from "@/lib/shelf-map";
 import { getLatestStockBalances } from "@/lib/stock-card-latest-balance";
 
 const BOM = "\uFEFF";
@@ -35,7 +36,10 @@ export type ProductReportRow = {
   name: string;
   categoryName: string;
   brandName: string;
-  shelfLocation: string;
+  /** ที่เก็บประจำ, e.g. "A-2". */
+  shelfPrimary: string;
+  /** ที่เก็บเพิ่ม, comma-joined, e.g. "Z-1, B-3". */
+  shelfSecondary: string;
   stock: number;
   mainUnitName: string;
   purchaseLastPrice: number | null;
@@ -63,7 +67,8 @@ function getProductReportHeaders(): string[] {
     "ชื่อสินค้า",
     "หมวดหมู่",
     "แบรน",
-    "ตำแหน่ง shelf",
+    "ที่เก็บประจำ",
+    "ที่เก็บเพิ่ม",
     "stock",
     "หน่วยนับหลัก",
     "ราคาซื้อล่าสุด",
@@ -74,6 +79,16 @@ function getProductReportHeaders(): string[] {
     "สถานะ",
   ];
 }
+
+const toShelfLocationColumns = (
+  locations: readonly ShelfLocationView[],
+): Pick<ProductReportRow, "shelfPrimary" | "shelfSecondary"> => ({
+  shelfPrimary: locations.find((location) => location.isPrimary)?.code ?? "",
+  shelfSecondary: locations
+    .filter((location) => !location.isPrimary)
+    .map((location) => location.code)
+    .join(", "),
+});
 
 export function parseProductReportFilters(
   params: Record<string, AdminProductFilterRawValue>,
@@ -121,7 +136,6 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
         id: true,
         code: true,
         name: true,
-        shelfLocation: true,
         stock: true,
         minStock: true,
         salePrice: true,
@@ -139,9 +153,11 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
     searchResult.ids,
   );
 
-  const latestBalanceMap = await getLatestStockBalances(
-    rawProducts.map((product) => product.id),
-  );
+  const productIds = rawProducts.map((product) => product.id);
+  const [latestBalanceMap, shelfLocationsByProduct] = await Promise.all([
+    getLatestStockBalances(productIds),
+    loadProductShelfLocationViews(db, productIds),
+  ]);
 
   return rawProducts
     .map((product) => {
@@ -156,7 +172,7 @@ export async function queryProductReportRows(filters: ProductReportFilters): Pro
         name: product.name,
         categoryName: product.category.name,
         brandName: product.brand?.name ?? "",
-        shelfLocation: product.shelfLocation ?? "",
+        ...toShelfLocationColumns(shelfLocationsByProduct.get(product.id) ?? []),
         stock,
         mainUnitName,
         purchaseLastPrice:
@@ -186,7 +202,8 @@ export function buildProductReportCsv(rows: ProductReportRow[]): string {
       row.name,
       row.categoryName,
       row.brandName,
-      row.shelfLocation,
+      row.shelfPrimary,
+      row.shelfSecondary,
       row.stock,
       row.mainUnitName,
       row.purchaseLastPrice,
@@ -233,7 +250,8 @@ export async function buildProductReportExcel(rows: ProductReportRow[]): Promise
     { header: "ชื่อสินค้า", key: "name", width: 32 },
     { header: "หมวดหมู่", key: "categoryName", width: 18 },
     { header: "แบรน", key: "brandName", width: 18 },
-    { header: "ตำแหน่ง shelf", key: "shelfLocation", width: 16 },
+    { header: "ที่เก็บประจำ", key: "shelfPrimary", width: 14 },
+    { header: "ที่เก็บเพิ่ม", key: "shelfSecondary", width: 20 },
     { header: "stock", key: "stock", width: 12 },
     { header: "หน่วยนับหลัก", key: "mainUnitName", width: 14 },
     { header: "ราคาซื้อล่าสุด", key: "purchaseLastPrice", width: 16 },
