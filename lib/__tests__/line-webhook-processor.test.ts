@@ -4475,3 +4475,245 @@ test("a working classifier never pays the glued dictionary lookup", async () => 
 
   assert.equal(gluedCalls, 0);
 });
+
+// ── Vehicle-mention conflict (incident 2026-10-20, conv cmr39eesa) ─────────────
+// "คอยเย็นซี๊ดตี้09" + "มีไหมคับ" (a Honda City 2009 coil) came back from Gemini as
+// Ford Fiesta and the customer was shown Mazda 2 / Fiesta coils. The fix runs the
+// real synonym data, so these tests load the 2026-10-20 snapshot of it.
+
+async function loadVehicleMentionLookups() {
+  const { buildCarModelGroundingLookup, buildCarModelVariantLookup } = await import("@/lib/car-model-alias-cache");
+  const { CAR_MODEL_SYNONYM_ROWS_2026_10_20 } = await import("@/lib/__tests__/fixtures/car-model-synonyms-2026-10-20");
+  return {
+    modelLookup: buildCarModelVariantLookup(CAR_MODEL_SYNONYM_ROWS_2026_10_20),
+    groundingLookup: buildCarModelGroundingLookup(CAR_MODEL_SYNONYM_ROWS_2026_10_20),
+  };
+}
+
+/** Real synonym lookups plus master data for the two cars in play. */
+async function useVehicleMentionFixture(dependencies: LineWebhookProcessorDependencies) {
+  const lookups = await loadVehicleMentionLookups();
+  dependencies.loadCarModelVariantLookup = async () => lookups.modelLookup;
+  dependencies.loadCarModelGroundingLookup = async () => lookups.groundingLookup;
+  const fitmentInputs: Array<{ carBrand?: string | null; carModel?: string | null }> = [];
+  dependencies.resolveChatFitmentFilters = async (filterInput) => {
+    fitmentInputs.push({ carBrand: filterInput.carBrand, carModel: filterInput.carModel });
+    const model = (filterInput.carModel ?? "").toLowerCase();
+    const car = model.includes("city")
+      ? { carBrandName: "Honda", carModelName: "City" }
+      : model.includes("fiesta")
+        ? { carBrandName: "Ford", carModelName: "Fiesta" }
+        : {};
+    return { ...(filterInput.partType ? { categoryName: "คอยล์เย็น (Evaporator)" } : {}), ...car };
+  };
+  return { fitmentInputs };
+}
+
+/** Earlier messages of the same session, oldest first. */
+function sessionHistoryRows(...items: Array<["c" | "s", string]>) {
+  const start = Date.now() - (items.length + 1) * 60_000;
+  return items.map(([role, text], index) => ({
+    id: `history-${index + 1}`,
+    direction: role === "c" ? LineMessageDirection.INBOUND : LineMessageDirection.OUTBOUND_AI,
+    text,
+    messageType: "TEXT" as const,
+    createdAt: new Date(start + index * 60_000),
+  }));
+}
+
+const INCIDENT_CLASSIFIER = {
+  consolidatedQuery: "คอยเย็น ซี๊ดตี้ 2009",
+  intentPartType: "คอยเย็น",
+  intentCarBrand: "Ford",
+  intentCarModel: "Fiesta",
+  intentCarMentionInLatest: "ซี๊ดตี้",
+  intentYear: 2009,
+  intentPartKind: "fitment" as const,
+};
+const LIVE_CONFIG = { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false };
+
+test("vehicle mention 2026-10-20: the incident turn asks \"หมายถึง Honda City ใช่ไหมคะ\" instead of listing Fiesta coils", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps(INCIDENT_CLASSIFIER);
+  await useVehicleMentionFixture(dependencies);
+  const audits = captureAuditPayloads(dependencies);
+
+  const result = await processLineWebhookPayload(
+    textPayload("คอยเย็นซี๊ดตี้09\nมีไหมคับ"),
+    { ...LIVE_CONFIG, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "no Mazda 2 / Fiesta coils for a City");
+  assert.match(calls.replies[0]?.text ?? "", /"ซี๊ดตี้" หมายถึง Honda City ใช่ไหมคะ/);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "a question, not a hand-off — the AI stays active");
+  assert.equal(calls.notifyHandoffs.length, 0);
+  const conflict = audits.find((audit) => audit.action === "VEHICLE_MENTION_CONFLICT");
+  assert.deepEqual(conflict?.payload, {
+    lineEventId: "event-1",
+    mention: "ซี๊ดตี้",
+    classifierModel: "Fiesta",
+    suggestion: "Honda City",
+    suggestionDistance: 2,
+  });
+  assert.ok(calls.auditActions.includes("AI_VEHICLE_MENTION_CONFLICT_ASK"));
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.partType, "คอยเย็น", "the part is kept for the next turn");
+  assert.equal(framed?.carBrand, null);
+  assert.equal(framed?.carModel, null, "Fiesta never reaches the frame");
+  assert.equal(framed?.year, 2009);
+});
+
+test("vehicle mention 2026-10-20: \"ใช่คับ\" replays the question with Honda City and searches City coils", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { buildChatVehicleConfirmPrompt } = await import("@/lib/chat-core/vehicle-mention-conflict");
+  // The classifier repeats its misreading on the replayed text — the confirmed car must win.
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...INCIDENT_CLASSIFIER,
+    storedFrame: { partType: "คอยเย็น", carBrand: null, carModel: null, year: 2009 },
+  });
+  const { fitmentInputs } = await useVehicleMentionFixture(dependencies);
+  dependencies.getRecentLineMessagesForAi = async () =>
+    sessionHistoryRows(
+      ["c", "คอยเย็นซี๊ดตี้09"],
+      ["c", "มีไหมคับ"],
+      ["s", buildChatVehicleConfirmPrompt({ mention: "ซี๊ดตี้", vehicleLabel: "Honda City" })],
+    );
+  const classifierTexts: Array<string | null | undefined> = [];
+  const classify = dependencies.extractChatSearchIntent!;
+  dependencies.extractChatSearchIntent = async (classifyInput) => {
+    classifierTexts.push(classifyInput.latestText);
+    return classify(classifyInput);
+  };
+  const audits = captureAuditPayloads(dependencies);
+
+  await processLineWebhookPayload(textPayload("ใช่คับ"), { ...LIVE_CONFIG, receivedAt: new Date() }, dependencies);
+
+  // (normalizeInboundChatQuery spaces glued digits and folds the line breaks)
+  assert.deepEqual(classifierTexts, ["คอยเย็นซี๊ดตี้ 09 มีไหมคับ Honda City"], "the original question is replayed");
+  assert.deepEqual(
+    audits.find((audit) => audit.action === "VEHICLE_CONFIRMATION_ACCEPTED")?.payload,
+    { lineEventId: "event-1", mention: "ซี๊ดตี้", vehicleLabel: "Honda City" },
+  );
+  assert.equal(calls.searches.length, 1);
+  assert.deepEqual(calls.searchFitmentHints[0], {
+    categoryName: "คอยล์เย็น (Evaporator)",
+    carBrandName: "Honda",
+    carModelName: "City",
+    fitmentYear: 2009,
+  });
+  assert.equal(
+    calls.searches[0],
+    "คอยเย็นซี๊ดตี้09\nมีไหมคับ\nHonda City",
+    "the classifier's Fiesta query is replaced by the customer's own words plus the confirmed car",
+  );
+  assert.ok(fitmentInputs.every((input) => !/fiesta/i.test(input.carModel ?? "")), "Fiesta is never resolved");
+  assert.ok(!calls.auditActions.includes("VEHICLE_MENTION_CONFLICT"), "a confirmed car is not questioned again");
+});
+
+test("vehicle mention: \"ไม่ใช่ครับ\" asks which car — even when the classifier now reads the proposed City", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { buildChatVehicleConfirmPrompt } = await import("@/lib/chat-core/vehicle-mention-conflict");
+  // The shop's own question names Honda City, so the classifier may well read it.
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...INCIDENT_CLASSIFIER,
+    consolidatedQuery: "คอยเย็น Honda City 2009",
+    intentCarBrand: "Honda",
+    intentCarModel: "City",
+    intentCarMentionInLatest: null,
+    storedFrame: { partType: "คอยเย็น", carBrand: null, carModel: null, year: 2009 },
+  });
+  await useVehicleMentionFixture(dependencies);
+  dependencies.getRecentLineMessagesForAi = async () =>
+    sessionHistoryRows(
+      ["c", "คอยเย็นซี๊ดตี้09"],
+      ["c", "มีไหมคับ"],
+      ["s", buildChatVehicleConfirmPrompt({ mention: "ซี๊ดตี้", vehicleLabel: "Honda City" })],
+    );
+
+  await processLineWebhookPayload(textPayload("ไม่ใช่ครับ"), { ...LIVE_CONFIG, receivedAt: new Date() }, dependencies);
+
+  assert.ok(calls.auditActions.includes("VEHICLE_CONFIRMATION_REJECTED"));
+  assert.ok(!calls.auditActions.includes("VEHICLE_CONFIRMATION_ACCEPTED"));
+  assert.equal(calls.searches.length, 0, "the car the customer just rejected is not searched");
+  assert.match(calls.replies[0]?.text ?? "", /จูนยังไม่แน่ใจว่า "ซี๊ดตี้" หมายถึงรถรุ่นไหน/);
+  assert.ok(!calls.statePatchTypes.includes("waiting_admin"), "still a question, the AI stays active");
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.partType, "คอยเย็น", "the part stays for the customer's next answer");
+  assert.equal(framed?.carModel, null);
+});
+
+test("vehicle mention: \"ไม่ใช่ครับ ซีวิค\" is not a bare no — the classifier reads the car it names", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { buildChatVehicleConfirmPrompt } = await import("@/lib/chat-core/vehicle-mention-conflict");
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...INCIDENT_CLASSIFIER,
+    consolidatedQuery: "คอยเย็น Honda Civic 2009",
+    intentCarBrand: "Honda",
+    intentCarModel: "Civic",
+    intentCarMentionInLatest: "ซีวิค",
+    storedFrame: { partType: "คอยเย็น", carBrand: null, carModel: null, year: 2009 },
+  });
+  await useVehicleMentionFixture(dependencies);
+  dependencies.resolveChatFitmentFilters = async (filterInput) => ({
+    categoryName: "คอยล์เย็น (Evaporator)",
+    ...(filterInput.carModel ? { carBrandName: "Honda", carModelName: "Civic" } : {}),
+  });
+  dependencies.getRecentLineMessagesForAi = async () =>
+    sessionHistoryRows(
+      ["c", "คอยเย็นซี๊ดตี้09"],
+      ["s", buildChatVehicleConfirmPrompt({ mention: "ซี๊ดตี้", vehicleLabel: "Honda City" })],
+    );
+
+  await processLineWebhookPayload(textPayload("ไม่ใช่ครับ ซีวิค"), { ...LIVE_CONFIG, receivedAt: new Date() }, dependencies);
+
+  assert.ok(!calls.auditActions.includes("VEHICLE_CONFIRMATION_REJECTED"));
+  assert.ok(!calls.auditActions.includes("VEHICLE_MENTION_CONFLICT"));
+  assert.equal(calls.searches.length, 1);
+  assert.equal(calls.searchFitmentHints[0]?.carModelName, "Civic");
+});
+
+test("vehicle mention: car words that fit no single model ask which car (Stal follow-up)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...INCIDENT_CLASSIFIER,
+    consolidatedQuery: "คอยล์เย็น Ford Fiesta 2009 STAL",
+    intentCarMentionInLatest: "Stal",
+    intentYear: null,
+    storedFrame: { partType: "คอยล์เย็น", carBrand: "Ford", carModel: "Fiesta", year: 2009 },
+  });
+  await useVehicleMentionFixture(dependencies);
+  dependencies.getRecentLineMessagesForAi = async () =>
+    sessionHistoryRows(
+      ["c", "คอยเย็นซี๊ดตี้09"],
+      ["c", "มีไหมคับ"],
+      ["s", "มีคอยล์เย็นสำหรับรุ่นใกล้เคียงตามนี้เลยค่ะ 😊\n1️⃣ คอยล์เย็น Mazda 2  / Ford Fiesta  2009-2013 VALEO 560087"],
+    );
+
+  await processLineWebhookPayload(textPayload("Stal"), { ...LIVE_CONFIG, receivedAt: new Date() }, dependencies);
+
+  assert.equal(calls.searches.length, 0, "the carried Fiesta is not searched again");
+  assert.match(calls.replies[0]?.text ?? "", /จูนยังไม่แน่ใจว่า "Stal" หมายถึงรถรุ่นไหน/);
+  const framed = calls.savedFrames.at(-1);
+  assert.equal(framed?.carModel, null, "the carried Fiesta is dropped from the frame");
+  assert.equal(framed?.carBrand, null);
+});
+
+test("vehicle mention: without synonym data the check stays out of the way (previous behaviour)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({
+    ...INCIDENT_CLASSIFIER,
+    fitmentFilters: { categoryName: "คอยล์เย็น (Evaporator)", carBrandName: "Ford", carModelName: "Fiesta" },
+  });
+  dependencies.loadCarModelGroundingLookup = async () => new Map();
+
+  await processLineWebhookPayload(
+    textPayload("คอยเย็นซี๊ดตี้09\nมีไหมคับ"),
+    { ...LIVE_CONFIG, receivedAt: new Date() },
+    dependencies,
+  );
+
+  assert.equal(calls.searches.length, 1);
+  assert.ok(!calls.auditActions.includes("VEHICLE_MENTION_CONFLICT"));
+});

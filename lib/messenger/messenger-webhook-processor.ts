@@ -40,6 +40,12 @@ import {
   resolveGluedKnownQueryIntent,
 } from "@/lib/chat-core/known-query-intent";
 import { logMessengerModelGroundingShadow } from "@/lib/chat-core/model-grounding-shadow-telemetry";
+import {
+  buildChatVehicleConfirmPrompt,
+  buildChatVehicleMentionAskReply,
+  resolveChatVehicleConfirmationReplay,
+} from "@/lib/chat-core/vehicle-mention-conflict";
+import { logMessengerVehicleMentionEvent } from "@/lib/chat-core/vehicle-mention-telemetry";
 import { resolveChatFitmentFilters, type ChatFitmentFilters } from "@/lib/chat-core/fitment-resolve";
 import {
   buildChatProductSpecSubject,
@@ -672,13 +678,28 @@ async function replyToMessengerTurn(params: {
 
   if (!mergedText) return;
 
+  // Parity with LINE: the shop asked "หมายถึง <car> ใช่ไหมคะ" and the customer answered
+  // with a bare yes or no → answer the question they originally asked, with the
+  // confirmed car on a yes, asking which car on a no.
+  const vehicleConfirmation = resolveChatVehicleConfirmationReplay({ latestText: mergedText, history });
+  if (vehicleConfirmation) {
+    void logMessengerVehicleMentionEvent({
+      messengerConversationId: conversationId,
+      action:
+        vehicleConfirmation.kind === "confirmed" ? "VEHICLE_CONFIRMATION_ACCEPTED" : "VEHICLE_CONFIRMATION_REJECTED",
+      payload: { mention: vehicleConfirmation.mention, vehicleLabel: vehicleConfirmation.vehicleLabel },
+    });
+  }
+  const turnText = vehicleConfirmation?.replayText ?? mergedText;
+  const turnSegments = vehicleConfirmation ? [turnText] : textSegments;
+
   const mixedIntentPlan = await resolveMixedProductAdminTurn({
-    segments: textSegments,
+    segments: turnSegments,
     history,
     classify: ({ intent, latestText, history: segmentHistory }) =>
       extractChatSearchIntent({ intent, latestText, history: segmentHistory, onFailure: recordGeminiFailure }),
   }).catch(() => null);
-  const processText = normalizeInboundChatQuery(mixedIntentPlan?.productText ?? mergedText);
+  const processText = normalizeInboundChatQuery(mixedIntentPlan?.productText ?? turnText);
   const route = routeChatIntent({ messageType: LineMessageType.TEXT, text: processText });
 
   // ── Handoff: intents the AI must not answer (claims, price haggling, order
@@ -893,8 +914,15 @@ async function replyToMessengerTurn(params: {
   if (effectiveRoute.allowsSearch) {
     // Resolve precise category/brand/model/year hard filters (parity with LINE),
     // with the LLM spell-correction fallback + auto-stage when no category maps.
-    const { fitmentPartHeadNoun, shouldHandoffUncertain, vehicleNamedButUnresolved, ...fitmentHints } =
-      await resolveMessengerFitmentHints(processText, history, classifiedIntent, conversationId);
+    const {
+      fitmentPartHeadNoun,
+      shouldHandoffUncertain,
+      vehicleNamedButUnresolved,
+      vehicleMentionConflict,
+      ...fitmentHints
+    } = await resolveMessengerFitmentHints(processText, history, classifiedIntent, conversationId, {
+      vehicleConfirmation,
+    });
     if (shouldHandoffUncertain) {
       await handoffUncertainMessengerProduct({
         pageAccessToken,
@@ -903,6 +931,20 @@ async function replyToMessengerTurn(params: {
         originalText: mergedText,
         intent: route.intent,
       });
+      return;
+    }
+    // Parity with LINE (incident 2026-10-20): the classifier's model contradicts the
+    // car the customer named. Confirm the one model their words point to, or ask
+    // which car — never a hand-off, the AI stays active.
+    if (vehicleMentionConflict) {
+      const reply = vehicleMentionConflict.suggestionLabel
+        ? buildChatVehicleConfirmPrompt({
+            mention: vehicleMentionConflict.mention,
+            vehicleLabel: vehicleMentionConflict.suggestionLabel,
+          })
+        : buildChatVehicleMentionAskReply(vehicleMentionConflict.mention);
+      await sendMessengerText({ pageAccessToken, psid, text: reply });
+      await persistOutbound(conversationId, psid, reply, { intent: route.intent });
       return;
     }
     // Option A — customer named a car we couldn't lock to a fitment filter → confirm
@@ -1110,6 +1152,10 @@ async function resolveMessengerFitmentHints(
   history: ChatHistoryItem[],
   classifiedIntent: ChatSearchIntent | null,
   conversationId: string,
+  options: {
+    /** The customer's bare yes/no to "หมายถึง <car> ใช่ไหมคะ" (see the LINE twin). */
+    vehicleConfirmation?: { kind: "confirmed" | "rejected"; mention: string; vehicleLabel: string } | null;
+  } = {},
 ): Promise<{
   categoryName: string | null;
   carBrandName: string | null;
@@ -1123,6 +1169,9 @@ async function resolveMessengerFitmentHints(
    *  to a hard fitment filter (no model/brand scope). Search would be unscoped, so
    *  the caller confirms the vehicle instead of showing other models' parts. */
   vehicleNamedButUnresolved: boolean;
+  /** The classifier's model contradicts the car the customer named this turn; the
+   *  caller asks instead of searching (confirming `suggestionLabel` when set). */
+  vehicleMentionConflict: { mention: string; suggestionLabel: string | null } | null;
 }> {
   const empty = {
     categoryName: null,
@@ -1132,6 +1181,7 @@ async function resolveMessengerFitmentHints(
     fitmentPartHeadNoun: null,
     shouldHandoffUncertain: false,
     vehicleNamedButUnresolved: false,
+    vehicleMentionConflict: null,
   };
   try {
     const rawIntent = classifiedIntent;
@@ -1150,6 +1200,7 @@ async function resolveMessengerFitmentHints(
       brandLookup,
       modelLookup,
       modelGroundingLookup,
+      vehicleConfirmation: options.vehicleConfirmation ?? null,
     });
     const gi = guarded.intent;
     const productSpecs = resolveChatProductSpecs(processText);
@@ -1179,6 +1230,43 @@ async function resolveMessengerFitmentHints(
         requiredTokens: guarded.requiredTokens,
       });
       return { ...empty, shouldHandoffUncertain: true };
+    }
+
+    const conflict = guarded.vehicleMentionConflict;
+    if (conflict) {
+      // Brand + model from master data ("Honda City"); the bare canonical model when
+      // the brand cannot be resolved uniquely.
+      const suggestionFilters = conflict.suggestion
+        ? await resolveChatFitmentFilters({
+            partType: null,
+            carBrand: null,
+            carModel: conflict.suggestion.canonicalModel,
+            queryText: null,
+            rawText: null,
+            modelLookup,
+          }).catch((): ChatFitmentFilters => ({}))
+        : null;
+      const suggestionLabel = conflict.suggestion
+        ? [suggestionFilters?.carBrandName, suggestionFilters?.carModelName ?? conflict.suggestion.canonicalModel]
+            .filter(Boolean)
+            .join(" ")
+        : null;
+      void logMessengerVehicleMentionEvent({
+        messengerConversationId: conversationId,
+        action: "VEHICLE_MENTION_CONFLICT",
+        payload: {
+          mention: conflict.mention,
+          classifierModel: conflict.classifierModel,
+          suggestion: suggestionLabel,
+          suggestionDistance: conflict.suggestion?.distance ?? null,
+        },
+      });
+      void logMessengerModelGroundingShadow({
+        messengerConversationId: conversationId,
+        shadow: guarded.modelGroundingShadow,
+        requiredTokens: guarded.requiredTokens,
+      });
+      return { ...empty, vehicleMentionConflict: { mention: conflict.mention, suggestionLabel } };
     }
 
     let filters = await resolveChatFitmentFilters({
@@ -1274,6 +1362,7 @@ async function resolveMessengerFitmentHints(
       fitmentPartHeadNoun,
       shouldHandoffUncertain: false,
       vehicleNamedButUnresolved,
+      vehicleMentionConflict: null,
     };
   } catch {
     return empty;
@@ -1307,10 +1396,13 @@ async function replyWithMessengerMultiSubject(input: {
         fitmentPartHeadNoun,
         shouldHandoffUncertain,
         vehicleNamedButUnresolved,
+        vehicleMentionConflict,
         ...fitmentHints
       } = await resolveMessengerFitmentHints(query, input.history, subjectIntent, input.conversationId);
 
-      if (shouldHandoffUncertain || vehicleNamedButUnresolved) {
+      // Subjects carry no carMentionInLatest, so a vehicle-mention conflict cannot
+      // arise here today; if one ever does, the subject is not searched.
+      if (shouldHandoffUncertain || vehicleNamedButUnresolved || vehicleMentionConflict) {
         await handoffUncertainMessengerProduct({
           ...input,
           intent: LineIntent.PRODUCT_INQUIRY_TEXT,

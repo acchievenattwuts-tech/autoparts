@@ -176,6 +176,11 @@ import {
   reconcileInquiryFrame,
   type InquiryFrame,
 } from "@/lib/chat-core/inquiry-frame";
+import {
+  buildChatVehicleConfirmPrompt,
+  buildChatVehicleMentionAskReply,
+  resolveChatVehicleConfirmationReplay,
+} from "@/lib/chat-core/vehicle-mention-conflict";
 
 export type LineWebhookProcessorConfig = {
   channelAccessToken: string | null;
@@ -1028,11 +1033,18 @@ export type ProcessLineAiReplyInput = {
    *  during processing) and the owner loop re-runs with the merged turn. The
    *  suggestion is still stored as a DRAFT. Default (legacy path): never aborts. */
   shouldAbortBeforeSend?: () => Promise<boolean>;
+  /** Set when this turn replays the customer's earlier question because they
+   *  answered "หมายถึง <car> ใช่ไหมคะ" with a bare yes ("confirmed": `vehicleLabel`
+   *  is the car) or a bare no ("rejected": the turn asks which car). */
+  vehicleConfirmation?: { kind: "confirmed" | "rejected"; mention: string; vehicleLabel: string } | null;
 };
 
 /** Distinct return signal so the owner loop can tell "aborted, re-run" apart
  *  from a normal completed turn. */
 const COALESCE_ABORTED = "COALESCE_ABORTED" as const;
+
+/** Gate reason when the classifier's model contradicts the car the customer named. */
+const VEHICLE_MENTION_CONFLICT_GATE_REASON = "VEHICLE_MENTION_CONFLICT";
 
 /**
  * B2c — multi-subject answer. Fires when the classifier found ≥2 DISTINCT part
@@ -1354,7 +1366,7 @@ export async function processLineAiReply(
   input: ProcessLineAiReplyInput,
   config: LineWebhookProcessorConfig,
   dependencies: LineWebhookProcessorDependencies,
-) {
+): Promise<{ replied: boolean; aborted?: typeof COALESCE_ABORTED }> {
   const startedAt = new Date();
   const pipelineStartedAtMs = Date.now();
   await dependencies.updateLineAiJob(input.jobId, {
@@ -1428,6 +1440,43 @@ export async function processLineAiReply(
     ).catch(() => []);
     const recentMessages = boundMessagesToSession(recentMessagesRaw);
     const history = toReplyHistory(recentMessages, input.inboundMessage.id);
+
+    // The shop's last message asked "หมายถึง <car> ใช่ไหมคะ" and the customer answered
+    // with a bare yes or no: answer the question they originally asked — with the
+    // confirmed car on a yes, asking which car on a no. Replayed through this same
+    // pipeline so every guard and gate still applies; `vehicleConfirmation` stops a
+    // second replay and tells the guard what the customer answered.
+    if (input.messageType === LineMessageType.TEXT && !input.vehicleConfirmation) {
+      const confirmation = resolveChatVehicleConfirmationReplay({ latestText: input.text, history });
+      if (confirmation) {
+        fireAndForgetAudit(dependencies, {
+          conversationId: input.conversation.id,
+          action:
+            confirmation.kind === "confirmed" ? "VEHICLE_CONFIRMATION_ACCEPTED" : "VEHICLE_CONFIRMATION_REJECTED",
+          payload: {
+            lineEventId: input.lineEventId,
+            mention: confirmation.mention,
+            vehicleLabel: confirmation.vehicleLabel,
+          },
+        });
+        return processLineAiReply(
+          {
+            ...input,
+            text: confirmation.replayText,
+            textSegments: undefined,
+            route: routeChatIntent({ messageType: LineMessageType.TEXT, text: confirmation.replayText }),
+            vehicleConfirmation: {
+              kind: confirmation.kind,
+              mention: confirmation.mention,
+              vehicleLabel: confirmation.vehicleLabel,
+            },
+          },
+          config,
+          dependencies,
+        );
+      }
+    }
+
     // Every Gemini call below falls back silently (rule routing / template reply);
     // this records why, so an outage is visible in the audit log (incident 2026-10-09).
     const recordGeminiFailure = buildLineGeminiFailureRecorder(dependencies, input);
@@ -1792,6 +1841,8 @@ export async function processLineAiReply(
           forceLiteralQuery: false,
           requiredTokens: [] as string[],
           modelGroundingShadow: null,
+          vehicleMentionConflict: null,
+          confirmedVehicle: null,
         }
       : guardChatSearchIntent({
           intent: effectiveSearchIntent,
@@ -1800,8 +1851,47 @@ export async function processLineAiReply(
           brandLookup,
           modelLookup,
           modelGroundingLookup,
+          vehicleConfirmation: input.vehicleConfirmation ?? null,
         });
     const guardedSearchIntent = guardedSearch.intent;
+    // The classifier's model contradicts the car the customer named this turn
+    // (incident 2026-10-20, "ซี๊ดตี้" read as Fiesta). The guard already dropped the
+    // model; the frame below drops the carried car too and the gate asks — a
+    // "หมายถึง <car> ใช่ไหมคะ" when one model stands out, else "which car?".
+    const vehicleMentionConflict = guardedSearch.vehicleMentionConflict;
+    let vehicleConflictSuggestionLabel: string | null = null;
+    if (vehicleMentionConflict) {
+      const suggestion = vehicleMentionConflict.suggestion;
+      if (suggestion) {
+        // Brand + model from master data ("Honda City"); the bare canonical model
+        // when the brand cannot be resolved uniquely.
+        const resolvedSuggestion = await (dependencies.resolveChatFitmentFilters ?? resolveChatFitmentFilters)({
+          partType: null,
+          carBrand: null,
+          carModel: suggestion.canonicalModel,
+          queryText: null,
+          rawText: null,
+          modelLookup,
+        }).catch((): ChatFitmentFilters => ({}));
+        vehicleConflictSuggestionLabel = [
+          resolvedSuggestion.carBrandName,
+          resolvedSuggestion.carModelName ?? suggestion.canonicalModel,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+      fireAndForgetAudit(dependencies, {
+        conversationId: input.conversation.id,
+        action: "VEHICLE_MENTION_CONFLICT",
+        payload: {
+          lineEventId: input.lineEventId,
+          mention: vehicleMentionConflict.mention,
+          classifierModel: vehicleMentionConflict.classifierModel,
+          suggestion: vehicleConflictSuggestionLabel,
+          suggestionDistance: suggestion?.distance ?? null,
+        },
+      });
+    }
     const classifierQuery = isNonProductTurn
       ? null
       : guardedSearch.forceLiteralQuery
@@ -2002,6 +2092,17 @@ export async function processLineAiReply(
           year: guardedSearchIntent?.year ?? null,
         };
       }
+      // Same rule when the car WAS read but contradicts the customer's words: the
+      // carried model belongs to another car. A brand the customer typed this turn
+      // and the year they gave this turn are kept.
+      if (vehicleMentionConflict && inquiryFrame) {
+        inquiryFrame = {
+          ...inquiryFrame,
+          carBrand: guardedSearchIntent?.carBrand ?? null,
+          carModel: null,
+          year: guardedSearchIntent?.year ?? null,
+        };
+      }
       const droppedVehicleCarryover = Boolean(
         inquiryFrame &&
           !latestHasVehicleEvidence &&
@@ -2091,6 +2192,8 @@ export async function processLineAiReply(
           carMentionInLatest: guardedSearchIntent?.carMentionInLatest ?? null,
           carMentionVerified: Boolean(verifiedCarMention),
           namedUnreadableVehicle,
+          vehicleMentionConflict: Boolean(vehicleMentionConflict),
+          vehicleConfirmed: Boolean(guardedSearch.confirmedVehicle),
         },
       });
       if (guardedSearch.modelGroundingShadow) {
@@ -2307,6 +2410,8 @@ export async function processLineAiReply(
       (isBroadChatPartType(consolidatedQuery) || isBroadChatPartType(processText));
     const gateDecision = latestTurnIsBroadInquiry
       ? { action: "ask" as const, ask: "need_part" as const, reason: "BROAD_PART_TYPE" }
+      : vehicleMentionConflict && !isNonProductTurn
+        ? { action: "ask" as const, ask: "need_car" as const, reason: VEHICLE_MENTION_CONFLICT_GATE_REASON }
       : rawGateDecision?.action === "ask" &&
           rawGateDecision.ask === "need_car" &&
           // A specific identifier lets us skip the "which car?" ask: either the
@@ -3316,6 +3421,26 @@ export async function processLineAiReply(
             handoff: true,
             audit: "AI_UNCERTAIN_PRODUCT_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId, reason: gateDecision.reason },
+          }
+      // The car the customer named contradicts the classifier's model: confirm the
+      // one model their words point to, or ask which car. The AI stays active.
+      : liveMode && gateBlocksSearch && gateDecision?.reason === VEHICLE_MENTION_CONFLICT_GATE_REASON && vehicleMentionConflict
+        ? {
+            message: vehicleConflictSuggestionLabel
+              ? buildChatVehicleConfirmPrompt({
+                  mention: vehicleMentionConflict.mention,
+                  vehicleLabel: vehicleConflictSuggestionLabel,
+                })
+              : buildChatVehicleMentionAskReply(vehicleMentionConflict.mention),
+            reason: vehicleConflictSuggestionLabel ? "VEHICLE_MENTION_CONFIRM_ASK" : "VEHICLE_MENTION_ASK",
+            handoff: false,
+            audit: "AI_VEHICLE_MENTION_CONFLICT_ASK",
+            auditPayload: {
+              lineEventId: input.lineEventId,
+              mention: vehicleMentionConflict.mention,
+              classifierModel: vehicleMentionConflict.classifierModel,
+              suggestion: vehicleConflictSuggestionLabel,
+            },
           }
       : liveMode && gateBlocksSearch && gateDecision?.action === "ask"
         ? {

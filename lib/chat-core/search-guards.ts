@@ -5,6 +5,13 @@ import { resolveBrandVariants } from "@/lib/chat-core/brand-variants";
 import { containsWithinEditDistance, typoMaxEdits } from "@/lib/chat-core/typo-distance";
 import type { CarModelGroundingLookup } from "@/lib/car-model-alias-cache";
 import { extractChatEngineDisplacements } from "@/lib/chat-core/engine-displacement";
+import {
+  groundingClusterMembers,
+  hasLatinLetters,
+  hasThaiScript,
+  isThaiOnlySpelling,
+  rankVehicleMentionClusters,
+} from "@/lib/chat-core/vehicle-mention-conflict";
 
 export type ChatModelGroundingEvidenceSource =
   | "LITERAL_CANONICAL"
@@ -27,6 +34,28 @@ export type ChatModelGroundingShadow = {
 export type ChatExplicitModelEvidence = {
   canonicalModel: string;
   matchedEvidence: string;
+};
+
+/**
+ * The customer named a car in the latest message, and the classifier's model is
+ * not supported by anything the customer wrote (incident 2026-10-20: "ซี๊ดตี้" read
+ * as Fiesta). The model is dropped and the turn asks instead of searching.
+ */
+export type ChatVehicleMentionConflict = {
+  /** The customer's own car words, verified to occur in the latest message. */
+  mention: string;
+  /** What the classifier returned for them (null when it returned no model but the
+   *  customer has just rejected the car the shop proposed). */
+  classifierModel: string | null;
+  /** The one model the customer's words most likely mean, when a single cluster
+   *  stands out; the caller asks the customer to confirm it. */
+  suggestion: { canonicalModel: string; distance: number } | null;
+};
+
+/** A car the customer confirmed by answering "ใช่" to the shop's question. */
+export type ChatConfirmedVehicle = {
+  carBrand: string | null;
+  carModel: string;
 };
 
 /**
@@ -443,6 +472,166 @@ export function evaluateChatModelGroundingCandidate(input: {
   };
 }
 
+/** Shortest known spelling accepted as the head of a longer classifier model
+ *  ("mazda 2" in "Mazda 2 Skyactiv"). */
+const MIN_MODEL_PREFIX_LENGTH = 3;
+
+/** Splits a classifier value that lists several models ("Vigo, Revo"). */
+const splitClassifierModelList = (model: string): string[] =>
+  model
+    .split(/\s*[,/|]\s*|\s+(?:และ|หรือ|กับ|and|or)\s+/iu)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+/**
+ * Maps a model spelling to its grounding-cluster key, or null when it belongs to no
+ * known cluster. Tried in order: the canonical key itself, any synonym of a cluster
+ * ("Vigo" → Hilux Vigo, "Mazda 2" → Mazda2), and finally the longest known spelling
+ * that heads the value ("Mazda 2 Skyactiv" → Mazda2, "CR-V G3" → CRV). A head
+ * shared by two clusters is ambiguous and yields null.
+ */
+function resolveGroundingClusterKey(
+  model: string,
+  modelLookup: ReadonlyMap<string, string[]>,
+  groundingLookup: CarModelGroundingLookup,
+): string | null {
+  const normalized = normalizeSearchText(model);
+  if (!normalized) return null;
+  if (groundingLookup.has(normalized)) return normalized;
+
+  const synonymCluster = modelLookup.get(normalized);
+  const synonymKey = normalizeSearchText(synonymCluster?.[0]);
+  if (synonymKey && groundingLookup.has(synonymKey)) return synonymKey;
+
+  let longest = 0;
+  let heads = new Set<string>();
+  for (const [key, evidence] of groundingLookup) {
+    for (const member of groundingClusterMembers(evidence)) {
+      if (member.length < MIN_MODEL_PREFIX_LENGTH || !normalized.startsWith(`${member} `)) continue;
+      if (member.length > longest) {
+        longest = member.length;
+        heads = new Set([key]);
+      } else if (member.length === longest) {
+        heads.add(key);
+      }
+    }
+  }
+  return heads.size === 1 ? Array.from(heads)[0] : null;
+}
+
+/** True when any spelling of the cluster occurs verbatim in the customer's text. */
+function clusterHasCustomerSpellingEvidence(
+  key: string,
+  groundingLookup: CarModelGroundingLookup,
+  latestText: string | null | undefined,
+  history: ChatReplyHistoryItem[],
+): boolean {
+  const evidence = groundingLookup.get(key);
+  if (!evidence) return false;
+  const customerText = normalizeSearchText(
+    [
+      ...history.filter((turn) => turn.role === "customer").map((turn) => turn.text),
+      latestText ?? "",
+    ].join(" "),
+  );
+  if (!customerText) return false;
+  const customerCompact = customerText.replace(/\s+/g, "");
+  const customerTokens = new Set(tokenizeSearchVariants(customerText));
+  return groundingClusterMembers(evidence).some((member) =>
+    buildSearchVariants(member).some((spelling) =>
+      customerContainsExactModelSpelling(customerText, customerCompact, customerTokens, spelling),
+    ),
+  );
+}
+
+/**
+ * Decides whether the classifier's model contradicts the car the customer named in
+ * the latest message. Fails open (returns null) whenever it cannot judge: no
+ * verified mention, no synonym data, a model with no known spellings, or a model
+ * whose known spellings are all in a different script from the customer's words
+ * (a Thai "กอล์ฟ" says nothing about a cluster that only lists "Golf").
+ *
+ * A model is supported — never a conflict — when the existing evidence checks
+ * already grounded it, when any of its known spellings occurs in the customer's
+ * text (history included, so a model carried from an earlier turn stays), or when
+ * the customer's words are a typo of it (it is among the closest clusters).
+ */
+function assessChatVehicleMentionConflict(input: {
+  model: string;
+  mention: string | null | undefined;
+  latestText: string | null | undefined;
+  history: ChatReplyHistoryItem[];
+  modelGrounded: boolean;
+  modelLookup: ReadonlyMap<string, string[]> | null | undefined;
+  groundingLookup: CarModelGroundingLookup | null | undefined;
+}): ChatVehicleMentionConflict | null {
+  const mention = input.mention?.trim();
+  if (!mention || input.modelGrounded || !chatCarMentionOccursInLatest(mention, input.latestText)) return null;
+  const { modelLookup, groundingLookup } = input;
+  if (!modelLookup || modelLookup.size === 0 || !groundingLookup || groundingLookup.size === 0) return null;
+
+  const knownKeys = Array.from(
+    new Set(
+      splitClassifierModelList(input.model)
+        .map((part) => resolveGroundingClusterKey(part, modelLookup, groundingLookup))
+        .filter((key): key is string => key !== null),
+    ),
+  );
+  const mentionIsThai = hasThaiScript(mention);
+  const judgeableKeys = knownKeys.filter((key) => {
+    const members = groundingClusterMembers(groundingLookup.get(key) ?? { safeVariants: [], ambiguousVariants: [] });
+    return mentionIsThai ? members.some(isThaiOnlySpelling) : members.some(hasLatinLetters);
+  });
+  if (judgeableKeys.length === 0) return null;
+
+  const withoutSpelling = judgeableKeys.filter(
+    (key) => !clusterHasCustomerSpellingEvidence(key, groundingLookup, input.latestText, input.history),
+  );
+  if (withoutSpelling.length === 0) return null;
+
+  const ranking = rankVehicleMentionClusters(mention, groundingLookup);
+  const unsupported = withoutSpelling.filter((key) => !ranking?.keys.includes(key));
+  if (unsupported.length === 0) return null;
+
+  const suggestionKey =
+    ranking && ranking.keys.length === 1 && !knownKeys.includes(ranking.keys[0]) ? ranking.keys[0] : null;
+  const suggestionTerm = suggestionKey ? groundingLookup.get(suggestionKey)?.canonicalTerm : null;
+  return {
+    mention,
+    classifierModel: input.model,
+    suggestion: suggestionTerm && ranking ? { canonicalModel: suggestionTerm, distance: ranking.distance } : null,
+  };
+}
+
+/**
+ * Reads the car label of a confirmation question the customer answered "ใช่" to
+ * ("Honda City", "Toyota Hilux Vigo", or a bare "City" when no brand resolved).
+ * The model maps to its canonical term through the synonym data; without it the
+ * label is passed on whole for the fitment resolver to read.
+ */
+function resolveConfirmedChatVehicle(
+  label: string,
+  modelLookup: ReadonlyMap<string, string[]> | null | undefined,
+  groundingLookup: CarModelGroundingLookup | null | undefined,
+): ChatConfirmedVehicle | null {
+  const trimmed = label.trim();
+  if (!trimmed) return null;
+  if (modelLookup && modelLookup.size > 0 && groundingLookup && groundingLookup.size > 0) {
+    const tokens = trimmed.split(/\s+/);
+    const readings: Array<[string | null, string]> = [
+      [tokens.length > 1 ? tokens[0] : null, tokens.slice(1).join(" ")],
+      [null, trimmed],
+    ];
+    for (const [brand, modelText] of readings) {
+      if (!modelText) continue;
+      const key = resolveGroundingClusterKey(modelText, modelLookup, groundingLookup);
+      const canonical = key ? groundingLookup.get(key)?.canonicalTerm : null;
+      if (canonical) return { carBrand: brand, carModel: canonical };
+    }
+  }
+  return { carBrand: null, carModel: trimmed };
+}
+
 /**
  * Year-specific evidence check. The customer's own words rarely contain the exact
  * 4-digit C.E. year the classifier reports — they type shorthand ("ปี 03" for
@@ -487,16 +676,22 @@ export function guardChatSearchIntent(input: {
   /** DB-backed model spelling lookup (SearchSynonym); grounds Thai↔English model
    *  transliterations ("สตาด้า"↔"Strada"). Omitted → English-only evidence. */
   modelLookup?: ReadonlyMap<string, string[]> | null;
-  /** Narrow, ambiguity-aware evidence lookup used by the every-turn SHADOW policy. */
+  /** Narrow, ambiguity-aware evidence lookup used by the every-turn SHADOW policy
+   *  and by the vehicle-mention conflict check. */
   modelGroundingLookup?: CarModelGroundingLookup | null;
+  /** The customer's bare answer to the shop's "หมายถึง <car> ใช่ไหมคะ": "confirmed"
+   *  makes `vehicleLabel` the car; "rejected" leaves the car unknown so the turn asks. */
+  vehicleConfirmation?: { kind: "confirmed" | "rejected"; mention: string; vehicleLabel: string } | null;
 }) {
-  const { intent, latestText, history, brandLookup, modelLookup, modelGroundingLookup } = input;
+  const { intent, latestText, history, brandLookup, modelLookup, modelGroundingLookup, vehicleConfirmation } = input;
   if (!intent || !intent.isProductQuery) {
     return {
       intent,
       forceLiteralQuery: false,
       requiredTokens: [] as string[],
       modelGroundingShadow: null as ChatModelGroundingShadow | null,
+      vehicleMentionConflict: null as ChatVehicleMentionConflict | null,
+      confirmedVehicle: null as ChatConfirmedVehicle | null,
     };
   }
 
@@ -543,7 +738,7 @@ export function guardChatSearchIntent(input: {
   // a model the customer really typed and make the gate re-ask for the car they
   // already gave. With an anchor present we still enforce it (the original guarded
   // behavior + forceLiteralQuery below).
-  const groundedIntent: ChatSearchIntent = {
+  let groundedIntent: ChatSearchIntent = {
     ...intent,
     carBrand: carBrandGrounded ? intent.carBrand : null,
     carModel:
@@ -556,6 +751,52 @@ export function guardChatSearchIntent(input: {
             : null,
     year: carYearGrounded ? intent.year : null,
   };
+
+  // The customer answered "ใช่" to "หมายถึง <car> ใช่ไหมคะ": that car is grounded by
+  // the answer, not by the customer's spelling, so it replaces whatever the
+  // classifier read (it may repeat the misreading the question was about).
+  const confirmedVehicle =
+    vehicleConfirmation?.kind === "confirmed"
+      ? resolveConfirmedChatVehicle(vehicleConfirmation.vehicleLabel, modelLookup, modelGroundingLookup)
+      : null;
+  const confirmedModelChanged = Boolean(
+    confirmedVehicle &&
+      normalizeSearchText(confirmedVehicle.carModel) !== normalizeSearchText(intent.carModel),
+  );
+  if (confirmedVehicle) {
+    groundedIntent = {
+      ...groundedIntent,
+      carBrand: confirmedVehicle.carBrand ?? groundedIntent.carBrand,
+      carModel: confirmedVehicle.carModel,
+      carMentionInLatest: null,
+    };
+  }
+
+  // The model is otherwise only grounded when a required token is present (see
+  // above). That let a classifier misreading straight through on a plain Thai turn —
+  // "คอยเย็นซี๊ดตี้09" became Ford Fiesta (incident 2026-10-20). When the customer
+  // named a car in THIS message and nothing they wrote supports the classifier's
+  // model, drop the model so the turn asks instead of answering for another car.
+  // A bare "ไม่ใช่" to that question: whatever the classifier reads now (often the
+  // car the shop itself proposed), the customer has said it is wrong — ask instead.
+  const vehicleMentionConflict: ChatVehicleMentionConflict | null =
+    vehicleConfirmation?.kind === "rejected"
+      ? { mention: vehicleConfirmation.mention, classifierModel: intent.carModel, suggestion: null }
+      : !confirmedVehicle && !explicitModelEvidence && groundedIntent.carModel
+        ? assessChatVehicleMentionConflict({
+            model: groundedIntent.carModel,
+            mention: intent.carMentionInLatest,
+            latestText,
+            history,
+            modelGrounded: carModelGrounded,
+            modelLookup,
+            groundingLookup: modelGroundingLookup,
+          })
+        : null;
+  if (vehicleMentionConflict) {
+    groundedIntent = { ...groundedIntent, carModel: null };
+  }
+
   const candidate = evaluateChatModelGroundingCandidate({
     model: intent.carModel,
     carMentionInLatest: intent.carMentionInLatest,
@@ -581,21 +822,30 @@ export function guardChatSearchIntent(input: {
       // If the deterministic evidence corrected the classifier's model, its
       // generated query may still contain the wrong name. Searching the raw
       // customer text avoids a contradictory wrong-model query while the hard
-      // fitment filter uses the corrected canonical model.
-      forceLiteralQuery: modelEvidenceChanged,
+      // fitment filter uses the corrected canonical model. A confirmed car replaces
+      // the classifier's model the same way.
+      forceLiteralQuery: modelEvidenceChanged || confirmedModelChanged,
       requiredTokens,
       modelGroundingShadow,
+      vehicleMentionConflict,
+      confirmedVehicle,
     };
   }
 
   const queryHasRequiredTokens = lineQueryContainsRequiredTokens(intent.query, requiredTokens);
   const forceLiteralQuery =
-    modelEvidenceChanged || !queryHasRequiredTokens || !carBrandGrounded || !carModelGrounded;
+    modelEvidenceChanged ||
+    confirmedModelChanged ||
+    !queryHasRequiredTokens ||
+    !carBrandGrounded ||
+    (!carModelGrounded && !confirmedVehicle);
 
   return {
     intent: groundedIntent,
     forceLiteralQuery,
     requiredTokens,
     modelGroundingShadow,
+    vehicleMentionConflict,
+    confirmedVehicle,
   };
 }
