@@ -4,6 +4,12 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import {
+  shouldFocusSearchOnOpen,
+  useDropdownOpenInteraction,
+  useDropdownViewportChange,
+} from "@/components/shared/dropdown-open-interaction";
+import { fitDropdownToViewport, readViewportWidth } from "@/components/shared/dropdown-position";
 
 export interface MultiSelectOption {
   id: string;
@@ -57,6 +63,7 @@ const MultiSelectFilter = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const openInteraction = useDropdownOpenInteraction();
 
   const isDark = adminTheme?.isDark ?? false;
   const selectedSet = useMemo(() => new Set(values), [values]);
@@ -80,15 +87,19 @@ const MultiSelectFilter = ({
   const updateCoords = () => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
-      setCoords({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 240) });
+      const { left, width } = fitDropdownToViewport(rect.left, Math.max(rect.width, 240), readViewportWidth());
+      setCoords({ top: rect.bottom + 4, left, width });
     }
   };
 
-  const handleOpen = () => {
+  const handleOpen = (interaction: string) => {
     if (disabled) return;
     updateCoords();
     setOpen(true);
-    setTimeout(() => inputRef.current?.focus(), 0);
+    openInteraction.startSession(interaction);
+    if (shouldFocusSearchOnOpen(interaction)) {
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
   };
 
   const toggle = (id: string) => {
@@ -115,7 +126,7 @@ const MultiSelectFilter = ({
     if (event.target !== event.currentTarget) return;
     if (OPEN_KEYS.has(event.key)) {
       event.preventDefault();
-      if (!open) handleOpen();
+      if (!open) handleOpen("keyboard");
     } else if (event.key === "Escape" && open) {
       event.preventDefault();
       closeAndRefocus();
@@ -142,20 +153,17 @@ const MultiSelectFilter = ({
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: Event) => {
-      if (dropdownRef.current?.contains(event.target as Node)) return;
+  useDropdownViewportChange({
+    open,
+    anchorRef: containerRef,
+    dropdownRef,
+    isTouchSession: openInteraction.isTouchSession,
+    onFollow: updateCoords,
+    onClose: () => {
       setOpen(false);
       setQuery("");
-    };
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+    },
+  });
 
   const dropdownClassName = isDark
     ? "fixed z-[9999] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 shadow-2xl backdrop-blur"
@@ -209,6 +217,7 @@ const MultiSelectFilter = ({
               ref={inputRef}
               type="text"
               value={query}
+              onPointerDown={openInteraction.onSearchPointerDown}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={searchPlaceholder}
               className={dropdownInputClassName}
@@ -266,7 +275,8 @@ const MultiSelectFilter = ({
         aria-label={ariaLabel}
         aria-labelledby={ariaLabelledBy}
         tabIndex={disabled ? -1 : 0}
-        onClick={handleOpen}
+        onPointerDown={openInteraction.onPointerDown}
+        onClick={(event) => handleOpen(openInteraction.readClickInteraction(event))}
         onKeyDown={handleTriggerKeyDown}
         className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 ${
           isDark ? "focus-visible:ring-sky-400/40" : "focus-visible:ring-[#1e3a5f]/30"

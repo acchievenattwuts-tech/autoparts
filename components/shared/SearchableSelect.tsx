@@ -4,6 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, X } from "lucide-react";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
+import {
+  shouldFocusSearchOnOpen,
+  useDropdownOpenInteraction,
+  useDropdownViewportChange,
+} from "@/components/shared/dropdown-open-interaction";
+import { fitDropdownToViewport, readViewportWidth } from "@/components/shared/dropdown-position";
 
 export interface SelectOption {
   id: string;
@@ -22,9 +28,11 @@ interface Props {
   placeholder?: string;
   disabled?: boolean;
   /**
-   * Auto-focus the search input when the dropdown opens. Defaults to true to
-   * preserve existing behavior; pass false to open without moving the cursor
-   * into the textbox (e.g. storefront finders where a keyboard pop-up is unwanted).
+   * Auto-focus the search input when the dropdown opens. Defaults to true; a
+   * touch or pen tap still opens a local list without focus so phones do not
+   * raise the keyboard, while remote search (`searchOptions`) always focuses
+   * because nothing is listed until the user types. Pass false to never focus
+   * (e.g. storefront finders where a keyboard pop-up is unwanted on any device).
    */
   autoFocusSearch?: boolean;
   /**
@@ -60,6 +68,7 @@ const SearchableSelect = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const openInteraction = useDropdownOpenInteraction();
 
   const isDark = adminTheme?.isDark ?? false;
   const selected = selectedOption ?? options.find((option) => option.id === value) ?? null;
@@ -114,15 +123,17 @@ const SearchableSelect = ({
   const updateCoords = () => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) {
-      setCoords({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 240) });
+      const { left, width } = fitDropdownToViewport(rect.left, Math.max(rect.width, 240), readViewportWidth());
+      setCoords({ top: rect.bottom + 4, left, width });
     }
   };
 
-  const handleOpen = () => {
+  const handleOpen = (interaction: string) => {
     if (!disabled) {
       updateCoords();
       setOpen(true);
-      if (autoFocusSearch) {
+      openInteraction.startSession(interaction);
+      if (autoFocusSearch && (searchOptions || shouldFocusSearchOnOpen(interaction))) {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     }
@@ -157,20 +168,17 @@ const SearchableSelect = ({
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: Event) => {
-      if (dropdownRef.current?.contains(e.target as Node)) return;
+  useDropdownViewportChange({
+    open,
+    anchorRef: containerRef,
+    dropdownRef,
+    isTouchSession: openInteraction.isTouchSession,
+    onFollow: updateCoords,
+    onClose: () => {
       setOpen(false);
       setQuery("");
-    };
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+    },
+  });
 
   const dropdownClassName = isDark
     ? "fixed z-[9999] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 shadow-2xl backdrop-blur"
@@ -217,6 +225,7 @@ const SearchableSelect = ({
               ref={inputRef}
               type="text"
               value={query}
+              onPointerDown={openInteraction.onSearchPointerDown}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="พิมพ์เพื่อค้นหา..."
               className={dropdownInputClassName}
@@ -267,7 +276,8 @@ const SearchableSelect = ({
       <div
         role="combobox"
         aria-expanded={open}
-        onClick={handleOpen}
+        onPointerDown={openInteraction.onPointerDown}
+        onClick={(e) => handleOpen(openInteraction.readClickInteraction(e))}
         className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${
           triggerClassName
         } ${disabled ? "opacity-70 cursor-not-allowed" : ""}`}

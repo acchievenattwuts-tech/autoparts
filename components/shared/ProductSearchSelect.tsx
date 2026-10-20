@@ -7,6 +7,11 @@ import { createPortal } from "react-dom";
 import { useOptionalAdminTheme } from "@/components/shared/AdminThemeProvider";
 import AdminStatusBadge from "@/components/shared/AdminStatusBadge";
 import {
+  useDropdownOpenInteraction,
+  useDropdownViewportChange,
+} from "@/components/shared/dropdown-open-interaction";
+import { fitDropdownToViewport, readViewportWidth } from "@/components/shared/dropdown-position";
+import {
   filterProductSearchOptions,
   getProductSearchOptionState,
 } from "@/lib/product-search-select-presentation";
@@ -69,6 +74,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
   const inputRef = useRef<HTMLInputElement>(null);
   const hasStartedRemoteSearchRef = useRef(false);
   const listboxId = useId();
+  const openInteraction = useDropdownOpenInteraction();
 
   const isDark = adminTheme?.isDark ?? false;
   const selected = selectedProduct ?? products.find((product) => product.id === value) ?? null;
@@ -153,18 +159,20 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     const openUp = spaceBelow < MIN_HEIGHT && spaceAbove > spaceBelow;
     const available = openUp ? spaceAbove : spaceBelow;
     const maxHeight = Math.min(Math.max(available - MARGIN, MIN_HEIGHT), PREFERRED_HEIGHT);
-    const w = Math.max(rect.width, 256);
+    const { left, width: w } = fitDropdownToViewport(rect.left, Math.max(rect.width, 256), readViewportWidth());
     if (openUp) {
-      setCoords({ top: 0, bottom: window.innerHeight - rect.top + 4, left: rect.left, width: w, maxHeight, openUp: true });
+      setCoords({ top: 0, bottom: window.innerHeight - rect.top + 4, left, width: w, maxHeight, openUp: true });
     } else {
-      setCoords({ top: rect.bottom + 4, bottom: 0, left: rect.left, width: w, maxHeight, openUp: false });
+      setCoords({ top: rect.bottom + 4, bottom: 0, left, width: w, maxHeight, openUp: false });
     }
   };
 
-  const handleOpen = () => {
+  // Always focuses, even on touch: nothing is listed until the user types.
+  const handleOpen = (interaction: string) => {
     if (!disabled) {
       updateCoords();
       setOpen(true);
+      openInteraction.startSession(interaction);
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   };
@@ -203,20 +211,17 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
     return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: Event) => {
-      if (event.target instanceof Node && dropdownRef.current?.contains(event.target)) return;
+  useDropdownViewportChange({
+    open,
+    anchorRef: containerRef,
+    dropdownRef,
+    isTouchSession: openInteraction.isTouchSession,
+    onFollow: updateCoords,
+    onClose: () => {
       setOpen(false);
       setQuery("");
-    };
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open]);
+    },
+  });
 
   const dropdownClassName = isDark
     ? "fixed z-[9999] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 shadow-2xl backdrop-blur"
@@ -326,7 +331,8 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
         role="combobox"
         aria-expanded={open}
         aria-controls={listboxId}
-        onClick={handleOpen}
+        onPointerDown={openInteraction.onPointerDown}
+        onClick={(event) => handleOpen(openInteraction.readClickInteraction(event))}
         className={`flex w-full cursor-pointer select-none items-center rounded-lg border px-3 py-2 text-sm transition-colors ${
           triggerClassName
         } ${disabled ? "cursor-not-allowed opacity-70" : ""}`}
@@ -337,6 +343,7 @@ const ProductSearchSelect = <T extends SearchableProduct,>({
             <input
               ref={inputRef}
               value={query}
+              onPointerDown={openInteraction.onSearchPointerDown}
               onChange={(event) => setQuery(event.target.value)}
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => {
