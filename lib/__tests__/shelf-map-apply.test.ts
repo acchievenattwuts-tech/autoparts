@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Prisma } from "@/lib/generated/prisma";
-import { applyShelfLocationDiffs } from "@/lib/shelf-map";
+import { applyShelfLocationDiffs, changeManyProductShelfLocations } from "@/lib/shelf-map";
 import {
   applyShelfLocationChange,
   diffShelfLocations,
@@ -17,9 +17,10 @@ type IdFilter = { where: { id: { in: string[] } } };
  * In-memory ProductShelfLocation that enforces both unique indexes after every statement,
  * like Postgres does, so a bad statement order fails the test.
  */
-const createFakeTx = (rows: Row[]) => {
+const createFakeTx = (rows: Row[], racks: ShelfRackRule[] = []) => {
   const table = new Map(rows.map((row) => [row.id, { ...row }]));
   let nextId = 1;
+  const shelfRack = { findMany: async () => racks.map((rack) => ({ ...rack })) };
   const assertUnique = (): void => {
     const positions = new Set<string>();
     const primaries = new Set<string>();
@@ -34,6 +35,10 @@ const createFakeTx = (rows: Row[]) => {
     }
   };
   const productShelfLocation = {
+    findMany: async ({ where }: { where: { productId: { in: string[] } } }) =>
+      [...table.values()]
+        .filter((row) => where.productId.in.includes(row.productId))
+        .map((row) => ({ ...row, createdAt: new Date("2026-10-01T00:00:00.000Z") })),
     deleteMany: async ({ where }: IdFilter) => {
       for (const id of where.id.in) table.delete(id);
       assertUnique();
@@ -60,7 +65,7 @@ const createFakeTx = (rows: Row[]) => {
       assertUnique();
     },
   };
-  return { tx: { productShelfLocation } as unknown as Prisma.TransactionClient, table };
+  return { tx: { productShelfLocation, shelfRack } as unknown as Prisma.TransactionClient, table };
 };
 
 const NOW = new Date("2026-10-19T03:00:00.000Z");
@@ -110,4 +115,39 @@ test("a home swap demotes before it promotes", async () => {
   await applyShelfLocationDiffs(tx, [{ productId: "p1", diff: diffShelfLocations(rows.map(draft), result.locations) }], NOW);
   assert.equal(table.get("z1")?.isPrimary, true);
   assert.equal(table.get("a1")?.isPrimary, false);
+});
+
+test("batch put-away saves every product it can and reports the ones it cannot", async () => {
+  const rows: Row[] = [{ id: "home", productId: "p2", rackId: "rA", level: 1, isPrimary: true, note: null }];
+  const racks = [...racksById.values(), { id: "rX", code: "X", levels: 2, isActive: false }];
+  const { tx, table } = createFakeTx(rows, racks);
+
+  const results = await changeManyProductShelfLocations(tx, {
+    now: NOW,
+    entries: [
+      // New product: placed on B-2 becomes its home.
+      { productId: "p1", resolve: () => [{ kind: "place", target: { rackId: "rB", level: 2 } }] },
+      // Already at home: keep it there (confirm only).
+      {
+        productId: "p2",
+        resolve: (locations) => {
+          const home = locations.find((location) => location.isPrimary);
+          return home ? [{ kind: "confirm", locationId: home.id as string }] : "LOCATION_NOT_FOUND";
+        },
+      },
+      // Inactive rack: refused, nothing written for this product.
+      { productId: "p3", resolve: () => [{ kind: "place", target: { rackId: "rX", level: 1 } }] },
+      // No home to keep.
+      { productId: "p4", resolve: () => "LOCATION_NOT_FOUND" },
+    ],
+  });
+
+  assert.deepEqual(
+    results.map((result) => (result.ok ? `${result.productId}:${result.changed ? "changed" : "confirmed"}:${result.after.join(",")}` : `${result.productId}:${result.error}`)),
+    ["p1:changed:B-2 (ประจำ)", "p2:confirmed:A-1 (ประจำ)", "p3:RACK_INACTIVE", "p4:LOCATION_NOT_FOUND"],
+  );
+  assert.deepEqual(
+    [...table.values()].map((row) => `${row.productId}@${row.rackId}-${row.level}${row.isPrimary ? "*" : ""}`).sort(),
+    ["p1@rB-2*", "p2@rA-1*"],
+  );
 });

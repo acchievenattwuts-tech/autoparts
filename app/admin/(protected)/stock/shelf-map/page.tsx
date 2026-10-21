@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { ClipboardCheck, ClipboardList, FileUp, MapPin, PackageSearch, Settings2 } from "lucide-react";
+import { ClipboardCheck, ClipboardList, FileUp, MapPin, PackageCheck, PackageSearch, Settings2 } from "lucide-react";
 
 import AdminEmptyState from "@/components/shared/AdminEmptyState";
 import AdminExportLink from "@/components/shared/AdminExportLink";
@@ -243,6 +243,16 @@ const ShelfMapPage = async ({ searchParams }: ShelfMapPageProps) => {
               <ClipboardCheck size={16} />
               ใบตรวจซ้ำ
             </AdminExportLink>
+            {canManage ? (
+              <Link
+                href="/admin/stock/put-away"
+                prefetch={false}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#1e3a5f] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#163055] dark:bg-sky-600 dark:hover:bg-sky-500"
+              >
+                <PackageCheck size={16} />
+                ตั้งที่เก็บสินค้า
+              </Link>
+            ) : null}
             {canManage ? (
               <Link
                 href="/admin/stock/shelf-map/import"

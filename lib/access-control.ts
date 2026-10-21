@@ -439,6 +439,7 @@ export const ADMIN_ROUTE_RULES: Array<{ prefix: string; permission: PermissionKe
   { prefix: "/admin/stock/lot", permission: "lot_reports.view" },
   { prefix: "/admin/stock/card", permission: "stock.card.view" },
   { prefix: "/admin/stock/shelf-map/import", permission: "stock.shelf_map.manage" },
+  { prefix: "/admin/stock/put-away", permission: "stock.shelf_map.manage" },
   { prefix: "/admin/stock/shelf-map", permission: "stock.shelf_map.view" },
   { prefix: "/admin/lots", permission: "lot_reports.view" },
   { prefix: "/admin/purchases", permission: "purchases.view" },

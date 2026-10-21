@@ -162,6 +162,67 @@ export const changeProductShelfLocation = async (
   };
 };
 
+export type ProductShelfBatchEntry = {
+  productId: string;
+  /** The changes for this product, worked out from its current locations, or a rule error. */
+  resolve: (locations: readonly ShelfLocationDraft[]) => ShelfLocationChange[] | ShelfRuleError;
+};
+
+export type ProductShelfBatchResult =
+  | { productId: string; ok: true; changed: boolean; before: string[]; after: string[] }
+  | { productId: string; ok: false; error: ShelfRuleError };
+
+/**
+ * Many products at once (put-away bulk actions): one read of racks and locations, the shared
+ * rules per product, then one batched write. A product whose change breaks a rule is skipped
+ * and reported; the others are saved.
+ */
+export const changeManyProductShelfLocations = async (
+  tx: Client,
+  input: { entries: readonly ProductShelfBatchEntry[]; now: Date },
+): Promise<ProductShelfBatchResult[]> => {
+  const racks = await loadShelfRackLookup(tx);
+  const draftsByProduct = await loadProductShelfDrafts(
+    tx,
+    input.entries.map((entry) => entry.productId),
+  );
+  const results: ProductShelfBatchResult[] = [];
+  const diffs: ProductShelfDiff[] = [];
+  for (const entry of input.entries) {
+    const before = draftsByProduct.get(entry.productId) ?? [];
+    const changes = entry.resolve(before);
+    if (typeof changes === "string") {
+      results.push({ productId: entry.productId, ok: false, error: changes });
+      continue;
+    }
+    let next: ShelfLocationDraft[] = before;
+    let failed: ShelfRuleError | null = null;
+    for (const change of changes) {
+      const result = applyShelfLocationChange(next, change, racks.byId, input.now);
+      if (!result.ok) {
+        failed = result.error;
+        break;
+      }
+      next = result.locations;
+    }
+    if (failed) {
+      results.push({ productId: entry.productId, ok: false, error: failed });
+      continue;
+    }
+    const diff = diffShelfLocations(before, next);
+    if (!isEmptyShelfLocationDiff(diff)) diffs.push({ productId: entry.productId, diff });
+    results.push({
+      productId: entry.productId,
+      ok: true,
+      changed: !isVerifyOnlyShelfDiff(diff),
+      before: describeShelfLocations(before, racks.byId),
+      after: describeShelfLocations(next, racks.byId),
+    });
+  }
+  if (diffs.length > 0) await applyShelfLocationDiffs(tx, diffs, input.now);
+  return results;
+};
+
 /** Where a location change came from, recorded in the audit meta. */
 export type ShelfAuditSource =
   | "shelf_badge"

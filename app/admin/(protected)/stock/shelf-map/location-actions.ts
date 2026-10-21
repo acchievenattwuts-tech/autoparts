@@ -60,6 +60,7 @@ const SUCCESS_MESSAGES: Record<ShelfLocationChange["kind"], string> = {
 
 const revalidateShelfPaths = (productId: string): void => {
   revalidatePath("/admin/stock/shelf-map");
+  revalidatePath("/admin/stock/put-away");
   revalidatePath("/admin/products");
   revalidatePath("/admin/products/search");
   revalidatePath(`/admin/products/${productId}/preview`);
