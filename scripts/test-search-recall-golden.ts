@@ -19,7 +19,9 @@
  *
  *   npm run test:search-recall-golden
  */
+import { searchChatProductInquiry } from "@/lib/chat-core/product-search-bridge";
 import { db } from "@/lib/db";
+import { LineIntent } from "@/lib/generated/prisma";
 import { searchProductIdsV2 } from "@/lib/product-search";
 
 const TAKE = 5;
@@ -62,7 +64,24 @@ type MustIncludeCase = {
   note: string;
 };
 
-type GoldenCase = CategoryCoverageCase | FilteredCompletenessCase | FuzzyRescueCase | MustIncludeCase;
+/** Runs the FULL chat bridge (primary search + every recovery) with the turn's
+ *  logged inputs, so a fix in the recovery chain is pinned end to end. */
+type ChatBridgeCase = {
+  kind: "chat-bridge";
+  /** Effective query the processor passed (SEARCH_QUERY_CONSOLIDATED.consolidatedQuery). */
+  text: string;
+  /** The customer's raw latest text. */
+  customerText: string;
+  categoryName: string;
+  carBrandName: string | null;
+  carModelName: string;
+  fitmentYear: number | null;
+  mustIncludeCodes: string[];
+  mustExcludeCodes: string[];
+  note: string;
+};
+
+type GoldenCase = CategoryCoverageCase | FilteredCompletenessCase | FuzzyRescueCase | MustIncludeCase | ChatBridgeCase;
 
 const CASES: GoldenCase[] = [
   // ── incident 2026-08-03: the exact turn, must return BOTH SKUs ─────────────
@@ -74,6 +93,32 @@ const CASES: GoldenCase[] = [
     carModelName: "Hilux Revo",
     mustIncludeCodes: ["P0093", "P0362"],
     note: "LINE 2026-08-03: answered P0093 only, P0362 (DENSO) was silently missing",
+  },
+  // ── incident 2026-10-23: Thai typed without spaces, through the chat bridge ──
+  {
+    kind: "chat-bridge",
+    text: "คอมแอร์ดีแมคปี 2008",
+    customerText: "คอมแอร์ดีแมคปี08",
+    categoryName: "คอมแอร์ (Compressor)",
+    carBrandName: "Isuzu",
+    carModelName: "D-Max",
+    fitmentYear: 2008,
+    mustIncludeCodes: ["P0029", "P0425"],
+    // MU-X / D-Max Blue Power 2016+ — wrong for a 2008 D-Max (year range set by the owner 2026-10-23).
+    mustExcludeCodes: ["P0818"],
+    note: "LINE 2026-10-23: glued text found nothing, did-you-mean answered P0425 only (P0029 missing)",
+  },
+  {
+    kind: "chat-bridge",
+    text: "แผงคอยร้อนCX5ปี14",
+    customerText: "แผงคอยร้อนCX5ปี14",
+    categoryName: "คอยล์ร้อน (Condenser)",
+    carBrandName: null,
+    carModelName: "CX-5",
+    fitmentYear: 2014,
+    mustIncludeCodes: ["P1166"],
+    mustExcludeCodes: [],
+    note: "LINE 2026-09-28 wording: glued text returned 0 although P1166 (CX-5 2014-2018) now fits",
   },
   // ── every customer-typed spelling reaches its whole category ───────────────
   {
@@ -234,6 +279,43 @@ async function run(): Promise<void> {
       console.log(`\n[must-include] ${c.note}`);
       for (const code of c.mustIncludeCodes) {
         report(codes.has(code), `"${c.query}" ต้องมี ${code}`);
+      }
+    } else if (c.kind === "chat-bridge") {
+      const out = await searchChatProductInquiry(
+        {
+          route: {
+            intent: LineIntent.PRODUCT_INQUIRY_TEXT,
+            allowsSearch: true,
+            requiresAdmin: false,
+            requiresImageAnalysis: false,
+            requiresMoreInfo: false,
+            reason: "DEFAULT_PRODUCT_INQUIRY",
+          },
+          text: c.text,
+          customerText: c.customerText,
+          contextHints: [],
+          fitmentHints: {
+            categoryName: c.categoryName,
+            carBrandName: c.carBrandName,
+            carModelName: c.carModelName,
+            fitmentYear: c.fitmentYear,
+          },
+          take: 10,
+        },
+        // The app's default search fn goes through Next's unstable_cache; call the
+        // engine directly here, exactly as the other cases do.
+        (input) => searchProductIdsV2(input, { bypassInternalCaches: true }),
+      );
+      const ids = out.searched ? out.result.ids : [];
+      const rows = await db.product.findMany({ where: { id: { in: ids } }, select: { code: true } });
+      const codes = new Set(rows.map((row) => row.code));
+      const how = out.searched ? out.reason : "not searched";
+      console.log(`\n[chat-bridge] ${c.note}`);
+      for (const code of c.mustIncludeCodes) {
+        report(codes.has(code), `"${c.customerText}" ต้องมี ${code} (${how})`);
+      }
+      for (const code of c.mustExcludeCodes) {
+        report(!codes.has(code), `"${c.customerText}" ต้องไม่มี ${code}`);
       }
     } else {
       const r = await searchProductIdsV2(

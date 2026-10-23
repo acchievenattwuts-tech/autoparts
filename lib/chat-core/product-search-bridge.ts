@@ -178,6 +178,12 @@ export type ChatProductSearchBridgeResult =
        *  matches" and need no customer-facing caveat — the flag exists so the audit
        *  trail can measure how much recall the repair actually recovers. */
       thaiFoldRecovered?: boolean;
+      /** True when the rows were found only by the category-head recovery: the
+       *  customer's own wording matched nothing (typically Thai typed without
+       *  spaces, "คอมแอร์ดีแมคปี08"), so the search re-ran with the category's Thai
+       *  name under the SAME category/car/year filters and anchors. Not a near-match
+       *  (every filter held), so no caveat — the flag keeps the rescue rate auditable. */
+      categoryHeadRecovered?: boolean;
     };
 
 export type ChatMatchedProductSummary = {
@@ -357,6 +363,20 @@ const DID_YOU_MEAN_MAX_RETRIES = 2;
 function normalizeSearchSeed(value?: string | null) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+/** Trailing English gloss of a category name: "คอมแอร์ (Compressor)" → " (Compressor)". */
+const CATEGORY_NAME_GLOSS_PATTERN = /\s*\([^)]*\)\s*$/u;
+
+/**
+ * The Thai head of a resolved category name ("คอมแอร์ (Compressor)" → "คอมแอร์").
+ * Every product's search document carries its category name, so this word reaches
+ * the whole category — measured at 100% recall in all 21 active categories
+ * (2026-10-23). Used as the query of the category-head recovery search.
+ */
+function resolveCategoryHeadQuery(categoryName?: string | null): string | null {
+  if (!categoryName) return null;
+  return normalizeSearchSeed(categoryName.replace(CATEGORY_NAME_GLOSS_PATTERN, ""));
 }
 
 /**
@@ -760,6 +780,48 @@ export async function searchChatProductInquiry(
     }
   }
 
+  // ── Category-head recovery ─────────────────────────────────────────────────
+  // Still nothing, yet the category AND the car model are already resolved. The
+  // customer's wording is what failed, not the catalog: Thai typed without spaces
+  // ("คอมแอร์ดีแมคปี08") reaches the engine as one token no product text contains.
+  // The did-you-mean retry below would then pick a single glued alias and drop the
+  // year — the 2026-10-23 incident answered P0425 alone while P0029 also fit.
+  //
+  // Retry once with the category's Thai name as the query. Strictly additive:
+  //  - runs ONLY on a zero-result search, so a turn that found rows is untouched;
+  //  - keeps EVERY filter (category, brand, model, year) and every required-token
+  //    anchor, so it cannot drift to another car, part, year or typed code — the
+  //    rows are exactly the catalog's answer to the structured question;
+  //  - needs a car model: category + model is specific; category alone is not;
+  //  - if it finds nothing, the did-you-mean path runs exactly as before.
+  let categoryHeadRecovered = false;
+  let effectiveQuery = query;
+  const categoryHeadQuery = resolveCategoryHeadQuery(baseFilters.categoryName);
+  if (
+    result.total === 0 &&
+    categoryHeadQuery &&
+    baseFilters.carModelName &&
+    categoryHeadQuery.toLowerCase() !== query.toLowerCase()
+  ) {
+    const recovered = await resolvedSearchFn({
+      query: categoryHeadQuery,
+      isActive: true,
+      isStorefrontVisible: true,
+      ...baseFilters,
+      ...(persistentRequiredTokens.length > 0 ? { requiredTokens: persistentRequiredTokens } : {}),
+      ...(requiredTokenGroups.length > 0 ? { requiredNameAliasTokenGroups: requiredTokenGroups } : {}),
+      skip: 0,
+      take: input.take ?? CHAT_PRODUCT_DISPLAY_LIMIT,
+      cacheProfile: "storefront",
+    });
+    if (recovered.total > 0) {
+      result = recovered;
+      categoryHeadRecovered = true;
+      // The "view all on web" link must reproduce these rows; the glued text would not.
+      effectiveQuery = categoryHeadQuery;
+    }
+  }
+
   // No hits → try a "did you mean" spelling/synonym correction and re-search once.
   if (result.total === 0) {
     const resolvedSuggestFn =
@@ -841,8 +903,10 @@ export async function searchChatProductInquiry(
           ? "SEARCHED_ACCESSORY_HEAD_ANCHORED"
           : accessoryHeadFallback
             ? "SEARCHED_ACCESSORY_HEAD_FALLBACK"
-            : "SEARCHED_PRODUCT_INQUIRY",
-    query,
+            : categoryHeadRecovered
+              ? "SEARCHED_CATEGORY_HEAD_RECOVERED"
+              : "SEARCHED_PRODUCT_INQUIRY",
+    query: effectiveQuery,
     result: identityConstraints.length > 0
       ? {
           ...result,
@@ -862,5 +926,6 @@ export async function searchChatProductInquiry(
     yearMismatch: null,
     accessoryVehicleDropped,
     thaiFoldRecovered,
+    categoryHeadRecovered,
   };
 }

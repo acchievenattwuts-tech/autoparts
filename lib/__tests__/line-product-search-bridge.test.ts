@@ -216,10 +216,14 @@ test("did-you-mean retry keeps category/brand/model, drops only the year", async
 
   assert.equal(result.searched, true);
   assert.equal(result.query, "แผงแอร์ Toyota Vios 2013");
-  // Initial search carried the year; retry kept category but dropped the year.
+  // Initial search carried the year. The category-head recovery (2026-10-23) runs
+  // next under the SAME filters — year included — and finds nothing here. Only then
+  // does the did-you-mean retry keep the category but drop the year.
   assert.equal(calls[0].fitmentYear, 2003);
-  assert.equal(calls[1].fitmentYear, null);
-  assert.equal(calls[1].categoryName, "คอยล์ร้อน (Condenser)");
+  assert.deepEqual(calls[1], { query: "คอยล์ร้อน", categoryName: "คอยล์ร้อน (Condenser)", fitmentYear: 2003 });
+  assert.equal(calls[2].query, "แผงแอร์ Toyota Vios 2013");
+  assert.equal(calls[2].fitmentYear, null);
+  assert.equal(calls[2].categoryName, "คอยล์ร้อน (Condenser)");
   // The link must mirror the filters actually applied (no contradictory year).
   if (result.searched) {
     assert.deepEqual(result.appliedFilters, {
@@ -910,7 +914,7 @@ test("accessory rescue never runs when the vehicle-scoped search already found r
 test("accessory rescue leaves a non-accessory (fitment) turn untouched", async () => {
   // A fitment part the classifier mislabels must NOT lose its vehicle scope — that
   // is why the rescue is gated on the accessory head-noun anchor.
-  let calls = 0;
+  const calls: Array<{ query: string; carModelName: string | null | undefined }> = [];
 
   const result = await searchChatProductInquiry(
     {
@@ -924,8 +928,8 @@ test("accessory rescue leaves a non-accessory (fitment) turn untouched", async (
       },
       take: 5,
     },
-    async () => {
-      calls += 1;
+    async (input) => {
+      calls.push({ query: input.query ?? "", carModelName: input.carModelName });
       return { ids: [], total: 0, mode: "v2" };
     },
     // The empty result would otherwise fall through to the live did-you-mean
@@ -934,7 +938,12 @@ test("accessory rescue leaves a non-accessory (fitment) turn untouched", async (
     async () => [],
   );
 
-  assert.equal(calls, 1, "no car-less retry without the accessory anchor");
+  assert.ok(
+    calls.every((call) => call.carModelName === "Vios"),
+    "no car-less retry without the accessory anchor",
+  );
+  // The only extra search is the category-head recovery, vehicle scope intact.
+  assert.deepEqual(calls.map((call) => call.query), ["คอยล์เย็น Vios", "คอยล์เย็น"]);
   assert.equal(result.searched && result.accessoryVehicleDropped, false);
   assert.equal(result.searched && result.result.total, 0);
 });

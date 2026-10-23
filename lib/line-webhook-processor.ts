@@ -2784,6 +2784,10 @@ export async function processLineAiReply(
               // An accessory/universal search that only succeeded once the carried
               // vehicle filters were dropped — measures how often that rescue fires.
               accessoryVehicleDropped: productSearch.accessoryVehicleDropped === true,
+              // The customer's wording matched nothing (e.g. Thai typed without
+              // spaces) and the rows came from the category-head recovery under the
+              // same filters — measures how often that rescue fires.
+              categoryHeadRecovered: productSearch.categoryHeadRecovered === true,
             }
           : {
               lineEventId: input.lineEventId,
