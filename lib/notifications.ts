@@ -245,6 +245,32 @@ export async function notifyMessengerPaymentSlip(input: {
   });
 }
 
+/**
+ * A new LINE / Messenger payment slip failed an automatic check (duplicate
+ * reference, possible duplicate, or receiver name not the shop's). One alert per
+ * slip; the admin still decides on the slip page.
+ */
+export async function notifyPaymentSlipFlagged(input: {
+  slipId: string;
+  channelLabel: "LINE" | "Messenger";
+  customerLabel?: string | null;
+  amountLabel: string;
+  warningMessages: string[];
+}): Promise<number> {
+  const who = input.customerLabel?.trim() || `ลูกค้า ${input.channelLabel}`;
+  const warningLines = input.warningMessages.map((message) => `- ${message}`).join("\n");
+  return createNotification({
+    type: NotificationType.PAYMENT_SLIP_FLAGGED,
+    severity: NotificationSeverity.WARNING,
+    title: `สลิปโอนเงินจาก ${input.channelLabel} มีคำเตือน — ตรวจก่อนยืนยัน`,
+    body: `${who} · ${input.amountLabel} บาท\n${warningLines}`,
+    link: `/admin/line-payment-slips/${input.slipId}`,
+    entityType: "PaymentSlip",
+    entityId: input.slipId,
+    dedupeKey: `payment-slip-flagged:${input.slipId}`,
+  });
+}
+
 /** The Messenger AI escalated a conversation to a human admin. */
 export async function notifyMessengerNeedsAdmin(input: {
   conversationId: string;

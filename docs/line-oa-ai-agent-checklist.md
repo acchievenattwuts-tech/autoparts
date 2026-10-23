@@ -279,6 +279,14 @@ Rule reminder: this checklist is for scoped additive work only. Prefer extending
 - Admin pages: list + detail/review (`force-dynamic`, `loading.tsx`, light/dark).
 - Review API with central `AuditLog`: [app/api/admin/line-payment-slips/[id]/review/route.ts](/D:/autoparts/app/api/admin/line-payment-slips/[id]/review/route.ts).
 - Processor: slip image → OCR → persist `PaymentSlip` → audit `PAYMENT_SLIP_OCR` (injectable; tested).
+- Automatic checks (2026-10-23, LINE + Messenger, advisory only): duplicate slip (same normalized
+  `referenceNoKey`, or same amount in the same transfer minute) and receiver name vs the names of
+  active `BANK` cash/bank accounts. Run right after ingest; a flagged slip raises
+  `PAYMENT_SLIP_FLAGGED` (bell + Telegram), shows a check panel + list badges, and confirming it asks
+  once more. Never confirms, rejects or matches a slip. Rules:
+  [lib/line-payment-slip-check-rules.ts](/D:/autoparts/lib/line-payment-slip-check-rules.ts); DB +
+  alert: [lib/line-payment-slip-checks.ts](/D:/autoparts/lib/line-payment-slip-checks.ts). It cannot
+  detect a newly fabricated slip — that needs a bank-side verification service.
 
 ## Phase 11: Order / Customer Context Linking
 

@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma, PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
+import { normalizePaymentSlipReferenceKey } from "@/lib/line-payment-slip-check-rules";
 import { getInitialPaymentSlipStatus, type PaymentSlipOcr } from "@/lib/line-payment-slip-service";
 
 const DEFAULT_TAKE = 50;
@@ -39,6 +40,7 @@ export async function createPaymentSlip(input: {
       detectedSenderName: input.ocr.senderName,
       detectedReceiverName: input.ocr.receiverName,
       detectedReferenceNo: input.ocr.referenceNo,
+      referenceNoKey: normalizePaymentSlipReferenceKey(input.ocr.referenceNo),
       verificationStatus: getInitialPaymentSlipStatus(),
       rawOcr: toRawOcr(input.ocr),
     },
@@ -67,6 +69,8 @@ export async function listPaymentSlips(input: {
       detectedTransferDatetime: true,
       detectedBank: true,
       detectedSenderName: true,
+      detectedReceiverName: true,
+      referenceNoKey: true,
       verificationStatus: true,
       createdAt: true,
       conversation: {
@@ -115,6 +119,7 @@ export async function getPaymentSlipById(id: string) {
       detectedSenderName: true,
       detectedReceiverName: true,
       detectedReferenceNo: true,
+      referenceNoKey: true,
       verificationStatus: true,
       rawOcr: true,
       createdAt: true,

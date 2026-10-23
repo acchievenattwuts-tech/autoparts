@@ -421,6 +421,8 @@ model PaymentSlip {
   detectedSenderName       String?
   detectedReceiverName     String?
   detectedReferenceNo      String?
+  /// detectedReferenceNo without spaces/symbols, upper-cased — the duplicate-slip lookup key.
+  referenceNoKey           String?
   matchedSaleId            String?
   verificationStatus       PaymentSlipVerificationStatus @default(PENDING_REVIEW)
   rawOcr                   Json?
@@ -438,6 +440,7 @@ model PaymentSlip {
   @@index([messengerConversationId, createdAt])
   @@index([lineUserId, createdAt])
   @@index([lineMessageId])
+  @@index([referenceNoKey])
   @@index([matchedSaleId])
   @@index([verificationStatus, createdAt])
   @@index([reviewedById])
@@ -3962,6 +3965,7 @@ enum NotificationType {
   PERIOD_LOCK_OVERRIDDEN
   PURCHASE_BUDGET_LOW
   PURCHASE_BUDGET_EXCEEDED
+  PAYMENT_SLIP_FLAGGED
 }
 
 enum NotificationSeverity {

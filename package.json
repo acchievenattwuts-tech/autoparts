@@ -88,6 +88,7 @@
     "backfill:embeddings": "tsx --env-file=.env.local prisma/scripts/backfill-embeddings.ts",
     "backfill:public-images-blob": "tsx --env-file=.env.local prisma/scripts/backfill-public-images-to-blob.ts",
     "backfill:payment-slips-blob": "tsx --env-file=.env.local prisma/scripts/backfill-payment-slips-to-blob.ts",
+    "backfill:payment-slip-reference-key": "tsx --env-file=.env.local prisma/scripts/backfill-payment-slip-reference-key.ts",
     "sweep:blob-orphans": "tsx --env-file=.env.local prisma/scripts/sweep-blob-product-orphans.ts",
     "cleanup:supabase-storage": "tsx --env-file=.env.local prisma/scripts/delete-supabase-storage-objects.ts",
     "reconcile:fact-profit": "tsx --env-file=.env prisma/scripts/reconcile-fact-profit.ts",

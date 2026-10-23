@@ -1,15 +1,18 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { Images, ReceiptText, Scale, Users } from "lucide-react";
+import { AlertTriangle, Images, ReceiptText, Scale, Users } from "lucide-react";
 
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
+import type { PaymentSlipWarning } from "@/lib/line-payment-slip-check-rules";
+import { getPaymentSlipListWarnings, toPaymentSlipCheckInput } from "@/lib/line-payment-slip-checks";
 import {
   formatPaymentSlipBaht,
   paymentSlipStatusBadgeClass,
   paymentSlipStatusLabel,
+  paymentSlipWarningBadge,
 } from "@/lib/line-payment-slip-display";
 import { listPaymentSlips } from "@/lib/line-payment-slip-repository";
 import { requirePermission } from "@/lib/require-auth";
@@ -28,6 +31,15 @@ export default async function LinePaymentSlipsPage({ searchParams }: PageProps) 
     ? (params.status as PaymentSlipVerificationStatus)
     : null;
   const slips = await listPaymentSlips({ status, take: 80 });
+  let warningsBySlip = new Map<string, PaymentSlipWarning[]>();
+  try {
+    warningsBySlip = await getPaymentSlipListWarnings(slips.map(toPaymentSlipCheckInput));
+  } catch (error) {
+    // Badges are a review aid — the list still renders without them.
+    console.error("[line-payment-slips] list checks failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -116,6 +128,16 @@ export default async function LinePaymentSlipsPage({ searchParams }: PageProps) 
                       >
                         {paymentSlipStatusLabel[slip.verificationStatus]}
                       </span>
+                      {(warningsBySlip.get(slip.id) ?? []).map((warning) => (
+                        <span
+                          key={warning.code}
+                          title={warning.message}
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${paymentSlipWarningBadge[warning.code].className}`}
+                        >
+                          <AlertTriangle size={12} />
+                          {paymentSlipWarningBadge[warning.code].label}
+                        </span>
+                      ))}
                     </div>
                     <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                       {slip.detectedBank ?? "ไม่ทราบธนาคาร"}

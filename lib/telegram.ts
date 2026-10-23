@@ -39,6 +39,7 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   MARKETPLACE_RETURN_RECORDED: "บันทึกคืนสินค้าช่องทางขาย",
   PURCHASE_BUDGET_LOW: "งบสั่งซื้อใกล้หมด",
   PURCHASE_BUDGET_EXCEEDED: "งบสั่งซื้อติดลบ (ใช้เกินงบ)",
+  PAYMENT_SLIP_FLAGGED: "สลิปโอนเงินมีคำเตือน (ซ้ำ / ผู้รับไม่ตรง)",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -121,6 +122,7 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   MARKETPLACE_RETURN_RECORDED: "↩️",
   PURCHASE_BUDGET_LOW: "💰",
   PURCHASE_BUDGET_EXCEEDED: "💰",
+  PAYMENT_SLIP_FLAGGED: "⚠️",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

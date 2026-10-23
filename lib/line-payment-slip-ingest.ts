@@ -1,5 +1,6 @@
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import { fetchLineMessageContent, type LineMessageContent } from "@/lib/line-messaging";
+import { checkNewPaymentSlipAndNotify } from "@/lib/line-payment-slip-checks";
 import { runPaymentSlipOcr } from "@/lib/line-payment-slip-ocr";
 import { createPaymentSlip, setPaymentSlipImagePath } from "@/lib/line-payment-slip-repository";
 import type { PaymentSlipOcr } from "@/lib/line-payment-slip-service";
@@ -58,6 +59,14 @@ export async function ingestPaymentSlip(input: {
       imageStored = true;
     }
   }
+
+  // Duplicate / receiver checks → bell + Telegram when flagged. Never throws.
+  await checkNewPaymentSlipAndNotify({
+    slipId: slip.id,
+    ocr,
+    channelLabel: "LINE",
+    lineConversationId: input.conversationId,
+  });
 
   return {
     slipId: slip.id,

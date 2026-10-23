@@ -5,7 +5,13 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import AdminPaymentSlipReviewActions from "@/components/shared/AdminPaymentSlipReviewActions";
+import PaymentSlipCheckPanel from "@/components/shared/PaymentSlipCheckPanel";
 import { hasPermissionAccess } from "@/lib/access-control";
+import {
+  evaluatePaymentSlipChecks,
+  toPaymentSlipCheckInput,
+  type PaymentSlipCheckResult,
+} from "@/lib/line-payment-slip-checks";
 import {
   formatPaymentSlipBaht,
   paymentSlipStatusBadgeClass,
@@ -26,6 +32,16 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
   const slip = await getPaymentSlipById(id);
 
   if (!slip) notFound();
+
+  let checks: PaymentSlipCheckResult | null = null;
+  try {
+    checks = await evaluatePaymentSlipChecks(toPaymentSlipCheckInput(slip));
+  } catch (error) {
+    console.error("[line-payment-slips] automatic checks failed", {
+      slipId: slip.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
 
   const canManage = hasPermissionAccess(
     session.user.role,
@@ -103,6 +119,8 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
         </div>
       ) : null}
 
+      <PaymentSlipCheckPanel result={checks} />
+
       <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-white/10 dark:bg-slate-950/70">
         <h2 className="font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">
           ข้อมูลที่อ่านได้ (OCR — เพื่อช่วยตรวจสอบเท่านั้น)
@@ -131,7 +149,10 @@ export default async function LinePaymentSlipDetailPage({ params }: PageProps) {
           <h2 className="mb-3 font-kanit text-base font-semibold text-gray-900 dark:text-slate-100">
             ผลการตรวจสอบ
           </h2>
-          <AdminPaymentSlipReviewActions slipId={slip.id} />
+          <AdminPaymentSlipReviewActions
+            slipId={slip.id}
+            warnings={checks?.warnings.map((warning) => warning.message) ?? []}
+          />
         </div>
       ) : null}
     </div>

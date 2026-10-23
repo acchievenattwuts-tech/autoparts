@@ -1,5 +1,6 @@
 import { PaymentSlipVerificationStatus } from "@/lib/generated/prisma";
 import { classifyImageContent, type LineImageClassification } from "@/lib/line-image-service";
+import { checkNewPaymentSlipAndNotify } from "@/lib/line-payment-slip-checks";
 import { createPaymentSlip, setPaymentSlipImagePath } from "@/lib/line-payment-slip-repository";
 import { runPaymentSlipOcr } from "@/lib/line-payment-slip-ocr";
 import type { PaymentSlipOcr } from "@/lib/line-payment-slip-service";
@@ -85,6 +86,14 @@ export async function ingestMessengerPaymentSlip(input: {
       imageStored = true;
     }
   }
+
+  // Same checks as LINE slips (one shared PaymentSlip table). Never throws.
+  await checkNewPaymentSlipAndNotify({
+    slipId: slip.id,
+    ocr,
+    channelLabel: "Messenger",
+    messengerConversationId: input.messengerConversationId,
+  });
 
   return {
     slipId: slip.id,

@@ -4,6 +4,8 @@ import { AuditAction, PaymentSlipVerificationStatus } from "@/lib/generated/pris
 import { getAuditActorFromSession, getRequestContext, writeAuditLog } from "@/lib/audit-log";
 import { parsePaymentSlipReviewBody } from "@/lib/line-admin-validation";
 import { lineAdminApiErrorResponse } from "@/lib/line-admin-api";
+import type { PaymentSlipWarningCode } from "@/lib/line-payment-slip-check-rules";
+import { evaluatePaymentSlipChecks, toPaymentSlipCheckInput } from "@/lib/line-payment-slip-checks";
 import {
   getPaymentSlipById,
   reviewPaymentSlip,
@@ -34,6 +36,19 @@ export async function POST(
       return NextResponse.json({ error: "PAYMENT_SLIP_NOT_FOUND" }, { status: 404 });
     }
 
+    // Warnings the admin saw (or overrode) — recorded in the audit, never blocking.
+    // null = the checks could not run at decision time.
+    let warningsAtDecision: PaymentSlipWarningCode[] | null = null;
+    try {
+      const checks = await evaluatePaymentSlipChecks(toPaymentSlipCheckInput(existing));
+      warningsAtDecision = checks.warnings.map((warning) => warning.code);
+    } catch (error) {
+      console.error("[line-payment-slips] review-time checks failed", {
+        slipId: id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
     const updated = await reviewPaymentSlip({
       id,
       adminUserId: session.user.id,
@@ -57,7 +72,7 @@ export async function POST(
       entityId: id,
       before: { verificationStatus: existing.verificationStatus },
       after: { verificationStatus: nextStatus },
-      meta: { operation: "REVIEW_PAYMENT_SLIP", decision, imageDeleted },
+      meta: { operation: "REVIEW_PAYMENT_SLIP", decision, imageDeleted, warningsAtDecision },
     });
 
     return NextResponse.json({ ok: true, verificationStatus: updated.verificationStatus });
