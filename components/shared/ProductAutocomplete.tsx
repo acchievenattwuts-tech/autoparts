@@ -88,7 +88,11 @@ interface Props {
   adminReturnTo?: string;
 }
 
-const DEBOUNCE_MS = 300;
+// Product-card lookup (only the admin product filter uses it) runs the full product
+// search on every request. 500ms instead of 300ms so fast typing sends fewer of
+// these CPU-heavy queries: on Supabase Free (Nano) a burst of them passed the 8s
+// statement_timeout and pushed /admin/products to 15–30s (2026-10-24).
+const DEBOUNCE_MS = 500;
 // Keyword lookup is a single indexed query (~40ms) so it can debounce much shorter
 // than the product-card path for a snappier as-you-type feel.
 const KEYWORD_DEBOUNCE_MS = 120;
