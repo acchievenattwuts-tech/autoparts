@@ -26,7 +26,6 @@ type TestCalls = {
   pushes: Array<{ recipientIds: string[]; text: string }>;
   loadingAnimations: Array<{ chatId: string; loadingSeconds?: number }>;
   markedSent: Array<{ messageId: string; deliveryMode: LineDeliveryMode }>;
-  scopedReplyGroups: string[];
   searches: string[];
   searchCustomerTexts: Array<string | null | undefined>;
   searchFitmentHints: Array<
@@ -210,7 +209,6 @@ function createProcessorTestDeps(input?: {
     pushes: [],
     loadingAnimations: [],
     markedSent: [],
-    scopedReplyGroups: [],
     searches: [],
     searchCustomerTexts: [],
     searchFitmentHints: [],
@@ -1049,45 +1047,37 @@ test("social group gets a brief ack and never searches", async () => {
   assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
 });
 
-test("smalltalk group gets an AI scoped reply, no search, no handoff", async () => {
-  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "smalltalk" });
-  dependencies.generateScopedConversationalReply = async ({ group }) => {
-    calls.scopedReplyGroups.push(group);
-    return "จูนเป็นผู้ช่วยร้านศรีวรรณค่ะ 😊 อยากหาอะไหล่รุ่นไหนดีคะ";
-  };
+// Owner rule 2026-10-26: anything not about the shop and not a product search
+// goes to an admin. The AI used to write its own reply and invented a fact
+// ("ร้านแม่ดีป่ะครับ" → "ไม่ใช่ร้านแม่ค่ะ").
+for (const [group, text] of [
+  ["smalltalk", "จูนคือใคร"],
+  ["out_of_scope", "ร้านแม่ดีป่ะครับ"],
+] as const) {
+  test(`${group} group hands off to an admin — no AI-written reply, no FAQ, no search`, async () => {
+    const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+    const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: group });
+    let faqCalls = 0;
+    dependencies.answerFromChatFaq = async () => {
+      faqCalls += 1;
+      return { answered: true, reply: "FAQ must not answer an off-topic turn" };
+    };
 
-  const result = await processLineWebhookPayload(
-    textPayload("จูนคือใคร"),
-    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
-    dependencies,
-  );
+    const result = await processLineWebhookPayload(
+      textPayload(text),
+      { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+      dependencies,
+    );
 
-  assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /จูน/);
-  assert.deepEqual(calls.searches, []);
-  assert.deepEqual(calls.scopedReplyGroups, ["smalltalk"]);
-  assert.ok(calls.auditActions.includes("SCOPED_CONVERSATIONAL_HANDLED"));
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
-});
-
-test("out_of_scope group declines politely via scoped reply, no search", async () => {
-  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
-  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "out_of_scope" });
-
-  const result = await processLineWebhookPayload(
-    textPayload("วันนี้อากาศเป็นยังไงบ้าง"),
-    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
-    dependencies,
-  );
-
-  // No injected generator + no Gemini keys in test → deterministic template.
-  assert.equal(result.repliedCount, 1);
-  assert.match(calls.replies[0]?.text ?? "", /อะไหล่แอร์/);
-  assert.deepEqual(calls.searches, []);
-  assert.ok(calls.auditActions.includes("SCOPED_CONVERSATIONAL_HANDLED"));
-  assert.ok(!calls.statePatchTypes.includes("waiting_admin"));
-});
+    assert.equal(result.repliedCount, 1);
+    assert.match(calls.replies[0]?.text ?? "", /แอดมิน/);
+    assert.equal(faqCalls, 0);
+    assert.deepEqual(calls.searches, []);
+    assert.ok(calls.auditActions.includes("AI_OFF_TOPIC_HANDOFF"));
+    assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+    assert.equal(calls.notifyHandoffs.length, 1);
+  });
+}
 
 test("shop_info group answers from current site config, no search", async () => {
   const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
@@ -1528,6 +1518,27 @@ test("processor routes a payment-slip image to admin and never hits product sear
     calls.replies[0]?.text ?? "",
     "ขอบคุณค่ะ ทางร้านได้รับสลิปเรียบร้อยแล้วนะคะ 🙏\nขอเวลาให้แอดมินตรวจสอบยอดโอนสักครู่ แล้วจะแจ้งกลับให้ทราบทางแชทนี้ค่ะ",
   );
+});
+
+// Incident 2026-10-25: "พรุ่งนี้โอนเงินให้นะครับ" (no image) was told
+// "ได้รับสลิปเรียบร้อยแล้ว". The text still goes to an admin, with a neutral ack.
+test("typed payment message hands off without saying a slip was received", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, dependencies } = createProcessorTestDeps({ nonProductTurn: true, intentGroup: "payment" });
+
+  const result = await processLineWebhookPayload(
+    textPayload("พรุ่งนี้โอนเงินให้นะครับลูกค้าจ่ายเงินสดมา"),
+    { channelAccessToken: "token", autoReplyEnabled: true, dryRun: false },
+    dependencies,
+  );
+
+  assert.equal(result.repliedCount, 1);
+  assert.deepEqual(calls.searches, []);
+  assert.equal(calls.ocrCalls, 0);
+  assert.ok(calls.statePatchTypes.includes("waiting_admin"));
+  const reply = calls.replies[0]?.text ?? "";
+  assert.doesNotMatch(reply, /สลิป/);
+  assert.equal(reply, "รับทราบเรื่องการชำระเงินค่ะ 🙏\nเดี๋ยวแอดมินตรวจสอบและแจ้งกลับทางแชทนี้นะคะ");
 });
 
 test("processor reuses classified payment-slip image content for slip ingest", async () => {
@@ -2846,7 +2857,6 @@ test("golden: LINE hands off immediately when a customer-authored code search re
   assert.equal(calls.searchFitmentHints[0]?.categoryName, "คอมแอร์ (Compressor)");
   assert.ok(calls.statePatchTypes.includes("waiting_admin"));
   assert.equal(calls.notifyHandoffs.length, 1);
-  assert.equal(calls.scopedReplyGroups.length, 0, "no FAQ/general reply may replace the code no-match handoff");
 });
 
 test("inquiry frame: a car named this turn but unreadable drops the carried vehicle (ซิ้ตี้ case)", async () => {

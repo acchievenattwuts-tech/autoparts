@@ -16,14 +16,11 @@ import { ingestPaymentSlip } from "@/lib/line-payment-slip-ingest";
 import {
   buildJuneAskDetailsReply,
   buildJuneDeadlineReply,
-  buildJuneOutOfScopeReply,
   buildJunePartImageNoMatchReply,
   buildJuneTextNoMatchHandoffReply,
-  buildJuneSmalltalkReply,
   buildJuneSocialReply,
   extractChatSearchIntent,
   generateChatSuggestion,
-  generateScopedConversationalReply,
   type ChatReplyHistoryItem,
   type ChatSearchIntent,
 } from "@/lib/chat-core/ai-service";
@@ -286,10 +283,6 @@ export type LineWebhookProcessorDependencies = {
   loadCarModelVariantLookup?: typeof loadCarModelVariantLookup;
   /** Optional shadow-only, ambiguity-aware model evidence lookup. */
   loadCarModelGroundingLookup?: typeof loadCarModelGroundingLookup;
-  /** Optional override; AI-generates a scoped จูน-voiced reply for the
-   *  `smalltalk` / `out_of_scope` groups (writes its own wording but stays in
-   *  scope and steers back to parts). */
-  generateScopedConversationalReply?: typeof generateScopedConversationalReply;
   // ── Coalescing engine deps (only used when config.coalesce === true) ──────
   acquireLineConversationLock?: typeof acquireLineConversationLock;
   releaseLineConversationLock?: typeof releaseLineConversationLock;
@@ -349,7 +342,6 @@ const defaultDependencies: LineWebhookProcessorDependencies = {
   loadCarBrandVariantLookup,
   loadCarModelVariantLookup,
   loadCarModelGroundingLookup,
-  generateScopedConversationalReply,
   acquireLineConversationLock,
   releaseLineConversationLock,
   renewLineConversationLock,
@@ -575,112 +567,18 @@ async function handleSocialTurn(
   return { replied };
 }
 
-/**
- * Handles the `smalltalk` / `out_of_scope` groups: the AI writes its own
- * จูน-voiced reply (bounded by the per-group scope directive + global safety
- * rules, always steering back to parts) instead of a fixed template. Mirrors
- * `handleSocialTurn`'s delivery/policy plumbing, but:
- *  - delivers on the reply token, or PUSH when the token's gone and fallback is on;
- *  - is budget-aware — if the reply-token window is nearly closed (or AI is off /
- *    not deliverable), it skips the Gemini call and uses the deterministic
- *    template so the message still goes out on the free reply token;
- *  - never hands off to an admin (these groups are auto-answerable).
- */
-async function handleScopedConversationalTurn(
-  group: "smalltalk" | "out_of_scope",
-  input: ProcessLineAiReplyInput,
-  config: LineWebhookProcessorConfig,
-  dependencies: LineWebhookProcessorDependencies,
-  history: ChatReplyHistoryItem[],
-): Promise<{ replied: boolean }> {
-  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
-  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
-  const liveMode = autoReplyEnabled && !dryRun;
-
-  const hasReplyToken = canUseReplyToken(config, input.canReply);
-  const deliveryMode = hasReplyToken
-    ? LineDeliveryMode.REPLY
-    : config.allowPushFallback
-      ? LineDeliveryMode.PUSH
-      : LineDeliveryMode.NONE;
-  const canDeliver =
-    liveMode &&
-    input.conversation.aiStatus === LineConversationAiStatus.ACTIVE &&
-    deliveryMode !== LineDeliveryMode.NONE &&
-    Boolean(config.channelAccessToken);
-
-  const template = group === "out_of_scope" ? buildJuneOutOfScopeReply() : buildJuneSmalltalkReply();
-
-  // Budget-aware: only spend a Gemini call when we can actually deliver AND the
-  // reply-token window still has room; otherwise use the template immediately.
-  const usedAi = canDeliver && replyTokenRemainingMs(config) >= SCOPED_GENERATION_MIN_BUDGET_MS;
-  const reply = usedAi
-    ? await (dependencies.generateScopedConversationalReply ?? generateScopedConversationalReply)({
-        group,
-        latestText: input.text,
-        history,
-        onFailure: buildLineGeminiFailureRecorder(dependencies, input),
-      }).catch(() => template)
-    : template;
-
-  let replied = false;
-  if (canDeliver && config.channelAccessToken) {
-    const outboundMessage = await dependencies.appendLineMessage({
-      conversationId: input.conversation.id,
-      lineUserId: input.lineUserId,
-      direction: LineMessageDirection.OUTBOUND_AI,
-      messageType: input.messageType,
-      intent: LineIntent.GREETING,
-      text: reply,
-      deliveryMode,
-      deliveryStatus: LineDeliveryStatus.PENDING,
-    });
-
-    if (deliveryMode === LineDeliveryMode.REPLY && input.replyToken) {
-      await dependencies.replyLineMessage({
-        channelAccessToken: config.channelAccessToken,
-        replyToken: input.replyToken,
-        messages: [textMessage(reply)],
-      });
-    } else {
-      await dependencies.pushLineMessages({
-        channelAccessToken: config.channelAccessToken,
-        recipientIds: [input.lineUserId],
-        messages: [textMessage(reply)],
-      });
-    }
-
-    await dependencies.markOutboundLineMessageSent({ messageId: outboundMessage.id, deliveryMode });
-    replied = true;
-  }
-
-  fireAndForgetAudit(dependencies, {
-    conversationId: input.conversation.id,
-    action: "SCOPED_CONVERSATIONAL_HANDLED",
-    payload: {
-      lineEventId: input.lineEventId,
-      group,
-      replied,
-      usedAi,
-      deliveryMode,
-    },
-  });
-
-  await dependencies.updateLineAiJob(input.jobId, {
-    status: LineAiJobStatus.COMPLETED,
-    result: { action: `${group}_reply`, replied, usedAi },
-    finishedAt: new Date(),
-  });
-
-  return { replied };
-}
-
 /** Polite acknowledgement sent to the customer right before an admin hand-off, so
- *  the AI never goes silent. Tailored per intent. */
-function handoffAckForIntent(intent: LineIntent): string {
+ *  the AI never goes silent. Tailored per intent.
+ *
+ *  A TEXT turn can also land on PAYMENT_SLIP_IMAGE (any message containing
+ *  "โอน"/"ชำระ"…), so "ได้รับสลิปแล้ว" is said only when an image arrived.
+ *  Incident 2026-10-25: "พรุ่งนี้โอนเงินให้นะครับ" was told its slip was received. */
+function handoffAckForIntent(intent: LineIntent, messageType: LineMessageType): string {
   switch (intent) {
     case LineIntent.PAYMENT_SLIP_IMAGE:
-      return "ขอบคุณค่ะ ทางร้านได้รับสลิปเรียบร้อยแล้วนะคะ 🙏\nขอเวลาให้แอดมินตรวจสอบยอดโอนสักครู่ แล้วจะแจ้งกลับให้ทราบทางแชทนี้ค่ะ";
+      return messageType === LineMessageType.IMAGE
+        ? "ขอบคุณค่ะ ทางร้านได้รับสลิปเรียบร้อยแล้วนะคะ 🙏\nขอเวลาให้แอดมินตรวจสอบยอดโอนสักครู่ แล้วจะแจ้งกลับให้ทราบทางแชทนี้ค่ะ"
+        : PAYMENT_TEXT_HANDOFF_ACK;
     case LineIntent.PRICE_NEGOTIATION:
       return "เรื่องราคา/ส่วนลด เดี๋ยวแอดมินช่วยดูแลให้นะคะ 🙏 รอสักครู่ค่ะ";
     case LineIntent.CLAIM_OR_RETURN:
@@ -902,6 +800,8 @@ const MULTI_SUBJECT_OVERFLOW_NOTE =
 // C1: an explicit "replace" cue means the latest part supersedes the earlier one
 // (answer only the latest), instead of adding it as a second subject.
 const MULTI_SUBJECT_REPLACE_CUE_RE = /แทน|เปลี่ยนเป็น|เปลี่ยนเป็_|ไม่เอา.*แล้ว|ไม่เอาแล้ว|เอาเป็น/;
+const PAYMENT_TEXT_HANDOFF_ACK =
+  "รับทราบเรื่องการชำระเงินค่ะ 🙏\nเดี๋ยวแอดมินตรวจสอบและแจ้งกลับทางแชทนี้นะคะ";
 const GENERAL_INQUIRY_HANDOFF_MESSAGE =
   "เรื่องนี้จูนขอส่งให้แอดมินช่วยตรวจสอบและตอบให้ชัดเจนนะคะ 🙏 เดี๋ยวแอดมินติดต่อกลับค่ะ";
 
@@ -987,18 +887,6 @@ function maybeStartLoadingDots(
   }).catch(() => {
     // Swallow: loading dots are a nicety, never a reason to fail a reply.
   });
-}
-
-// Minimum reply-token budget required to attempt an AI generation for a scoped
-// conversational reply. Below this we use the deterministic template so the
-// reply still goes out on the free reply token instead of timing out.
-const SCOPED_GENERATION_MIN_BUDGET_MS = 8_000;
-
-/** Reply-token budget (ms) still available before the send-early deadline. */
-function replyTokenRemainingMs(config: LineWebhookProcessorConfig): number {
-  const maxAgeMs = config.replyTokenMaxAgeMs ?? 45_000;
-  if (!config.receivedAt) return maxAgeMs;
-  return maxAgeMs - (Date.now() - config.receivedAt.getTime()) - REPLY_DEADLINE_MARGIN_MS;
 }
 
 function webhookRemainingMs(config: LineWebhookProcessorConfig): number {
@@ -1241,7 +1129,7 @@ async function respondMultiSubject(
   if (unlinkedPriceNote) blocks.push([textMessage(unlinkedPriceNote)]);
 
   if (extras.deferredAdminIntent) {
-    blocks.push([textMessage(handoffAckForIntent(extras.deferredAdminIntent))]);
+    blocks.push([textMessage(handoffAckForIntent(extras.deferredAdminIntent, LineMessageType.TEXT))]);
   }
 
   // Abort-on-newer (coalescing): a newer message arrived → re-run with the merged
@@ -1759,12 +1647,12 @@ export async function processLineAiReply(
       return handleSocialTurn(input, config, dependencies, history);
     }
 
-    // smalltalk (จูนคือใคร/ทำอะไรได้) / out_of_scope (นอกเรื่องร้าน) → the AI
-    // writes its own scoped reply (in จูน's voice, bounded to the role, always
-    // steering back to parts). Never an admin hand-off.
-    if (group === "smalltalk" || group === "out_of_scope") {
-      return handleScopedConversationalTurn(group, input, config, dependencies, history);
-    }
+    // smalltalk (จูนคือใคร/ทำอะไรได้) / out_of_scope (นอกเรื่องร้าน) → admin.
+    // Owner rule 2026-10-26: anything not about the shop and not a product search
+    // goes to a human. The AI used to write its own reply here and invented a fact
+    // ("ร้านแม่ดีป่ะครับ" → "ไม่ใช่ร้านแม่ค่ะ"). The hand-off is the
+    // OFF_TOPIC_HANDOFF forced response further down.
+    const offTopicHandoff = isTextTurn && (group === "smalltalk" || group === "out_of_scope");
 
     // B2c — multi-subject: the customer asked for ≥2 DISTINCT part types in one
     // turn ("คอมแอร์กับคอยเย็น D-Max"). Answer each category in its own block
@@ -3284,6 +3172,8 @@ export async function processLineAiReply(
       // LLM answer it with a generic "ขอทราบรุ่นรถ" ask — pre-empting the purchase
       // hand-off. Skip FAQ entirely for purchase turns (also avoids a wasted call).
       !isPurchaseIntent &&
+      // Off-topic turns go straight to an admin; the FAQ must not answer them.
+      !offTopicHandoff &&
       (tryFaqThenAsk ||
         route.reason === "SHIPPING_SERVICE_INQUIRY" ||
         (isNonProductTurn && route.intent !== LineIntent.SHOP_INFO))
@@ -3375,6 +3265,14 @@ export async function processLineAiReply(
             handoff: true,
             audit: "AI_QUOTATION_REQUEST_HANDOFF",
             auditPayload: { lineEventId: input.lineEventId },
+          }
+      : liveMode && offTopicHandoff
+        ? {
+            message: GENERAL_INQUIRY_HANDOFF_MESSAGE,
+            reason: "OFF_TOPIC_HANDOFF",
+            handoff: true,
+            audit: "AI_OFF_TOPIC_HANDOFF",
+            auditPayload: { lineEventId: input.lineEventId, group },
           }
       : generalInquiryHandoff
         ? {
@@ -3805,7 +3703,7 @@ export async function processLineAiReply(
           ? LineDeliveryMode.PUSH
           : LineDeliveryMode.NONE;
       if (deliveryMode !== LineDeliveryMode.NONE) {
-        suggestion = { ...suggestion, suggestedReply: handoffAckForIntent(route.intent) };
+        suggestion = { ...suggestion, suggestedReply: handoffAckForIntent(route.intent, input.messageType) };
         sendDecision = { action: "send", deliveryMode, reason: `HANDOFF_ACK_${sendDecision.reason}` };
         handoffAfterSend = true;
       }
@@ -3932,7 +3830,7 @@ export async function processLineAiReply(
     const unlinkedPriceNote = !forcedResponse ? buildUnlinkedPriceNote(priceTier, products) : null;
     const deferredAdminBubble =
       !forcedResponse && mixedIntentPlan && products.length > 0
-        ? textMessage(handoffAckForIntent(mixedIntentPlan.adminRoute.intent))
+        ? textMessage(handoffAckForIntent(mixedIntentPlan.adminRoute.intent, LineMessageType.TEXT))
         : null;
     const outboundMessages = [
       textMessage(suggestion.suggestedReply),

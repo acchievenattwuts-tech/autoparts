@@ -41,7 +41,7 @@ test(
   let currentText = "พัดลมเป่า 14นิ้วมีไหมคับ";
   let currentTexts: string[] | null = null;
   let searchHasResults = false;
-  let classifiedGroup: "product" | "purchase" = "product";
+  let classifiedGroup: "product" | "purchase" | "smalltalk" | "out_of_scope" = "product";
   // Gemini down: the classifier returns null and the glued-Thai dictionary
   // fallback answers with `gluedIntent`.
   let classifierDown = false;
@@ -225,9 +225,9 @@ test(
               partKind: "universal",
               tooBroad: false,
             }
-          : classifiedGroup === "purchase"
+          : classifiedGroup !== "product"
           ? {
-              group: "purchase",
+              group: classifiedGroup,
               query: "",
               isProductQuery: false,
               partType: null,
@@ -615,6 +615,44 @@ test(
   assert.equal(calls.notifications.length, 1);
   assert.match(calls.textReplies[0] ?? "", /แอดมิน/);
   assert.deepEqual(gluedInputs, [], "a working classifier never pays the glued lookup");
+
+  // Owner rule 2026-10-26 (parity with LINE): smalltalk / out_of_scope go to an
+  // admin. These groups map to no route, so they used to keep the Layer-1 product
+  // route and could reach catalog search.
+  for (const [index, group, text] of [
+    [1, "out_of_scope", "ร้านแม่ดีป่ะครับ"],
+    [2, "smalltalk", "จูนคือใคร"],
+  ] as const) {
+    calls.searches.length = 0;
+    calls.textReplies.length = 0;
+    calls.escalations.length = 0;
+    calls.notifications.length = 0;
+    calls.outboundMessages.length = 0;
+    calls.aiSuggestions.length = 0;
+    currentText = text;
+    classifiedGroup = group;
+
+    await processMessengerBatch(
+      [
+        {
+          pageId: "page-1",
+          psid: "psid-1",
+          mid: `mid-offtopic-${index}`,
+          fbEventId: `event-offtopic-${index}`,
+          text: currentText,
+          hasAttachment: false,
+          attachmentUrls: [],
+        },
+      ],
+      { pageAccessToken: "token" },
+    );
+
+    assert.deepEqual(calls.searches, [], `${group} never searches products`);
+    assert.deepEqual(calls.aiSuggestions, [], `${group} gets no AI-written reply`);
+    assert.deepEqual(calls.escalations, ["conversation-1"]);
+    assert.equal(calls.notifications.length, 1);
+    assert.match(calls.textReplies[0] ?? "", /แอดมิน/);
+  }
 
   // Gemini down (parity with LINE 2026-10-18): the dictionary reads part + car from
   // the glued question, so the turn is searched instead of handed off.

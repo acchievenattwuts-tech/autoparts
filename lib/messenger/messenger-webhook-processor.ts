@@ -9,11 +9,10 @@ import {
   buildJuneTextNoMatchHandoffReply,
   extractChatSearchIntent,
   generateChatSuggestion,
-  generateScopedConversationalReply,
   type ChatSearchIntent,
   type ChatSubject,
 } from "@/lib/chat-core/ai-service";
-import { groupToRoute, intentToGroup } from "@/lib/chat-core/intent-groups";
+import { groupToRoute } from "@/lib/chat-core/intent-groups";
 import { answerFromChatFaq, type ChatFaqAnswer } from "@/lib/chat-core/faq";
 import {
   buildJuneAdminOnlyHandoffMessage,
@@ -865,6 +864,22 @@ async function replyToMessengerTurn(params: {
     return;
   }
 
+  // Owner rule 2026-10-26 (parity with LINE OFF_TOPIC_HANDOFF): anything not about
+  // the shop and not a product search goes to an admin. These groups map to no
+  // route, so without this check they keep the Layer-1 product route and would
+  // reach catalog search below.
+  if (classifiedIntent?.group === "smalltalk" || classifiedIntent?.group === "out_of_scope") {
+    await handoffUncertainMessengerProduct({
+      pageAccessToken,
+      conversationId,
+      psid,
+      originalText: mergedText,
+      intent: route.intent,
+      text: GENERAL_INQUIRY_HANDOFF_MESSAGE,
+    });
+    return;
+  }
+
   if (effectiveRoute.requiresAdmin) {
     await escalateMessengerConversationToAdmin(conversationId);
     await safeNotify(
@@ -1029,25 +1044,15 @@ async function replyToMessengerTurn(params: {
     }
   }
 
-  // ── Non-search intents: greeting / smalltalk / out-of-scope / conservative ──
-  const group = classifiedIntent?.group ?? intentToGroup(effectiveRoute.intent);
-  let reply: string;
-  if (group === "smalltalk" || group === "out_of_scope") {
-    reply = await generateScopedConversationalReply({
-      group,
-      latestText: mergedText,
-      history,
-      onFailure: recordGeminiFailure,
-    });
-  } else {
-    const suggestion = await generateChatSuggestion({
-      intent: effectiveRoute.intent,
-      originalText: mergedText,
-      history,
-      onFailure: recordGeminiFailure,
-    });
-    reply = suggestion.suggestedReply;
-  }
+  // ── Non-search intents: greeting / conservative (smalltalk / out-of-scope
+  // were handed off above) ──
+  const suggestion = await generateChatSuggestion({
+    intent: effectiveRoute.intent,
+    originalText: mergedText,
+    history,
+    onFailure: recordGeminiFailure,
+  });
+  const reply = suggestion.suggestedReply;
 
   await sendMessengerText({ pageAccessToken, psid, text: reply });
   await persistOutbound(conversationId, psid, reply, { intent: effectiveRoute.intent });
