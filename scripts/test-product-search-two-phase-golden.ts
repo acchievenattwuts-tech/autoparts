@@ -54,7 +54,20 @@ const client = new PrismaClient({
   log: [{ emit: "event", level: "query" }],
 });
 client.$on("query", (event) => events.push({ query: event.query, params: event.params }));
-(globalThis as unknown as { prisma: PrismaClient }).prisma = client;
+// bypassInternalCaches reloads every active synonym (~33 KB) on every search;
+// load them once per run instead — each DB byte is Supabase egress.
+let synonymRows: unknown = null;
+const engineClient = client.$extends({
+  query: {
+    searchSynonym: {
+      async findMany({ args, query }) {
+        synonymRows ??= await query(args);
+        return synonymRows as Awaited<ReturnType<typeof query>>;
+      },
+    },
+  },
+});
+(globalThis as unknown as { prisma: unknown }).prisma = engineClient;
 
 // Throttle Gemini (only reached with --semantic) so a replay never rate-limits
 // the keys the chat bots share.

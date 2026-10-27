@@ -1,0 +1,17 @@
+-- OEM alias lookup index (2026-10-27), approved by the owner after option ค of
+-- the OEM-match fix. Additive only and safe to apply BEFORE deploying the code
+-- (the deployed code does not use it; the new code works without it, only slower).
+--
+-- lib/product-search.ts (oemAliasMatch) ranks a product +1400 when the search
+-- text equals one whole OEM / PART_NO / CROSS_REF alias, compared on this
+-- normalised form: f_unaccent(lower(alias with runs of whitespace collapsed)).
+-- Without an index every search recomputes that form for the aliases of every
+-- candidate (+6–26% on broad searches on Nano); with it the matching products
+-- are found with one index probe per search.
+--
+-- Nothing to run in this file. Run indexes/01.sql on its own, outside a
+-- transaction:
+--   npx prisma db execute --file prisma/migrations/20261027_product_alias_oem_norm_index/indexes/01.sql
+--
+-- The expression and the kind list must stay byte-for-byte equal to the query
+-- in oemAliasMatch, or Postgres will not use the index.

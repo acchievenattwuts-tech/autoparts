@@ -335,13 +335,6 @@ type ProductSearchInput = {
 const normalizeStringArray = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => value.trim()).filter(Boolean)));
 
-// Escape every POSIX-regex metacharacter so a user query can be embedded as a
-// literal inside a Postgres `~` regex operand. Without this a query containing an
-// unbalanced bracket (e.g. "เบรค[") produces an invalid regex and Postgres throws
-// 2201B "invalid regular expression: brackets [] not balanced", crashing Search V2.
-const escapePosixRegexLiteral = (value: string): string =>
-  value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-
 const normalizeRequiredTokens = (values?: string[] | null): string[] =>
   Array.from(new Set((values ?? []).map((value) => normalizeSearchText(value)).filter(Boolean)));
 
@@ -417,7 +410,6 @@ type ExactSearchRow = {
   product_id: string;
   total_count: bigint | number | string;
   match_code?: boolean | null;
-  match_oem?: boolean | null;
   match_name?: boolean | null;
 };
 
@@ -1083,9 +1075,6 @@ export async function searchProductIdsV2(
   const take = input.take ?? 30;
   const prefixQuery = `${normalizedQuery}%`;
   const containsQuery = `%${normalizedQuery}%`;
-  // OEM whitespace-boundary match uses the `~` regex operator, so the query must
-  // be regex-escaped (LIKE/similarity/exact usages below treat it as a literal).
-  const oemRegexQuery = escapePosixRegexLiteral(normalizedQuery);
 
   // Year resolution (which may issue its own vehicle-evidence query) and synonym
   // token expansion are independent of each other, so run them in parallel to
@@ -1526,11 +1515,31 @@ export async function searchProductIdsV2(
       ${requiredTokensClause}
   `;
 
-  const exactOemTokenMatch = Prisma.sql`
-    f_unaccent(lower(psd.oem_text)) ~
-      ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)')
+  // OEM match (2026-10-27): the query equals one WHOLE OEM / PART_NO / CROSS_REF
+  // alias of the product. It replaces a whitespace-token regex over `oem_text`
+  // that never worked (the `\s` in its template literal reached Postgres as a
+  // plain "s", so "14" matched "5s14" and "tor" matched "thermistor") and that,
+  // once corrected, would have matched words inside multi-word cross-references —
+  // car models such as "vigo" or "city" — collapsing those searches to one or two
+  // products. Used only for ranking (+1400) and the "oem" match reason, never as
+  // an exact-match shortcut: replayed on 420 real queries it removed no result.
+  // Plain equality, so no part of the query is ever parsed as a regex.
+  // Uncorrelated on purpose: Postgres resolves the subquery once per statement
+  // through "ProductAlias_oem_alias_norm_idx"
+  // (prisma/migrations/20261027_product_alias_oem_norm_index) — the expression
+  // and the kind list must stay byte-for-byte equal to that index.
+  const oemAliasMatch = Prisma.sql`
+    psd.product_id IN (
+      SELECT pa."productId"
+      FROM "ProductAlias" pa
+      WHERE pa.kind IN ('OEM', 'PART_NO', 'CROSS_REF')
+        AND f_unaccent(lower(regexp_replace(btrim(pa.alias), '[[:space:]]+', ' ', 'g')))
+          = f_unaccent(lower(${normalizedQuery}))
+    )
   `;
 
+  // Exact-match shortcut: product code, else product name. OEM numbers rank
+  // through oemAliasMatch instead (see above).
   const exactRows = await dbSearchRaw<ExactSearchRow[]>(Prisma.sql`
     WITH exact_matches AS (
       SELECT
@@ -1539,7 +1548,6 @@ export async function searchProductIdsV2(
         (
           f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
         ) AS match_code,
-        (${exactOemTokenMatch}) AS match_oem,
         (
           f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
         ) AS match_name
@@ -1547,28 +1555,26 @@ export async function searchProductIdsV2(
       ${exactScope}
         AND (
           f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
-          OR ${exactOemTokenMatch}
           OR f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
         )
     ),
     selected AS (
       SELECT
         exact_matches.*,
-        bool_or(COALESCE(match_code, false) OR COALESCE(match_oem, false)) OVER() AS has_code_or_oem
+        bool_or(COALESCE(match_code, false)) OVER() AS has_code
       FROM exact_matches
     )
     SELECT
       selected.product_id,
       selected.match_code,
-      selected.match_oem,
       selected.match_name,
       COUNT(*) OVER() AS total_count
     FROM selected
     WHERE (
-      COALESCE(selected.has_code_or_oem, false)
-      AND (COALESCE(selected.match_code, false) OR COALESCE(selected.match_oem, false))
+      COALESCE(selected.has_code, false)
+      AND COALESCE(selected.match_code, false)
     ) OR (
-      NOT COALESCE(selected.has_code_or_oem, false)
+      NOT COALESCE(selected.has_code, false)
       AND COALESCE(selected.match_name, false)
     )
     ORDER BY selected.product_created_at DESC, selected.product_id DESC
@@ -1578,9 +1584,9 @@ export async function searchProductIdsV2(
 
   if (exactRows.length > 0) {
     const reasons: Record<string, ProductMatchReason[]> = {};
-    const hasCodeOrOem = exactRows.some((row) => row.match_code || row.match_oem);
+    const hasCode = exactRows.some((row) => row.match_code);
     for (const row of exactRows) {
-      if (hasCodeOrOem) {
+      if (hasCode) {
         // Preserve the former exact-code/OEM branch attribution.
         reasons[row.product_id] = /[-0-9]/.test(normalizedQuery) ? ["code", "oem"] : ["code"];
       } else {
@@ -1696,7 +1702,7 @@ export async function searchProductIdsV2(
         -- Phase Q5: per-row match reasons (booleans) for UI chip display
         (f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
           OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))) AS match_code,
-        (f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)')
+        (${oemAliasMatch}
           OR f_unaccent(lower(psd.oem_text)) LIKE f_unaccent(lower(${containsQuery}))) AS match_oem,
         (f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery}))
           OR f_unaccent(lower(psd.product_name)) LIKE f_unaccent(lower(${prefixQuery}))
@@ -1738,7 +1744,7 @@ export async function searchProductIdsV2(
         (
           -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
           CASE WHEN f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery})) THEN 1500 ELSE 0 END +
-          CASE WHEN f_unaccent(lower(psd.oem_text)) ~ ('(^|\s)' || f_unaccent(lower(${oemRegexQuery})) || '($|\s)') THEN 1400 ELSE 0 END +
+          CASE WHEN ${oemAliasMatch} THEN 1400 ELSE 0 END +
           CASE WHEN f_unaccent(lower(psd.product_name)) = f_unaccent(lower(${normalizedQuery})) THEN 1000 ELSE 0 END +
           CASE WHEN f_unaccent(lower(psd.search_text)) = f_unaccent(lower(${normalizedQuery})) THEN 800 ELSE 0 END +
 
