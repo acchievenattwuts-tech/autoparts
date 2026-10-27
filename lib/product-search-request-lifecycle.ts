@@ -44,3 +44,21 @@ export function runProductSearchRefreshWithRequestLifetime<T>(
 
   return task;
 }
+
+/**
+ * Keep a fire-and-forget search task (the speculative query embedding) alive
+ * until it settles without making the caller wait for it — the same `after()`
+ * (waitUntil) registration as above, so Vercel does not freeze it mid-flight
+ * with a pooled DB connection checked out. Outside a request (scripts, tests)
+ * registration throws; nothing can freeze the task there, so that is ignored.
+ */
+export function keepProductSearchTaskAlive(
+  task: Promise<unknown>,
+  register: RequestLifetimeRegistrar = after,
+): void {
+  try {
+    register(task);
+  } catch {
+    // No request scope — the task simply runs to completion.
+  }
+}

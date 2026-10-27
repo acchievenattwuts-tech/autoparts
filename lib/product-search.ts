@@ -10,7 +10,10 @@ import {
 import { expandQueryTokenGroups } from "@/lib/search-synonyms";
 import { buildSearchVariants, normalizeSearchText } from "@/lib/search-normalization";
 import { embedQuery, toPgVectorLiteral } from "@/lib/embeddings";
-import { runProductSearchRefreshWithRequestLifetime } from "@/lib/product-search-request-lifecycle";
+import {
+  keepProductSearchTaskAlive,
+  runProductSearchRefreshWithRequestLifetime,
+} from "@/lib/product-search-request-lifecycle";
 
 // Hybrid search (Phase 1): how many nearest-neighbour products to pull by vector
 // similarity, and how much a perfect semantic match (cosine sim = 1) adds to the
@@ -318,6 +321,15 @@ type ProductSearchInput = {
    * work on every keystroke; full search keeps the retry by default.
    */
   disableBroadFallback?: boolean;
+  /**
+   * Start the query embedding at the same time as the exact + lexical stages
+   * instead of after them, so the Gemini round-trip overlaps the DB work.
+   * Results are identical: the vector is still used only when the lexical stage
+   * returns too few rows (shouldUseSemanticRecall); otherwise it is discarded.
+   * Costs a Gemini call for queries that end up not needing it (the embedding is
+   * cached per query text for a day). Used by the admin dropdown only.
+   */
+  prefetchQueryEmbedding?: boolean;
 };
 
 const normalizeStringArray = (values?: string[] | null): string[] =>
@@ -1127,6 +1139,17 @@ export async function searchProductIdsV2(
   // still pass the ranked.score > 0 cut.
   const isYearOnlyQuery = targetYear !== null && /^\d{4}$/.test(normalizedQuery);
 
+  // Speculative embedding (opt-in, see `prefetchQueryEmbedding`). Started before
+  // any DB query so the Gemini call runs alongside them; Stage 2 below awaits it
+  // only if semantic recall is needed. embedQuery never rejects (it returns null
+  // on failure). Registered with the request lifetime so an unused call is not
+  // frozen mid-flight after the response.
+  const speculativeEmbedding =
+    input.prefetchQueryEmbedding && !input.disableSemantic && !isYearOnlyQuery
+      ? embedQuery(normalizedQuery, { bypassCache: options.bypassInternalCaches })
+      : null;
+  if (speculativeEmbedding) keepProductSearchTaskAlive(speculativeEmbedding);
+
   // Option A — correlated vehicle+year EXISTS. When a specific model/brand (by
   // name) AND a year are both requested, the year MUST be covered by the SAME
   // fitment row that matches that vehicle. Without this correlation a wide fitment
@@ -1666,11 +1689,10 @@ export async function searchProductIdsV2(
       ? Prisma.sql`AND (${textMatchOr} OR ${yearOnlyFitmentExists} ${frags.vectorCandidate})`
       : Prisma.sql`AND (${textMatchOr} ${frags.vectorCandidate})`;
 
-    return run<RankedSearchRow[]>(Prisma.sql`
-    WITH ${frags.vectorCte} ranked AS (
-      SELECT
-        psd.product_id,
-        psd.product_created_at,
+    // Per-row match reasons + the chat-gate signal. Computed only for the rows of
+    // the returned page (final SELECT below); they never decide which rows are
+    // returned or their order.
+    const matchFlags = Prisma.sql`
         -- Phase Q5: per-row match reasons (booleans) for UI chip display
         (f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery}))
           OR f_unaccent(lower(psd.product_code)) LIKE f_unaccent(lower(${prefixQuery}))) AS match_code,
@@ -1694,7 +1716,25 @@ export async function searchProductIdsV2(
           similarity(f_unaccent(lower(psd.oem_text)), f_unaccent(lower(${normalizedQuery}))),
           similarity(f_unaccent(lower(psd.product_name)), f_unaccent(lower(${normalizedQuery}))),
           similarity(f_unaccent(lower(psd.keyword_text)), f_unaccent(lower(${normalizedQuery})))
-        ) >= ${SEARCH_V2_CHAT_TRIGRAM_STRONG}) AS match_trigram_high,
+        ) >= ${SEARCH_V2_CHAT_TRIGRAM_STRONG}) AS match_trigram_high
+    `;
+
+    // Two phases, same rows and order as the former single pass (2026-10-27):
+    //  1. `scored` evaluates the score ONCE per candidate. MATERIALIZED stops
+    //     Postgres from inlining the CTE, which made it compute the whole score
+    //     twice per candidate (for the `score > 0` filter and again for the sort).
+    //  2. `page` keeps the unchanged filter → COUNT(*) OVER() → ORDER BY →
+    //     OFFSET/LIMIT, so `total_count` and the page are exactly as before.
+    //  3. The final SELECT computes `matchFlags` for the page rows only instead of
+    //     every candidate. product_id is the primary key, so the join is 1:1.
+    // On Nano this halved the ranked query for short queries ("ti", 603
+    // candidates: 590 → 313 ms) with identical output on replayed production
+    // queries — guarded by scripts/test-product-search-two-phase-golden.ts.
+    return run<RankedSearchRow[]>(Prisma.sql`
+    WITH ${frags.vectorCte} scored AS MATERIALIZED (
+      SELECT
+        psd.product_id,
+        psd.product_created_at,
         (
           -- Exact matches (highest priority) — accent-insensitive (Phase Q2)
           CASE WHEN f_unaccent(lower(psd.product_code)) = f_unaccent(lower(${normalizedQuery})) THEN 1500 ELSE 0 END +
@@ -1756,24 +1796,27 @@ export async function searchProductIdsV2(
       ${frags.vectorJoin}
       ${exactScope}
         ${candidateClause}
+    ),
+    page AS (
+      SELECT
+        scored.product_id,
+        scored.product_created_at,
+        scored.score,
+        COUNT(*) OVER() AS total_count
+      FROM scored
+      WHERE scored.score > 0
+      ORDER BY scored.score DESC, scored.product_created_at DESC, scored.product_id DESC
+      OFFSET ${rangeSkip}
+      LIMIT ${rangeTake}
     )
     SELECT
-      ranked.product_id,
-      ranked.match_code,
-      ranked.match_oem,
-      ranked.match_name,
-      ranked.match_keyword,
-      ranked.match_fitment,
-      ranked.match_year,
-      ranked.match_trigram_high,
-      ranked.semantic_similarity,
-      ranked.vector_only,
-      COUNT(*) OVER() AS total_count
-    FROM ranked
-    WHERE ranked.score > 0
-    ORDER BY ranked.score DESC, ranked.product_created_at DESC, ranked.product_id DESC
-    OFFSET ${rangeSkip}
-    LIMIT ${rangeTake}
+      psd.product_id,
+      ${matchFlags},
+      page.total_count
+    FROM page
+    INNER JOIN product_search_documents psd ON psd.product_id = page.product_id
+    ${frags.vectorJoin}
+    ORDER BY page.score DESC, page.product_created_at DESC, page.product_id DESC
   `);
   };
 
@@ -1814,7 +1857,8 @@ export async function searchProductIdsV2(
     isYearOnly: isYearOnlyQuery,
   });
   const queryEmbedding = useSemantic
-    ? await embedQuery(normalizedQuery, { bypassCache: options.bypassInternalCaches })
+    ? await (speculativeEmbedding ??
+        embedQuery(normalizedQuery, { bypassCache: options.bypassInternalCaches }))
     : null;
   let vectorMatches: VectorMatch[] = [];
   let primaryRows = lexicalRows;
@@ -2051,6 +2095,8 @@ export async function searchProductIds(
     // Keep bot (lexical-only) and human (hybrid) results in separate cache entries.
     disableSemantic: input.disableSemantic ?? false,
     disableBroadFallback: input.disableBroadFallback ?? false,
+    // prefetchQueryEmbedding is deliberately not part of the key: it changes only
+    // when the embedding is requested, never the result.
   });
 
   return unstable_cache(

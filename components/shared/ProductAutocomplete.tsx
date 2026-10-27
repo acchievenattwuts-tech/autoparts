@@ -28,6 +28,11 @@ import {
 } from "@/lib/storefront-search-query-bus";
 import { toProductImageCdnPath } from "@/lib/product-image-url";
 import { HIDE_STOREFRONT_PRICE, STOREFRONT_PRICE_INQUIRY_LABEL } from "@/lib/storefront-pricing";
+import {
+  decideProductLookup,
+  nextFocusSession,
+  type ProductLookupResultMark,
+} from "@/components/shared/product-autocomplete-lookup";
 
 interface AutocompleteItem {
   id: string;
@@ -128,6 +133,12 @@ const ProductAutocomplete = ({
   // Client-side cache of keyword results per query — makes backspacing / retyping a
   // previous prefix instant (no refetch, no flicker).
   const keywordCacheRef = useRef<Map<string, KeywordSuggestion[]>>(new Map());
+  // Product (admin) lookup bookkeeping — see decideProductLookup.
+  const productRequestRef = useRef<{ query: string; controller: AbortController } | null>(null);
+  const productResultRef = useRef<ProductLookupResultMark | null>(null);
+  const focusSessionRef = useRef(0);
+  // Latest "dropdown may open" state: a request can outlive a blur/focus change.
+  const autoOpenRef = useRef(false);
   const [value, setValue] = useState(initialValue);
   const [items, setItems] = useState<AutocompleteItem[]>([]);
   const [keywordItems, setKeywordItems] = useState<KeywordSuggestion[]>([]);
@@ -209,6 +220,10 @@ const ProductAutocomplete = ({
       setKeywordItems([]);
       setOpen(false);
       setLoading(false);
+      // Nothing is on screen any more, so the next real query must fetch.
+      productRequestRef.current?.controller.abort();
+      productRequestRef.current = null;
+      productResultRef.current = null;
       return;
     }
 
@@ -257,9 +272,42 @@ const ProductAutocomplete = ({
       };
     }
 
-    // Product (admin) mode — unchanged product-card lookup.
-    const controller = new AbortController();
+    // Product (admin) mode — product-card lookup. Fresh results for every new
+    // query and every return to the field, but no second request for what is
+    // already loading or already on screen (see decideProductLookup).
+    focusSessionRef.current = nextFocusSession(
+      focusSessionRef.current,
+      autoOpenRef.current,
+      shouldAutoOpen,
+    );
+    autoOpenRef.current = shouldAutoOpen;
+    const lookupKey = `${mode}:${q}`;
+    const decision = decideProductLookup({
+      query: lookupKey,
+      focusSession: focusSessionRef.current,
+      inFlightQuery: productRequestRef.current?.query ?? null,
+      lastResult: productResultRef.current,
+    });
+    if (decision === "keep-in-flight") return;
+    // A request still running for a different query is now outdated.
+    if (productRequestRef.current) {
+      productRequestRef.current.controller.abort();
+      productRequestRef.current = null;
+      setLoading(false);
+    }
+    if (decision === "keep-results") {
+      // Same list as on screen. A keystroke still re-opens it (e.g. after
+      // Escape), as the former refetch did.
+      if (shouldAutoOpen) {
+        setOpen(true);
+        setActiveIndex(-1);
+      }
+      return;
+    }
+
     const timer = setTimeout(async () => {
+      const controller = new AbortController();
+      productRequestRef.current = { query: lookupKey, controller };
       setLoading(true);
       try {
         const res = await fetch(
@@ -270,21 +318,32 @@ const ProductAutocomplete = ({
         const data = (await res.json()) as { items: AutocompleteItem[]; totalCount?: number };
         setItems(data.items ?? []);
         setTotalCount(data.totalCount ?? null);
-        setOpen(shouldAutoOpen);
+        setOpen(autoOpenRef.current);
         setActiveIndex(-1);
+        productResultRef.current = { query: lookupKey, focusSession: focusSessionRef.current };
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         setItems([]);
+        productResultRef.current = null;
       } finally {
-        setLoading(false);
+        if (productRequestRef.current?.controller === controller) {
+          productRequestRef.current = null;
+          setLoading(false);
+        }
       }
     }, DEBOUNCE_MS);
 
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
+    return () => clearTimeout(timer);
   }, [value, modalOpen, hasInlineFocus, mode, keywordMode]);
+
+  // Abort a product lookup still running when the field unmounts.
+  useEffect(() => {
+    const requests = productRequestRef;
+    return () => {
+      requests.current?.controller.abort();
+      requests.current = null;
+    };
+  }, []);
 
   // Close on outside click (skip when modal is open — modal has its own handlers)
   useEffect(() => {

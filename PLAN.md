@@ -1475,6 +1475,12 @@
 - [x] ย้ายเป็น Supabase Free จริง 24 ต.ค. 06:09 น. (DB รีสตาร์ต, compute Nano: CPU แชร์) · ตรวจ error หลังย้าย 2026-10-26: รีสตาร์ตทำ cron/ISR ล้ม 06:09–06:12 ครั้งเดียว (งาน LINE ไม่หาย) · ค้นหาช้าลง: ค้นหาแอดมิน p90 2.38→5.30 วิ เกิน 3 วิ 2.8%→24% · แอดมินพิมพ์รัว 17 คำค้นใน 50 วิ ชน `statement_timeout` 8 วิ → fallback ทำ `/admin/products` ช้า 15–30 วิ
 - [x] C2(ข) เจ้าของเลือก 2026-10-26: dropdown การ์ดสินค้า (ใช้ที่ช่องค้นหา `/admin/products` อย่างเดียว) รอหลังพิมพ์ 300→500 ms (`DEBOUNCE_MS` ใน [ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx)) · หน้าร้านและค้นหามือถือของแอดมินใช้เส้นทาง keyword ไม่เปลี่ยน · verify: lint 0 errors, typecheck ผ่าน, tests 2,730/2,730, mojibake ผ่าน
 - [ ] เฝ้าดู 1 สัปดาห์หลัง deploy: สัดส่วนค้นหาแอดมินที่เกิน 3 วิ และ `57014` ใน log · ถ้ายังสูงพิจารณา C2(ก) ปิด semantic ใน dropdown / C2(ค) จำกัดค้นหาพร้อมกันต่อ instance หรือกลับ Pro (C1) · ยังไม่ทำ C3 (เพดานเวลาให้ fallback — เสี่ยงบอทตอบ "ไม่มีสินค้า")
+- [x] 2026-10-27 ตรวจ dropdown หลังย้าย Free (Vercel log 24–26 ต.ค. 545 ครั้ง: p50 0.2 วิ, p90 2.5 วิ, เกิน 2 วิ 14%) · เจ้าของเลือก ก+ข+ค (ผลลัพธ์ต้องเหมือนเดิม):
+  - ก) [ProductAutocomplete.tsx](components/shared/ProductAutocomplete.tsx) ไม่ยิงซ้ำตอนคลิกออกจากช่อง / พิมพ์เว้นวรรคท้าย / คำเดิมที่กำลังโหลด แต่คลิกกลับเข้าช่องหรือพิมพ์ย้อนไปคำเดิมดึงค่าใหม่เสมอ (เจ้าของเลือก "ค่าใหม่") · กติกาใน [product-autocomplete-lookup.ts](components/shared/product-autocomplete-lookup.ts)
+  - ข) query จัดอันดับใน [product-search.ts](lib/product-search.ts) เป็น 2 ช่วง: คิดคะแนนครั้งเดียวใน CTE `MATERIALIZED` แล้วคิด match flag เฉพาะแถวที่แสดง · ใช้ทั้งระบบ (หน้าร้าน/แอดมิน/LINE/Messenger) · คำสั้นเร็วขึ้น ~45–50% บน Nano
+  - ค) dropdown แอดมินเริ่มขอ embedding พร้อม query รอบแรก (`prefetchQueryEmbedding`, ลงทะเบียน `after()` ผ่าน `keepProductSearchTaskAlive`) · ผลเหมือนเดิม เรียก Gemini เพิ่มเฉพาะคำที่สุดท้ายไม่ได้ใช้ vector
+  - golden: [product-search-two-phase.golden.test.ts](lib/__tests__/product-search-two-phase.golden.test.ts) · [product-autocomplete-lookup.test.ts](components/shared/__tests__/product-autocomplete-lookup.test.ts) · DB golden `npm run test:search-two-phase-golden` (สร้าง SQL แบบเดิมจากทุก statement แล้วรันคู่ใน snapshot เดียว) · replay โค้ดเก่า vs ใหม่ 1,198 กรณี 7 รูปแบบการเรียก (เปิด semantic) ผลต่าง 0
+- [ ] งานถัดไป: บั๊ก regex OEM — `'(^|\s)'` ใน template literal ส่งถึง Postgres เป็น `'(^|s)'` (exact OEM ไม่ทำงานกับสินค้าที่มี OEM หลายเลข ~870/1,189) · แก้แล้วผลเปลี่ยน ต้อง replay ให้เจ้าของดูก่อน
 
 ## ผังชั้นวาง (Shelf map) — ตำแหน่งจัดเก็บสินค้า (2026-10)
 

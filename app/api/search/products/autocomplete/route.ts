@@ -259,6 +259,9 @@ export const GET = async (request: Request): Promise<NextResponse> => {
       cacheProfile,
       disableSemantic: !shouldUseSemantic,
       disableBroadFallback: true,
+      // Admin dropdown: overlap the Gemini embedding with the lexical stage
+      // (same results; the vector is used only when lexical recall is low).
+      prefetchQueryEmbedding: cacheProfile === "admin",
     });
 
     // Feed as-you-type misses into the Product Search Quality report. Fire-and-
