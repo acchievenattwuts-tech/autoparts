@@ -8,9 +8,12 @@ import { toGregorianCarYear } from "@/lib/car-year-shorthand";
 // Vision classify is an interactive (reply-token-bound) call: cap the per-key
 // HTTP wait and the number of keys tried so one slow/hung key can't stack into
 // the 60s webhook budget — especially when several images are classified at
-// once. Vision typically returns in a few seconds; 20s is generous headroom.
-const VISION_CALL_TIMEOUT_MS = 20_000;
-const VISION_MAX_KEY_ATTEMPTS = 3;
+// once. 2026-11-04: the primary model hung and 20s × 3 keys on that same model
+// used the whole 60s, so six webhooks in a row were killed. Now the worst case is
+// 12s × 2, and the second try goes to the fallback model, which is a separate
+// capacity pool. Measured 2026-11-05: the primary returned in 2–12.6s.
+const VISION_CALL_TIMEOUT_MS = 12_000;
+const VISION_MAX_KEY_ATTEMPTS = 2;
 
 export type LineImageKind = "part_image" | "payment_slip" | "unknown_image";
 export type LineImageConfidence = "LOW" | "MEDIUM" | "HIGH";
@@ -252,6 +255,9 @@ export async function classifyImageContent(
       // Bound the wait + key failover so a hung key can't blow the webhook budget.
       timeoutMs: VISION_CALL_TIMEOUT_MS,
       maxKeyAttempts: VISION_MAX_KEY_ATTEMPTS,
+      // Same opt-in as the chat calls: a 5xx or timeout on the primary moves the
+      // second try to the fallback model instead of the same overloaded one.
+      fallbackModelOnOverload: true,
     });
 
     return {

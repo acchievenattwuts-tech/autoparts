@@ -156,6 +156,7 @@ import {
   buildChatSearchFollowUp,
   buildDidYouMeanNote,
   CHAT_BROAD_PART_INQUIRY_ASK_REPLY,
+  CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY,
   CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
@@ -163,6 +164,13 @@ import {
   decideChatSearchGate,
   isBroadChatPartType,
 } from "@/lib/chat-core/search-gate";
+import {
+  IMAGE_READ_TIMEOUT_HANDOFF_AUDIT_ACTION,
+  IMAGE_READ_TIMEOUT_HANDOFF_REASON,
+  raceImageReadDeadline,
+  resolveImageReadDeadlineAt,
+  resolveImageReadLateGraceUntil,
+} from "@/lib/chat-core/image-read-deadline";
 import {
   boundMessagesToSession,
   buildFrameQuery,
@@ -497,6 +505,173 @@ async function handleStickerEvent(
   });
 
   return { replied };
+}
+
+/** Sends one text bubble on the reply token (REPLY) or by push (PUSH) and records
+ *  it as the outbound AI message. Returns false when nothing could be sent. */
+async function deliverLineAiText(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  params: { text: string; intent: LineIntent; deliveryMode: LineDeliveryMode },
+): Promise<boolean> {
+  const { text, intent, deliveryMode } = params;
+  if (!config.channelAccessToken || deliveryMode === LineDeliveryMode.NONE) return false;
+  if (deliveryMode === LineDeliveryMode.REPLY && !input.replyToken) return false;
+
+  const outboundMessage = await dependencies.appendLineMessage({
+    conversationId: input.conversation.id,
+    lineUserId: input.lineUserId,
+    direction: LineMessageDirection.OUTBOUND_AI,
+    messageType: input.messageType,
+    intent,
+    text,
+    deliveryMode,
+    deliveryStatus: LineDeliveryStatus.PENDING,
+  });
+  if (deliveryMode === LineDeliveryMode.REPLY && input.replyToken) {
+    await dependencies.replyLineMessage({
+      channelAccessToken: config.channelAccessToken,
+      replyToken: input.replyToken,
+      messages: [textMessage(text)],
+    });
+  } else {
+    await dependencies.pushLineMessages({
+      channelAccessToken: config.channelAccessToken,
+      recipientIds: [input.lineUserId],
+      messages: [textMessage(text)],
+    });
+  }
+  await dependencies.markOutboundLineMessageSent({ messageId: outboundMessage.id, deliveryMode });
+  return true;
+}
+
+/**
+ * An image in this turn was not read before the image-read deadline (Gemini slow
+ * or hung). Owner rule 2026-11-05: hand the turn to an admin, never classify or
+ * search a half-read turn. When the bot may speak it sends a short neutral
+ * acknowledgement; the same text is stored as the suggestion, the conversation
+ * waits for an admin, and admins are alerted (deduped per conversation, the same
+ * as every other hand-off).
+ */
+async function handleImageReadTimeoutHandoff(
+  input: ProcessLineAiReplyInput,
+  config: LineWebhookProcessorConfig,
+  dependencies: LineWebhookProcessorDependencies,
+  context: { conversationBlocked: boolean; pipelineStartedAtMs: number },
+): Promise<{ replied: boolean }> {
+  const autoReplyEnabled = config.autoReplyEnabled ?? LINE_AI_SETTINGS_DEFAULTS.autoReplyEnabled;
+  const dryRun = config.dryRun ?? LINE_AI_SETTINGS_DEFAULTS.dryRun;
+  const mayHandOff = autoReplyEnabled && !dryRun && !context.conversationBlocked;
+  const text = CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY;
+  const intent = input.route.intent;
+
+  const deliveryMode = !mayHandOff
+    ? LineDeliveryMode.NONE
+    : canUseReplyToken(config, input.canReply) && input.replyToken
+      ? LineDeliveryMode.REPLY
+      : config.allowPushFallback
+        ? LineDeliveryMode.PUSH
+        : LineDeliveryMode.NONE;
+  const replied = await deliverLineAiText(input, config, dependencies, { text, intent, deliveryMode });
+  const decision = {
+    action: replied ? "send" : context.conversationBlocked ? "store_only" : "handoff",
+    deliveryMode: replied ? deliveryMode : LineDeliveryMode.NONE,
+    replied,
+  };
+
+  await recordImageReadTimeoutDecision(input, dependencies, {
+    ...decision,
+    text,
+    intent,
+    pipelineDurationMs: Date.now() - context.pipelineStartedAtMs,
+  });
+  if (mayHandOff) {
+    await dependencies.updateLineConversationState(
+      input.conversation.id,
+      buildLineConversationStatePatch({
+        type: "waiting_admin",
+        at: new Date(),
+        reason: IMAGE_READ_TIMEOUT_HANDOFF_REASON,
+      }),
+    );
+  }
+  await notifyLineAdminsForTurn(input, dependencies);
+
+  await dependencies.updateLineAiJob(input.jobId, {
+    status: LineAiJobStatus.COMPLETED,
+    result: { ...decision, reason: IMAGE_READ_TIMEOUT_HANDOFF_REASON },
+    finishedAt: new Date(),
+  });
+  return { replied };
+}
+
+/** Suggestion row + audit rows for an image-read-timeout hand-off. */
+async function recordImageReadTimeoutDecision(
+  input: ProcessLineAiReplyInput,
+  dependencies: LineWebhookProcessorDependencies,
+  decision: {
+    action: string;
+    deliveryMode: LineDeliveryMode;
+    replied: boolean;
+    text: string;
+    intent: LineIntent;
+    pipelineDurationMs: number;
+  },
+): Promise<void> {
+  await dependencies.storeLineAiSuggestion({
+    conversationId: input.conversation.id,
+    lineMessageId: input.inboundMessage.id,
+    intent: decision.intent,
+    suggestedReply: decision.text,
+    confidence: LineAiConfidence.ADMIN_REQUIRED,
+    matchedProducts: null,
+    reasoningSummary: IMAGE_READ_TIMEOUT_HANDOFF_REASON,
+    status: decision.replied ? LineAiSuggestionStatus.SENT : LineAiSuggestionStatus.DRAFT,
+    deliveryMode: decision.deliveryMode,
+    sentAt: decision.replied ? new Date() : null,
+  });
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: "AI_SEND_DECISION",
+    payload: {
+      lineEventId: input.lineEventId,
+      action: decision.action,
+      deliveryMode: decision.deliveryMode,
+      reason: IMAGE_READ_TIMEOUT_HANDOFF_REASON,
+      pipelineDurationMs: decision.pipelineDurationMs,
+    },
+  });
+  fireAndForgetAudit(dependencies, {
+    conversationId: input.conversation.id,
+    action: IMAGE_READ_TIMEOUT_HANDOFF_AUDIT_ACTION,
+    payload: {
+      lineEventId: input.lineEventId,
+      timedOutImageCount: input.imageReadTimeout?.timedOutImageCount ?? 0,
+      elapsedMs: input.imageReadTimeout?.elapsedMs ?? null,
+      delivered: decision.replied,
+    },
+  });
+}
+
+/** Alerts admins that this conversation needs a human (deduped per conversation
+ *  inside notifyLineOaNeedsAdmin). Never throws into the reply flow. */
+async function notifyLineAdminsForTurn(
+  input: ProcessLineAiReplyInput,
+  dependencies: LineWebhookProcessorDependencies,
+): Promise<void> {
+  const notify = dependencies.notifyLineOaNeedsAdmin ?? notifyLineOaNeedsAdmin;
+  const countPending = dependencies.countPendingPaymentSlipsForConversation ?? countPendingPaymentSlipsForConversation;
+  const pendingSlipCount = await countPending(input.conversation.id).catch(() => 0);
+  await notify({
+    conversationId: input.conversation.id,
+    displayName: input.conversation.displayName,
+    text: input.text,
+    messageType: input.messageType,
+    pendingSlipCount,
+  }).catch((error) => {
+    console.warn("[line-webhook] admin handoff notification skipped/failed:", describeError(error));
+  });
 }
 
 /**
@@ -925,6 +1100,10 @@ export type ProcessLineAiReplyInput = {
    *  answered "หมายถึง <car> ใช่ไหมคะ" with a bare yes ("confirmed": `vehicleLabel`
    *  is the car) or a bare no ("rejected": the turn asks which car). */
   vehicleConfirmation?: { kind: "confirmed" | "rejected"; mention: string; vehicleLabel: string } | null;
+  /** Set when at least one image in this turn was not read before the image-read
+   *  deadline (lib/chat-core/image-read-deadline.ts). The turn skips classify and
+   *  search and goes to an admin ({@link handleImageReadTimeoutHandoff}). */
+  imageReadTimeout?: { timedOutImageCount: number; elapsedMs: number } | null;
 };
 
 /** Distinct return signal so the owner loop can tell "aborted, re-run" apart
@@ -1305,6 +1484,15 @@ export async function processLineAiReply(
     // admin console. Known up-front, so the expensive Gemini calls whose output
     // the draft doesn't need (generate / purchase fallback / FAQ) are skipped.
     const conversationBlocked = isConversationAdminOwned(input.conversation.aiStatus);
+
+    // An image was not read in time: no classify or search on a half-read turn,
+    // straight to an admin. Inside the try so the safety net still covers it.
+    if (input.imageReadTimeout) {
+      return await handleImageReadTimeoutHandoff(input, config, dependencies, {
+        conversationBlocked,
+        pipelineStartedAtMs,
+      });
+    }
 
     // ราคาแสดงตามระดับราคาของประเภทลูกค้า — resolve แบบ lazy สูงสุด 1 ครั้งต่อเทิร์น
     // และแชร์ระหว่างเส้นทาง multi-subject / single (เดิมทั้งสอง path ต่างคน resolve
@@ -4389,7 +4577,8 @@ const DEFAULT_COALESCE_LEASE_MS = 60_000;
 // function mid-flight (which previously stranded the lock → a ~2min cron-recovery
 // re-run). The final pass still runs the full OCR→search→reply pipeline (OCR is
 // reused via B2a), so the reply is always grounded — we only stop WAITING, never
-// answer before the data is ready.
+// answer before the data is ready. An image read that misses the image-read
+// deadline (lib/chat-core/image-read-deadline.ts) hands the turn to an admin.
 const OWNER_LOOP_FINAL_PASS_AFTER_MS = 28_000;
 
 /** The earlier of two optional instants (undefined when both are absent). */
@@ -4679,6 +4868,7 @@ async function runConversationOwnerLoop(args: {
       dependencies,
       imageSearchEnabled,
       classByMessageId,
+      budgetStartMs,
     });
 
     const aiJob = await dependencies.storeLineAiJob({
@@ -4724,6 +4914,10 @@ async function runConversationOwnerLoop(args: {
         imageClassification: turn.imageClassification,
         lineEventId: turn.lineEventId,
         shouldAbortBeforeSend,
+        imageReadTimeout:
+          turn.lateImageReads.length > 0
+            ? { timedOutImageCount: turn.lateImageReads.length, elapsedMs: Date.now() - budgetStartMs }
+            : null,
       },
       {
         ...config,
@@ -4741,6 +4935,19 @@ async function runConversationOwnerLoop(args: {
     }
 
     await markProcessed({ conversationId, seq: processSnapshot }).catch(() => undefined);
+    if (turn.lateImageReads.length > 0) {
+      // Still holding the lock, so no other owner re-reads these images meanwhile.
+      await finishLateLineImageReads({
+        conversationId,
+        lineUserId: info.lineUserId,
+        lateImageReads: turn.lateImageReads,
+        untilMs: resolveImageReadLateGraceUntil(budgetStartMs),
+        config,
+        dependencies,
+        imageSearchEnabled,
+        classByMessageId,
+      });
+    }
     return replyResult.replied;
   }
 }
@@ -4857,6 +5064,12 @@ async function finalizeFreshImageClassification(args: {
  * the latest reply token. Image messages whose classification wasn't cached this
  * payload (cross-payload bursts) are re-classified on demand.
  */
+/** An image read that missed the image-read deadline; the task keeps running. */
+type LateLineImageRead = {
+  message: UnansweredLineMessage;
+  task: Promise<LineImageClassification | null>;
+};
+
 async function buildMergedTurnInput(args: {
   conversationId: string;
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
@@ -4866,6 +5079,9 @@ async function buildMergedTurnInput(args: {
   dependencies: LineWebhookProcessorDependencies;
   imageSearchEnabled: boolean;
   classByMessageId: Map<string, LineImageClassification>;
+  /** When the turn's wall-clock budget started (webhook receipt, or recovery
+   *  loop entry) — the image-read hard cutoff is measured from here. */
+  budgetStartMs: number;
 }): Promise<{
   conversation: Awaited<ReturnType<typeof getOrCreateLineConversation>>;
   inboundMessage: { id: string };
@@ -4881,9 +5097,13 @@ async function buildMergedTurnInput(args: {
   replyTokenReceivedAt: Date | null;
   lineEventId: string | null;
   receivedAt: Date | null;
+  /** Images whose read missed the image-read deadline. Non-empty → the turn is
+   *  handed to an admin; the reads are awaited briefly afterwards. */
+  lateImageReads: LateLineImageRead[];
 }> {
   const { conversation, messages, config, dependencies, imageSearchEnabled, classByMessageId } = args;
   const classify = dependencies.classifyLineImage ?? classifyLineImage;
+  const lateImageReads: LateLineImageRead[] = [];
 
   const latest = messages[messages.length - 1];
   // Reply with the newest token in the burst. A non-message event (unsend,
@@ -4920,17 +5140,30 @@ async function buildMergedTurnInput(args: {
     // burst and blows the 60s webhook budget. Order is preserved so the
     // structured-field merge below stays deterministic (e.g. brand off the plate,
     // part type off the part photo). Per-image failures degrade to null.
+    // Each fresh read races the image-read deadline; a read that misses it is
+    // kept in lateImageReads (still running) and the turn goes to an admin.
+    // `messages` is oldest-first, so `latest` is the newest message of the burst.
+    const readDeadlineAtMs = resolveImageReadDeadlineAt({
+      budgetStartMs: args.budgetStartMs,
+      lastMessageAtMs: latest.createdAt.getTime(),
+      readStartMs: Date.now(),
+    });
     const resolvedList = await Promise.all(
       imageMessages.map(async (message) => {
         const cached = message.lineMessageId ? classByMessageId.get(message.lineMessageId) : undefined;
         if (cached) return { classification: cached, fresh: false };
         const stored = deserializeStoredClassification(storedByRowId.get(message.id));
         if (stored) return { classification: stored, fresh: false };
-        const classification = await classify({
+        const task = classify({
           channelAccessToken: config.channelAccessToken,
           lineMessageId: message.lineMessageId,
         }).catch(() => null);
-        return { classification, fresh: true };
+        const read = await raceImageReadDeadline(task, readDeadlineAtMs);
+        if (read.timedOut) {
+          lateImageReads.push({ message, task });
+          return { classification: null, fresh: false };
+        }
+        return { classification: read.value, fresh: true };
       }),
     );
 
@@ -5028,5 +5261,51 @@ async function buildMergedTurnInput(args: {
     replyTokenReceivedAt: tokenRow && tokenRow !== latest ? (tokenRow.createdAt ?? null) : null,
     lineEventId: latest.lineEventId ?? null,
     receivedAt: latest.createdAt ?? null,
+    lateImageReads,
   };
+}
+
+/**
+ * After an image-read-timeout hand-off, waits for the late reads until the grace
+ * point and finishes the ones that arrive, exactly like an in-time read: stores
+ * the classification for reuse, corrects the image row's intent and captures a
+ * payment slip. Reads still running at the grace point are dropped. Best-effort:
+ * never throws (the customer has already been answered).
+ */
+async function finishLateLineImageReads(args: {
+  conversationId: string;
+  lineUserId: string;
+  lateImageReads: LateLineImageRead[];
+  untilMs: number;
+  config: LineWebhookProcessorConfig;
+  dependencies: LineWebhookProcessorDependencies;
+  imageSearchEnabled: boolean;
+  classByMessageId: Map<string, LineImageClassification>;
+}): Promise<void> {
+  try {
+    const settled = await Promise.all(
+      args.lateImageReads.map((read) => raceImageReadDeadline(read.task, args.untilMs)),
+    );
+    await Promise.all(
+      settled.map((result, index) =>
+        !result.timedOut && result.value
+          ? finalizeFreshImageClassification({
+              conversationId: args.conversationId,
+              lineUserId: args.lineUserId,
+              message: args.lateImageReads[index].message,
+              classification: result.value,
+              config: args.config,
+              dependencies: args.dependencies,
+              imageSearchEnabled: args.imageSearchEnabled,
+              classByMessageId: args.classByMessageId,
+            })
+          : Promise.resolve(),
+      ),
+    );
+  } catch (error) {
+    console.error("[line-webhook-processor] late image read failed", {
+      conversationId: args.conversationId,
+      error: describeError(error),
+    });
+  }
 }

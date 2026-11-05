@@ -32,6 +32,12 @@ export const CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY =
 export const CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY =
   "จูนขอส่งให้แอดมินช่วยตรวจสอบสินค้าให้อีกครั้งนะคะ เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊";
 
+/** Sent when the customer's image could not be read before the image-read
+ *  deadline (lib/chat-core/image-read-deadline.ts). Neutral on purpose: the
+ *  unread image may be a part photo or a payment slip. */
+export const CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY =
+  "ได้รับรูปแล้วนะคะ 🙏 จูนขอส่งให้แอดมินช่วยดูรูปให้นะคะ เดี๋ยวแอดมินติดต่อกลับสักครู่ค่ะ 😊";
+
 /**
  * Sent when the customer opens with a BROAD parts inquiry — "สอบถามอะไหล่รถครับ",
  * "หาอะไหล่แอร์" — that names no part and no vehicle. This is the start of a

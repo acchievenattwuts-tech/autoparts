@@ -55,11 +55,15 @@ function createCoalesceHarness(options?: {
   /** Holds every vision call until `releaseClassify()` is called — models a slow
    *  Gemini response so a second webhook payload can land mid-classification. */
   blockClassify?: boolean;
+  /** Every vision call never returns — models a hung Gemini model. */
+  classifyHang?: boolean;
+  /** Every vision call returns after this many ms — models a late read. */
+  classifyDelayMs?: number;
 }) {
   const state = {
     seq: 0,
     processedSeq: 0,
-    aiStatus: LineConversationAiStatus.ACTIVE,
+    aiStatus: LineConversationAiStatus.ACTIVE as LineConversationAiStatus,
     lockOwner: null as string | null,
     inbound: [] as InboundRow[],
     answeredCount: 0,
@@ -174,6 +178,10 @@ function createCoalesceHarness(options?: {
     classifyLineImage: async (input) => {
       calls.classifies.push(input.lineMessageId ?? null);
       if (classifyGate) await classifyGate;
+      if (options?.classifyHang) await new Promise<never>(() => undefined);
+      if (options?.classifyDelayMs) {
+        await new Promise((resolve) => setTimeout(resolve, options.classifyDelayMs));
+      }
       const override = input.lineMessageId
         ? options?.imageClassByMessageId?.[input.lineMessageId]
         : undefined;
@@ -731,11 +739,14 @@ test("B2b: past the wall-clock budget the owner force-sends once (no abort loop,
     return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
   };
 
-  // receivedAt 50s ago → already past the 40s budget on the first owner pass.
-  // allowPushFallback so the (expired-token) forced send still delivers.
+  // receivedAt 30s ago → already past the 28s final-pass budget on the first
+  // owner pass, but still inside the 38s image-read cutoff, so the photo is read
+  // and the normal pipeline runs (later than that the turn goes to an admin —
+  // see the image-read deadline tests below).
+  // allowPushFallback so the forced send always has a channel.
   const config: LineWebhookProcessorConfig = {
     ...baseConfig,
-    receivedAt: new Date(Date.now() - 50_000),
+    receivedAt: new Date(Date.now() - 30_000),
     allowPushFallback: true,
   };
 
@@ -1087,6 +1098,96 @@ test("coalescing: a payment slip is still ingested exactly once and relabelled",
     calls.intentUpdates.includes(LineIntent.PAYMENT_SLIP_IMAGE),
     "the image row is relabelled as a payment slip",
   );
+});
+
+// ── Image-read deadline (2026-11-04: a hung model got six webhooks in a row
+// killed at 60s). A read that misses the deadline goes to an admin. ──────────
+
+type CapturedSuggestion = Parameters<LineWebhookProcessorDependencies["storeLineAiSuggestion"]>[0];
+
+function captureHandoffSide(dependencies: LineWebhookProcessorDependencies) {
+  const seen = { suggestions: [] as CapturedSuggestion[], audits: [] as string[], notifications: 0, classifierCalls: 0 };
+  dependencies.storeLineAiSuggestion = async (input) => {
+    seen.suggestions.push(input);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiSuggestion"]>>;
+  };
+  dependencies.storeLineAiAudit = async (input) => {
+    seen.audits.push(input.action);
+    return {} as Awaited<ReturnType<LineWebhookProcessorDependencies["storeLineAiAudit"]>>;
+  };
+  dependencies.notifyLineOaNeedsAdmin = async () => {
+    seen.notifications += 1;
+    return 1;
+  };
+  dependencies.extractChatSearchIntent = async () => {
+    seen.classifierCalls += 1;
+    return null;
+  };
+  return seen;
+}
+
+test("image-read deadline: a hung vision call hands the burst to an admin without classify or search", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY } = await import("@/lib/chat-core/search-gate");
+  const { calls, state, dependencies } = createCoalesceHarness({ imageKind: "part_image", classifyHang: true });
+  const seen = captureHandoffSide(dependencies);
+
+  // 55s in: past the 38s image-read cutoff and the 50s late-read grace, so the
+  // test never waits on the hung call. The reply token is still usable (58s).
+  const config: LineWebhookProcessorConfig = {
+    ...baseConfig,
+    receivedAt: new Date(Date.now() - 55_000),
+    replyTokenMaxAgeMs: 58_000,
+  };
+  const result = await processLineWebhookPayload(
+    { events: [textEvent("e-text", "มีของไหมคะ"), imageEvent("e-img")] },
+    config,
+    dependencies,
+  );
+
+  assert.deepEqual(calls.replies, [CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY], "one neutral hand-off reply");
+  assert.equal(result.repliedCount, 1);
+  assert.equal(calls.searches.length, 0, "no search on a half-read turn");
+  assert.equal(seen.classifierCalls, 0, "no text classify either");
+  assert.ok(calls.statePatches.includes("waiting_admin"), "the conversation waits for an admin");
+  assert.equal(seen.notifications, 1, "admins are alerted");
+  assert.equal(seen.suggestions[0]?.reasoningSummary, "IMAGE_READ_TIMEOUT_HANDOFF");
+  assert.ok(seen.audits.includes("AI_IMAGE_READ_TIMEOUT_HANDOFF"), "audit row written");
+  assert.equal(state.processedSeq, state.seq, "turn marked processed, so recovery does not re-run it");
+});
+
+test("image-read deadline: a read that finishes after the hand-off still captures the payment slip", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY } = await import("@/lib/chat-core/search-gate");
+  const { calls, dependencies } = createCoalesceHarness({ imageKind: "payment_slip", classifyDelayMs: 150 });
+
+  // 37.95s in: the read gets ~50ms before the 38s cutoff and finishes at ~150ms,
+  // well inside the 50s late-read grace.
+  const config: LineWebhookProcessorConfig = { ...baseConfig, receivedAt: new Date(Date.now() - 37_950) };
+  await processLineWebhookPayload({ events: [imageEvent("e-slip")] }, config, dependencies);
+
+  assert.deepEqual(calls.replies, [CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY], "the customer gets the hand-off only");
+  assert.deepEqual(calls.slipIngests, ["m-e-slip"], "the late slip is still stored");
+  assert.ok(calls.intentUpdates.includes(LineIntent.PAYMENT_SLIP_IMAGE), "and the image row relabelled");
+});
+
+test("image-read deadline: an admin-owned chat gets a draft only (no reply, no state change)", async () => {
+  const { processLineWebhookPayload } = await import("@/lib/line-webhook-processor");
+  const { calls, state, dependencies } = createCoalesceHarness({ classifyHang: true });
+  state.aiStatus = LineConversationAiStatus.PAUSED_BY_ADMIN;
+  const seen = captureHandoffSide(dependencies);
+
+  const config: LineWebhookProcessorConfig = {
+    ...baseConfig,
+    receivedAt: new Date(Date.now() - 55_000),
+    replyTokenMaxAgeMs: 58_000,
+  };
+  await processLineWebhookPayload({ events: [imageEvent("e-img")] }, config, dependencies);
+
+  assert.equal(calls.replies.length + calls.pushes.length, 0, "the bot stays silent while an admin owns the chat");
+  assert.ok(!calls.statePatches.includes("waiting_admin"), "the admin's pause is left as is");
+  assert.equal(seen.suggestions[0]?.status, "DRAFT");
+  assert.equal(seen.suggestions[0]?.reasoningSummary, "IMAGE_READ_TIMEOUT_HANDOFF");
 });
 
 // ── G1 review fixes (#44 / #45 / #163) ──────────────────────────────────────

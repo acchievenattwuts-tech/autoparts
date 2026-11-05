@@ -25,6 +25,7 @@ import {
   BROAD_FALLBACK_NEAR_MATCH_NOTE,
   buildChatSearchAskReply,
   buildDidYouMeanNote,
+  CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY,
   CHAT_UNCERTAIN_IMAGE_HANDOFF_REPLY,
   CHAT_UNCERTAIN_PRODUCT_HANDOFF_REPLY,
   CHAT_VEHICLE_UNRESOLVED_HANDOFF_REPLY,
@@ -81,7 +82,15 @@ import {
 } from "@/lib/chat-core/product-search-bridge";
 import { analyzePriceProductText } from "@/lib/chat-core/price-product-subjects";
 import type { ChatAiFailureListener } from "@/lib/chat-core/ai-call-failure";
-import { logMessengerChatAiFailure } from "@/lib/chat-core/ai-failure-telemetry";
+import {
+  logMessengerChatAiFailure,
+  logMessengerImageReadTimeoutHandoff,
+} from "@/lib/chat-core/ai-failure-telemetry";
+import {
+  raceImageReadDeadline,
+  resolveImageReadDeadlineAt,
+  resolveImageReadLateGraceUntil,
+} from "@/lib/chat-core/image-read-deadline";
 import { extractChatRequiredSearchTokens } from "@/lib/chat-core/search-guards";
 import { normalizeInboundChatQuery } from "@/lib/chat-core/text-normalize";
 import { detectChatMultiSubjects } from "@/lib/chat-core/multi-subject-detector";
@@ -94,6 +103,7 @@ import { isDirectProductCodeToken } from "@/lib/product-search-required-tokens";
 import {
   classifyMessengerImage,
   ingestMessengerPaymentSlip,
+  type MessengerImageResult,
 } from "@/lib/messenger/messenger-image-service";
 import {
   notifyMessengerNeedsAdmin,
@@ -165,6 +175,9 @@ export type MessengerInboundEvent = {
 
 export type MessengerProcessorConfig = {
   pageAccessToken: string;
+  /** When the webhook received the request. The image-read hard cutoff is measured
+   *  from here; the cron recovery leaves it unset and measures from loop entry. */
+  receivedAt?: Date;
 };
 
 type ChatHistoryItem = { role: "customer" | "shop"; text: string };
@@ -225,6 +238,50 @@ async function handoffUncertainMessengerProduct(input: {
   await persistOutbound(input.conversationId, input.psid, text, {
     intent: input.intent,
   });
+}
+
+/**
+ * The image was not read before the image-read deadline (parity with LINE's
+ * handleImageReadTimeoutHandoff): hand the turn to an admin with a neutral
+ * acknowledgement. The read keeps running for a short grace period so a payment
+ * slip it finds is still stored and announced — without a second reply.
+ */
+async function handoffMessengerImageReadTimeout(input: {
+  pageAccessToken: string;
+  conversationId: string;
+  psid: string;
+  mergedText: string;
+  budgetStartMs: number;
+  imageTask: Promise<MessengerImageResult>;
+}): Promise<void> {
+  void logMessengerImageReadTimeoutHandoff({
+    messengerConversationId: input.conversationId,
+    elapsedMs: Date.now() - input.budgetStartMs,
+  });
+  await handoffUncertainMessengerProduct({
+    pageAccessToken: input.pageAccessToken,
+    conversationId: input.conversationId,
+    psid: input.psid,
+    originalText: input.mergedText || "(ลูกค้าส่งรูป)",
+    intent: LineIntent.PART_IMAGE_INQUIRY,
+    text: CHAT_IMAGE_READ_TIMEOUT_HANDOFF_REPLY,
+  });
+
+  const late = await raceImageReadDeadline(
+    input.imageTask.catch(() => null),
+    resolveImageReadLateGraceUntil(input.budgetStartMs),
+  );
+  if (late.timedOut || late.value?.classification.kind !== "payment_slip") return;
+  try {
+    await ingestMessengerPaymentSlip({
+      messengerConversationId: input.conversationId,
+      content: late.value.content,
+      ocr: late.value.classification.ocr ?? null,
+    });
+  } catch (error) {
+    console.error(`[messenger] late slip ingest failed: ${error instanceof Error ? error.message : "unknown"}`);
+  }
+  await safeNotify(notifyMessengerPaymentSlip({ conversationId: input.conversationId }));
 }
 
 function deferredMessengerAdminMessage(intent: LineIntent): string {
@@ -487,7 +544,12 @@ async function runMessengerOwnerLoop(params: {
       if (after && after.lastInboundSeq > seqAtStart) continue;
     }
 
-    await replyToMessengerTurn({ conversationId, psid, config });
+    await replyToMessengerTurn({
+      conversationId,
+      psid,
+      config,
+      budgetStartMs: config.receivedAt?.getTime() ?? startedAt,
+    });
     await markMessengerProcessedSeq({ conversationId, seq: seqAtStart });
     return;
   }
@@ -499,8 +561,10 @@ async function replyToMessengerTurn(params: {
   conversationId: string;
   psid: string;
   config: MessengerProcessorConfig;
+  /** Start of the turn's wall-clock budget; the image-read hard cutoff counts from here. */
+  budgetStartMs: number;
 }): Promise<void> {
-  const { conversationId, psid, config } = params;
+  const { conversationId, psid, config, budgetStartMs } = params;
   const pageAccessToken = config.pageAccessToken;
   // Every Gemini call below falls back silently; record why (parity with LINE).
   const recordGeminiFailure = buildMessengerGeminiFailureRecorder(conversationId);
@@ -531,7 +595,29 @@ async function replyToMessengerTurn(params: {
 
   // ── Image turn: classify (shared vision) → payment slip or part search ──
   if (latestImageUrl) {
-    const { classification, content } = await classifyMessengerImage(latestImageUrl);
+    const imageTask = classifyMessengerImage(latestImageUrl);
+    // The task may outlive the race below; keep a late rejection from going unhandled.
+    imageTask.catch(() => undefined);
+    const imageRead = await raceImageReadDeadline(
+      imageTask,
+      resolveImageReadDeadlineAt({
+        budgetStartMs,
+        lastMessageAtMs: newestInboundAt.getTime(),
+        readStartMs: Date.now(),
+      }),
+    );
+    if (imageRead.timedOut) {
+      await handoffMessengerImageReadTimeout({
+        pageAccessToken,
+        conversationId,
+        psid,
+        mergedText,
+        budgetStartMs,
+        imageTask,
+      });
+      return;
+    }
+    const { classification, content } = imageRead.value;
 
     if (classification.kind === "payment_slip") {
       try {

@@ -56,6 +56,8 @@ export async function GET(request: NextRequest) {
 
 /** POST — inbound message events. Verify signature, ACK fast, process in after(). */
 export async function POST(request: NextRequest) {
+  // The image-read deadline in the pipeline counts from here (parity with LINE).
+  const receivedAt = new Date();
   const config = getMessengerConfig();
 
   // Raw body is required for the HMAC signature check — read once, parse manually.
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
 
   after(async () => {
     try {
-      await processMessengerBatch(events, { pageAccessToken });
+      await processMessengerBatch(events, { pageAccessToken, receivedAt });
     } catch (error) {
       // Same as the LINE webhook: this runs after the 200 has gone back to
       // Meta, so a failure here is invisible except that the customer never
