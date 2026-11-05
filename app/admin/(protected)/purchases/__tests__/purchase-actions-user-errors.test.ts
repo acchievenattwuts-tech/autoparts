@@ -208,6 +208,64 @@ test("createPurchase regenerates purchaseNo and retries when another save took t
   assert.equal(criticalReports.length, 0);
 });
 
+const nonTrackedPurchaseTx = (captured: { header?: Record<string, unknown>; paymentRowsWritten: boolean }): ModelOverrides => ({
+  product: {
+    findMany: async () => [
+      { id: "prod-1", inventoryTracking: "NON_TRACKED", isLotControl: false, requireExpiryDate: false },
+    ],
+  },
+  productUnit: {
+    findMany: async () => [{ productId: "prod-1", name: "ชิ้น", scale: 1 }],
+  },
+  purchase: {
+    create: async (args: unknown) => {
+      captured.header = (args as { data: Record<string, unknown> }).data;
+      return { id: "purchase-zero" };
+    },
+  },
+  documentPayment: {
+    createMany: async () => {
+      captured.paymentRowsWritten = true;
+      return { count: 1 };
+    },
+  },
+});
+
+test("createPurchase saves a 0-baht cash purchase without a payment channel", { skip: moduleMocksUnavailable }, async () => {
+  const captured: { header?: Record<string, unknown>; paymentRowsWritten: boolean } = { paymentRowsWritten: false };
+  txOverrides = nonTrackedPurchaseTx(captured);
+  const { createPurchase } = await import("../actions");
+
+  const result = await createPurchase(
+    purchaseForm({
+      purchaseType: "CASH_PURCHASE",
+      payments: "[]",
+      items: JSON.stringify([{ productId: "prod-1", unitName: "ชิ้น", qty: 2, costPrice: 0, lotItems: [] }]),
+    }),
+  );
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.purchaseId, "purchase-zero");
+  assert.equal(Number(captured.header?.netAmount), 0);
+  assert.equal(captured.header?.paymentMethod, "CASH");
+  assert.equal(captured.header?.cashBankAccountId, null);
+  assert.equal(captured.header?.paymentStatus, "PAID");
+  assert.equal(captured.paymentRowsWritten, false);
+  assert.equal(criticalReports.length, 0);
+});
+
+test("createPurchase still requires a payment channel when a cash purchase has an amount", { skip: moduleMocksUnavailable }, async () => {
+  const captured: { header?: Record<string, unknown>; paymentRowsWritten: boolean } = { paymentRowsWritten: false };
+  txOverrides = nonTrackedPurchaseTx(captured);
+  const { createPurchase } = await import("../actions");
+
+  const result = await createPurchase(purchaseForm({ purchaseType: "CASH_PURCHASE", payments: "[]" }));
+
+  assert.equal(result.error, "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง");
+  assert.equal(captured.header, undefined);
+  assert.equal(criticalReports.length, 0);
+});
+
 test("createPurchaseReturn explains a cancelled source purchase without a critical alert", { skip: moduleMocksUnavailable }, async () => {
   txOverrides = {
     purchase: {

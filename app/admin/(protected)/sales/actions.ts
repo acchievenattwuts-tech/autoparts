@@ -42,6 +42,7 @@ import { roundStoredMoney, SaleRevenueAllocationError, sumSaleLineTotals } from 
 import {
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
+  isMarketplaceSalePaymentValid,
 } from "@/lib/marketplace/config";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { calcVat, calcItemSubtotal } from "@/lib/vat";
@@ -641,8 +642,11 @@ export async function createSale(
   }
   if (
     isMarketplaceSale &&
-    (payments.length !== 1 ||
-      payments[0]?.cashBankAccountId !== marketplaceSetting?.settlementCashBankAccountId)
+    !isMarketplaceSalePaymentValid(
+      payments,
+      marketplaceSetting?.settlementCashBankAccountId,
+      resolveCashAmount(netAmount, whtAmount),
+    )
   ) {
     const channelConfig = getMarketplaceChannelConfig(channel);
     return {
@@ -650,7 +654,12 @@ export async function createSale(
     };
   }
 
-  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
+  // ใบ marketplace ยอด 0 บาทไม่มีแถวรับเงิน แต่ยังผูกบัญชีพักเงินของช่องทางไว้
+  // เพื่อให้หน้าแก้ไข/กระทบยอดรู้ว่าเป็นของบัญชีพักเงินใด เหมือนใบที่มียอด
+  const resolvedCashBankAccountId =
+    derivePrimaryAccountId(payments) ??
+    (isMarketplaceSale ? marketplaceSetting?.settlementCashBankAccountId : undefined) ??
+    undefined;
   const docDate = parseDateOnlyToDate(saleDate);
   const salePrefix = isManualMarketplaceChannel(channel)
     ? getMarketplaceChannelConfig(channel).saleDocPrefix
@@ -1417,14 +1426,21 @@ export async function updateSale(
   }
   if (
     marketplaceConfig &&
-    (payments.length !== 1 ||
-      payments[0]?.cashBankAccountId !== existing.cashBankAccountId)
+    !isMarketplaceSalePaymentValid(
+      payments,
+      existing.cashBankAccountId,
+      resolveCashAmount(netAmount, whtAmount),
+    )
   ) {
     return {
       error: `รายการ ${marketplaceConfig.label} ต้องรับยอดเต็มเข้าบัญชีพักเงินเดิมของเอกสาร`,
     };
   }
-  const resolvedCashBankAccountId = derivePrimaryAccountId(payments) ?? undefined;
+  // ใบ marketplace ที่แก้เป็นยอด 0 บาทยังผูกบัญชีพักเงินเดิมไว้ (ดูหมายเหตุใน createSale)
+  const resolvedCashBankAccountId =
+    derivePrimaryAccountId(payments) ??
+    (marketplaceConfig ? existing.cashBankAccountId : undefined) ??
+    undefined;
   const docDate = parseDateOnlyToDate(saleDate);
 
   const oldProductIds = [...new Set(existing.items.map((i) => i.productId))];

@@ -5,6 +5,7 @@ import {
   getDefaultMarketplaceShippingAddress,
   getMarketplaceChannelConfig,
   isManualMarketplaceChannel,
+  isMarketplaceSalePaymentValid,
   resolveChannelFromSlug,
 } from "@/lib/marketplace/config";
 
@@ -52,5 +53,25 @@ describe("marketplace channel config", () => {
       getDefaultMarketplaceShippingAddress(SaleChannel.SHOPEE),
       "จัดส่งตามที่อยู่ในคำสั่งซื้อ Shopee",
     );
+  });
+
+  it("requires the full amount in the holding account as a single payment row", () => {
+    const holding = "acc-holding";
+    assert.equal(isMarketplaceSalePaymentValid([{ cashBankAccountId: holding }], holding, 350), true);
+    assert.equal(isMarketplaceSalePaymentValid([], holding, 350), false);
+    assert.equal(isMarketplaceSalePaymentValid([{ cashBankAccountId: "acc-other" }], holding, 350), false);
+    assert.equal(
+      isMarketplaceSalePaymentValid([{ cashBankAccountId: holding }, { cashBankAccountId: holding }], holding, 350),
+      false,
+    );
+    assert.equal(isMarketplaceSalePaymentValid([{ cashBankAccountId: holding }], null, 350), false);
+  });
+
+  // ใบยอด 0 บาท (ของแถม/ของทดแทน) ไม่มีเงินเข้าบัญชีพักเงิน จึงต้องไม่มีแถวรับเงิน
+  it("accepts a 0-baht marketplace sale only without payment rows", () => {
+    const holding = "acc-holding";
+    assert.equal(isMarketplaceSalePaymentValid([], holding, 0), true);
+    assert.equal(isMarketplaceSalePaymentValid([], null, 0), true);
+    assert.equal(isMarketplaceSalePaymentValid([{ cashBankAccountId: holding }], holding, 0), false);
   });
 });

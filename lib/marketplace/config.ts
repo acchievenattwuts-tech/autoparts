@@ -62,6 +62,19 @@ export function getMarketplaceChannelConfig(
   return CHANNEL_CONFIG[channel];
 }
 
+/**
+ * ใบขาย marketplace ที่คีย์มือต้องรับยอดเต็มเข้าบัญชีพักเงินของช่องทางเป็นแถวเดียว
+ * ยกเว้นยอด 0 บาท (เช่น ส่งของแถม/ของทดแทน) ที่ไม่มีเงินเข้า จึงต้องไม่มีแถวรับเงินเลย
+ */
+export function isMarketplaceSalePaymentValid(
+  payments: readonly { cashBankAccountId: string }[],
+  holdingAccountId: string | null | undefined,
+  cashAmount: number,
+): boolean {
+  if (cashAmount <= 0) return payments.length === 0;
+  return Boolean(holdingAccountId) && payments.length === 1 && payments[0]?.cashBankAccountId === holdingAccountId;
+}
+
 /** แปลง slug จาก URL กลับเป็น channel — null เมื่อไม่ใช่ช่องทางที่รองรับ */
 export function resolveChannelFromSlug(slug: string): ManualMarketplaceChannel | null {
   const match = MANUAL_MARKETPLACE_CHANNELS.find(

@@ -319,12 +319,15 @@ async function resolvePurchasePaymentMethod(
   tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
   purchaseType: PurchaseType,
   payments: DocumentPaymentRow[],
+  netAmount: number,
 ): Promise<PaymentMethod> {
   if (purchaseType === PurchaseType.CREDIT_PURCHASE) {
     return PaymentMethod.CREDIT;
   }
 
   if (payments.length === 0) {
+    // ใบซื้อสดยอด 0 บาทไม่มีบัญชีจ่ายเงิน — paymentMethod ห้ามว่าง จึงเก็บเป็นเงินสด
+    if (netAmount <= 0) return PaymentMethod.CASH;
     throw new PurchaseUserError("ไม่พบบัญชีจ่ายเงิน");
   }
 
@@ -618,7 +621,8 @@ export async function createPurchase(
     } catch {
       return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
     }
-    if (payments.length === 0) {
+    // ใบซื้อสดยอด 0 บาทไม่มีเงินจ่ายออก จึงไม่ต้องมีช่องทางจ่ายเงิน
+    if (payments.length === 0 && netAmount > 0) {
       return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
@@ -649,6 +653,7 @@ export async function createPurchase(
             tx,
             purchaseType,
             payments,
+            netAmount,
           );
           const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
           assertPurchaseLinesHaveLots(validItems, productMap);
@@ -1048,7 +1053,8 @@ export async function updatePurchase(
     } catch {
       return { error: "รูปแบบข้อมูลช่องทางจ่ายเงินไม่ถูกต้อง" };
     }
-    if (payments.length === 0) {
+    // ใบซื้อสดยอด 0 บาทไม่มีเงินจ่ายออก จึงไม่ต้องมีช่องทางจ่ายเงิน
+    if (payments.length === 0 && netAmount > 0) {
       return { error: "กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง" };
     }
     try {
@@ -1298,6 +1304,7 @@ export async function updatePurchase(
         tx,
         purchaseType,
         payments,
+        netAmount,
       );
       const productIdsNeedingRecalc = new Set<string>();
 

@@ -469,7 +469,8 @@ const PurchaseForm = ({
     let submitPayments: { cashBankAccountId: string; amount: number }[] = [];
     if (purchaseType === PurchaseType.CASH_PURCHASE) {
       const activePayments = payments.filter((row) => row.amount > 0);
-      if (activePayments.length === 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
+      // ใบซื้อสดยอด 0 บาทไม่มีเงินจ่ายออก จึงไม่ต้องมีช่องทางจ่ายเงิน (กฎเดียวกับหน้าขาย)
+      if (activePayments.length === 0 && netAmount > 0) { setError("กรุณาระบุช่องทางจ่ายเงินอย่างน้อย 1 ช่องทาง"); return; }
       if (activePayments.some((row) => !row.cashBankAccountId)) { setError("กรุณาเลือกบัญชีให้ครบทุกช่องทางที่มียอดเงิน"); return; }
       const paymentsTotal = Math.round(activePayments.reduce((s, r) => s + r.amount, 0) * 100) / 100;
       if (Math.abs(paymentsTotal - netAmount) > 0.005) {
@@ -501,6 +502,24 @@ const PurchaseForm = ({
         if (lotErr) { setError(lotErr); return; }
       }
     }
+
+    // ต้นทุน 0 บาทจะรับเข้าสต็อกที่ราคา 0 และดึงต้นทุนเฉลี่ยของสินค้าลง จึงถามยืนยันก่อน (แบบเดียวกับราคาขาย 0 ในหน้าขาย)
+    const zeroCostRows = items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => item.costPrice <= 0);
+    if (zeroCostRows.length > 0) {
+      const rowNames = zeroCostRows
+        .map(({ item, index }) => `แถวที่ ${index + 1} — ${productMap.get(item.productId)?.name ?? "-"}`)
+        .join("\n");
+      if (
+        !window.confirm(
+          `รายการต่อไปนี้ยังมีต้นทุนเป็น 0 บาท:\n${rowNames}\n\nต้องการบันทึกการซื้อด้วยต้นทุนนี้หรือไม่?`,
+        )
+      ) {
+        return;
+      }
+    }
+
     formData.set("items", JSON.stringify(sanitizePurchaseItemsForSubmit(items)));
     formData.set("discount", String(discount));
     formData.set("shippingFee", String(shippingFee));
