@@ -1,6 +1,7 @@
 import { Prisma } from "@/lib/generated/prisma";
 import { isValueOnlyStockSource, PURCHASE_ALLOWANCE_SOURCE, valueOnlyStockSources } from "@/lib/stock-value-only-source";
 import { checkCreditNoteLotReversal, type CreditNoteLotGuardDb } from "@/lib/credit-note-lot-guard";
+import { checkPurchaseLotReversal, type PurchaseLotGuardDb } from "@/lib/purchase-lot-reversal-guard";
 
 export type MutableDocumentEntityType =
   | "SalesQuotation"
@@ -61,7 +62,7 @@ export type GuardDb = {
   expense?: { findMany(args: FindManyArgs): FindManyResult };
   deliveryCommissionItem?: { findMany(args: FindManyArgs): FindManyResult };
   deliveryCommissionRun?: { findMany(args: FindManyArgs): FindManyResult };
-} & CreditNoteLotGuardDb;
+} & CreditNoteLotGuardDb & PurchaseLotGuardDb;
 
 /** Reason for documents a marketplace settlement round created (fee expense, transfer, adjustment). */
 export const MARKETPLACE_SETTLEMENT_SOURCE_REASON =
@@ -535,11 +536,15 @@ export function createDocumentMutationGuard(database: GuardDb) {
             select: { id: true, debitNo: true },
           }) ?? Promise.resolve([]),
         ]);
-        return block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
+        const downstream = block("ถูกนำไปใช้ที่เอกสารปลายทาง", [
           ...mapDirectRefs(returns, "PurchaseReturn", "returnNo"),
           ...mapDirectRefs(debits, "SupplierDebitNote", "debitNo"),
           ...mapNestedRefs(payments, "payment", "SupplierPayment", "paymentNo"),
         ]);
+        // I3: cancel takes every purchased lot back out of LotBalance; an edit nets the lot change and is
+        // checked against the edited lines in updatePurchase (checkPurchaseLotEdit, same lot reads).
+        if (downstream.blocked || action !== "cancel") return downstream;
+        return checkPurchaseLotReversal(database, { purchaseId: entityId });
       }
 
       if (entityType === "CreditNote") {

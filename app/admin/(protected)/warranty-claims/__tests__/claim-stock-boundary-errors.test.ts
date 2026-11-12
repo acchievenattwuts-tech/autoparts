@@ -132,6 +132,8 @@ beforeEach(() => {
     warrantyClaim: {
       create: async () => ({ id: "claim-1" }),
       findUnique: async () => null,
+      // The step's conditional status change (I8) matches the claim, then the stock write runs.
+      updateMany: async () => ({ count: 1 }),
     },
   };
 });

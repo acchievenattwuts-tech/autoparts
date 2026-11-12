@@ -48,7 +48,7 @@ const fakeTx: FakeTx = {
     const { sql, values } = query as { sql: string; values: unknown[] };
     const table = /FROM\s+"(\w+)"/.exec(sql)?.[1] ?? "?";
     record(`${/FOR UPDATE/.test(sql) ? "lock" : "query"}:${table}:${values.join(",")}`);
-    return [{ status: statusInTx }];
+    return [{ status: statusInTx, updatedAt: updatedAtInTx }];
   },
   // Guard reads (PurchaseReturn branch of the document mutation guard).
   purchaseReturn: {
@@ -136,6 +136,7 @@ const purchaseReturnRow = () => ({
   note: null,
   cancelNote: null,
   cancelledAt: null,
+  updatedAt: LOADED_UPDATED_AT,
   items: [{ id: "pri-1", productId: "p-1", qty: 2, costPrice: 50, lotItems: [] }],
 });
 
@@ -362,6 +363,16 @@ test("an update whose form updatedAt is stale stops right after the row lock", {
   const result = await actions.updatePurchaseReturn("pr1", updateForm());
   assert.deepEqual(result, { error: STALE_MESSAGE });
   assert.deepEqual(callLog, ["lock:PurchaseReturn:pr1"], "nothing is locked or written after the stale check");
+  assert.equal(criticalReports, 0);
+});
+
+test("I5: a cancel whose return was saved by someone else after the pre-read stops at the row lock", { skip: moduleMocksUnavailable }, async () => {
+  updatedAtInTx = new Date("2026-09-10T03:05:00.000Z"); // an edit committed between the pre-read and the lock
+  const result = await actions.cancelPurchaseReturn(cancelForm());
+  assert.deepEqual(result, {
+    error: "ใบคืนสินค้า/ลดหนี้ซื้อ PR26090001 ถูกแก้ไขระหว่างดำเนินการ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  });
+  assert.deepEqual(callLog, ["lock:PurchaseReturn:pr1"], "no lot reversal, stock delete or status write with the stale lines");
   assert.equal(criticalReports, 0);
 });
 

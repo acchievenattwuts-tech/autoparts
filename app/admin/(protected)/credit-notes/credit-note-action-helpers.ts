@@ -137,6 +137,17 @@ export async function lockActiveCreditNote(
   if (rows[0]?.status !== "ACTIVE") throw new CreditNoteNotActiveError();
 }
 
+/**
+ * I5: raised under the row lock when the credit note changed after cancel read it before the transaction
+ * (updatedAt, lib/document-version-check.ts). The message is user-facing Thai.
+ */
+export class CreditNoteChangedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CreditNoteChangedError";
+  }
+}
+
 /** Raised inside a transaction when the mutation guard blocks the credit note under its row lock. */
 export class CreditNoteMutationBlockedError extends Error {
   constructor(message: string) {

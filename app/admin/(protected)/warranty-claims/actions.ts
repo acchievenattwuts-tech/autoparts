@@ -12,6 +12,7 @@ import { z } from "zod";
 
 import { db, dbTx } from "@/lib/db";
 import { generateClaimNo } from "@/lib/doc-number";
+import { isDatabaseLayerError, withDocNumberRetry } from "@/lib/doc-number-retry";
 import { reportCriticalError } from "@/lib/error-reporting";
 import {
   AuditAction,
@@ -19,6 +20,7 @@ import {
   ClaimStockMovementType,
   ClaimType,
   WarrantyClaimStatus,
+  type Prisma,
 } from "@/lib/generated/prisma";
 import {
   getOriginalClaimUnitCost,
@@ -83,6 +85,29 @@ async function getWarrantyClaimMutationBlockError(
 
 /** An expected, user-facing refusal raised inside a transaction (not reported as a crash). */
 class ClaimFlowError extends Error {}
+
+/**
+ * Moves the claim to the step's status only while it still has the status (and outcome) the step was checked
+ * against before the transaction. Every step calls it inside its transaction before writing any stock / lot row:
+ * when two requests run a step on the same claim at once, the later one waits on the earlier one's row lock, then
+ * matches no row and stops with a reload message instead of writing the stock rows a second time.
+ */
+async function transitionClaimStatus(
+  tx: TxClient,
+  claim: { id: string; claimNo: string },
+  expected: { status: WarrantyClaimStatus; outcome?: ClaimOutcome | null },
+  data: Prisma.WarrantyClaimUpdateManyMutationInput,
+): Promise<void> {
+  const { count } = await tx.warrantyClaim.updateMany({
+    where: {
+      id: claim.id,
+      status: expected.status,
+      ...(expected.outcome !== undefined ? { outcome: expected.outcome } : {}),
+    },
+    data,
+  });
+  if (count !== 1) throw new ClaimFlowError(`สถานะใบเคลม ${claim.claimNo} เปลี่ยนไปแล้ว กรุณาโหลดหน้าใหม่`);
+}
 
 /**
  * Month lock (lib/period-lock.ts) for claim steps. Forward steps (open / send / close / return)
@@ -357,105 +382,115 @@ export async function createClaim(
   }
 
   const claimDate = parseDateOnlyToDate(data.claimDate);
-  const claimNo = await generateClaimNo(getWarrantyClaimKind(warranty), claimDate);
+  let claimNo = "";
 
   try {
-    await dbTx(async (tx) => {
-      await lockAndRecheckClaimableWarranty(tx, warranty.id, warranty.saleId);
-      await assertPeriodsUnlocked(tx, [claimDate]);
-      const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
-      const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
-      const isTracked = isInventoryTracked(warranty.product.inventoryTracking);
-      const isLotControl = isTracked && warranty.product.isLotControl;
-      const replacementOptions =
-        isLotControl && data.claimType === ClaimType.REPLACE_NOW
-          ? await getClaimReplacementLots(tx, warranty.productId)
-          : [];
-      const autoReplacementLot =
-        isLotControl && data.claimType === ClaimType.REPLACE_NOW
-          ? autoAllocateLots(replacementOptions, 1, 1)[0]
-          : undefined;
-      const selectedReplacementLotNo =
-        normalizeOptionalString(data.replacementLotNo) ?? autoReplacementLot?.lotNo;
-      const replacementLot = replacementOptions.find((lot) => lot.lotNo === selectedReplacementLotNo);
+    // If another save takes the same claimNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the claim.
+    await withDocNumberRetry({
+      uniqueField: "claimNo",
+      generate: () => generateClaimNo(getWarrantyClaimKind(warranty), claimDate),
+      run: async (nextClaimNo) => {
+        claimNo = nextClaimNo;
+        createdClaimId = "";
+        await dbTx(async (tx) => {
+          await lockAndRecheckClaimableWarranty(tx, warranty.id, warranty.saleId);
+          await assertPeriodsUnlocked(tx, [claimDate]);
+          const originalCost = await getOriginalClaimUnitCost(tx, warranty.id);
+          const signerSnapshot = await getClaimSignerSnapshot(tx, session.user.id, claimDate);
+          const isTracked = isInventoryTracked(warranty.product.inventoryTracking);
+          const isLotControl = isTracked && warranty.product.isLotControl;
+          const replacementOptions =
+            isLotControl && data.claimType === ClaimType.REPLACE_NOW
+              ? await getClaimReplacementLots(tx, warranty.productId)
+              : [];
+          const autoReplacementLot =
+            isLotControl && data.claimType === ClaimType.REPLACE_NOW
+              ? autoAllocateLots(replacementOptions, 1, 1)[0]
+              : undefined;
+          const selectedReplacementLotNo =
+            normalizeOptionalString(data.replacementLotNo) ?? autoReplacementLot?.lotNo;
+          const replacementLot = replacementOptions.find((lot) => lot.lotNo === selectedReplacementLotNo);
 
-      if (isLotControl && data.claimType === ClaimType.REPLACE_NOW && !replacementLot?.lotNo) {
-        throw new Error("ไม่พบ Lot คงเหลือสำหรับส่งสินค้าทดแทน");
-      }
+          if (isLotControl && data.claimType === ClaimType.REPLACE_NOW && !replacementLot?.lotNo) {
+            throw new Error("ไม่พบ Lot คงเหลือสำหรับส่งสินค้าทดแทน");
+          }
 
-      const claim = await tx.warrantyClaim.create({
-        data: {
-          claimNo,
-          warrantyId: data.warrantyId,
-          claimDate,
-          claimType: data.claimType,
-          status: WarrantyClaimStatus.DRAFT,
-          signerName: signerSnapshot.signerName,
-          signerSignatureUrl: signerSnapshot.signerSignatureUrl,
-          signedAt: signerSnapshot.signedAt,
-          symptom: data.symptom,
-          note: data.note,
-          supplierId: data.supplierId || warranty.saleItem?.supplierId || null,
-          supplierName: data.supplierName || warranty.saleItem?.supplierName || null,
-          supplierPhone: data.supplierPhone || null,
-          supplierAddress: data.supplierAddress || null,
-        },
-      });
-      createdClaimId = claim.id;
+          const claim = await tx.warrantyClaim.create({
+            data: {
+              claimNo,
+              warrantyId: data.warrantyId,
+              claimDate,
+              claimType: data.claimType,
+              status: WarrantyClaimStatus.DRAFT,
+              signerName: signerSnapshot.signerName,
+              signerSignatureUrl: signerSnapshot.signerSignatureUrl,
+              signedAt: signerSnapshot.signedAt,
+              symptom: data.symptom,
+              note: data.note,
+              supplierId: data.supplierId || warranty.saleItem?.supplierId || null,
+              supplierName: data.supplierName || warranty.saleItem?.supplierName || null,
+              supplierPhone: data.supplierPhone || null,
+              supplierAddress: data.supplierAddress || null,
+            },
+          });
+          createdClaimId = claim.id;
 
-      if (isTracked) await writeClaimStockMovement(tx, {
-        claimId: claim.id,
-        productId: warranty.productId,
-        movementType: ClaimStockMovementType.CUSTOMER_RETURN_IN,
-        docNo: claimNo,
-        docDate: claimDate,
-        qtyIn: 1,
-        qtyOut: 0,
-        unitCost: originalCost.unitCost,
-        lotNo: originalCost.lotNo,
-        detail: `รับคืนสินค้าเคลม ${claimNo}`,
-      });
-
-      if (isTracked && data.claimType === ClaimType.REPLACE_NOW) {
-        const replaceStockCardId = await writeStockCard(tx, {
-          productId: warranty.productId,
-          docNo: claimNo,
-          docDate: claimDate,
-          source: "CLAIM_REPLACE_OUT",
-          qtyIn: 0,
-          qtyOut: 1,
-          priceIn: 0,
-          detail: `ส่งสินค้าใหม่แทนเคลม ${claimNo}`,
-          referenceId: claim.id,
-        });
-
-        if (isLotControl && replacementLot?.lotNo) {
-          await writeClaimLot(tx, claim.id, warranty.productId, {
-            lotNo: replacementLot.lotNo,
-            qtyInBase: 1,
-            unitCostBase: replacementLot.unitCost,
-            mfgDate: null,
-            expDate: null,
-            direction: "out",
+          if (isTracked) await writeClaimStockMovement(tx, {
+            claimId: claim.id,
+            productId: warranty.productId,
+            movementType: ClaimStockMovementType.CUSTOMER_RETURN_IN,
+            docNo: claimNo,
+            docDate: claimDate,
+            qtyIn: 1,
+            qtyOut: 0,
+            unitCost: originalCost.unitCost,
+            lotNo: originalCost.lotNo,
+            detail: `รับคืนสินค้าเคลม ${claimNo}`,
           });
 
-          await writeStockMovementLots(
-            tx,
-            replaceStockCardId,
-            [
-              {
+          if (isTracked && data.claimType === ClaimType.REPLACE_NOW) {
+            const replaceStockCardId = await writeStockCard(tx, {
+              productId: warranty.productId,
+              docNo: claimNo,
+              docDate: claimDate,
+              source: "CLAIM_REPLACE_OUT",
+              qtyIn: 0,
+              qtyOut: 1,
+              priceIn: 0,
+              detail: `ส่งสินค้าใหม่แทนเคลม ${claimNo}`,
+              referenceId: claim.id,
+            });
+
+            if (isLotControl && replacementLot?.lotNo) {
+              await writeClaimLot(tx, claim.id, warranty.productId, {
                 lotNo: replacementLot.lotNo,
                 qtyInBase: 1,
                 unitCostBase: replacementLot.unitCost,
                 mfgDate: null,
                 expDate: null,
-              },
-            ],
-            "out",
-          );
-        }
+                direction: "out",
+              });
 
-      }
+              await writeStockMovementLots(
+                tx,
+                replaceStockCardId,
+                [
+                  {
+                    lotNo: replacementLot.lotNo,
+                    qtyInBase: 1,
+                    unitCostBase: replacementLot.unitCost,
+                    mfgDate: null,
+                    expDate: null,
+                  },
+                ],
+                "out",
+              );
+            }
+
+          }
+        });
+      },
     });
 
     const afterSnapshot = createdClaimId
@@ -480,7 +515,8 @@ export async function createClaim(
     if (error instanceof ClaimFlowError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.create", userId: session?.user?.id ?? null });
-    if (error instanceof Error && error.message) return { error: error.message };
+    // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+    if (error instanceof Error && error.message && !isDatabaseLayerError(error)) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
 }
@@ -605,9 +641,9 @@ export async function sendClaimToSupplier(
       const originalCost = await getOriginalClaimUnitCost(tx, claim.warranty.id);
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
 
-      await tx.warrantyClaim.update({
-        where: { id },
-        data: { status: WarrantyClaimStatus.SENT_TO_SUPPLIER, sentAt: sentDate },
+      await transitionClaimStatus(tx, { id, claimNo: claim.claimNo }, { status: WarrantyClaimStatus.DRAFT }, {
+        status: WarrantyClaimStatus.SENT_TO_SUPPLIER,
+        sentAt: sentDate,
       });
 
       if (isTracked) await writeClaimStockMovement(tx, {
@@ -646,6 +682,7 @@ export async function sendClaimToSupplier(
     return {};
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof ClaimFlowError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.send", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
     return { error: "เกิดข้อผิดพลาด" };
@@ -720,15 +757,12 @@ export async function closeClaim(
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
       const isLotControl = isTracked && claim.warranty.product.isLotControl;
 
-      await tx.warrantyClaim.update({
-        where: { id },
-        data: {
-          status: WarrantyClaimStatus.CLOSED,
-          outcome: parsedOutcome.data,
-          resolvedAt: resolvedDate,
-          returnedAt: null,
-          note: note || undefined,
-        },
+      await transitionClaimStatus(tx, { id, claimNo: claim.claimNo }, { status: WarrantyClaimStatus.SENT_TO_SUPPLIER }, {
+        status: WarrantyClaimStatus.CLOSED,
+        outcome: parsedOutcome.data,
+        resolvedAt: resolvedDate,
+        returnedAt: null,
+        note: note || undefined,
       });
 
       if (parsedOutcome.data === ClaimOutcome.RECEIVED) {
@@ -826,6 +860,7 @@ export async function closeClaim(
     return {};
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof ClaimFlowError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.close", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
@@ -879,13 +914,12 @@ export async function returnClaimToCustomer(
       await assertPeriodsUnlocked(tx, [returnedDate]);
       const isTracked = isInventoryTracked(claim.warranty.product.inventoryTracking);
       const isLotControl = isTracked && claim.warranty.product.isLotControl;
-      await tx.warrantyClaim.update({
-        where: { id },
-        data: {
-          status: WarrantyClaimStatus.RETURNED_TO_CUSTOMER,
-          returnedAt: returnedDate,
-        },
-      });
+      await transitionClaimStatus(
+        tx,
+        { id, claimNo: claim.claimNo },
+        { status: WarrantyClaimStatus.CLOSED, outcome: ClaimOutcome.RECEIVED },
+        { status: WarrantyClaimStatus.RETURNED_TO_CUSTOMER, returnedAt: returnedDate },
+      );
 
       const stockCardId = isTracked ? await writeStockCard(tx, {
         productId: claim.warranty.productId,
@@ -945,6 +979,7 @@ export async function returnClaimToCustomer(
     return {};
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof ClaimFlowError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.return", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
@@ -992,25 +1027,30 @@ export async function reopenClaim(id: string, periodLockReason?: string): Promis
         lockOverride,
       );
       if (claim.status === WarrantyClaimStatus.RETURNED_TO_CUSTOMER) {
+        await transitionClaimStatus(
+          tx,
+          { id, claimNo: claim.claimNo },
+          { status: WarrantyClaimStatus.RETURNED_TO_CUSTOMER, outcome: claim.outcome },
+          { status: WarrantyClaimStatus.CLOSED, returnedAt: null },
+        );
         await reverseClaimLotBalance(tx, id, claim.warranty.productId, {
           docNos: [`${claim.claimNo}${RETURN_DOC_SUFFIX}`],
         });
         await tx.stockCard.deleteMany({ where: { docNo: `${claim.claimNo}${RETURN_DOC_SUFFIX}` } });
         await recalculateStockCard(tx, claim.warranty.productId);
-
-        await tx.warrantyClaim.update({
-          where: { id },
-          data: {
-            status: WarrantyClaimStatus.CLOSED,
-            returnedAt: null,
-          },
-        });
         return;
       }
 
       if (claim.status !== WarrantyClaimStatus.CLOSED) {
         throw new Error("สามารถย้อนกลับได้เฉพาะสถานะปิดเคลมหรือส่งคืนลูกค้า");
       }
+
+      await transitionClaimStatus(
+        tx,
+        { id, claimNo: claim.claimNo },
+        { status: WarrantyClaimStatus.CLOSED, outcome: claim.outcome },
+        { status: WarrantyClaimStatus.SENT_TO_SUPPLIER, outcome: null, resolvedAt: null, returnedAt: null },
+      );
 
       if (claim.outcome === ClaimOutcome.RECEIVED) {
         await reverseClaimStockMovements(tx, id, {
@@ -1031,16 +1071,6 @@ export async function reopenClaim(id: string, periodLockReason?: string): Promis
           docNos: [`${claim.claimNo}${RECEIVE_DOC_SUFFIX}`],
         });
       }
-
-      await tx.warrantyClaim.update({
-        where: { id },
-        data: {
-          status: WarrantyClaimStatus.SENT_TO_SUPPLIER,
-          outcome: null,
-          resolvedAt: null,
-          returnedAt: null,
-        },
-      });
     });
 
     const afterSnapshot = await getWarrantyClaimAuditSnapshot(id);
@@ -1068,6 +1098,7 @@ export async function reopenClaim(id: string, periodLockReason?: string): Promis
     return {};
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof ClaimFlowError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.reopen", entityId: id, userId: session?.user?.id ?? null });
     if (error instanceof Error && error.message) return { error: error.message };
@@ -1183,13 +1214,10 @@ async function cancelOnsiteClaim(
       await lockStockMutationProducts(tx, [claim.warranty.productId]);
       await assertDocumentMutationAllowedInTx(tx, "WarrantyClaim", id, "cancel");
       periodLock = await assertPeriodsUnlocked(tx, getClaimPostingDates(claim), lockOverride);
+      // The posting dates above come from the claim as read before the transaction: cancel only that state.
+      await transitionClaimStatus(tx, claim, { status: claim.status }, { status: WarrantyClaimStatus.CANCELLED, returnedAt: null });
       await reverseClaimStockMovements(tx, id);
       await reverseClaimLotBalance(tx, id, claim.warranty.productId);
-
-      await tx.warrantyClaim.update({
-        where: { id },
-        data: { status: WarrantyClaimStatus.CANCELLED, returnedAt: null },
-      });
 
       await deleteClaimStockCards(tx, id, claim.claimNo);
 
@@ -1222,6 +1250,7 @@ async function cancelOnsiteClaim(
     return {};
   } catch (error) {
     if (error instanceof PeriodLockedError) return { error: error.message };
+    if (error instanceof ClaimFlowError) return { error: error.message };
     if (error instanceof DocumentMutationBlockedError) return { error: error.message };
     await reportCriticalError(error, { scope: "warranty_claims.cancel", entityId: id, userId: session?.user?.id ?? null });
     return { error: "เกิดข้อผิดพลาด" };

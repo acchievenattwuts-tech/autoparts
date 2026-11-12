@@ -22,6 +22,7 @@ import {
   DocumentMutationBlockedError,
 } from "@/lib/document-mutation-guard";
 import { checkCreditNoteLotReversal, type CreditNoteLotGuardDb } from "@/lib/credit-note-lot-guard";
+import { buildDocumentChangedMeanwhileMessage, isSameDocumentVersion } from "@/lib/document-version-check";
 import {
   AuditAction,
   CNRefundMethod,
@@ -37,6 +38,7 @@ import { calcVat, calcItemSubtotal } from "@/lib/vat";
 import { recalculateCNAmountRemain } from "@/lib/amount-remain";
 import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
 import {
+  CreditNoteChangedError,
   CreditNoteMutationBlockedError,
   CreditNoteNotActiveError,
   CreditNoteSourceSaleError,
@@ -107,6 +109,9 @@ import {
   toCreditNoteWarrantyAuditMeta,
   type CreditNoteWarrantySyncResult,
 } from "@/lib/credit-note-warranty";
+
+/** I5: label of the cancel's "changed meanwhile" message (lib/document-version-check.ts). */
+const CREDIT_NOTE_DOCUMENT_LABEL = "ใบลดหนี้";
 
 type CreditNoteProductOption = {
   id: string;
@@ -1193,7 +1198,11 @@ export async function cancelCreditNote(
     await dbTx(async (tx) => {
       await lockMutableCreditNote(tx, cnId, "cancel");
       // Month lock on the date stored under the CN row lock, before any write.
-      const lockedCn = await tx.creditNote.findUnique({ where: { id: cnId }, select: { cnDate: true } });
+      const lockedCn = await tx.creditNote.findUnique({ where: { id: cnId }, select: { cnDate: true, updatedAt: true } });
+      // I5: the type, lines and products below were read before the transaction.
+      if (!isSameDocumentVersion(lockedCn?.updatedAt, cn.updatedAt)) {
+        throw new CreditNoteChangedError(buildDocumentChangedMeanwhileMessage(CREDIT_NOTE_DOCUMENT_LABEL, cn.cnNo));
+      }
       periodLock = await assertPeriodsUnlocked(tx, [lockedCn?.cnDate ?? cn.cnDate], lockOverride);
       await clearCashBankSourceMovements(tx, CashBankSourceType.CN_SALE, cnId);
       await clearDocumentPayments(tx, DocumentPaymentDocType.CN_SALE, cnId);
@@ -1276,6 +1285,7 @@ export async function cancelCreditNote(
     if (err instanceof PeriodLockedError) return { error: err.message };
     if (err instanceof CreditNoteNotActiveError) return { error: "เอกสารถูกยกเลิกไปแล้ว" };
     if (err instanceof CreditNoteMutationBlockedError) return { error: err.message };
+    if (err instanceof CreditNoteChangedError) return { error: err.message };
     if (err instanceof DocumentMutationBlockedError) return { error: err.message };
     await reportCriticalError(err, { scope: "credit_notes.cancel" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };

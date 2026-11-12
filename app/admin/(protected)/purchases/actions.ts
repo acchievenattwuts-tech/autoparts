@@ -20,8 +20,9 @@ import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   getDocumentMutationBlockMessage, assertDocumentMutationAllowedInTx,
   lockStockMutationProducts, assertStockWriteDateAllowed, DocumentMutationBlockedError,
-  assertRewrittenStockRowsAllowedInTx, buildRewrittenStockRowsWhere,
+  assertRewrittenStockRowsAllowedInTx, buildRewrittenStockRowsWhere, buildMutationBlockMessage,
 } from "@/lib/document-mutation-guard";
+import { checkPurchaseLotEdit, type PurchaseLotGuardDb } from "@/lib/purchase-lot-reversal-guard";
 import {
   AuditAction,
   PaymentMethod,
@@ -34,7 +35,8 @@ import { allocatePurchaseLandedCost, resolvePurchaseCostingBasis } from "@/lib/p
 import { isInputVatRecoverable } from "@/lib/input-vat";
 import { Prisma } from "@/lib/generated/prisma";
 import { formatDateOnlyForInput, isDateOnlyString, parseDateOnlyToDate } from "@/lib/th-date";
-import { writePurchaseLots, writeStockMovementLots, reversePurchaseLotBalance, type LotSubRow } from "@/lib/lot-control";
+import { writePurchaseLots, writeStockMovementLots, type LotSubRow } from "@/lib/lot-control";
+import { buildDocumentChangedMeanwhileMessage, isSameDocumentVersion } from "@/lib/document-version-check";
 import {
   getTransactionProductDetailRowsByIds,
   searchTransactionProductDetailRows,
@@ -54,7 +56,13 @@ import {
 import { isInventoryTracked } from "@/lib/inventory-tracking";
 import { refreshProductPurchaseLastFields } from "@/lib/product-purchase-last";
 import { getPurchaseUserErrorMessage, PurchaseUserError } from "./purchase-user-error";
-import { reversePurchaseLotBalancesBatch } from "./purchase-lot-reversal";
+import {
+  clampPurchaseLotBalances,
+  collectPurchaseEditLots,
+  reversePurchaseLotBalancesBatch,
+  reversePurchaseLotBalancesForEdit,
+  type PurchaseLotDecrement,
+} from "./purchase-lot-reversal";
 import { getPurchaseLineLotError } from "./purchase-lot-guard";
 import { assertPeriodsUnlocked, PeriodLockedError, type PeriodLockResult } from "@/lib/period-lock";
 import {
@@ -168,6 +176,24 @@ type PurchaseLandedStockCardSnapshot = {
 };
 
 const getPurchaseUnitKey = (productId: string, unitName: string): string => `${productId}::${unitName}`;
+
+const PURCHASE_DOCUMENT_LABEL = "ใบซื้อ";
+
+/** The Purchase row as cancel/update lock it (FOR UPDATE) at the start of their transaction. */
+type LockedPurchaseRow = { status: string; purchaseDate?: Date | null; updatedAt?: Date | null };
+
+/**
+ * I5: cancel/update act on the lines read before the transaction, so the row locked FOR UPDATE must
+ * still be that version (updatedAt, as the sale actions check). A save committed in between is refused.
+ */
+function assertPurchaseUnchangedSinceRead(
+  locked: LockedPurchaseRow | undefined,
+  read: { purchaseNo: string; updatedAt: Date },
+): void {
+  if (!isSameDocumentVersion(locked?.updatedAt, read.updatedAt)) {
+    throw new PurchaseUserError(buildDocumentChangedMeanwhileMessage(PURCHASE_DOCUMENT_LABEL, read.purchaseNo));
+  }
+}
 
 // Keep non-finite computed numbers out of batched parameterized SQL writes.
 function safeSqlNumber(value: number): number {
@@ -313,6 +339,21 @@ function assertPurchaseLinesHaveLots(
     });
     if (lotErr) throw new PurchaseUserError(lotErr);
   }
+}
+
+/**
+ * I3 edit (owner 2026-11-12): the block message when the edited lines would leave a lot of a
+ * lot-controlled product under what was already used from it, else null. updatePurchase runs it before
+ * the transaction and again under the product locks, before any write.
+ */
+async function getPurchaseLotEditBlockMessage(
+  database: PurchaseLotGuardDb,
+  purchaseId: string,
+  items: PurchaseItemInput[],
+  scaleOf: (productId: string, unitName: string) => number | undefined,
+): Promise<string | null> {
+  const newLots = collectPurchaseEditLots(items, scaleOf);
+  return buildMutationBlockMessage(await checkPurchaseLotEdit(database, { purchaseId, newLots }));
 }
 
 async function resolvePurchasePaymentMethod(
@@ -877,8 +918,10 @@ export async function cancelPurchase(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseAuditSnapshot(purchaseId);
     await dbTx(async (tx) => {
-      const locked = await tx.$queryRaw<{ status: string; purchaseDate?: Date | null }[]>(Prisma.sql`SELECT "status"::text AS "status", "purchaseDate" FROM "Purchase" WHERE "id" = ${purchaseId} FOR UPDATE`);
+      const locked = await tx.$queryRaw<LockedPurchaseRow[]>(Prisma.sql`SELECT "status"::text AS "status", "purchaseDate", "updatedAt" FROM "Purchase" WHERE "id" = ${purchaseId} FOR UPDATE`);
       if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
+      // I5: the lines and products below were read before the transaction.
+      assertPurchaseUnchangedSinceRead(locked[0], purchase);
       await lockStockMutationProducts(tx, affectedProductIds);
       await assertDocumentMutationAllowedInTx(tx, "Purchase", purchaseId, "cancel");
       // Month lock on the date stored under the Purchase row lock, before any write.
@@ -1203,6 +1246,22 @@ export async function updatePurchase(
   const quantityInputError = findItemQuantityInputError(validItems, (index) => matchedByNewIdx.has(index));
   if (quantityInputError) return { error: quantityInputError };
 
+  // I3 (owner 2026-11-12): a lot already used later may not drop under what was used from it. Only a
+  // purchase that holds lots is read; the transaction repeats the check under the product locks.
+  const existingHasLots = existing.items.some((item) => item.lotItems.length > 0);
+  if (existingHasLots) {
+    try {
+      const lotEditMessage = await getPurchaseLotEditBlockMessage(
+        db as unknown as PurchaseLotGuardDb, id, validItems,
+        (productId, unitName) => newUnitScaleMap.get(getPurchaseUnitKey(productId, unitName)),
+      );
+      if (lotEditMessage) return { error: lotEditMessage };
+    } catch (err) {
+      await reportCriticalError(err, { scope: "purchases.update" });
+      return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
+    }
+  }
+
   const canUpdateLandedAllocationInPlace =
     !purchaseDateChanged &&
     allocationsMayShift &&
@@ -1233,8 +1292,10 @@ export async function updatePurchase(
     const requestContext = await getRequestContext();
     const beforeSnapshot = await getPurchaseAuditSnapshot(id);
     await dbTx(async (tx) => {
-      const locked = await tx.$queryRaw<{ status: string; purchaseDate?: Date | null }[]>(Prisma.sql`SELECT "status"::text AS "status", "purchaseDate" FROM "Purchase" WHERE "id" = ${id} FOR UPDATE`);
+      const locked = await tx.$queryRaw<LockedPurchaseRow[]>(Prisma.sql`SELECT "status"::text AS "status", "purchaseDate", "updatedAt" FROM "Purchase" WHERE "id" = ${id} FOR UPDATE`);
       if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
+      // I5: the line diff above was computed from the purchase read before the transaction.
+      assertPurchaseUnchangedSinceRead(locked[0], existing);
       const mutationProductIds = [...existing.items.map((item) => item.productId), ...validItems.map((item) => item.productId)];
       await lockStockMutationProducts(tx, mutationProductIds);
       // An ACTIVE supplier DN on this purchase still blocks any edit (guard's direct reference).
@@ -1319,14 +1380,29 @@ export async function updatePurchase(
       // lot guard can check them all before step 1 deletes anything.
       const { productMap, unitMap } = await preloadPurchaseDependencies(tx, validItems);
       assertPurchaseLinesHaveLots(validItems, productMap);
+      // I3: the lot check again under the product locks (a sale committed since the pre-check counts),
+      // before step 1 reverses anything.
+      if (existingHasLots) {
+        const lotEditMessageInTx = await getPurchaseLotEditBlockMessage(
+          tx as unknown as PurchaseLotGuardDb, id, validItems,
+          (productId, unitName) => unitMap.get(getPurchaseUnitKey(productId, unitName))?.scale,
+        );
+        if (lotEditMessageInTx) throw new DocumentMutationBlockedError(lotEditMessageInTx);
+      }
 
       // 1. Drop stock effects for removed/changed lines only.
       //    Differential path: only the lines that didn't survive signature
       //    matching are reversed + deleted. Fallback path: everything is
       //    reversed and we rebuild from scratch (original behaviour).
+      //    I3: lot balances are taken out without clamping and clamped once after the new lots are
+      //    written (step 3d), so a lot that was partly sold keeps its true balance (net difference).
+      let reversedLotPairs: PurchaseLotDecrement[] = [];
       if (useDifferential) {
+        reversedLotPairs = await reversePurchaseLotBalancesForEdit(
+          tx,
+          removedExistingItems.map((removed) => ({ id: removed.existingItemId, productId: removed.productId })),
+        );
         for (const removed of removedExistingItems) {
-          await reversePurchaseLotBalance(tx, removed.existingItemId, removed.productId);
           const deletedStockCards = await tx.stockCard.deleteMany({
             where: {
               docNo: existing.purchaseNo,
@@ -1352,11 +1428,8 @@ export async function updatePurchase(
         });
         // Reverse lot balances for every removed line in batch: one lookup of
         // all their lot rows, aggregate the decrement per (product, lot), then a
-        // single clamped UPDATE. GREATEST(balance - Σqty, 0) equals the per-row
-        // decrement-then-clamp sequence because qty decrements are monotonic.
-        // (Implementation moved verbatim to reversePurchaseLotBalancesBatch so
-        // cancelPurchase can share it.)
-        await reversePurchaseLotBalancesBatch(tx, oldItems);
+        // single UPDATE — unclamped here (I3); step 3d clamps the touched lots.
+        reversedLotPairs = await reversePurchaseLotBalancesForEdit(tx, oldItems);
         await tx.stockCard.deleteMany({ where: { docNo: existing.purchaseNo } });
         await tx.purchaseItem.deleteMany({ where: { purchaseId: id } });
       }
@@ -1690,6 +1763,11 @@ export async function updatePurchase(
           }
         }
       }
+
+      // 3d. I3: the reversed lots now hold balance − old + new. A lot-controlled product cannot go
+      //     below zero here (refused above); a lot of a product no longer lot-controlled is clamped at
+      //     zero like every other decrement.
+      await clampPurchaseLotBalances(tx, reversedLotPairs);
 
       await recalculateStockCardMany(tx, productIdsNeedingRecalc);
 

@@ -104,6 +104,13 @@ const fakeDb = {
       calls.push(`warrantyClaim.update:${String(data.status)}`);
       return claim;
     },
+    // A claim step moves the claim only while it still has the expected status (I8).
+    updateMany: async ({ where, data }: { where: Where; data: Record<string, unknown> }) => {
+      const matching = claims.filter((c) => c.id === where.id && (where.status === undefined || c.status === where.status));
+      matching.forEach((c) => Object.assign(c, data));
+      calls.push(`warrantyClaim.updateMany:${String(data.status)}:${matching.length}`);
+      return { count: matching.length };
+    },
     delete: async ({ where }: { where: Where }) => {
       calls.push(`warrantyClaim.delete:${String(where.id)}`);
       claims = claims.filter((c) => c.id !== where.id);

@@ -330,7 +330,8 @@ const PurchaseReturnForm = ({
       setPurchaseVat(null);
       return;
     }
-    const detail = await getPurchaseDetail(id);
+    // I2: prefills what can still be returned; an edit does not count its own saved lines.
+    const detail = await getPurchaseDetail(id, initialData?.id);
     if (!detail) return;
     setPurchaseVat(detail.vat);
     setVatType(detail.vat.vatType);

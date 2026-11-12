@@ -54,7 +54,8 @@ test("createPurchase and updatePurchase run the guard over every line before wri
   assert.ok(create.indexOf("assertPurchaseLinesHaveLots(") < create.indexOf("tx.purchase.create("));
   // update: guard runs before step 1 deletes lot balances / stock cards.
   const update = source.slice(source.indexOf("export async function updatePurchase("));
-  assert.ok(update.indexOf("assertPurchaseLinesHaveLots(") < update.indexOf("reversePurchaseLotBalance(tx"));
+  assert.ok(update.indexOf("reversePurchaseLotBalancesForEdit(") > 0);
+  assert.ok(update.indexOf("assertPurchaseLinesHaveLots(") < update.indexOf("reversePurchaseLotBalancesForEdit("));
   assert.ok(update.indexOf("assertPurchaseLinesHaveLots(") < update.indexOf("tx.stockCard.deleteMany("));
 });
 
@@ -67,13 +68,16 @@ const moduleMocksUnavailable =
 type AnyAsync = (...args: unknown[]) => Promise<unknown>;
 type ModelOverrides = Record<string, Record<string, AnyAsync>>;
 
+/** updatedAt of the existing purchase, as the pre-read and the row lock both see it (I5). */
+const PURCHASE_UPDATED_AT = new Date("2026-09-24T03:00:00.000Z");
+
 const makeClient = (overrides: () => ModelOverrides, calls: string[]) =>
   new Proxy(
     {},
     {
       get: (_target, modelName: string) => {
         if (modelName === "$executeRaw") return async () => 0;
-        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE" }];
+        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE", updatedAt: PURCHASE_UPDATED_AT }];
         return new Proxy(
           {},
           {
@@ -253,6 +257,7 @@ const existingPurchase = (lotItems: { lotNo: string; qty: number; unitCost: numb
   status: "ACTIVE",
   purchaseType: "CREDIT_PURCHASE",
   purchaseDate: new Date("2026-09-23T17:00:00.000Z"),
+  updatedAt: PURCHASE_UPDATED_AT,
   shippingFee: 0,
   discount: 0,
   supplier: null,

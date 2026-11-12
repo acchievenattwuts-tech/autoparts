@@ -101,9 +101,40 @@ import {
 } from "@/lib/purchase-allowance";
 import { rebuildPurchaseAllowanceProfitFacts } from "@/lib/profit-fact";
 import { revalidateProfitDashboardCache } from "@/lib/profit-cache";
+import { buildDocumentChangedMeanwhileMessage, isSameDocumentVersion } from "@/lib/document-version-check";
+import { assertPurchaseReturnQuantitiesWithinPurchase, computePurchaseLinesRemaining } from "./purchase-return-quantity";
 
 /** updatePurchaseReturn: the document changed after the edit form loaded it. */
 const PURCHASE_RETURN_STALE_MESSAGE = "เอกสารถูกแก้ไขโดยผู้อื่นระหว่างที่คุณแก้ไข กรุณาโหลดหน้าใหม่";
+/** I5: label of the cancel's "changed meanwhile" message (lib/document-version-check.ts). */
+const PURCHASE_RETURN_DOCUMENT_LABEL = "ใบคืนสินค้า/ลดหนี้ซื้อ";
+
+/**
+ * I7: locks the referenced Purchase row(s) FOR UPDATE, sorted by id, before their status is read, so a purchase
+ * cancelled meanwhile is seen and two returns of one purchase are checked one after the other (I2). Lock order of a
+ * return save: PurchaseReturn (edit only) → Purchase → Product, as the receipt side takes CreditNote → Sale.
+ */
+async function lockPurchaseReturnSourcePurchases(
+  tx: Prisma.TransactionClient,
+  purchaseIds: readonly (string | null | undefined)[],
+): Promise<void> {
+  const ids = [...new Set(purchaseIds.filter((id): id is string => Boolean(id)))].sort();
+  if (ids.length === 0) return;
+  await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "Purchase" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`);
+}
+
+/** I2: a RETURN that references a purchase may not return more than the purchase holds (per product). */
+async function assertReturnWithinSourcePurchase(
+  tx: Prisma.TransactionClient,
+  input: { purchaseId: string | undefined; type: PurchaseReturnType; lineData: LineData[]; excludeReturnId?: string },
+): Promise<void> {
+  if (!input.purchaseId || input.type !== PurchaseReturnType.RETURN) return;
+  await assertPurchaseReturnQuantitiesWithinPurchase(tx, {
+    purchaseId: input.purchaseId,
+    lines: input.lineData,
+    excludeReturnId: input.excludeReturnId,
+  });
+}
 
 type PurchaseReturnProductOption = {
   id: string;
@@ -878,6 +909,7 @@ export async function createPurchaseReturn(
         allowanceState.audit = null;
         allowanceState.touched = false;
         await dbTx(async (tx) => {
+          await lockPurchaseReturnSourcePurchases(tx, [purchaseId]);
           const sourcePurchaseVat = await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
           const linkedClaim = await validatePurchaseReturnClaim(tx, claimId, supplierId);
           const allowancePostingDate = todayPurchaseAllowancePostingDate();
@@ -886,6 +918,7 @@ export async function createPurchaseReturn(
           await assertPeriodsUnlocked(tx, allowancePosted ? [docDate, allowancePostingDate] : [docDate]);
 
           const lineData = await buildLineData(tx, validItems, vatType, vatRate);
+          await assertReturnWithinSourcePurchase(tx, { purchaseId, type, lineData });
           const allowance = allowancePosted
             ? await prepareNewPurchaseAllowance(tx, lineData, { vatType, vatRate, taxInvoiceDate }, sourcePurchaseVat, allowancePostingDate)
             : null;
@@ -1114,8 +1147,12 @@ export async function cancelPurchaseReturn(
     await dbTx(async (tx) => {
       // Re-check the status under the row lock: a concurrent cancel/update that passed the
       // same pre-check must not reverse lot balances or rewrite RETURN_OUT rows a second time.
-      const locked = await tx.$queryRaw<{ status: string; returnDate?: Date | null }[]>(Prisma.sql`SELECT "status"::text AS "status", "returnDate" FROM "PurchaseReturn" WHERE "id" = ${ret.id} FOR UPDATE`);
+      const locked = await tx.$queryRaw<{ status: string; returnDate?: Date | null; updatedAt?: Date | null }[]>(Prisma.sql`SELECT "status"::text AS "status", "returnDate", "updatedAt" FROM "PurchaseReturn" WHERE "id" = ${ret.id} FOR UPDATE`);
       if (locked[0]?.status !== "ACTIVE") throw new PurchaseUserError("เอกสารถูกยกเลิกไปแล้ว");
+      // I5: the lines, type and products below were read before the transaction.
+      if (!isSameDocumentVersion(locked[0]?.updatedAt, ret.updatedAt)) {
+        throw new PurchaseUserError(buildDocumentChangedMeanwhileMessage(PURCHASE_RETURN_DOCUMENT_LABEL, ret.returnNo));
+      }
       await lockStockMutationProducts(tx, affectedProductIds);
       await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", ret.id, "cancel");
       // V8 (W5): reversing ลดราคาซื้อ restates later sales, so its posting month and theirs are locked too (reads only).
@@ -1520,6 +1557,8 @@ export async function updatePurchaseReturn(
       if (!current || current.updatedAt.getTime() !== expectedUpdatedAt) {
         throw new PurchaseUserError(PURCHASE_RETURN_STALE_MESSAGE);
       }
+      // I7: the stored and the new referenced purchase, before their status is read (`existing` is current).
+      await lockPurchaseReturnSourcePurchases(tx, [existing.purchaseId, purchaseId]);
       await lockStockMutationProducts(tx, [...existing.items.map((item) => item.productId), ...validItems.map((item) => item.productId)]);
       await assertDocumentMutationAllowedInTx(tx, "PurchaseReturn", id, "update");
       const sourcePurchaseVat = await validatePurchaseReturnSourcePurchase(tx, purchaseId, supplierId, { vatType, vatRate });
@@ -1551,6 +1590,8 @@ export async function updatePurchaseReturn(
         return;
       }
       periodLock = periodDecision.result;
+      // I2: as updateCreditNote, after the remark-only path and before any write; this return is not counted.
+      await assertReturnWithinSourcePurchase(tx, { purchaseId, type, lineData, excludeReturnId: id });
       // Z3 (owner 2026-10-01): a remark-only edit of a DISCOUNT/OTHER return in an open return month keeps its
       // ลดราคาซื้อ rows as posted — not replanned, reposted or month-lock checked — even when stock was backdated before
       // the posting since then. Same comparison as the locked-month path above; every line is kept (same signatures).
@@ -1897,9 +1938,15 @@ export type PurchaseDetailResult = {
 /** Client-safe VAT basis of a referenced purchase; taxInvoiceDate is YYYY-MM-DD or "". */
 export type PurchaseReturnSourceVat = { vatType: VatType; vatRate: number; taxInvoiceDate: string };
 
-export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDetailResult> {
+/**
+ * The referenced purchase's lines for the return form. I2: each line prefills what can still be returned — the
+ * purchased quantity minus the ACTIVE RETURN documents of this purchase (the edited return excluded), 0 when it was
+ * returned in full. A purchase nothing was returned from prefills exactly as before.
+ */
+export async function getPurchaseDetail(purchaseId: string, excludeReturnId?: string): Promise<PurchaseDetailResult> {
   const session = await requirePurchaseReturnProductPermission();
   if (!session?.user?.id || !purchaseId) return null;
+  const excludedReturnId = excludeReturnId && isValidPurchaseReturnId(excludeReturnId) ? excludeReturnId : undefined;
 
   const purchase = await db.purchase.findUnique({
     where: { id: purchaseId },
@@ -1907,6 +1954,16 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
       vatType: true,
       vatRate: true,
       taxInvoiceDate: true,
+      purchaseReturns: {
+        where: {
+          status: "ACTIVE",
+          type: PurchaseReturnType.RETURN,
+          ...(excludedReturnId ? { id: { not: excludedReturnId } } : {}),
+        },
+        select: {
+          items: { orderBy: { lineNo: "asc" }, select: { productId: true, qty: true, lotItems: { select: { lotNo: true, qty: true } } } },
+        },
+      },
       items: {
         orderBy: { lineNo: "asc" },
         select: {
@@ -1951,8 +2008,19 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
   });
   if (!purchase) return null;
 
+  const toLineQuantity = (line: { productId: string; qty: unknown; lots: { lotNo: string; qty: unknown }[] }) => ({
+    productId: line.productId,
+    baseQty: Number(line.qty),
+    lots: line.lots.map((lot) => ({ lotNo: lot.lotNo, baseQty: Number(lot.qty) })),
+  });
+  const remainingByLine = computePurchaseLinesRemaining(
+    purchase.items.map((item) => toLineQuantity({ productId: item.productId, qty: item.quantity, lots: item.lotItems })),
+    purchase.purchaseReturns.flatMap((purchaseReturn) => purchaseReturn.items.map((item) =>
+      toLineQuantity({ productId: item.productId, qty: item.qty, lots: item.lotItems }))),
+  );
+
   const productMap = new Map<string, PurchaseReturnProductOption>();
-  const items = purchase.items.map((item) => {
+  const items = purchase.items.map((item, index) => {
     const unitName = item.product.purchaseUnitName ?? "";
     const unit = item.product.units.find((entry) => entry.name === unitName);
     const scale = Number(item.unitScale ?? unit?.scale ?? 1) || 1;
@@ -1963,21 +2031,29 @@ export async function getPurchaseDetail(purchaseId: string): Promise<PurchaseDet
         ? Number(item.showPricePerUnit)
         : Number(item.costPrice) * scale;
     productMap.set(item.productId, serializePurchaseReturnProductOption(item.product));
+    const toLotRow = (lot: (typeof item.lotItems)[number], baseQty: number) => ({
+      lotNo: lot.lotNo,
+      qty: baseQty / scale,
+      unitCost: Number(lot.unitCost) * scale,
+      mfgDate: lot.mfgDate ? formatDateOnlyForInput(lot.mfgDate) : "",
+      expDate: lot.expDate ? formatDateOnlyForInput(lot.expDate) : "",
+    });
+    const remaining = remainingByLine[index];
+    const partlyReturned = remaining !== undefined && remaining.returnedBaseQty > 0;
 
     return {
       productId: item.productId,
       unitName: displayUnitName,
-      qty: displayQty,
+      qty: partlyReturned ? roundItemQuantity(remaining.remainingBaseQty / scale) : displayQty,
       costPrice: displayCostPrice,
-      lotItems: item.product.isLotControl
-        ? item.lotItems.map((lot) => ({
-            lotNo: lot.lotNo,
-            qty: Number(lot.qty) / scale,
-            unitCost: Number(lot.unitCost) * scale,
-            mfgDate: lot.mfgDate ? formatDateOnlyForInput(lot.mfgDate) : "",
-            expDate: lot.expDate ? formatDateOnlyForInput(lot.expDate) : "",
-          }))
-        : [],
+      lotItems: !item.product.isLotControl
+        ? []
+        : partlyReturned
+          ? remaining.lots.map(({ lotIndex, baseQty }) => ({
+              ...toLotRow(item.lotItems[lotIndex], baseQty),
+              qty: roundItemQuantity(baseQty / scale),
+            }))
+          : item.lotItems.map((lot) => toLotRow(lot, Number(lot.qty))),
     };
   });
 

@@ -79,6 +79,7 @@ const storedCreditNote = {
   vatType: "NO_VAT",
   vatRate: 0,
   note: null,
+  updatedAt: new Date("2026-08-20T03:00:00.000Z"),
   items: [
     {
       id: "cni-1",

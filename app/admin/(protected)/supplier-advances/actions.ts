@@ -11,6 +11,7 @@ import {
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierAdvanceNo } from "@/lib/doc-number";
+import { withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import {
   AuditAction,
@@ -191,48 +192,58 @@ export async function createSupplierAdvance(
   const primaryAccountId = derivePrimaryAccountId(payments);
 
   const advanceDate = parseDateOnlyToDate(parsed.advanceDate);
-  const advanceNo = await generateSupplierAdvanceNo(advanceDate);
+  let advanceNo = "";
   let createdAdvanceId = "";
 
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments,
-      );
+    // If another save takes the same advanceNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the deposit.
+    await withDocNumberRetry({
+      uniqueField: "advanceNo",
+      generate: () => generateSupplierAdvanceNo(advanceDate),
+      run: async (nextAdvanceNo) => {
+        advanceNo = nextAdvanceNo;
+        createdAdvanceId = "";
+        await dbTx(async (tx) => {
+          const paymentMethod = await resolveSupplierAdvancePaymentMethod(tx, payments,
+          );
 
-      const advance = await tx.supplierAdvance.create({
-        data: {
-          advanceNo,
-          advanceDate,
-          supplierId: parsed.supplierId,
-          userId: session.user.id,
-          totalAmount: parsed.totalAmount,
-          amountRemain: parsed.totalAmount,
-          paymentMethod,
-          note: parsed.note?.trim() || null,
-          cashBankAccountId: primaryAccountId,
-        },
-      });
-      createdAdvanceId = advance.id;
+          const advance = await tx.supplierAdvance.create({
+            data: {
+              advanceNo,
+              advanceDate,
+              supplierId: parsed.supplierId,
+              userId: session.user.id,
+              totalAmount: parsed.totalAmount,
+              amountRemain: parsed.totalAmount,
+              paymentMethod,
+              note: parsed.note?.trim() || null,
+              cashBankAccountId: primaryAccountId,
+            },
+          });
+          createdAdvanceId = advance.id;
 
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.SUPPLIER_ADVANCE,
-        advance.id,
-        CashBankDirection.OUT,
-        payments,
-      );
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.SUPPLIER_ADVANCE,
-        advance.id,
-        toCashBankEntries(payments, {
-          txnDate: advanceDate,
-          direction: CashBankDirection.OUT,
-          referenceNo: advanceNo,
-          note: parsed.note?.trim() || null,
-        }),
-      );
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.SUPPLIER_ADVANCE,
+            advance.id,
+            CashBankDirection.OUT,
+            payments,
+          );
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.SUPPLIER_ADVANCE,
+            advance.id,
+            toCashBankEntries(payments, {
+              txnDate: advanceDate,
+              direction: CashBankDirection.OUT,
+              referenceNo: advanceNo,
+              note: parsed.note?.trim() || null,
+            }),
+          );
+        });
+      },
     });
 
     const afterSnapshot = createdAdvanceId

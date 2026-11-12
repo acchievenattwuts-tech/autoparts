@@ -33,6 +33,10 @@ let cnChannel: string | null;
 let preReadSettlements: { id: string; settlementNo: string }[];
 let txSettlements: { id: string; settlementNo: string }[];
 let txReceipts: { id: string; receiptNo: string }[];
+/** updatedAt of the credit note as the pre-read sees it (I5). */
+const CN_UPDATED_AT = new Date("2026-09-10T03:00:00.000Z");
+/** updatedAt the locked row shows inside the transaction; a save committed in between moves it. */
+let cnUpdatedAtInTx = CN_UPDATED_AT;
 
 const record = (entry: string) => {
   callLog.push(entry);
@@ -96,8 +100,10 @@ const fakeTx: FakeTx = {
     findFirst: async () => ({ id: "acc-ship" }),
   },
   creditNote: {
-    // The date re-read under the row lock falls back to the pre-transaction read.
-    findUnique: async () => null,
+    // The date re-read under the row lock falls back to the pre-transaction read; cancel's I5 re-read
+    // of updatedAt sees the version the pre-read loaded.
+    findUnique: async (args: unknown) =>
+      (args as { select?: { updatedAt?: boolean } }).select?.updatedAt ? { updatedAt: cnUpdatedAtInTx } : null,
     findMany: async () => [{ cnNo: "CN26090001" }],
     create: async (args: unknown) => {
       const { data } = args as { data: { cnNo: string } };
@@ -182,6 +188,7 @@ const creditNoteRow = () => ({
   note: null,
   cancelNote: null,
   cancelledAt: null,
+  updatedAt: CN_UPDATED_AT,
   items: [],
 });
 
@@ -322,6 +329,7 @@ beforeEach(() => {
   preReadSettlements = [];
   txSettlements = [];
   txReceipts = [];
+  cnUpdatedAtInTx = CN_UPDATED_AT;
 });
 
 /** Prisma 7 driver-adapter P2002 shape (no meta.target). */
@@ -557,6 +565,16 @@ test("a credit note cancelled concurrently still stops at the lock with the exis
   });
   assert.deepEqual(callLog, ["lock:CreditNote:cn1", "lock:CreditNote:cn1"]);
   assert.equal(criticalReports, 0);
+});
+
+test("I5: a cancel whose credit note was saved by someone else after the pre-read is refused before any write", async () => {
+  cnUpdatedAtInTx = new Date("2026-09-10T03:05:00.000Z"); // an edit committed between the pre-read and the lock
+  const result = await actions.cancelCreditNote(cancelForm());
+  assert.deepEqual(result, {
+    error: "ใบลดหนี้ CN26090001 ถูกแก้ไขระหว่างดำเนินการ กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง",
+  });
+  assert.deepEqual(callLog, LOCK_AND_GUARD, "no payment clear, stock reversal or status write with the stale type and lines");
+  assert.equal(criticalReports, 0, "a lost race is a user message, not a critical alert");
 });
 
 test("the fast path still rejects a settled credit note without opening a transaction", async () => {

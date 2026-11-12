@@ -31,6 +31,7 @@ import {
   generateCustomerAdvanceRefundNo,
   generateSupplierAdvanceRefundNo,
 } from "@/lib/doc-number";
+import { isDatabaseLayerError, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   AuditAction,
   CashBankDirection,
@@ -269,93 +270,103 @@ async function createRefund(side: RefundSide, formData: FormData) {
     };
   }
   const refundDate = parseDateOnlyToDate(parsed.data.refundDate);
-  const refundNo =
-    side === "CUSTOMER"
-      ? await generateCustomerAdvanceRefundNo(refundDate)
-      : await generateSupplierAdvanceRefundNo(refundDate);
+  let refundNo = "";
   let createdId = "";
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      await lockSource(tx, side, parsed.data.sourceAdvanceId);
-      const source =
+    // If another save takes the same refundNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the refund.
+    await withDocNumberRetry({
+      uniqueField: "refundNo",
+      generate: () =>
         side === "CUSTOMER"
-          ? await tx.customerAdvance.findUnique({
-              where: { id: parsed.data.sourceAdvanceId },
-              select: { status: true, amountRemain: true },
-            })
-          : await tx.supplierAdvance.findUnique({
-              where: { id: parsed.data.sourceAdvanceId },
-              select: { status: true, amountRemain: true },
-            });
-      if (!source) throw new Error("ไม่พบเอกสารมัดจำต้นทาง");
-      if (source.status !== "ACTIVE")
-        throw new Error("เอกสารมัดจำต้นทางถูกยกเลิกแล้ว");
-      if (parsed.data.refundAmount - Number(source.amountRemain) > 0.005) {
-        throw new Error(
-          `ยอดคืนต้องไม่เกินยอดคงเหลือ ${Number(source.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท`,
-        );
-      }
-      const paymentMethod = await resolvePaymentMethod(tx, payments);
-      const common = {
-        refundNo,
-        refundDate,
-        userId: session.user.id,
-        refundAmount: parsed.data.refundAmount,
-        paymentMethod,
-        note: parsed.data.note?.trim() || null,
-        cashBankAccountId: derivePrimaryAccountId(payments),
-      };
-      // ตรึงลายเซ็นผู้จ่ายเงินเฉพาะฝั่งลูกค้า — ฝั่งผู้จัดจำหน่ายยังไม่มีแบบพิมพ์
-      // จึงยังไม่มีคอลัมน์ signer ใน SupplierAdvanceRefund
-      const customerSigner =
-        side === "CUSTOMER"
-          ? await getDocumentSignerSnapshot(tx, session.user.id, refundDate)
-          : undefined;
-      const created =
-        side === "CUSTOMER"
-          ? await tx.customerAdvanceRefund.create({
-              data: {
-                ...common,
-                ...customerSigner,
-                customerAdvanceId: parsed.data.sourceAdvanceId,
-              },
-            })
-          : await tx.supplierAdvanceRefund.create({
-              data: {
-                ...common,
-                supplierAdvanceId: parsed.data.sourceAdvanceId,
-              },
-            });
-      createdId = created.id;
-      await replaceDocumentPayments(
-        tx,
-        config.paymentDocType,
-        created.id,
-        config.direction,
-        payments,
-      );
-      await replaceCashBankSourceMovements(
-        tx,
-        config.sourceType,
-        created.id,
-        toCashBankEntries(payments, {
-          txnDate: refundDate,
-          direction: config.direction,
-          referenceNo: refundNo,
-          note: parsed.data.note?.trim() || null,
-        }),
-      );
-      if (side === "CUSTOMER")
-        await recalculateCustomerAdvanceAmountRemain(
-          tx,
-          parsed.data.sourceAdvanceId,
-        );
-      else
-        await recalculateSupplierAdvanceAmountRemain(
-          tx,
-          parsed.data.sourceAdvanceId,
-        );
+          ? generateCustomerAdvanceRefundNo(refundDate)
+          : generateSupplierAdvanceRefundNo(refundDate),
+      run: async (nextRefundNo) => {
+        refundNo = nextRefundNo;
+        createdId = "";
+        await dbTx(async (tx) => {
+          await lockSource(tx, side, parsed.data.sourceAdvanceId);
+          const source =
+            side === "CUSTOMER"
+              ? await tx.customerAdvance.findUnique({
+                  where: { id: parsed.data.sourceAdvanceId },
+                  select: { status: true, amountRemain: true },
+                })
+              : await tx.supplierAdvance.findUnique({
+                  where: { id: parsed.data.sourceAdvanceId },
+                  select: { status: true, amountRemain: true },
+                });
+          if (!source) throw new Error("ไม่พบเอกสารมัดจำต้นทาง");
+          if (source.status !== "ACTIVE")
+            throw new Error("เอกสารมัดจำต้นทางถูกยกเลิกแล้ว");
+          if (parsed.data.refundAmount - Number(source.amountRemain) > 0.005) {
+            throw new Error(
+              `ยอดคืนต้องไม่เกินยอดคงเหลือ ${Number(source.amountRemain).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท`,
+            );
+          }
+          const paymentMethod = await resolvePaymentMethod(tx, payments);
+          const common = {
+            refundNo,
+            refundDate,
+            userId: session.user.id,
+            refundAmount: parsed.data.refundAmount,
+            paymentMethod,
+            note: parsed.data.note?.trim() || null,
+            cashBankAccountId: derivePrimaryAccountId(payments),
+          };
+          // ตรึงลายเซ็นผู้จ่ายเงินเฉพาะฝั่งลูกค้า — ฝั่งผู้จัดจำหน่ายยังไม่มีแบบพิมพ์
+          // จึงยังไม่มีคอลัมน์ signer ใน SupplierAdvanceRefund
+          const customerSigner =
+            side === "CUSTOMER"
+              ? await getDocumentSignerSnapshot(tx, session.user.id, refundDate)
+              : undefined;
+          const created =
+            side === "CUSTOMER"
+              ? await tx.customerAdvanceRefund.create({
+                  data: {
+                    ...common,
+                    ...customerSigner,
+                    customerAdvanceId: parsed.data.sourceAdvanceId,
+                  },
+                })
+              : await tx.supplierAdvanceRefund.create({
+                  data: {
+                    ...common,
+                    supplierAdvanceId: parsed.data.sourceAdvanceId,
+                  },
+                });
+          createdId = created.id;
+          await replaceDocumentPayments(
+            tx,
+            config.paymentDocType,
+            created.id,
+            config.direction,
+            payments,
+          );
+          await replaceCashBankSourceMovements(
+            tx,
+            config.sourceType,
+            created.id,
+            toCashBankEntries(payments, {
+              txnDate: refundDate,
+              direction: config.direction,
+              referenceNo: refundNo,
+              note: parsed.data.note?.trim() || null,
+            }),
+          );
+          if (side === "CUSTOMER")
+            await recalculateCustomerAdvanceAmountRemain(
+              tx,
+              parsed.data.sourceAdvanceId,
+            );
+          else
+            await recalculateSupplierAdvanceAmountRemain(
+              tx,
+              parsed.data.sourceAdvanceId,
+            );
+        });
+      },
     });
     const after = await refundSnapshot(side, createdId);
     if (after)
@@ -374,7 +385,8 @@ async function createRefund(side: RefundSide, formData: FormData) {
     console.error(`[create${config.entityType}]`, error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : config.createError,
+      // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+      error: error instanceof Error && !isDatabaseLayerError(error) ? error.message : config.createError,
     };
   }
 }

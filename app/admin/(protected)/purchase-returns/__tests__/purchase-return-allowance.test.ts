@@ -129,7 +129,10 @@ const txOverrides = (): ModelOverrides => ({
 const makeClient = (overrides: () => ModelOverrides, calls: Call[]) => new Proxy({}, {
   get: (_target, modelName: string) => {
     if (modelName === "$queryRaw") {
-      return async () => { queryRawCalls += 1; return [{ status: "ACTIVE", returnDate: storedReturn.returnDate }]; };
+      return async () => {
+        queryRawCalls += 1;
+        return [{ status: "ACTIVE", returnDate: storedReturn.returnDate, updatedAt: storedReturn.updatedAt }];
+      };
     }
     if (modelName === "$executeRaw") {
       // Tagged templates pass the strings array; Prisma.sql(...) passes an object with `sql`.

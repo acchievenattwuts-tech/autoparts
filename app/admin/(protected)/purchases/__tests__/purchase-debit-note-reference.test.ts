@@ -15,13 +15,16 @@ type ModelOverrides = Record<string, Record<string, AnyAsync>>;
 type Call = { method: string; args: unknown };
 type Where = { where?: Record<string, unknown> };
 
+const PURCHASE_UPDATED_AT = new Date("2026-09-20T03:00:00.000Z");
+
 const makeClient = (overrides: () => ModelOverrides, calls: Call[]) =>
   new Proxy(
     {},
     {
       get: (_target, modelName: string) => {
         if (modelName === "$executeRaw") return async () => 0;
-        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE" }];
+        // I5: the locked row shows the version the pre-read loaded.
+        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE", updatedAt: PURCHASE_UPDATED_AT }];
         return new Proxy(
           {},
           {
@@ -128,6 +131,7 @@ const existingPurchase = () => ({
   supplierId: "sup-1",
   supplier: null,
   purchaseDate: new Date("2026-09-19T17:00:00.000Z"), // 2026-09-20 in Thailand
+  updatedAt: PURCHASE_UPDATED_AT,
   purchaseType: "CREDIT_PURCHASE",
   shippingFee: 0,
   discount: 0,

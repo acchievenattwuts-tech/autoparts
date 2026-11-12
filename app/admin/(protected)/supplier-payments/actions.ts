@@ -13,6 +13,7 @@ import { recalculateSupplierDebitRemain } from "@/lib/supplier-debit-note";
 import { formatSupplierDebitAdjustmentLabel } from "@/lib/supplier-debit-balance";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { generateSupplierPaymentNo } from "@/lib/doc-number";
+import { isDatabaseLayerError, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
   AuditAction,
   CashBankDirection,
@@ -406,6 +407,42 @@ async function lockSupplierDebitNotesForPayment(tx: TxClient, debitNoteIds: stri
   await tx.$queryRaw`SELECT id FROM "SupplierDebitNote" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
 }
 
+/**
+ * Row-locks the purchase-return credits and credit purchases a payment settles BEFORE their outstanding balance is
+ * read (getAvailableSupplierDocuments), so two payments of the same purchase serialize instead of both validating
+ * against the same pre-commit amountRemain, and a purchase or return cancelled meanwhile is read as cancelled.
+ *
+ * Lock order: [SupplierPayment →] SupplierDebitNote → SupplierAdvance → PurchaseReturn → Purchase, ids sorted within
+ * each. A DN edit holds its DN lock and then locks the source Purchase (lib/supplier-debit-note.ts), so DN comes before
+ * Purchase here. A purchase-return edit holds its PurchaseReturn lock and may re-point purchaseId, whose FK check takes
+ * a KEY SHARE lock on the Purchase; PurchaseReturn before Purchase keeps that pair in the same order (as receipts lock
+ * CreditNote before Sale). Purchase / purchase-return cancel and edit lock only their own row before products, and no
+ * flow locks a DN, advance or payment while holding a Purchase or PurchaseReturn lock.
+ */
+async function lockPurchaseDocumentsForPayment(
+  tx: TxClient,
+  affectedIds: Pick<ReturnType<typeof collectAffectedIds>, "purchaseIds" | "purchaseReturnIds">,
+): Promise<void> {
+  const purchaseReturnIds = [...new Set(affectedIds.purchaseReturnIds)].sort();
+  if (purchaseReturnIds.length > 0) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT id FROM "PurchaseReturn"
+      WHERE id IN (${Prisma.join(purchaseReturnIds)})
+      ORDER BY id
+      FOR UPDATE
+    `);
+  }
+  const purchaseIds = [...new Set(affectedIds.purchaseIds)].sort();
+  if (purchaseIds.length > 0) {
+    await tx.$queryRaw(Prisma.sql`
+      SELECT id FROM "Purchase"
+      WHERE id IN (${Prisma.join(purchaseIds)})
+      ORDER BY id
+      FOR UPDATE
+    `);
+  }
+}
+
 async function assertSupplierPaymentUnchanged(tx: TxClient, id: string,
   originalItems: Array<{ debitNoteId?: string | null; purchaseId: string | null; purchaseReturnId: string | null; advanceId: string | null }>,
 ): Promise<void> {
@@ -645,92 +682,103 @@ export async function createSupplierPayment(
   const primaryAccountId = derivePrimaryAccountId(payments);
 
   const paymentDate = parseDateOnlyToDate(parsed.paymentDate);
-  const paymentNo = await generateSupplierPaymentNo(paymentDate);
+  let paymentNo = "";
   let createdPaymentId = "";
 
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      await lockSupplierDebitNotesForPayment(tx, collectAffectedIds(parsed.items).debitNoteIds);
-      await lockSupplierAdvancesForPayment(
-        tx,
-        collectAffectedIds(parsed.items).advanceIds,
-      );
-      const available = await getAvailableSupplierDocuments(tx, parsed.supplierId,
-      );
-      const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available,
-      );
-      if (validationError) throw new Error(validationError);
+    // If another save takes the same paymentNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the payment.
+    await withDocNumberRetry({
+      uniqueField: "paymentNo",
+      generate: () => generateSupplierPaymentNo(paymentDate),
+      run: async (nextPaymentNo) => {
+        paymentNo = nextPaymentNo;
+        createdPaymentId = "";
+        await dbTx(async (tx) => {
+          await lockSupplierDebitNotesForPayment(tx, collectAffectedIds(parsed.items).debitNoteIds);
+          await lockSupplierAdvancesForPayment(
+            tx,
+            collectAffectedIds(parsed.items).advanceIds,
+          );
+          await lockPurchaseDocumentsForPayment(tx, collectAffectedIds(parsed.items));
+          const available = await getAvailableSupplierDocuments(tx, parsed.supplierId,
+          );
+          const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available,
+          );
+          if (validationError) throw new Error(validationError);
 
-      const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid,
-      );
-      const payment = await tx.supplierPayment.create({
-        data: {
-          paymentNo,
-          paymentDate,
-          supplierId: parsed.supplierId,
-          userId: session.user.id,
-          totalAmount: totalCashPaid,
-          whtAmount,
-          paymentMethod,
-          note: parsed.note?.trim() || null,
-          cashBankAccountId: primaryAccountId,
-        },
-      });
-      createdPaymentId = payment.id;
+          const paymentMethod = await resolveSupplierPaymentMethod(tx, payments, totalCashPaid,
+          );
+          const payment = await tx.supplierPayment.create({
+            data: {
+              paymentNo,
+              paymentDate,
+              supplierId: parsed.supplierId,
+              userId: session.user.id,
+              totalAmount: totalCashPaid,
+              whtAmount,
+              paymentMethod,
+              note: parsed.note?.trim() || null,
+              cashBankAccountId: primaryAccountId,
+            },
+          });
+          createdPaymentId = payment.id;
 
-      await tx.supplierPaymentItem.createMany({
-        data: parsed.items.map((item, idx) => ({
-          paymentId: payment.id,
-          lineNo:    idx + 1,
-          debitNoteId: item.debitNoteId ?? item.debitCreditId ?? null,
-          purchaseId: item.purchaseId ?? null,
-          purchaseReturnId: item.purchaseReturnId ?? null,
-          advanceId: item.advanceId ?? null,
-          paidAmount: item.paidAmount,
-        })),
-      });
+          await tx.supplierPaymentItem.createMany({
+            data: parsed.items.map((item, idx) => ({
+              paymentId: payment.id,
+              lineNo:    idx + 1,
+              debitNoteId: item.debitNoteId ?? item.debitCreditId ?? null,
+              purchaseId: item.purchaseId ?? null,
+              purchaseReturnId: item.purchaseReturnId ?? null,
+              advanceId: item.advanceId ?? null,
+              paidAmount: item.paidAmount,
+            })),
+          });
 
-      await recalculateAffectedDocuments(tx, collectAffectedIds(parsed.items));
+          await recalculateAffectedDocuments(tx, collectAffectedIds(parsed.items));
 
-      await persistWhtCertificate(tx, {
-        sourceType: "SUPPLIER_PAYMENT",
-        sourceId: payment.id,
-        sourceNo: paymentNo,
-        supplierId: parsed.supplierId,
-        payDate: paymentDate,
-        lines: parsed.wht
-          ? [
-              {
-                incomeTypeId: parsed.wht.incomeTypeId,
-                baseAmount: parsed.wht.baseAmount,
-                rate: parsed.wht.rate,
-                taxAmount: parsed.wht.taxAmount,
-                payCondition: parsed.wht.payCondition,
-              },
-            ]
-          : [],
-        note: parsed.note?.trim() || null,
-        userId: session.user.id!,
-      });
-      await replaceDocumentPayments(
-        tx,
-        DocumentPaymentDocType.SUPPLIER_PAYMENT,
-        payment.id,
-        CashBankDirection.OUT,
-        payments,
-      );
-      await replaceCashBankSourceMovements(
-        tx,
-        CashBankSourceType.SUPPLIER_PAYMENT,
-        payment.id,
-        toCashBankEntries(payments, {
-          txnDate: paymentDate,
-          direction: CashBankDirection.OUT,
-          referenceNo: paymentNo,
-          note: parsed.note?.trim() || null,
-        }),
-      );
+          await persistWhtCertificate(tx, {
+            sourceType: "SUPPLIER_PAYMENT",
+            sourceId: payment.id,
+            sourceNo: paymentNo,
+            supplierId: parsed.supplierId,
+            payDate: paymentDate,
+            lines: parsed.wht
+              ? [
+                  {
+                    incomeTypeId: parsed.wht.incomeTypeId,
+                    baseAmount: parsed.wht.baseAmount,
+                    rate: parsed.wht.rate,
+                    taxAmount: parsed.wht.taxAmount,
+                    payCondition: parsed.wht.payCondition,
+                  },
+                ]
+              : [],
+            note: parsed.note?.trim() || null,
+            userId: session.user.id!,
+          });
+          await replaceDocumentPayments(
+            tx,
+            DocumentPaymentDocType.SUPPLIER_PAYMENT,
+            payment.id,
+            CashBankDirection.OUT,
+            payments,
+          );
+          await replaceCashBankSourceMovements(
+            tx,
+            CashBankSourceType.SUPPLIER_PAYMENT,
+            payment.id,
+            toCashBankEntries(payments, {
+              txnDate: paymentDate,
+              direction: CashBankDirection.OUT,
+              referenceNo: paymentNo,
+              note: parsed.note?.trim() || null,
+            }),
+          );
+        });
+      },
     });
 
     const afterSnapshot = createdPaymentId
@@ -762,7 +810,10 @@ export async function createSupplierPayment(
     console.error("[createSupplierPayment]", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "เกิดข้อผิดพลาด ไม่สามารถบันทึกเอกสารจ่ายชำระซัพพลายเออร์ได้",
+      // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+      error: error instanceof Error && !isDatabaseLayerError(error)
+        ? error.message
+        : "เกิดข้อผิดพลาด ไม่สามารถบันทึกเอกสารจ่ายชำระซัพพลายเออร์ได้",
     };
   }
 }
@@ -853,6 +904,7 @@ export async function updateSupplierPayment(
       await assertSupplierPaymentUnchanged(tx, id, existing.items);
       await lockSupplierDebitNotesForPayment(tx, allAffectedIds.debitNoteIds);
       await lockSupplierAdvancesForPayment(tx, allAffectedIds.advanceIds);
+      await lockPurchaseDocumentsForPayment(tx, allAffectedIds);
       const available = await getAvailableSupplierDocuments(tx, parsed.supplierId, id,
       );
       const validationError = validatePaymentItemsAgainstAvailable(parsed.items, available,
@@ -1012,6 +1064,7 @@ export async function cancelSupplierPayment(
         tx,
         collectAffectedIds(payment.items).advanceIds,
       );
+      await lockPurchaseDocumentsForPayment(tx, collectAffectedIds(payment.items));
       await clearCashBankSourceMovements(tx, CashBankSourceType.SUPPLIER_PAYMENT, payment.id,
       );
       await clearDocumentPayments(tx, DocumentPaymentDocType.SUPPLIER_PAYMENT, payment.id,

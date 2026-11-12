@@ -24,6 +24,9 @@ type Call = { method: string; args: unknown };
 type Row = Record<string, unknown>;
 type StockCardWrite = { qtyIn: number; priceIn: number; landedCost: number };
 
+/** updatedAt of the stored purchase (I5: pre-read and row lock see the same version). */
+const STORED_UPDATED_AT = new Date("2026-09-30T03:00:00.000Z");
+
 const makeClient = (overrides: () => ModelOverrides, calls: Call[]) =>
   new Proxy(
     {},
@@ -36,7 +39,8 @@ const makeClient = (overrides: () => ModelOverrides, calls: Call[]) =>
             return 0;
           };
         }
-        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE" }];
+        // I5: the locked row shows the version the pre-read loaded (storedPurchase.updatedAt).
+        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE", updatedAt: STORED_UPDATED_AT }];
         return new Proxy(
           {},
           {
@@ -276,7 +280,7 @@ const SAVED_DATE = new Date("2026-09-29T17:00:00.000Z"); // 2026-09-30 in Thaila
 const storedPurchase = (vatType: string, vatRate: number): Row => ({
   id: "po1", purchaseNo: "RR26093000001", status: "ACTIVE", supplierId: "sup-1", supplier: null,
   purchaseDate: SAVED_DATE, purchaseType: "CREDIT_PURCHASE", shippingFee: 0, discount: 0,
-  vatType, vatRate, taxInvoiceNo: null, taxInvoiceDate: null,
+  vatType, vatRate, taxInvoiceNo: null, taxInvoiceDate: null, updatedAt: STORED_UPDATED_AT,
   items: [{
     id: "item-1", lineNo: 1, productId: "oil-1", quantity: new Prisma.Decimal(10), costPrice: 107, landedCost: 0,
     showQty: new Prisma.Decimal(10), showUnitName: "ลิตร", moreDetail: null, lotItems: [],

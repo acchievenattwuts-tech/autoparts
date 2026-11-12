@@ -191,6 +191,8 @@ beforeEach(() => {
   };
   txOverrides = {
     warranty: { findUnique: async () => ({ status: "ACTIVE", claims: [] }) },
+    // A claim step moves the claim only while it still has the expected status (I8); here it always does.
+    warrantyClaim: { updateMany: async () => ({ count: 1 }) },
     user: { findUnique: async () => ({ name: "Tester", signatureUrl: null }) },
     profitDistribution: {
       findMany: async (args: unknown) => {

@@ -59,6 +59,7 @@ test("getPurchaseDetail (purchase-return form) converts Decimal quantities to nu
         showQty: new Prisma.Decimal("2.0000"), showUnitName: "ลัง", showPricePerUnit: new Prisma.Decimal("1800"),
         unitScale: new Prisma.Decimal("12.0000"), product, lotItems: [] },
     ],
+    purchaseReturns: [],
   };
   const { getPurchaseDetail } = await import("../../purchase-returns/actions");
 

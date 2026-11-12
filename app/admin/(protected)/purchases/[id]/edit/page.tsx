@@ -16,6 +16,11 @@ import {
   checkDocumentStockDebitWarning,
 } from "@/lib/document-mutation-guard";
 import DocumentMutationBlockedNotice from "@/components/shared/DocumentMutationBlockedNotice";
+import {
+  buildPurchaseLotEditWarning,
+  checkPurchaseLotEdit,
+  type PurchaseLotGuardDb,
+} from "@/lib/purchase-lot-reversal-guard";
 import PurchaseForm from "../../new/PurchaseForm";
 import { getPurchaseProductOptionsByIds, getTransactionSuppliers } from "@/lib/transaction-options";
 import { getDocumentPeriodLockView } from "@/lib/period-lock-document";
@@ -60,7 +65,8 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     select: { cashBankAccountId: true, amount: true },
   });
 
-  const [mutationBlock, stockDebitWarning, periodLock] = await Promise.all([
+  const hasLots = purchase.items.some((item) => item.lotItems.length > 0);
+  const [mutationBlock, stockDebitWarning, periodLock, lotEditWarning] = await Promise.all([
     // Also blocks while an ACTIVE supplier DN references this purchase.
     checkDocumentMutation("Purchase", id, "update"),
     // Lines before an active supplier DN of another purchase: a warning only; updatePurchase
@@ -68,11 +74,18 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
     checkDocumentStockDebitWarning("Purchase", id),
     // Month already distributed: same message updatePurchase returns (lib/period-lock.ts).
     getDocumentPeriodLockView([purchase.purchaseDate], session.user.permissions),
+    // Lots already used later (I3): a warning only, naming each lot's minimum (no new lots = every lot
+    // removed); updatePurchase refuses an edit that drops one under it, with the same reason.
+    hasLots
+      ? checkPurchaseLotEdit(db as unknown as PurchaseLotGuardDb, { purchaseId: id, newLots: [] })
+      : Promise.resolve(null),
   ]);
   const mutationBlockMessage = buildMutationBlockMessage(mutationBlock);
   const mutationBlockReferences = buildMutationBlockReferenceLinks(mutationBlock);
   const stockDebitWarningMessage = mutationBlockMessage ? null : buildStockDebitEditWarning(stockDebitWarning);
   const stockDebitWarningReferences = buildMutationBlockReferenceLinks(stockDebitWarning);
+  const lotEditWarningMessage = mutationBlockMessage || !lotEditWarning ? null : buildPurchaseLotEditWarning(lotEditWarning);
+  const lotEditWarningReferences = lotEditWarning ? buildMutationBlockReferenceLinks(lotEditWarning) : [];
 
   const suppliers = await getTransactionSuppliers([purchase.supplierId]);
   const products = await getPurchaseProductOptionsByIds(purchase.items.map((item) => item.productId));
@@ -150,6 +163,14 @@ const EditPurchasePage = async ({ params }: { params: Promise<{ id: string }> })
           <DocumentMutationBlockedNotice
             message={stockDebitWarningMessage}
             references={stockDebitWarningReferences}
+          />
+        </div>
+      )}
+      {lotEditWarningMessage && (
+        <div className="mb-6">
+          <DocumentMutationBlockedNotice
+            message={lotEditWarningMessage}
+            references={lotEditWarningReferences}
           />
         </div>
       )}

@@ -19,6 +19,8 @@ type ModelOverrides = Record<string, Record<string, AnyAsync>>;
 type Call = { method: string; args: unknown };
 
 const PURCHASE_DATE = parseDateOnlyToDate("2026-08-20");
+/** updatedAt of the stored purchase, as the pre-read and the row lock both see it (I5). */
+const UPDATED_AT = new Date("2026-08-20T03:00:00.000Z");
 
 const makeClient = (overrides: () => ModelOverrides, calls: Call[], queryRaw: () => unknown[]) =>
   new Proxy(
@@ -77,6 +79,7 @@ const storedPurchase = {
   vatRate: 0,
   creditTerm: 30,
   note: null,
+  updatedAt: UPDATED_AT,
   items: [
     {
       id: "pi-1",
@@ -99,7 +102,7 @@ const storedPurchase = {
 before(async () => {
   if (moduleMocksUnavailable) return;
   const realDb = await import("@/lib/db");
-  const fakeTx = makeClient(() => txOverrides, txCalls, () => [{ status: "ACTIVE", purchaseDate: PURCHASE_DATE }]);
+  const fakeTx = makeClient(() => txOverrides, txCalls, () => [{ status: "ACTIVE", purchaseDate: PURCHASE_DATE, updatedAt: UPDATED_AT }]);
   await mock.module("@/lib/db", {
     namedExports: {
       ...realDb,

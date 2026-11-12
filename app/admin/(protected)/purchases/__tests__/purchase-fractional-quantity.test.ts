@@ -19,13 +19,16 @@ type StockCardWrite = { qtyIn: number; detail: string };
 type AuditInput = { after?: { items?: Array<{ quantity: unknown }> } };
 type Row = Record<string, unknown>;
 
+const PURCHASE_UPDATED_AT = new Date("2026-09-30T03:00:00.000Z");
+
 const makeClient = (overrides: () => ModelOverrides, calls: Call[]) =>
   new Proxy(
     {},
     {
       get: (_target, modelName: string) => {
         if (modelName === "$executeRaw") return async () => 0;
-        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE" }];
+        // I5: the locked row shows the version the pre-read loaded.
+        if (modelName === "$queryRaw") return async () => [{ status: "ACTIVE", updatedAt: PURCHASE_UPDATED_AT }];
         return new Proxy(
           {},
           {
@@ -166,7 +169,7 @@ let savedItems: Row[] = [];
 const existingPurchase = (): Row => ({
   id: "po1", purchaseNo: "RRC26093000001", status: "ACTIVE", supplierId: "sup-1", supplier: null,
   purchaseDate: new Date("2026-09-29T17:00:00.000Z"), // 2026-09-30 in Thailand
-  purchaseType: "CREDIT_PURCHASE", shippingFee: 0, discount: 0,
+  purchaseType: "CREDIT_PURCHASE", shippingFee: 0, discount: 0, updatedAt: PURCHASE_UPDATED_AT,
   items: savedItems, purchaseReturns: [], supplierPaymentItems: [],
 });
 

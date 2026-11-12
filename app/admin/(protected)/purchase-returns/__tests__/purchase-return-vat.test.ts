@@ -195,7 +195,7 @@ test("createPurchaseReturn: the purchase's VAT and the credit note are saved", {
 });
 
 test("getPurchaseDetail hands the form the purchase VAT basis as plain values", { skip: moduleMocksUnavailable }, async () => {
-  dbOverrides = { purchase: { findUnique: async () => ({ ...SOURCE_PURCHASE, items: [] }) } };
+  dbOverrides = { purchase: { findUnique: async () => ({ ...SOURCE_PURCHASE, items: [], purchaseReturns: [] }) } };
   const { getPurchaseDetail } = await import("../actions");
   const detail = await getPurchaseDetail("purchase-1");
   assert.deepEqual(detail?.vat, { vatType: "INCLUDING_VAT", vatRate: 7, taxInvoiceDate: "2026-09-01" });

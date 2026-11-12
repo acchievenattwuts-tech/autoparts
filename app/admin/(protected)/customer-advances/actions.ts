@@ -7,6 +7,7 @@ import { diffEntity, getAuditActorFromSession, getRequestContext, safeWriteAudit
 import { db, dbTx } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
 import { generateCustomerAdvanceNo } from "@/lib/doc-number";
+import { isDatabaseLayerError, withDocNumberRetry } from "@/lib/doc-number-retry";
 import { getDocumentMutationBlockMessage } from "@/lib/document-mutation-guard";
 import { getDocumentSignerSnapshot } from "@/lib/document-signer";
 import { AuditAction, CashBankDirection, CashBankSourceType, DocumentPaymentDocType, PaymentMethod, Prisma,
@@ -146,30 +147,40 @@ export async function createCustomerAdvance(formData: FormData): Promise<{ succe
   const paymentResult = parsePayments(formData, parsed.data.totalAmount);
   if ("error" in paymentResult) return { success: false, error: paymentResult.error };
   const advanceDate = parseDateOnlyToDate(parsed.data.advanceDate);
-  const advanceNo = await generateCustomerAdvanceNo(advanceDate);
+  let advanceNo = "";
   let advanceId = "";
   try {
     const requestContext = await getRequestContext();
-    await dbTx(async (tx) => {
-      const paymentMethod = await resolvePaymentMethod(tx, paymentResult.payments,
-      );
-      // ตรึงลายเซ็นผู้รับเงินไว้กับเอกสาร — userId ของใบมัดจำไม่เปลี่ยนตอนแก้ไข
-      // จึงตรึงครั้งเดียวตอนสร้าง เหมือน Sale / Receipt
-      const signer = await getDocumentSignerSnapshot(tx, session.user.id, advanceDate);
-      const advance = await tx.customerAdvance.create({ data: {
-        advanceNo, advanceDate, customerId: parsed.data.customerId, userId: session.user.id,
-        totalAmount: parsed.data.totalAmount, amountRemain: parsed.data.totalAmount,
-        paymentMethod, cashBankAccountId: derivePrimaryAccountId(paymentResult.payments), note: parsed.data.note?.trim() || null,
-        ...signer,
+    // If another save takes the same advanceNo first (P2002), regenerate it and
+    // retry the fully rolled-back transaction instead of failing the deposit.
+    await withDocNumberRetry({
+      uniqueField: "advanceNo",
+      generate: () => generateCustomerAdvanceNo(advanceDate),
+      run: async (nextAdvanceNo) => {
+        advanceNo = nextAdvanceNo;
+        advanceId = "";
+        await dbTx(async (tx) => {
+          const paymentMethod = await resolvePaymentMethod(tx, paymentResult.payments,
+          );
+          // ตรึงลายเซ็นผู้รับเงินไว้กับเอกสาร — userId ของใบมัดจำไม่เปลี่ยนตอนแก้ไข
+          // จึงตรึงครั้งเดียวตอนสร้าง เหมือน Sale / Receipt
+          const signer = await getDocumentSignerSnapshot(tx, session.user.id, advanceDate);
+          const advance = await tx.customerAdvance.create({ data: {
+            advanceNo, advanceDate, customerId: parsed.data.customerId, userId: session.user.id,
+            totalAmount: parsed.data.totalAmount, amountRemain: parsed.data.totalAmount,
+            paymentMethod, cashBankAccountId: derivePrimaryAccountId(paymentResult.payments), note: parsed.data.note?.trim() || null,
+            ...signer,
+          },
+          });
+          advanceId = advance.id;
+          await replaceDocumentPayments(tx, DocumentPaymentDocType.CUSTOMER_ADVANCE, advance.id, CashBankDirection.IN, paymentResult.payments,
+          );
+          await replaceCashBankSourceMovements(tx, CashBankSourceType.CUSTOMER_ADVANCE, advance.id, toCashBankEntries(paymentResult.payments, {
+            txnDate: advanceDate, direction: CashBankDirection.IN, referenceNo: advanceNo, note: parsed.data.note?.trim() || null,
+          }),
+          );
+        });
       },
-      });
-      advanceId = advance.id;
-      await replaceDocumentPayments(tx, DocumentPaymentDocType.CUSTOMER_ADVANCE, advance.id, CashBankDirection.IN, paymentResult.payments,
-      );
-      await replaceCashBankSourceMovements(tx, CashBankSourceType.CUSTOMER_ADVANCE, advance.id, toCashBankEntries(paymentResult.payments, {
-        txnDate: advanceDate, direction: CashBankDirection.IN, referenceNo: advanceNo, note: parsed.data.note?.trim() || null,
-      }),
-      );
     });
     const after = await auditSnapshot(advanceId);
     if (after) await safeWriteAuditLog({ ...getAuditActorFromSession(session), ...requestContext, action: AuditAction.CREATE, entityType: "CustomerAdvance", entityId: after.id, entityRef: after.advanceNo, after,
@@ -178,7 +189,8 @@ export async function createCustomerAdvance(formData: FormData): Promise<{ succe
     return { success: true, advanceNo, advanceId };
   } catch (error) {
     console.error("[createCustomerAdvance]", error);
-    return { success: false, error: error instanceof Error ? error.message : "ไม่สามารถบันทึกรับเงินมัดจำลูกค้าได้",
+    // Business-rule messages (Thai) pass through; Prisma/DB errors stay server-side.
+    return { success: false, error: error instanceof Error && !isDatabaseLayerError(error) ? error.message : "ไม่สามารถบันทึกรับเงินมัดจำลูกค้าได้",
     };
   }
 }

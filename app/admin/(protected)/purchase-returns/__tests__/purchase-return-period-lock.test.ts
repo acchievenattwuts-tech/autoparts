@@ -96,7 +96,7 @@ const storedReturn = {
 before(async () => {
   if (moduleMocksUnavailable) return;
   const realDb = await import("@/lib/db");
-  const fakeTx = makeClient(() => txOverrides, txCalls, () => [{ status: "ACTIVE", returnDate: RETURN_DATE }]);
+  const fakeTx = makeClient(() => txOverrides, txCalls, () => [{ status: "ACTIVE", returnDate: RETURN_DATE, updatedAt: UPDATED_AT }]);
   await mock.module("@/lib/db", {
     namedExports: {
       ...realDb,

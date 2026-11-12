@@ -123,6 +123,8 @@ beforeEach(() => {
     warrantyClaim: {
       findMany: async () => [{ claimNo: CLAIM_NO }],
       findUnique: async () => claimRow({ status: "SENT_TO_SUPPLIER", outcome: null }),
+      // The step's conditional status change (I8) matches the claim.
+      updateMany: async () => ({ count: 1 }),
     },
     stockCard: {
       findMany: async (args) => (JSON.stringify((args as Where).where?.source ?? null).includes("SUPPLIER_DEBIT") ? [debitRow] : [claimSendRow]),
@@ -138,7 +140,7 @@ test("closing a claim (forward step) is allowed with a later active DN on the SK
   const result = await closeClaim("claim-1", "RECEIVED", "2026-09-30");
   assert.deepEqual(result, {});
   assert.equal(stockWrites, 1, "the CLAIM_RECV_IN row dated today is written");
-  assert.ok(calls.includes("warrantyClaim.update"));
+  assert.ok(calls.includes("warrantyClaim.updateMany"));
   assert.deepEqual(criticalReports, []);
 });
 
@@ -159,5 +161,6 @@ test("reopening the claim still stops at the DN boundary, before any write", { s
   assert.ok(result.error?.includes("SDN26090001"), result.error);
   assert.ok(!calls.includes("stockCard.deleteMany"));
   assert.ok(!calls.includes("warrantyClaim.update"));
+  assert.ok(!calls.includes("warrantyClaim.updateMany"));
   assert.deepEqual(criticalReports, []);
 });
