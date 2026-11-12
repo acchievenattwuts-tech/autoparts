@@ -35,6 +35,11 @@ const db = {
     const result = await pg.query(text, values.map(toAdapterParam));
     return result.rows;
   },
+  $executeRaw: async (strings: TemplateStringsArray, ...values: unknown[]): Promise<number> => {
+    const text = strings.reduce((sql, part, index) => (index === 0 ? part : `${sql}$${index}${part}`), "");
+    const result = await pg.query(text, values.map(toAdapterParam));
+    return result.affectedRows ?? 0;
+  },
   $transaction: async (operations: Promise<unknown>[]): Promise<unknown[]> => Promise.all(operations),
   loginThrottle: {
     findMany: async (args: { where: { key: { in: string[] } } }): Promise<{ lockedUntil: Date | null }[]> => {
@@ -179,6 +184,96 @@ test("a successful login still clears both keys", { skip: moduleMocksUnavailable
   await clearFailedLogins(keys);
   assert.equal(await readRow("username:somchai"), null);
   assert.equal(await readRow("ip:203.0.113.7"), null);
+});
+
+/** Mirrors auth.ts after the A1 fix: refused attempts are audited once per lock round. */
+async function attemptAndAudit(keys: string[]): Promise<"refused+audited" | "refused" | "counted"> {
+  const { claimLoginBlockedAudit, isLoginBlocked, recordFailedLogin } = await import("@/lib/login-rate-limit");
+  if (await isLoginBlocked(keys)) {
+    return (await claimLoginBlockedAudit(keys)) ? "refused+audited" : "refused";
+  }
+  await recordFailedLogin(keys);
+  return "counted";
+}
+
+test("a lock round writes the blocked audit once, however many refused attempts follow", { skip: moduleMocksUnavailable }, async () => {
+  const keys = ["username:somchai", "ip:203.0.113.7"];
+  const outcomes: string[] = [];
+  for (let attempt = 0; attempt < 9; attempt += 1) {
+    at(attempt * 10_000);
+    outcomes.push(await attemptAndAudit(keys));
+  }
+  assert.deepEqual(outcomes, [
+    "counted", "counted", "counted", "counted", "counted",
+    "refused+audited", "refused", "refused", "refused",
+  ]);
+});
+
+test("the claim never changes the lock: same refusals and same expiry as before", { skip: moduleMocksUnavailable }, async () => {
+  const { claimLoginBlockedAudit } = await import("@/lib/login-rate-limit");
+  const keys = ["username:somchai"];
+  const lastFailure = (MAX_ATTEMPTS - 1) * 10_000;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    at(attempt * 10_000);
+    await attemptWrongPassword(keys);
+  }
+  const lockedBefore = await readRow("username:somchai");
+
+  at(lastFailure + 1_000);
+  assert.equal(await claimLoginBlockedAudit(keys), true);
+  assert.deepEqual(await readRow("username:somchai"), lockedBefore);
+
+  at(lastFailure + LOCKOUT_MS - 1);
+  assert.equal(await attemptWrongPassword(keys), "refused");
+  at(lastFailure + LOCKOUT_MS);
+  assert.equal(await attemptWrongPassword(keys), "counted");
+});
+
+test("a new lock round can be audited again", { skip: moduleMocksUnavailable }, async () => {
+  const keys = ["username:somchai"];
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    at(attempt * 10_000);
+    await attemptAndAudit(keys);
+  }
+  at(MAX_ATTEMPTS * 10_000);
+  assert.equal(await attemptAndAudit(keys), "refused+audited");
+  assert.equal(await attemptAndAudit(keys), "refused");
+
+  // The lock ends, the user fails five more times inside a fresh window.
+  const secondRoundStart = (MAX_ATTEMPTS - 1) * 10_000 + LOCKOUT_MS + WINDOW_MS + 1;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+    at(secondRoundStart + attempt * 10_000);
+    assert.equal(await attemptAndAudit(keys), "counted");
+  }
+  at(secondRoundStart + MAX_ATTEMPTS * 10_000);
+  assert.equal(await attemptAndAudit(keys), "refused+audited");
+});
+
+test("a locked IP is audited once even when every attempt uses a new username", { skip: moduleMocksUnavailable }, async () => {
+  for (let index = 0; index < MAX_ATTEMPTS; index += 1) {
+    await attemptAndAudit([`username:user${index}`, "ip:198.51.100.1"]);
+  }
+  assert.equal(await attemptAndAudit(["username:random-a", "ip:198.51.100.1"]), "refused+audited");
+  assert.equal(await attemptAndAudit(["username:random-b", "ip:198.51.100.1"]), "refused");
+  assert.equal(await attemptAndAudit(["username:random-c", "ip:198.51.100.1"]), "refused");
+});
+
+test("keys that are not locked are never claimed", { skip: moduleMocksUnavailable }, async () => {
+  const { claimLoginBlockedAudit } = await import("@/lib/login-rate-limit");
+  const keys = ["username:somchai", "ip:203.0.113.7"];
+  for (let attempt = 0; attempt < MAX_ATTEMPTS - 1; attempt += 1) await attemptWrongPassword(keys);
+  assert.equal(await claimLoginBlockedAudit(keys), false);
+  assert.equal(await claimLoginBlockedAudit(["username:nobody"]), false);
+  assert.equal(await claimLoginBlockedAudit([]), false);
+});
+
+test("parallel refused attempts produce exactly one claim", { skip: moduleMocksUnavailable }, async () => {
+  const { claimLoginBlockedAudit } = await import("@/lib/login-rate-limit");
+  const keys = ["username:somchai"];
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) await attemptWrongPassword(keys);
+  at(1_000);
+  const results = await Promise.all(Array.from({ length: 8 }, () => claimLoginBlockedAudit(keys)));
+  assert.equal(results.filter(Boolean).length, 1);
 });
 
 test("parallel failures are all counted and never collide on the first insert", { skip: moduleMocksUnavailable }, async () => {

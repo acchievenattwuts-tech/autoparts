@@ -1,7 +1,6 @@
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { z } from "zod";
 import { db } from "@/lib/db";
 import {
   getRequestContextFromHeaders,
@@ -9,18 +8,29 @@ import {
 } from "@/lib/audit-log";
 import { AuditAction } from "@/lib/generated/prisma";
 import {
+  claimLoginBlockedAudit,
   clearFailedLogins,
   getLoginThrottleKeys,
   isLoginBlocked,
   recordFailedLogin,
 } from "@/lib/login-rate-limit";
 import { getAllPermissionKeys, isKnowledgePermission } from "@/lib/access-control";
+import { loginCredentialsSchema } from "@/lib/login-credentials";
 import { authConfig } from "./auth.config";
 
-const loginSchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(1),
-});
+/**
+ * True when this refused attempt is the first of its lock round and should be
+ * audited. If the claim itself fails, audit anyway: losing the record of a
+ * blocked attempt is worse than writing one extra row.
+ */
+async function shouldAuditBlockedLogin(throttleKeys: string[]): Promise<boolean> {
+  try {
+    return await claimLoginBlockedAudit(throttleKeys);
+  } catch (error) {
+    console.warn("[auth] blocked-login audit claim failed", error);
+    return true;
+  }
+}
 
 /**
  * Auth.js throws CredentialsSignin whenever authorize() returns null, i.e. on
@@ -38,7 +48,7 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
   providers: [
     Credentials({
       async authorize(credentials, request) {
-        const parsed = loginSchema.safeParse(credentials);
+        const parsed = loginCredentialsSchema.safeParse(credentials);
         if (!parsed.success) return null;
 
         const username = parsed.data.username.trim().toLowerCase();
@@ -47,13 +57,15 @@ export const { auth, signIn, signOut, handlers, unstable_update } = NextAuth({
         const requestContext = getRequestContextFromHeaders(request.headers);
 
         if (await isLoginBlocked(throttleKeys)) {
-          await safeWriteAuditLog({
-            ...requestContext,
-            action: AuditAction.LOGIN_FAILED,
-            entityType: "Auth",
-            entityRef: username,
-            meta: { reason: "LOGIN_BLOCKED" },
-          });
+          if (await shouldAuditBlockedLogin(throttleKeys)) {
+            await safeWriteAuditLog({
+              ...requestContext,
+              action: AuditAction.LOGIN_FAILED,
+              entityType: "Auth",
+              entityRef: username,
+              meta: { reason: "LOGIN_BLOCKED" },
+            });
+          }
           return null;
         }
 

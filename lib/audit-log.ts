@@ -186,6 +186,28 @@ export function getAuditActorFromSession(session: Session | null | undefined): A
   };
 }
 
+/**
+ * Longest values kept for the free-text AuditLog columns. They are unbounded
+ * `text`, and some values come from unauthenticated requests (the login
+ * username, the User-Agent header), so an oversized value is cut instead of
+ * stored whole. Real values are far shorter: on 2026-11-12 the longest
+ * entityRef in production was 57 characters, userAgent 181 and ipAddress 15.
+ */
+export const AUDIT_ENTITY_REF_MAX_LENGTH = 255;
+export const AUDIT_USER_AGENT_MAX_LENGTH = 512;
+export const AUDIT_IP_ADDRESS_MAX_LENGTH = 64;
+
+/** Cuts `value` to `maxLength` UTF-16 units without leaving half a surrogate pair. */
+export function truncateAuditText(value: string | null | undefined, maxLength: number): string | null {
+  if (value === null || value === undefined) return null;
+  if (value.length <= maxLength) return value;
+
+  const cut = value.slice(0, maxLength);
+  const lastCode = cut.charCodeAt(cut.length - 1);
+  const endsWithHighSurrogate = lastCode >= 0xd800 && lastCode <= 0xdbff;
+  return endsWithHighSurrogate ? cut.slice(0, -1) : cut;
+}
+
 function normalizeAuditPayload(input: AuditLogInput) {
   const beforeValue =
     input.before === undefined
@@ -213,12 +235,12 @@ function normalizeAuditPayload(input: AuditLogInput) {
     action: input.action,
     entityType: input.entityType,
     entityId: input.entityId ?? null,
-    entityRef: input.entityRef ?? null,
+    entityRef: truncateAuditText(input.entityRef, AUDIT_ENTITY_REF_MAX_LENGTH),
     before: beforeValue,
     after: afterValue,
     meta: metaValue,
-    ipAddress: input.ipAddress ?? null,
-    userAgent: input.userAgent ?? null,
+    ipAddress: truncateAuditText(input.ipAddress, AUDIT_IP_ADDRESS_MAX_LENGTH),
+    userAgent: truncateAuditText(input.userAgent, AUDIT_USER_AGENT_MAX_LENGTH),
   };
 }
 

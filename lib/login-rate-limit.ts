@@ -81,6 +81,36 @@ export async function recordFailedLogin(keys: string[]): Promise<void> {
   );
 }
 
+/**
+ * Claims the first refused attempt of the current lock round, so a locked-out
+ * caller produces one LOGIN_BLOCKED audit row per round instead of one row per
+ * request (refused attempts are never counted, so without this an attacker could
+ * add audit rows without limit while locked).
+ *
+ * recordFailedLogin() sets `updatedAt` to the moment of the failure that locks
+ * the key and `lockedUntil` to exactly LOCKOUT_MS later, and nothing else writes
+ * a locked row until the lock ends. So "lockedUntil - updatedAt >= LOCKOUT_MS"
+ * means "not claimed yet"; the claim moves `updatedAt` forward by at least 1 ms
+ * (even when the refused attempt lands in the same millisecond as the lock),
+ * which makes the gap smaller and the row unclaimable for the rest of the round. A new lock round
+ * (recordFailedLogin after the lock) resets both columns and can be claimed again.
+ * The lock itself (`lockedUntil`) is never changed, and concurrent refused
+ * attempts serialize on the row lock, so exactly one of them wins.
+ */
+export async function claimLoginBlockedAudit(keys: string[]): Promise<boolean> {
+  if (keys.length === 0) return false;
+
+  const now = new Date();
+  const claimed = await db.$executeRaw`
+    UPDATE "LoginThrottle"
+    SET "updatedAt" = GREATEST(${now}::timestamptz, "updatedAt" + INTERVAL '1 millisecond')
+    WHERE "key" = ANY(${keys}::text[])
+      AND "lockedUntil" > ${now}
+      AND "lockedUntil" - "updatedAt" >= ${LOCKOUT_MS}::double precision * INTERVAL '1 millisecond'
+  `;
+  return claimed > 0;
+}
+
 export async function clearFailedLogins(keys: string[]): Promise<void> {
   if (keys.length === 0) return;
 
