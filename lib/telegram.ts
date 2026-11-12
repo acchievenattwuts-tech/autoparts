@@ -40,6 +40,7 @@ const notificationTypeThaiLabel: Record<NotificationType, string> = {
   PURCHASE_BUDGET_LOW: "งบสั่งซื้อใกล้หมด",
   PURCHASE_BUDGET_EXCEEDED: "งบสั่งซื้อติดลบ (ใช้เกินงบ)",
   PAYMENT_SLIP_FLAGGED: "สลิปโอนเงินมีคำเตือน (ซ้ำ / ผู้รับไม่ตรง)",
+  SALE_BELOW_COST: "ขายต่ำกว่าทุน",
 };
 
 export function getNotificationTypeThaiLabel(type: NotificationType): string {
@@ -123,6 +124,7 @@ const notificationTypeEmoji: Record<NotificationType, string> = {
   PURCHASE_BUDGET_LOW: "💰",
   PURCHASE_BUDGET_EXCEEDED: "💰",
   PAYMENT_SLIP_FLAGGED: "⚠️",
+  SALE_BELOW_COST: "📉",
 };
 
 /** Footer tag flagging urgency — only for WARNING/ERROR so routine INFO stays

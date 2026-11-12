@@ -5,7 +5,10 @@ import { getDeliveryErrorLogCode } from "@/lib/line-delivery-transport";
 import { isManualMarketplaceChannel } from "@/lib/marketplace/config";
 import { buildOutOfStockProductsWhere } from "@/lib/out-of-stock-products";
 import { PURCHASE_BUDGET_AUDIT_ENTITY, PURCHASE_BUDGET_LINK } from "@/lib/purchase-budget-core";
+import { formatBaht } from "@/lib/purchase-budget-format";
 import { checkRateLimit } from "@/lib/rate-limit";
+import type { SaleBelowCostLine } from "@/lib/sale-below-cost";
+import { formatSaleQuantity } from "@/lib/sale-quantity";
 import { sendTelegramNotification, shouldSendTelegramForNotification } from "@/lib/telegram";
 import { formatDateThai, formatDateTimeThai, getThailandDateKey } from "@/lib/th-date";
 
@@ -447,6 +450,63 @@ export async function notifyMarketplaceReturnRecorded(input: {
     entityType: "CreditNote",
     entityId: input.creditNoteId,
   });
+}
+
+/** Lines listed in one below-cost alert; the rest are counted. */
+const SALE_BELOW_COST_MAX_LINES = 10;
+
+type SaleBelowCostAlertLine = SaleBelowCostLine & { productCode: string; productName: string };
+
+/** One bullet per line: product, quantity, price and cost per the unit sold. */
+export function buildSaleBelowCostBody(lines: SaleBelowCostAlertLine[], priceExcludesVat: boolean): string {
+  const priceLabel = priceExcludesVat ? "ราคาขายก่อน VAT" : "ราคาขาย";
+  const shown = lines.slice(0, SALE_BELOW_COST_MAX_LINES).map((line) =>
+    `• [${line.productCode}] ${line.productName} ${formatSaleQuantity(line.qty)} ${line.unitName} — ${priceLabel} ${formatBaht(line.pricePerUnit)} ทุน ${formatBaht(line.costPerUnit)} บาท/${line.unitName}`,
+  );
+  const hidden = lines.length - shown.length;
+  return [...shown, ...(hidden > 0 ? [`และอีก ${hidden} รายการ`] : [])].join("\n");
+}
+
+/**
+ * A sale was saved with lines priced below cost (lib/sale-below-cost.ts). One alert per save,
+ * bell + Telegram, linking to the sale. Callers use safeNotifySaleBelowCost after commit.
+ */
+export async function notifySaleBelowCost(input: {
+  saleId: string;
+  saleNo: string;
+  /** True when the sale's prices include VAT, so the price shown is the pre-VAT amount. */
+  priceExcludesVat: boolean;
+  lines: SaleBelowCostLine[];
+}): Promise<number> {
+  if (input.lines.length === 0) return 0;
+  const products = await db.product.findMany({
+    where: { id: { in: [...new Set(input.lines.map((line) => line.productId))] } },
+    select: { id: true, code: true, name: true },
+  });
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const lines = input.lines.map((line) => ({
+    ...line,
+    productCode: productById.get(line.productId)?.code ?? "-",
+    productName: productById.get(line.productId)?.name ?? "ไม่พบชื่อสินค้า",
+  }));
+  return createNotification({
+    type: NotificationType.SALE_BELOW_COST,
+    severity: NotificationSeverity.WARNING,
+    title: `ขายต่ำกว่าทุน ${input.saleNo} (${lines.length} รายการ)`,
+    body: buildSaleBelowCostBody(lines, input.priceExcludesVat),
+    link: `/admin/sales/${input.saleId}`,
+    entityType: "Sale",
+    entityId: input.saleId,
+  });
+}
+
+/** Never lets a failed alert break or slow the sale save (.rules §10). */
+export async function safeNotifySaleBelowCost(input: Parameters<typeof notifySaleBelowCost>[0]): Promise<void> {
+  try {
+    await notifySaleBelowCost(input);
+  } catch (error) {
+    console.error("[notifySaleBelowCost]", error instanceof Error ? error.message : "failed");
+  }
 }
 
 export type NotificationListItem = {

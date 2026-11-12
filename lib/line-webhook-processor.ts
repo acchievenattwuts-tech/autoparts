@@ -129,7 +129,7 @@ import {
 import { recordKnowledgeRagHumanOnlySignal } from "@/lib/chat-core/knowledge-rag";
 import { buildChatShopInfoMessage } from "@/lib/chat-core/shop-info";
 import { getPublicSiteConfig } from "@/lib/site-config";
-import { isLinePipelineEvent, normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
+import { isLineGroupOrRoomEvent, isLinePipelineEvent, normalizeLineWebhookEvents } from "@/lib/line-webhook-events";
 import { notifyLineOaNeedsAdmin } from "@/lib/notifications";
 import { mirrorLineMessageToTelegram } from "@/lib/telegram";
 import type { LinePushMessage } from "@/lib/line-daily-summary";
@@ -4499,8 +4499,9 @@ export async function processLineWebhookPayload(
   }
 
   for (const event of events) {
-    // Non-message events (unsend, unfollow, …) never enter the pipeline.
-    if (!event.lineUserId || !isLinePipelineEvent(event)) {
+    // Non-message events (unsend, unfollow, …) never enter the pipeline, nor do
+    // messages typed inside a LINE group / room (the bot stays silent there).
+    if (!event.lineUserId || !isLinePipelineEvent(event) || isLineGroupOrRoomEvent(event)) {
       result.skippedCount += 1;
       continue;
     }
@@ -4618,8 +4619,10 @@ async function processCoalescedEvents(
 
   for (const event of events) {
     // Non-message events (unsend, unfollow, …) never enter the pipeline: no
-    // INBOUND row, no seq bump, no typing dots, no admin handoff.
-    if (!event.lineUserId || !isLinePipelineEvent(event)) {
+    // INBOUND row, no seq bump, no typing dots, no admin handoff. The same for
+    // messages typed inside a LINE group / room: no conversation, no AI, no
+    // Telegram mirror, no reply into the group.
+    if (!event.lineUserId || !isLinePipelineEvent(event) || isLineGroupOrRoomEvent(event)) {
       result.skippedCount += 1;
       continue;
     }

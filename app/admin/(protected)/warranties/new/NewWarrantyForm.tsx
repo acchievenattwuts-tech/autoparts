@@ -3,7 +3,10 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createWarranty, getSaleItems } from "../actions";
+import { searchWarrantyProducts } from "./actions";
+import type { WarrantyProductOption } from "./warranty-product-options";
 import { Search, Receipt, UserPlus } from "lucide-react";
+import ProductSearchSelect from "@/components/shared/ProductSearchSelect";
 import SearchableSelect, { type SelectOption } from "@/components/shared/SearchableSelect";
 import { formatDateThai, getThailandDateKey } from "@/lib/th-date";
 import { formatSaleQuantity } from "@/lib/sale-quantity";
@@ -22,21 +25,14 @@ interface CustomerOption {
   phone: string | null;
 }
 
-interface ProductOption {
-  id: string;
-  code: string;
-  name: string;
-}
-
 interface Props {
   recentSales: SaleOption[];
   customers: CustomerOption[];
-  products: ProductOption[];
 }
 
 type Mode = "WITH_SALE" | "NO_SALE";
 
-const NewWarrantyForm = ({ recentSales, customers, products }: Props) => {
+const NewWarrantyForm = ({ recentSales, customers }: Props) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +51,8 @@ const NewWarrantyForm = ({ recentSales, customers, products }: Props) => {
 
   // NO_SALE state
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [selectedProductId, setSelectedProductId] = useState("");
+  const [selectedProduct, setSelectedProduct] = useState<WarrantyProductOption | null>(null);
+  const selectedProductId = selectedProduct?.id ?? "";
   const [startDate, setStartDate] = useState<string>(getThailandDateKey());
 
   const handleSaleSelect = async (saleId: string) => {
@@ -262,14 +259,15 @@ const NewWarrantyForm = ({ recentSales, customers, products }: Props) => {
             <label className="block text-sm font-medium text-gray-700 dark:text-slate-200 mb-1">
               เลือกสินค้า <span className="text-red-500">*</span>
             </label>
-            <SearchableSelect
-              options={products.map((p): SelectOption => ({
-                id: p.id,
-                label: p.name,
-                sublabel: p.code,
-              }))}
+            <ProductSearchSelect
+              products={selectedProduct ? [selectedProduct] : []}
+              searchProducts={searchWarrantyProducts}
               value={selectedProductId}
-              onChange={setSelectedProductId}
+              selectedProduct={selectedProduct}
+              onChange={(id) => {
+                if (!id) setSelectedProduct(null);
+              }}
+              onProductSelect={setSelectedProduct}
               placeholder="โปรดระบุสินค้า"
             />
             <input type="hidden" name="productId" value={selectedProductId} />

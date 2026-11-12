@@ -1,4 +1,5 @@
 import { copy, del, put } from "@vercel/blob";
+import { isShopPublicBlobUrl } from "@/lib/blob-store-host";
 import {
   CATEGORY_IMAGE_ROOT,
   PRODUCT_IMAGE_ROOT,
@@ -16,7 +17,6 @@ import {
  * URLs through untouched and `next.config.ts` allows the Blob host.
  */
 
-const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 const PUBLIC_BLOB_CACHE_MAX_AGE_SECONDS = 31_536_000; // 1 year — content-addressed paths.
 
 export interface PublicObjectUploadInput {
@@ -38,7 +38,11 @@ export async function uploadProductsBucketObject(input: PublicObjectUploadInput)
   return result.url;
 }
 
-/** The object path of one of our Blob URLs under `root/` (else null). */
+/**
+ * The object path of one of our Blob URLs under `root/` (else null). "Ours" is the
+ * shop's own store only (`isShopPublicBlobUrl`: https, exact host) — the one host
+ * next/image and the CSP allow — never another Vercel account's public Blob store.
+ */
 function getBlobObjectPathUnderRoot(url: string, root: string): string | null {
   let parsed: URL;
   try {
@@ -46,7 +50,7 @@ function getBlobObjectPathUnderRoot(url: string, root: string): string | null {
   } catch {
     return null;
   }
-  if (!parsed.hostname.endsWith(BLOB_HOST_SUFFIX)) return null;
+  if (!isShopPublicBlobUrl(parsed)) return null;
 
   let objectPath: string;
   try {
@@ -63,20 +67,22 @@ export function getBlobProductObjectPath(url: string): string | null {
 }
 
 /**
- * True only for *our* product-image objects stored in Vercel Blob — the public
- * Blob host plus the `products/` object root. Used to gate deletion so an
- * arbitrary Blob URL can never be removed through here.
+ * True only for *our* product-image objects stored in Vercel Blob — the shop's own
+ * store (https, exact host) plus the `products/` object root. Gates which image URLs
+ * a product save accepts, copies and deletes, so another store's URL (which
+ * next/image would not load) is refused and an arbitrary Blob URL is never removed.
  */
 export function isOwnedBlobProductUrl(url: string): boolean {
   return getBlobProductObjectPath(url) !== null;
 }
 
 /**
- * True only for *our* category-thumbnail objects — the public Blob host plus the
- * `settings/categories/` object root. Used to validate what an admin form may
- * store in `Category.imageUrl`: `next.config.ts` only allows next/image to load
- * the Blob host, so any other URL would render as a broken tile on the
- * storefront rather than an image.
+ * True only for *our* category-thumbnail objects — the shop's own Blob store
+ * (`isShopPublicBlobUrl`: https, exact host — not any other account's public
+ * Blob store) plus the `settings/categories/` object
+ * root. Used to validate what an admin form may store in `Category.imageUrl`:
+ * `next.config.ts` only allows next/image to load that host, so any other URL
+ * would render as a broken tile on the storefront rather than an image.
  */
 export function isOwnedBlobCategoryImageUrl(url: string): boolean {
   return getBlobObjectPathUnderRoot(url, CATEGORY_IMAGE_ROOT) !== null;

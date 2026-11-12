@@ -282,6 +282,9 @@ export async function createAdjustment(
         const inputItem = validItems[idx];
         const qtyBase = Math.abs(Number(adjustmentItem.qtyAdjust));
         const source = Number(adjustmentItem.qtyAdjust) > 0 ? ("ADJUST_IN" as const) : ("ADJUST_OUT" as const);
+        // "ราคา/หน่วย" is the price per the unit chosen on the line (owner, 2026-11-12); StockCard
+        // priceIn is per base unit, so divide by that unit's scale — as the lot cost below does.
+        const scale = unitScaleMap.get(`${adjustmentItem.productId}::${inputItem.unitName}`) ?? 1;
 
         const stockCardId = await writeStockCard(tx, {
           productId: adjustmentItem.productId,
@@ -290,7 +293,7 @@ export async function createAdjustment(
           source,
           qtyIn: source === "ADJUST_IN" ? qtyBase : 0,
           qtyOut: source === "ADJUST_OUT" ? qtyBase : 0,
-          priceIn: inputItem.price,
+          priceIn: inputItem.price / scale,
           detail: adjustmentItem.reason ?? note ?? "ปรับสต๊อก",
           referenceId: adjustment.id,
         });
@@ -298,7 +301,6 @@ export async function createAdjustment(
         // Lots were validated for every lot-controlled line before the header insert.
         const product = productMap.get(adjustmentItem.productId);
         if (product?.isLotControl) {
-          const scale = unitScaleMap.get(`${adjustmentItem.productId}::${inputItem.unitName}`) ?? 1;
           const lotsInBase = inputItem.lotItems.map((lot) => ({
             lotNo: lot.lotNo.trim(),
             qtyInBase: lot.qty * scale,

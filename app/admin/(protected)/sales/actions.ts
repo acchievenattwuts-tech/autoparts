@@ -18,7 +18,9 @@ import { reportCriticalError } from "@/lib/error-reporting";
 import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
 import { writeStockCard, recalculateStockCard } from "@/lib/stock-card";
-import { dispatchOutOfStockAlerts, findProductIdsWithStock } from "@/lib/notifications";
+import { dispatchOutOfStockAlerts, findProductIdsWithStock, safeNotifySaleBelowCost } from "@/lib/notifications";
+import { findSaleLineBelowCost, type SaleBelowCostLine } from "@/lib/sale-below-cost";
+import { isActiveChannelRefViolation, normalizeChannelRefNo } from "@/lib/sale-channel-ref";
 import { generateSaleNo } from "@/lib/doc-number";
 import { isUniqueViolationOn, withDocNumberRetry } from "@/lib/doc-number-retry";
 import {
@@ -249,7 +251,8 @@ const saleItemSchema = z.object({
 
 const saleSchema = z.object({
   channel:         z.nativeEnum(SaleChannel).default(SaleChannel.STORE),
-  channelRefNo:    z.string().trim().min(1).max(100).optional(),
+  // Stored upper-case and trimmed: the M9 index compares order numbers that way (lib/sale-channel-ref.ts).
+  channelRefNo:    z.string().trim().min(1).max(100).transform(normalizeChannelRefNo).optional(),
   saleDate:        z.string().min(1, "กรุณาระบุวันที่"),
   customerId:      z.string().min(1, "กรุณาเลือกลูกค้า").max(50),
   saleType:        z.nativeEnum(SaleType).default(SaleType.RETAIL),
@@ -668,6 +671,8 @@ export async function createSale(
       : "SA";
   let saleNo = "";
   let createdSaleId = "";
+  // Lines priced below cost (M10), reported after commit; refilled on every attempt.
+  let belowCostLines: SaleBelowCostLine[] = [];
 
   try {
     const requestContext = await getRequestContext();
@@ -686,6 +691,7 @@ export async function createSale(
       run: async (nextSaleNo) => {
         saleNo = nextSaleNo;
         createdSaleId = "";
+        belowCostLines = [];
         await dbTx(async (tx) => {
           await prepareSaleQuotationReference(tx, null, quotationId);
           // A new sale dated in a month whose profit was distributed is refused (no override on create).
@@ -812,6 +818,11 @@ export async function createSale(
 
             const itemTotal    = item.qty * item.salePrice;
             const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+            const belowCostLine = findSaleLineBelowCost({
+              productId: item.productId, unitName: item.unitName, qty: item.qty, salePrice: item.salePrice,
+              unitScale: scale, costPerBase, vatType, vatRate,
+            });
+            if (belowCostLine) belowCostLines.push(belowCostLine);
             const configuredAmount = normalPriceByProduct.get(item.productId);
             const resolvedNormalPrice = activePriceList
               ? resolveNormalPrice({
@@ -1012,6 +1023,12 @@ export async function createSale(
       );
     }
 
+    // Below-cost alert (M10) — after commit and after the response; never blocks the sale.
+    if (belowCostLines.length > 0 && createdSaleId) {
+      const alert = { saleId: createdSaleId, saleNo, priceExcludesVat: vatType === VatType.INCLUDING_VAT, lines: belowCostLines };
+      after(() => safeNotifySaleBelowCost(alert));
+    }
+
     // ล้างแคชแบบ deferred ด้วย after() — callback ถูกรัน "หลัง" response ถูกส่ง
     // ออกไปแล้ว ทำให้ Server Action ไม่แนบ RSC payload ของหน้าปัจจุบันกลับมา
     // router จึงไม่ re-render หน้าฟอร์มทิ้ง (แก้อาการจอกระพริบ 1 ครั้งหลังบันทึก)
@@ -1040,10 +1057,12 @@ export async function createSale(
     await reportCriticalError(err, { scope: "sales.create" });
     if (
       isManualMarketplaceChannel(channel) &&
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002" &&
-      // A saleNo collision that survived the retries is not a duplicate order ref.
-      !isUniqueViolationOn(err, "saleNo")
+      (isActiveChannelRefViolation(err) || (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === "P2002" &&
+        // A saleNo collision that survived the retries is not a duplicate order ref.
+        !isUniqueViolationOn(err, "saleNo")
+      ))
     ) {
       return { error: `${getMarketplaceChannelConfig(channel).orderRefLabel}นี้ถูกบันทึกแล้ว` };
     }
@@ -1348,10 +1367,12 @@ export async function updateSale(
     if (customerId !== existing.customerId) {
       return { error: `ลูกค้าอ้างอิงของ ${marketplaceConfig.label} ไม่สามารถเปลี่ยนได้` };
     }
+    // ACTIVE sales only (M9): a cancelled sale's order number may be keyed again.
     const duplicateOrder = await db.sale.findFirst({
       where: {
         channel: existing.channel,
         channelRefNo,
+        status: "ACTIVE",
         id: { not: id },
       },
       select: { id: true },
@@ -1583,6 +1604,8 @@ export async function updateSale(
     : validItems.map((item) => item.productId);
   const lockOverride = readPeriodLockOverride(formData, session.user.permissions);
   let periodLock: PeriodLockResult = OPEN_PERIOD_RESULT;
+  // Lines this save re-prices and re-costs that are below cost (M10), reported after commit.
+  let belowCostLines: SaleBelowCostLine[] = [];
   const storedSaleLines = existing.items.map((item) => ({
     productId: item.productId,
     quantity: Number(item.quantity),
@@ -1676,6 +1699,7 @@ export async function updateSale(
       findProductIdsWithStock(stockDeductingProductIds),
     ]);
     await dbTx(async (tx) => {
+      belowCostLines = [];
       const previousQuotationId = await prepareSaleQuotationReference(tx, id, quotationId, existing.updatedAt);
       const quotationRevision = quotationId ? quotationId === existing.quotationId && existing.quotationRevision != null ? existing.quotationRevision : (await tx.salesQuotation.findUniqueOrThrow({ where: { id: quotationId }, select: { revision: true } })).revision : null;
       // Old + new line products are locked in one sorted batch with the Sale's stock products.
@@ -1876,6 +1900,12 @@ export async function updateSale(
 
         const itemTotal    = item.qty * item.salePrice;
         const itemSubtotal = calcItemSubtotal(itemTotal, vatType, vatRate);
+        // Only lines written by this save carry a new price / cost snapshot; kept lines are not re-reported.
+        const belowCostLine = findSaleLineBelowCost({
+          productId: item.productId, unitName: item.unitName, qty: item.qty, salePrice: item.salePrice,
+          unitScale: scale, costPerBase, vatType, vatRate,
+        });
+        if (belowCostLine) belowCostLines.push(belowCostLine);
 
         const saleItem = await tx.saleItem.create({
           data: {
@@ -2047,6 +2077,12 @@ export async function updateSale(
       );
     }
 
+    // Below-cost alert (M10) — after commit and after the response; never blocks the edit.
+    if (belowCostLines.length > 0) {
+      const alert = { saleId: id, saleNo: existing.saleNo, priceExcludesVat: vatType === VatType.INCLUDING_VAT, lines: belowCostLines };
+      after(() => safeNotifySaleBelowCost(alert));
+    }
+
     // ล้างแคชแบบ deferred ด้วย after() — เหตุผลเดียวกับใน createSale
     // ฟอร์มแก้ไขอยู่หน้าเดิมหลังบันทึก จึงต้องไม่ให้ router re-render ทิ้ง
     after(() => {
@@ -2078,8 +2114,7 @@ export async function updateSale(
     await reportCriticalError(err, { scope: "sales.update", entityId: id, userId: session.user.id });
     if (
       marketplaceConfig &&
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
+      (isActiveChannelRefViolation(err) || (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"))
     ) {
       return { error: `${marketplaceConfig.orderRefLabel}นี้ถูกบันทึกแล้ว` };
     }

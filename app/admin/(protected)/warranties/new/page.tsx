@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { db } from "@/lib/db";
 import { requirePermission } from "@/lib/require-auth";
+import { getTransactionCustomers } from "@/lib/transaction-options";
 import Link from "next/link";
 import { ShieldCheck, ChevronRight } from "lucide-react";
 import NewWarrantyForm from "./NewWarrantyForm";
@@ -12,7 +13,9 @@ const NewWarrantyPage = async () => {
 
   const since = addThailandDays(parseDateOnlyToDate(getThailandDateKey()), -60);
 
-  const [recentSales, customers, products] = await Promise.all([
+  // Products are searched on demand by the shared product picker (searchWarrantyProducts), so
+  // none are loaded here; customers come from the cached transaction customer list.
+  const [recentSales, transactionCustomers] = await Promise.all([
     db.sale.findMany({
       where: {
         status: "ACTIVE",
@@ -27,28 +30,14 @@ const NewWarrantyPage = async () => {
         customerName: true,
       },
     }),
-    db.customer.findMany({
-      where: { isActive: true },
-      orderBy: { name: "asc" },
-      take: 500,
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        phone: true,
-      },
-    }),
-    db.product.findMany({
-      where: { isActive: true, isLotControl: false },
-      orderBy: { name: "asc" },
-      take: 500,
-      select: {
-        id: true,
-        code: true,
-        name: true,
-      },
-    }),
+    getTransactionCustomers(),
   ]);
+  const customers = transactionCustomers.map((customer) => ({
+    id: customer.id,
+    name: customer.name,
+    code: customer.code,
+    phone: customer.phone,
+  }));
 
   return (
     <div>
@@ -67,7 +56,6 @@ const NewWarrantyPage = async () => {
         <NewWarrantyForm
           recentSales={recentSales}
           customers={customers}
-          products={products}
         />
       </div>
     </div>

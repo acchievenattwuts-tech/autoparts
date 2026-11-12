@@ -8,6 +8,7 @@ import {
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { deletePrivateBlobObjects, putPrivateBlobObject } from "@/lib/private-blob-storage";
 import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/private-file-ref";
+import { isShopPublicBlobUrl } from "@/lib/blob-store-host";
 
 /**
  * Storage for expense evidence files (transfer slips / receipts). Images are
@@ -25,7 +26,6 @@ import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/priva
 const IMAGE_MAX_DIMENSION = 1000; // px — enough to read amounts/reference numbers.
 const IMAGE_WEBP_QUALITY = 60;
 const PDF_MAGIC_BYTES = [0x25, 0x50, 0x44, 0x46]; // "%PDF"
-const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
 export interface PreparedExpenseAttachment {
   body: Uint8Array;
@@ -104,7 +104,8 @@ export function isOwnedExpenseAttachmentUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (!parsed.hostname.endsWith(BLOB_HOST_SUFFIX)) return false;
+  // The shop's own public store only (https, exact host) — never another account's store.
+  if (!isShopPublicBlobUrl(parsed)) return false;
 
   let objectPath: string;
   try {

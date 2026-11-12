@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 import bundleAnalyzer from "@next/bundle-analyzer";
+// The shop's own public Blob store, listed exactly (not the wildcard) below.
+// Relative import so it resolves the same under Next's config loader, tsx and tsc.
+import { PUBLIC_BLOB_STORE_HOST } from "./lib/blob-store-host";
 
 const scriptSrcDirectives = [
   "'self'",
@@ -38,7 +41,7 @@ const securityHeaders = [
       // Tailwind uses inline styles
       "style-src 'self' 'unsafe-inline'",
       // Allow images from self, Vercel Blob CDN, analytics pixels, data URIs, and OpenStreetMap tiles
-      "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org",
+      `img-src 'self' data: blob: https://${PUBLIC_BLOB_STORE_HOST} https://www.googletagmanager.com https://www.google-analytics.com https://*.line-scdn.net https://*.tile.openstreetmap.org`,
       "font-src 'self' data:",
       // Allow API calls to Supabase and Google Analytics collection endpoints.
       "connect-src 'self' https://*.supabase.co https://*.supabase.in https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://api.line.me https://liff.line.me https://*.line-scdn.net https://nominatim.openstreetmap.org",
@@ -175,7 +178,7 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**.public.blob.vercel-storage.com",
+        hostname: PUBLIC_BLOB_STORE_HOST,
         pathname: "/**",
       },
     ],

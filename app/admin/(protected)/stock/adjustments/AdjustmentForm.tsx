@@ -12,6 +12,7 @@ import {
   type LotAvailableJSON,
 } from "@/lib/lot-control-client";
 import { getAdjustmentLineLotError, NO_LOT_STOCK_MESSAGE } from "./adjustment-lot-guard";
+import { getAdjustmentUnitScale, rescaleAdjustmentUnitPrice } from "./adjustment-unit-price";
 import {
   createAdjustmentRowKey,
   createRowRequestTracker,
@@ -63,10 +64,12 @@ const emptyItem = (): AdjItem => ({
   lotItems: [],
 });
 
+// Product prices are per base unit; the line's price is per its chosen unit (scale 1 = unchanged).
 const getDefaultPrice = (
   product: ProductOption | undefined,
   type: "ADJUST_IN" | "ADJUST_OUT",
-) => (product ? (type === "ADJUST_IN" ? product.costPrice : product.salePrice) : 0);
+  unitScale = 1,
+) => rescaleAdjustmentUnitPrice(product ? (type === "ADJUST_IN" ? product.costPrice : product.salePrice) : 0, 1, unitScale);
 
 const AdjustmentForm = ({
   products: initialProducts,
@@ -170,7 +173,7 @@ const AdjustmentForm = ({
         if (field === "type") {
           const product = products.find((p) => p.id === updated.productId);
           const nextType = String(value) as "ADJUST_IN" | "ADJUST_OUT";
-          updated.price = getDefaultPrice(product, nextType);
+          updated.price = getDefaultPrice(product, nextType, getAdjustmentUnitScale(product?.units, updated.unitName));
 
           if (product?.isLotControl) {
             updated.lotItems = [
@@ -184,6 +187,19 @@ const AdjustmentForm = ({
             ];
             clearRowLots(item.rowKey);
             if (nextType === "ADJUST_OUT") void loadLots(item.rowKey, product.id, product.lotIssueMethod);
+          }
+        }
+
+        if (field === "unitName" && updated.productId) {
+          const product = products.find((p) => p.id === updated.productId);
+          const fromScale = getAdjustmentUnitScale(product?.units, item.unitName);
+          const toScale = getAdjustmentUnitScale(product?.units, String(value));
+          if (fromScale !== toScale) {
+            // Same cost per base unit, expressed per the newly chosen unit (a default price follows the unit).
+            updated.price = rescaleAdjustmentUnitPrice(item.price, fromScale, toScale);
+            if (product?.isLotControl && updated.type === "ADJUST_IN" && updated.lotItems.length === 1) {
+              updated.lotItems = [{ ...updated.lotItems[0], unitCost: updated.price }];
+            }
           }
         }
 

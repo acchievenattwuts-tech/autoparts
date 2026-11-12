@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { isShopPublicBlobUrl } from "@/lib/blob-store-host";
 import { readPrivateBlobObject } from "@/lib/private-blob-storage";
 import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/private-file-ref";
 
@@ -14,11 +15,21 @@ export const privateFileNotFoundResponse = (): Response => new Response("Not Fou
 const encodeContentDispositionFileName = (fileName: string): string =>
   encodeURIComponent(fileName).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 
+/** A legacy public URL the app may redirect to: the shop's own Blob store only. */
+const isShopLegacyPublicFileUrl = (value: string): boolean => {
+  try {
+    return isShopPublicBlobUrl(new URL(value));
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Serves one stored evidence file to an already-authorized admin:
- *  - legacy public `https://` URL → redirect to it (it is public already);
+ *  - legacy public URL on the shop's own Blob store (`https`, exact host) → redirect
+ *    to it (it is public already);
  *  - private pathname under `root/` → stream it from the private store;
- *  - anything else (other prefix, missing object) → 404.
+ *  - anything else (another host, `http`, other prefix, missing object) → 404.
  */
 export async function respondWithStoredFile(input: {
   storedValue: string | null | undefined;
@@ -29,7 +40,7 @@ export async function respondWithStoredFile(input: {
   if (!storedValue) return privateFileNotFoundResponse();
 
   if (isLegacyPublicFileUrl(storedValue)) {
-    if (!/^https:\/\//i.test(storedValue)) return privateFileNotFoundResponse();
+    if (!isShopLegacyPublicFileUrl(storedValue)) return privateFileNotFoundResponse();
     return new Response(null, {
       status: LEGACY_REDIRECT_STATUS,
       headers: { Location: storedValue, "Cache-Control": PRIVATE_FILE_CACHE_CONTROL },

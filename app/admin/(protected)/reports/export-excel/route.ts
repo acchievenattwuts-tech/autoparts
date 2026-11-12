@@ -10,6 +10,7 @@ import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import {
   parseReportQueryFilters,
+  readReportScreenFilterParams,
   querySalesRows,
   queryPurchaseRows,
   queryCreditNoteRows,
@@ -468,6 +469,7 @@ export async function GET(request: Request) {
     categoryId: searchParams.get("categoryId") ?? undefined,
     search: searchParams.get("search") ?? undefined,
     showAll: searchParams.get("showAll") ?? undefined,
+    ...readReportScreenFilterParams(searchParams),
   };
 
   const filters = parseReportQueryFilters(params);

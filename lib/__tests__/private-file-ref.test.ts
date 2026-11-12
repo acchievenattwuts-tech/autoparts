@@ -13,7 +13,7 @@ import {
 // The same DB columns now hold either a legacy public URL (old rows, rendered
 // unchanged) or a private pathname (new rows, viewed through an auth route).
 
-const LEGACY_URL = "https://abc.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
+const LEGACY_URL = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
 
 test("a full http(s) URL is legacy; a pathname is not", () => {
   assert.equal(isLegacyPublicFileUrl(LEGACY_URL), true);
@@ -48,7 +48,7 @@ test("delivery proofs: missing -> null, legacy unchanged, private -> kind route"
   assert.equal(resolveDeliveryProofImageSource("p1", "signature", null), null);
   assert.equal(resolveDeliveryProofImageSource("p1", "photo", ""), null);
 
-  const legacy = "https://abc.public.blob.vercel-storage.com/delivery-proofs/s1/1-photo-u.jpg";
+  const legacy = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/delivery-proofs/s1/1-photo-u.jpg";
   assert.deepEqual(resolveDeliveryProofImageSource("p1", "photo", legacy), { src: legacy, isPrivate: false });
 
   assert.deepEqual(resolveDeliveryProofImageSource("p1", "signature", "delivery-proofs/s1/1-signature-u.png"), {
@@ -63,7 +63,7 @@ test("delivery proofs: missing -> null, legacy unchanged, private -> kind route"
 
 // WHT certificate (50 ทวิ) attachments carry tax IDs and follow the same split.
 test("WHT attachments: legacy URL renders as-is, private goes through the auth route", () => {
-  const legacy = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
+  const legacy = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
   assert.deepEqual(resolveWhtAttachmentViewSource({ id: "att1", url: legacy }), {
     src: legacy,
     isPrivate: false,

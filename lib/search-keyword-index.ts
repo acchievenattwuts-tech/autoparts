@@ -39,6 +39,8 @@ export type SearchKeywordRefreshOutcome = {
 };
 
 const MAX_TERM_LENGTH = 120;
+/** Popularity of every spelling-correction row (SearchSynonym and approved AI aliases). */
+const SYNONYM_KEYWORD_POPULARITY = 300;
 const SEARCH_KEYWORD_REFRESH_LOCK_NAMESPACE = 24_061;
 const SEARCH_KEYWORD_REFRESH_LOCK_KEY = 1;
 const SEARCH_KEYWORD_UPSERT_BATCH_SIZE = 250;
@@ -47,7 +49,7 @@ const REFRESH_TX_MAX_WAIT_MS = 10_000;
 const REFRESH_TX_LOCK_TIMEOUT_MS = 8_000;
 const REFRESH_TX_IDLE_IN_TX_TIMEOUT_MS = 30_000;
 const REFRESH_STATEMENT_TIMEOUT_MS = 25_000;
-// One retry only. A whole rebuild is idempotent (upsert-every-row + delete-stale
+// One retry only. A whole rebuild is idempotent (write-changed-rows + delete-stale
 // under a fresh runStartedAt), so replaying it cannot corrupt the index — but it
 // re-runs the heavy row build against a 5-connection pool, so more attempts would
 // trade a cosmetic log line for real pool pressure.
@@ -95,12 +97,37 @@ export function buildSynonymKeywordDrafts(
 ): DraftRow[] {
   const rows: DraftRow[] = [];
   for (const synonym of synonyms) {
-    const canonical = draft(synonym.term, "synonym", 300);
+    const canonical = draft(synonym.term, "synonym", SYNONYM_KEYWORD_POPULARITY);
     if (canonical) rows.push(canonical);
     for (const alias of synonym.synonyms ?? []) {
-      const aliasRow = draft(synonym.term, "synonym", 300, null, alias);
+      const aliasRow = draft(synonym.term, "synonym", SYNONYM_KEYWORD_POPULARITY, null, alias);
       if (aliasRow) rows.push(aliasRow);
     }
+  }
+  return rows;
+}
+
+/**
+ * The spelling correction carried by an approved AI category alias
+ * (`aiCorrectedTerm`: misspelling → corrected word), as a synonym row shaped
+ * exactly like a SearchSynonym alias row: normalized = the misspelling, term = the
+ * corrected word, no sublabel, the same popularity.
+ *
+ * Built from the alias row on every rebuild. It used to be written once by the
+ * approval action, and the rebuild that action triggers deleted it again because
+ * no source here produced it. Only APPROVED rows count — a PENDING suggestion is
+ * also inactive, a REJECTED one stays inactive — and the caller passes the same
+ * active MATCH aliases (of active categories) that feed the category rows, so the
+ * correction comes and goes with its alias.
+ */
+export function buildApprovedAiAliasSynonymDrafts(
+  aliases: Array<{ alias: string; reviewStatus: string; aiCorrectedTerm: string | null }>,
+): DraftRow[] {
+  const rows: DraftRow[] = [];
+  for (const alias of aliases) {
+    if (alias.reviewStatus !== "APPROVED" || !alias.aiCorrectedTerm) continue;
+    const row = draft(alias.aiCorrectedTerm, "synonym", SYNONYM_KEYWORD_POPULARITY, null, alias.alias);
+    if (row) rows.push(row);
   }
   return rows;
 }
@@ -118,7 +145,12 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
       // hard-filter value), so a bare "ผ้าเบรค" / "วาล์ว" becomes a known query.
       db.categoryAlias.findMany({
         where: { isActive: true, kind: "MATCH", category: { isActive: true } },
-        select: { alias: true, category: { select: { name: true } } },
+        select: {
+          alias: true,
+          reviewStatus: true,
+          aiCorrectedTerm: true,
+          category: { select: { name: true } },
+        },
       }),
       db.partsBrand.findMany({ where: { isActive: true }, select: { name: true } }),
       db.carBrand.findMany({ where: { isActive: true }, select: { name: true } }),
@@ -165,6 +197,14 @@ export async function buildSearchKeywordRows(): Promise<DraftRow[]> {
     const existing = byKey.get(key);
     if (!existing || row.popularity > existing.popularity) byKey.set(key, row);
   }
+
+  // Approved AI spelling corrections only fill a key no source above produced, so
+  // every row those sources build stays exactly as it was (a SearchSynonym or
+  // hot-query row with the same misspelling keeps winning, as it always did).
+  for (const row of buildApprovedAiAliasSynonymDrafts(categoryAliases)) {
+    const key = `${row.normalized}|${row.kind}`;
+    if (!byKey.has(key)) byKey.set(key, row);
+  }
   return Array.from(byKey.values());
 }
 
@@ -197,28 +237,87 @@ function chunkDraftRows(rows: DraftRow[], batchSize: number): DraftRow[][] {
   return chunks;
 }
 
+/**
+ * Writes one batch, touching only rows that differ. An existing (normalized, kind)
+ * row is updated only when term, sublabel or popularity changed; a missing one is
+ * inserted. Unchanged rows are not rewritten (no dead tuple, no WAL), so they keep
+ * their previous `updatedAt` — which no reader uses, and the stale-row delete below
+ * protects them by key instead. The ON CONFLICT branch only fires when another
+ * writer inserted the same key mid-run, and then does what the old plain upsert did.
+ */
 function buildSearchKeywordUpsertSql(rows: DraftRow[], runStartedAt: Date): Prisma.Sql {
   return Prisma.sql`
+    WITH incoming ("term", "normalized", "kind", "sublabel", "popularity") AS (
+      VALUES ${Prisma.join(
+        rows.map(
+          (row) => Prisma.sql`(
+            ${row.term}::text,
+            ${row.normalized}::text,
+            ${row.kind}::text,
+            ${row.sublabel}::text,
+            ${row.popularity}::integer
+          )`,
+        ),
+      )}
+    ),
+    changed AS (
+      UPDATE "SearchKeyword" AS existing
+      SET
+        "term" = incoming."term",
+        "sublabel" = incoming."sublabel",
+        "popularity" = incoming."popularity",
+        "updatedAt" = ${runStartedAt}
+      FROM incoming
+      WHERE existing."normalized" = incoming."normalized"
+        AND existing."kind" = incoming."kind"
+        AND (existing."term", existing."sublabel", existing."popularity")
+          IS DISTINCT FROM (incoming."term", incoming."sublabel", incoming."popularity")
+      RETURNING 1
+    )
     INSERT INTO "SearchKeyword" ("id", "term", "normalized", "kind", "sublabel", "popularity", "createdAt", "updatedAt")
-    VALUES ${Prisma.join(
-      rows.map(
-        (row) => Prisma.sql`(
-          gen_random_uuid()::text,
-          ${row.term},
-          ${row.normalized},
-          ${row.kind},
-          ${row.sublabel},
-          ${row.popularity},
-          ${runStartedAt},
-          ${runStartedAt}
-        )`,
-      ),
-    )}
+    SELECT
+      gen_random_uuid()::text,
+      incoming."term",
+      incoming."normalized",
+      incoming."kind",
+      incoming."sublabel",
+      incoming."popularity",
+      CAST(${runStartedAt} AS timestamptz),
+      CAST(${runStartedAt} AS timestamptz)
+    FROM incoming
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM "SearchKeyword" AS existing
+      WHERE existing."normalized" = incoming."normalized"
+        AND existing."kind" = incoming."kind"
+    )
     ON CONFLICT ("normalized", "kind") DO UPDATE SET
       "term" = EXCLUDED."term",
       "sublabel" = EXCLUDED."sublabel",
       "popularity" = EXCLUDED."popularity",
       "updatedAt" = ${runStartedAt}
+  `;
+}
+
+/**
+ * Deletes rows this run did not produce. `updatedAt < runStartedAt` is the same
+ * guard as before (a row written after this run started — e.g. by a concurrent
+ * writer — survives); the key check keeps the unchanged rows the batches above
+ * deliberately left with their older `updatedAt`.
+ */
+function buildSearchKeywordStaleDeleteSql(rows: DraftRow[], runStartedAt: Date): Prisma.Sql {
+  return Prisma.sql`
+    DELETE FROM "SearchKeyword" AS existing
+    WHERE existing."updatedAt" < ${runStartedAt}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM unnest(
+          ${rows.map((row) => row.normalized)}::text[],
+          ${rows.map((row) => row.kind)}::text[]
+        ) AS incoming("normalized", "kind")
+        WHERE incoming."normalized" = existing."normalized"
+          AND incoming."kind" = existing."kind"
+      )
   `;
 }
 
@@ -275,9 +374,7 @@ export async function runSearchKeywordRefreshWithDeps(
       await tx.$executeRaw(buildSearchKeywordUpsertSql(batch, runStartedAt));
     }
 
-    await tx.$executeRaw(Prisma.sql`
-      DELETE FROM "SearchKeyword" WHERE "updatedAt" < ${runStartedAt}
-    `);
+    await tx.$executeRaw(buildSearchKeywordStaleDeleteSql(rows, runStartedAt));
 
     const successOutcome: SearchKeywordRefreshOutcome = {
       rowsBuilt: rows.length,

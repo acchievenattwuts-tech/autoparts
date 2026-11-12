@@ -2,9 +2,8 @@ import Link from "next/link";
 
 import ReportTableShell from "@/components/shared/ReportTableShell";
 import { getAdminReportRowClass } from "@/lib/admin-status-presentation";
-import { db } from "@/lib/db";
-import { DocStatus } from "@/lib/generated/prisma";
 import {
+  countPurchaseRowsDocs,
   queryPurchaseRows,
   queryPurchaseRowsTotals,
   statusLabel,
@@ -31,20 +30,6 @@ function formatCurrency(value: number) {
   });
 }
 
-async function countPurchaseRows(filters: ReportFilters): Promise<number> {
-  const statusFilter: { status?: DocStatus } = filters.showCancelled
-    ? {}
-    : { status: "ACTIVE" };
-
-  return db.purchase.count({
-    where: {
-      purchaseDate: { gte: filters.from, lte: filters.to },
-      ...statusFilter,
-      ...(filters.accountId ? { cashBankAccountId: filters.accountId } : {}),
-    },
-  });
-}
-
 type PurchasesReportResultsProps = {
   filters: ReportFilters;
   pageNo: number;
@@ -59,7 +44,7 @@ export default async function PurchasesReportResults({
   const [rows, totals, docCount] = await Promise.all([
     queryPurchaseRows(filters, PAGE_SIZE, pageNo),
     queryPurchaseRowsTotals(filters),
-    countPurchaseRows(filters),
+    countPurchaseRowsDocs(filters),
   ]);
 
   const totalPages = Math.ceil(docCount / PAGE_SIZE);

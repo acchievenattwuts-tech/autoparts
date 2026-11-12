@@ -22,7 +22,6 @@ import {
 } from "@/lib/products-bucket-storage";
 import { slugifyAsciiSegment } from "@/lib/product-slug";
 import { requireAnyPermission, requirePermission } from "@/lib/require-auth";
-import { normalizeSearchText } from "@/lib/search-normalization";
 import { buildUniqueSlug } from "@/lib/slug-helpers";
 import { refreshCategoryStorefrontCaches } from "@/lib/storefront-revalidation";
 import { invalidateCategoryAliasCache } from "@/lib/category-alias-cache";
@@ -510,10 +509,12 @@ export const toggleCategoryAlias = async (
 };
 
 /**
- * Approve an AI-suggested (PENDING) alias: activate it AND create the paired
- * SearchKeyword synonym (misspelling → corrected term) so storefront/rule search
- * benefit too. The synonym is created ONLY here, on human approval — never by the
- * AI auto-stage step.
+ * Approve an AI-suggested (PENDING) alias: activate it, which also turns on the
+ * paired SearchKeyword synonym (misspelling → corrected term) so storefront/rule
+ * search benefit too. The keyword rebuild builds that synonym from the APPROVED
+ * alias row (`aiCorrectedTerm`, see buildApprovedAiAliasSynonymDrafts), so it
+ * survives every rebuild; it exists ONLY after human approval — never from the AI
+ * auto-stage step.
  */
 export const approveAiCategoryAlias = async (id: string): Promise<{ error?: string }> => {
   const session = await requirePermission("master.update").catch(() => null);
@@ -536,19 +537,6 @@ export const approveAiCategoryAlias = async (id: string): Promise<{ error?: stri
       where: { id },
       data: { isActive: true, reviewStatus: "APPROVED" },
     });
-
-    // Paired SearchKeyword synonym: misspelling → corrected canonical term.
-    const correctedTerm = beforeSnapshot.aiCorrectedTerm?.trim();
-    if (correctedTerm) {
-      const normalized = normalizeSearchText(beforeSnapshot.alias);
-      if (normalized) {
-        await db.searchKeyword.upsert({
-          where: { normalized_kind: { normalized, kind: "synonym" } },
-          update: { term: correctedTerm },
-          create: { term: correctedTerm, normalized, kind: "synonym", sublabel: correctedTerm },
-        });
-      }
-    }
 
     const afterSnapshot = await getCategoryAliasAuditSnapshot(id);
     if (afterSnapshot) {

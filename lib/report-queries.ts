@@ -68,6 +68,24 @@ function accountWhereFilter(
   };
 }
 
+/** Fills one daily-report section's rows (its own list); resolves without rows when the section is filtered out. */
+type DailyReportSectionLoader<Row> = (rows: Row[]) => Promise<void>;
+
+/**
+ * The daily receipt/payment sections read different tables and do not depend on each other, so
+ * they run together instead of one after another. Each fills its own list and the lists are joined
+ * in the order the sections used to append their rows, so the stable sort that follows gives the
+ * same order as before, ties included.
+ */
+async function collectDailyReportRows<Row>(loaders: ReadonlyArray<DailyReportSectionLoader<Row>>): Promise<Row[]> {
+  const sections = await Promise.all(loaders.map(async (load): Promise<Row[]> => {
+    const rows: Row[] = [];
+    await load(rows);
+    return rows;
+  }));
+  return sections.flatMap((section) => section);
+}
+
 export type ReportFilters = {
   from: Date;
   to: Date;
@@ -107,6 +125,23 @@ export function parseReportQueryFilters(
     paymentMethod: params.paymentMethod,
     docType: params.docType,
   };
+}
+
+/**
+ * Report-screen filters the CSV/Excel export routes read in addition to their fixed list: the
+ * sales channel and the cash-bank source type, direction and transfer accounts. Only the keys
+ * present in the URL are returned, so an export without these filters reads (and audits) the
+ * same params as before.
+ */
+const REPORT_SCREEN_FILTER_KEYS = ["channel", "sourceType", "direction", "fromAccountId", "toAccountId"] as const;
+
+export function readReportScreenFilterParams(searchParams: URLSearchParams): Record<string, string> {
+  const params: Record<string, string> = {};
+  for (const key of REPORT_SCREEN_FILTER_KEYS) {
+    const value = searchParams.get(key);
+    if (value !== null) params[key] = value;
+  }
+  return params;
 }
 
 export function buildExportQuery(filters: ReportFilters): string {
@@ -534,6 +569,14 @@ export async function queryPurchaseRows(
     }
   }
   return rows;
+}
+
+/** Document count for the purchase register's pager — the same where as queryPurchaseRows. */
+export async function countPurchaseRowsDocs(filters: ReportFilters): Promise<number> {
+  const accountDocIds = filters.accountId
+    ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId)
+    : [];
+  return db.purchase.count({ where: buildPurchaseReportWhere(filters, accountDocIds) });
 }
 
 export async function queryPurchaseRowsTotals(filters: ReportFilters): Promise<{
@@ -978,9 +1021,10 @@ export async function queryDailyReceiptRows(
 ): Promise<DailyReceiptRow[]> {
   const showCancelled = filters.showCancelled;
   const docType = filters.docType ?? "ALL";
-  const rows: DailyReceiptRow[] = [];
 
-  if (docType === "ALL" || docType === "CASH_SALE") {
+  // Each loader fills its own list (`rows` below is that list); see collectDailyReportRows().
+  const loadCashSales = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "CASH_SALE") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.SALE, filters.accountId,
@@ -1023,9 +1067,10 @@ export async function queryDailyReceiptRows(
         amount: Number(s.netAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "RECEIPT") {
+  const loadReceipts = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "RECEIPT") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.RECEIPT, filters.accountId,
@@ -1067,9 +1112,10 @@ export async function queryDailyReceiptRows(
         amount: Number(r.totalAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "CUSTOMER_ADVANCE") {
+  const loadCustomerAdvances = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "CUSTOMER_ADVANCE") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.CUSTOMER_ADVANCE, filters.accountId,
@@ -1110,9 +1156,10 @@ export async function queryDailyReceiptRows(
         amount: Number(advance.totalAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "SUPPLIER_ADVANCE_REFUND") {
+  const loadSupplierAdvanceRefunds = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "SUPPLIER_ADVANCE_REFUND") return;
     const statusFilter: { status?: DocStatus } = showCancelled
       ? {}
       : { status: "ACTIVE" };
@@ -1163,16 +1210,26 @@ export async function queryDailyReceiptRows(
         status: refund.status,
         amount: Number(refund.refundAmount),
       });
-  }
+  };
 
   // S6: money a supplier paid back — purchase-return cash refunds and ปรับยอด DN cash refunds.
-  if (docType === "ALL" || docType === "PURCHASE_RETURN") {
+  const loadPurchaseReturnRefunds = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "PURCHASE_RETURN") return;
     rows.push(...(await queryPurchaseReturnRefundReceiptRows(filters, maxRows)));
-  }
-  if (docType === "ALL" || docType === "SUPPLIER_DEBIT_REFUND") {
+  };
+  const loadSupplierDebitRefunds = async (rows: DailyReceiptRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "SUPPLIER_DEBIT_REFUND") return;
     rows.push(...(await querySupplierDebitRefundReceiptRows(filters, maxRows)));
-  }
+  };
 
+  const rows = await collectDailyReportRows([
+    loadCashSales,
+    loadReceipts,
+    loadCustomerAdvances,
+    loadSupplierAdvanceRefunds,
+    loadPurchaseReturnRefunds,
+    loadSupplierDebitRefunds,
+  ]);
   rows.sort((a, b) => {
     const dt = a.docDate.getTime() - b.docDate.getTime();
     return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);
@@ -1366,9 +1423,10 @@ export async function queryDailyPaymentRows(
 ): Promise<DailyPaymentRow[]> {
   const showCancelled = filters.showCancelled;
   const docType = filters.docType ?? "ALL";
-  const rows: DailyPaymentRow[] = [];
 
-  if (docType === "ALL" || docType === "PURCHASE") {
+  // Each loader fills its own list (`rows` below is that list); see collectDailyReportRows().
+  const loadCashPurchases = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "PURCHASE") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.PURCHASE, filters.accountId,
@@ -1409,9 +1467,10 @@ export async function queryDailyPaymentRows(
         amount: Number(p.netAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "EXPENSE") {
+  const loadExpenses = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "EXPENSE") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.EXPENSE, filters.accountId,
@@ -1461,9 +1520,10 @@ export async function queryDailyPaymentRows(
         amount: Number(e.netAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "SUPPLIER_ADVANCE") {
+  const loadSupplierAdvances = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "SUPPLIER_ADVANCE") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_ADVANCE, filters.accountId,
@@ -1503,9 +1563,10 @@ export async function queryDailyPaymentRows(
         amount: Number(a.totalAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "SUPPLIER_PAYMENT") {
+  const loadSupplierPayments = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "SUPPLIER_PAYMENT") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.SUPPLIER_PAYMENT, filters.accountId,
@@ -1560,9 +1621,10 @@ export async function queryDailyPaymentRows(
         amount: cashPaid,
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "CN_REFUND") {
+  const loadCreditNoteRefunds = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "CN_REFUND") return;
     const statusFilter: { status?: DocStatus } = showCancelled ? {} : { status: "ACTIVE" };
     const accountDocIds = filters.accountId
       ? await resolveAccountDocIds(DocumentPaymentDocType.CN_SALE, filters.accountId,
@@ -1608,9 +1670,10 @@ export async function queryDailyPaymentRows(
         amount: Number(cn.totalAmount),
       });
     }
-  }
+  };
 
-  if (docType === "ALL" || docType === "CUSTOMER_ADVANCE_REFUND") {
+  const loadCustomerAdvanceRefunds = async (rows: DailyPaymentRow[]): Promise<void> => {
+    if (docType !== "ALL" && docType !== "CUSTOMER_ADVANCE_REFUND") return;
     const statusFilter: { status?: DocStatus } = showCancelled
       ? {}
       : { status: "ACTIVE" };
@@ -1660,8 +1723,16 @@ export async function queryDailyPaymentRows(
         status: refund.status,
         amount: Number(refund.refundAmount),
       });
-  }
+  };
 
+  const rows = await collectDailyReportRows([
+    loadCashPurchases,
+    loadExpenses,
+    loadSupplierAdvances,
+    loadSupplierPayments,
+    loadCreditNoteRefunds,
+    loadCustomerAdvanceRefunds,
+  ]);
   rows.sort((a, b) => {
     const dt = a.docDate.getTime() - b.docDate.getTime();
     return dt !== 0 ? dt : a.docNo.localeCompare(b.docNo);

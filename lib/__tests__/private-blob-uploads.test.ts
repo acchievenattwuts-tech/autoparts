@@ -24,7 +24,7 @@ let deliveryStorage: DeliveryStorage;
 let whtStorage: WhtStorage;
 
 const PRIVATE_TOKEN = "vercel_blob_rw_private_test";
-const LEGACY_EXPENSE_URL = "https://abc.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
+const LEGACY_EXPENSE_URL = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
 
 before(async () => {
   mock.method(console, "error", () => undefined);
@@ -102,6 +102,8 @@ test("expense attachment deletion routes each value to the store it lives in", a
     LEGACY_EXPENSE_URL,
     "2026/09/24/slip1.webp", // a payment slip path — never deletable through here
     "https://evil.example.com/expense-attachments/x.webp", // not our Blob host
+    "https://otherstore123.public.blob.vercel-storage.com/expense-attachments/x.webp", // another account's store
+    LEGACY_EXPENSE_URL.replace("https://", "http://"), // our host over http
   ]);
 
   assert.deepEqual(delCalls, [
@@ -113,7 +115,7 @@ test("expense attachment deletion routes each value to the store it lives in", a
 test("delivery-proof cleanup deletes private objects only and leaves legacy URLs alone", async () => {
   await deliveryStorage.deleteDeliveryProofObjects([
     "delivery-proofs/sale1/1-photo-u.jpg",
-    "https://abc.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
+    "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
     "expense-attachments/exp1/a.webp",
   ]);
 
@@ -123,7 +125,7 @@ test("delivery-proof cleanup deletes private objects only and leaves legacy URLs
 });
 
 // WHT certificate (50 ทวิ) attachments carry tax IDs — same private-store contract.
-const LEGACY_WHT_URL = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
+const LEGACY_WHT_URL = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
 
 test("a new WHT attachment is put privately with the private token and stores the pathname", async () => {
   const stored = await whtStorage.uploadWhtAttachmentObject({ whtReceivedId: "wht1", prepared });
@@ -152,8 +154,9 @@ test("WHT attachment deletion routes each value to its store and never leaves it
     "wht-attachments/../2026/09/24/slip1.webp", // climbs out of the root
     "expense-attachments/exp1/a.webp", // another module's private object
     "2026/09/24/slip1.webp", // a payment slip path
-    "https://abc.public.blob.vercel-storage.com/products/p1/a.webp", // another public root
+    "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/products/p1/a.webp", // another public root
     "https://evil.example.com/wht-attachments/x.webp", // not our Blob host
+    "https://otherstore123.public.blob.vercel-storage.com/wht-attachments/x.webp", // another account's store
   ]);
 
   assert.deepEqual(delCalls, [

@@ -52,6 +52,23 @@ export function isLinePipelineEvent(event: Pick<NormalizedLineWebhookEvent, "eve
   return LINE_PIPELINE_EVENT_TYPES.has(event.eventType);
 }
 
+/** `source.type` of a 1:1 chat between one LINE user and the OA. */
+const LINE_ONE_TO_ONE_SOURCE_TYPE = "user";
+
+/**
+ * True for an event from a LINE group or multi-person room. Such a message still carries the
+ * sender's userId, but it is not a customer chat with the shop: it must not create a conversation,
+ * call the AI, mirror to Telegram or reply into the group. The webhook route registers the group /
+ * room as a LINE recipient (daily summary) before the pipeline runs, so that keeps working.
+ * An event without `source.type` and without a group / room id is treated as 1:1, as before.
+ */
+export function isLineGroupOrRoomEvent(
+  event: Pick<NormalizedLineWebhookEvent, "sourceType" | "groupId" | "roomId">,
+): boolean {
+  if (event.groupId || event.roomId) return true;
+  return event.sourceType !== null && event.sourceType !== LINE_ONE_TO_ONE_SOURCE_TYPE;
+}
+
 function normalizeMessageType(event: LineWebhookEvent): LineMessageType {
   if (event.type === "follow") return LineMessageType.FOLLOW;
   if (event.type === "postback") return LineMessageType.POSTBACK;

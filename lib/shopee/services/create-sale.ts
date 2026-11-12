@@ -41,6 +41,7 @@ import { writeStockCard } from "@/lib/stock-card";
 import { SALE_BASE_QUANTITY_DECIMALS_ERROR, toSaleBaseQuantity } from "@/lib/sale-quantity";
 import { calcItemSubtotal } from "@/lib/vat";
 import { lockStockMutationProducts } from "@/lib/document-mutation-guard";
+import { isActiveChannelRefViolation, normalizeChannelRefNo } from "@/lib/sale-channel-ref";
 import { roundStoredMoney, SaleRevenueAllocationError, sumSaleLineTotals } from "@/lib/sale-profit-revenue";
 
 /**
@@ -312,6 +313,7 @@ export async function createSaleFromShopeeOrder(params: {
   if (blockingError) return { ok: false, error: blockingError };
 
   const settlementAccountId = draft.settlementAccountId;
+  const channelRefNo = normalizeChannelRefNo(draft.orderSn);
   // Posting date = approval time (ERP-standard: post in an open period, in
   // chronological order). The Shopee order date (draft.docDate) is kept as a
   // reference only (channelRefNo + ShopeeOrderImport.orderCreatedAt) — never
@@ -366,8 +368,10 @@ export async function createSaleFromShopeeOrder(params: {
       if (claimed.count !== 1) {
         throw new Error("ออเดอร์นี้ถูกสร้างบิลหรือถูกส่งเข้า review แล้ว");
       }
+      // Any sale of this order, ACTIVE or CANCELLED, still blocks the import (the M9 index frees a cancelled
+      // sale's order number for manual keying only). Stored order numbers are normalized (lib/sale-channel-ref.ts).
       const duplicateSale = await tx.sale.findFirst({
-        where: { channel: SaleChannel.SHOPEE, channelRefNo: draft.orderSn },
+        where: { channel: SaleChannel.SHOPEE, channelRefNo },
         select: { id: true, saleNo: true },
       });
       if (duplicateSale) {
@@ -380,7 +384,7 @@ export async function createSaleFromShopeeOrder(params: {
         data: {
           saleNo,
           channel: SaleChannel.SHOPEE,
-          channelRefNo: draft.orderSn,
+          channelRefNo,
           customerId: null,
           customerName: draft.buyerUsername ?? "ลูกค้า Shopee",
           customerPhone: null,
@@ -533,6 +537,8 @@ export async function createSaleFromShopeeOrder(params: {
     if (error instanceof PeriodLockedError) return { ok: false, error: error.message };
     console.error("[shopee] create sale failed:", error instanceof Error ? error.message : "unknown");
     if (error instanceof SaleRevenueAllocationError) return { ok: false, error: error.userMessage };
+    // Another ACTIVE sale took this order number between the check above and the insert (M9 index).
+    if (isActiveChannelRefViolation(error)) return { ok: false, error: "ออเดอร์นี้มีบิล Shopee อยู่แล้ว" };
     return { ok: false, error: error instanceof Error ? error.message : "สร้างบิลไม่สำเร็จ" };
   }
 }

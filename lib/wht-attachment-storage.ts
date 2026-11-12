@@ -4,6 +4,7 @@ import { prepareExpenseAttachment, type PreparedExpenseAttachment } from "@/lib/
 import { WHT_ATTACHMENT_ROOT } from "@/lib/wht-attachment-constants";
 import { deletePrivateBlobObjects, putPrivateBlobObject } from "@/lib/private-blob-storage";
 import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/private-file-ref";
+import { isShopPublicBlobUrl } from "@/lib/blob-store-host";
 
 /**
  * ที่เก็บไฟล์หนังสือรับรอง 50 ทวิ ที่ลูกค้าออกให้เรา
@@ -16,8 +17,6 @@ import { isLegacyPublicFileUrl, isPrivateObjectPathUnderRoot } from "@/lib/priva
  * object pathname — เปิดดูผ่าน route `/api/admin/wht-attachments/[id]` ที่ตรวจสิทธิ์เท่านั้น
  * แถวเก่าที่ยังเก็บ public URL ยังเปิดได้ตามเดิม (ดู `lib/private-file-ref.ts`)
  */
-
-const BLOB_HOST_SUFFIX = ".public.blob.vercel-storage.com";
 
 export type PreparedWhtAttachment = PreparedExpenseAttachment;
 
@@ -60,7 +59,8 @@ export function isOwnedWhtAttachmentUrl(url: string): boolean {
   } catch {
     return false;
   }
-  if (!parsed.hostname.endsWith(BLOB_HOST_SUFFIX)) return false;
+  // Blob store ของร้านเท่านั้น (https, host ตรงตัว) — ไม่ใช่ store ของบัญชีอื่น
+  if (!isShopPublicBlobUrl(parsed)) return false;
 
   let objectPath: string;
   try {

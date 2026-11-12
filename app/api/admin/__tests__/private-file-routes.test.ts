@@ -17,8 +17,8 @@ let whtRows: Record<string, { url: string; fileName: string }> = {};
 let blobGets: Array<{ pathname: string; options: Record<string, unknown> }> = [];
 
 const PRIVATE_TOKEN = "vercel_blob_rw_private_test";
-const EXPENSE_LEGACY_URL = "https://abc.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
-const WHT_LEGACY_URL = "https://abc.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
+const EXPENSE_LEGACY_URL = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp";
+const WHT_LEGACY_URL = "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/wht-attachments/wht1/1-a.webp";
 
 const checkAuth = (permissions: string[]) => {
   requestedPermissions.push(permissions);
@@ -101,7 +101,7 @@ beforeEach(() => {
     },
     prooflegacy: {
       signatureImageUrl: null,
-      deliveryPhotoUrl: "https://abc.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
+      deliveryPhotoUrl: "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
     },
   };
   whtRows = {
@@ -160,6 +160,28 @@ test("expense attachment route: a legacy public URL redirects to itself", async 
   assert.deepEqual(blobGets, []);
 });
 
+test("legacy public URLs off the shop's own Blob store are never redirected to (item 6)", async () => {
+  const offStore = [
+    "https://otherstore123.public.blob.vercel-storage.com/expense-attachments/exp1/1-a.webp",
+    EXPENSE_LEGACY_URL.replace("https://", "http://"),
+    EXPENSE_LEGACY_URL.replace(".com/", ".com:8443/"),
+    "https://evil.example.com/expense-attachments/exp1/1-a.webp",
+  ];
+  for (const [index, url] of offStore.entries()) {
+    expenseRows[`attoff${index}`] = { url, fileName: "x.webp" };
+    whtRows[`whtoff${index}`] = { url, fileName: "x.webp" };
+    proofRows[`proofoff${index}`] = { signatureImageUrl: null, deliveryPhotoUrl: url };
+    assert.equal((await callExpense(`attoff${index}`)).status, 404, url);
+    assert.equal(
+      (await whtRoute.GET({} as never, { params: Promise.resolve({ id: `whtoff${index}` }) })).status,
+      404,
+      url,
+    );
+    assert.equal((await callProof(`proofoff${index}`, "photo")).status, 404, url);
+  }
+  assert.deepEqual(blobGets, []);
+});
+
 test("delivery proof route: 401/403 gate on sales.view or delivery.view", async () => {
   authMode = "unauthorized";
   assert.equal((await callProof("proofprivate", "photo")).status, 401);
@@ -194,7 +216,7 @@ test("delivery proof route: a legacy public URL redirects to itself", async () =
   assert.equal(response.status, 302);
   assert.equal(
     response.headers.get("location"),
-    "https://abc.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
+    "https://gjo7yq8dwaho55nx.public.blob.vercel-storage.com/delivery-proofs/sale1/0-photo-u.jpg",
   );
 });
 
