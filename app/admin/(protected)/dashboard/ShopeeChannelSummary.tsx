@@ -1,4 +1,5 @@
 import { ChevronRight, ShoppingBag, Store, TrendingUp } from "lucide-react";
+import { unstable_cache } from "next/cache";
 import Link from "next/link";
 
 import { hasPermissionAccess } from "@/lib/access-control";
@@ -9,6 +10,7 @@ import { getSessionPermissionContext } from "@/lib/require-auth";
 import {
   computeChannelNetFigures,
   getShopeeReportingSummary,
+  type ShopeeReportingSummary,
 } from "@/lib/shopee/services/reporting";
 import { getThailandDateKey, parseDateOnlyToStartOfDay } from "@/lib/th-date";
 
@@ -25,23 +27,73 @@ type PendingSettlement =
   | { status: "unconfigured" }
   | { status: "error" };
 
+/** Same as {@link getPendingSettlement} but lets a load error throw (used inside the cache). */
+const loadPendingSettlement = async (
+  channel: ManualMarketplaceChannel,
+): Promise<Exclude<PendingSettlement, { status: "error" }>> => {
+  const setting = await getMarketplaceChannelSetting(channel);
+  if (!setting) return { status: "unconfigured" };
+  const { sales } = await getPendingSettlementDocuments(channel, setting.settlementCashBankAccountId);
+  return {
+    status: "ok",
+    count: sales.length,
+    amount: sales.reduce((sum, sale) => sum + sale.amount, 0),
+  };
+};
+
 /**
  * บิลที่ยังไม่ถูกกระทบยอด (ค้างทั้งหมด ไม่จำกัดเดือน) — ใช้ query เดียวกับหน้ากระทบยอด
  * รับเงิน เพื่อให้ตัวเลขตรงกัน ถ้าโหลดไม่สำเร็จให้การ์ดยอดขายยังแสดงได้ตามปกติ
  */
 const getPendingSettlement = async (channel: ManualMarketplaceChannel): Promise<PendingSettlement> => {
   try {
-    const setting = await getMarketplaceChannelSetting(channel);
-    if (!setting) return { status: "unconfigured" };
-    const { sales } = await getPendingSettlementDocuments(channel, setting.settlementCashBankAccountId);
-    return {
-      status: "ok",
-      count: sales.length,
-      amount: sales.reduce((sum, sale) => sum + sale.amount, 0),
-    };
+    return await loadPendingSettlement(channel);
   } catch (error) {
     console.error("[dashboard] pending settlement load failed", { channel, error });
     return { status: "error" };
+  }
+};
+
+type ChannelSummaryData = {
+  summary: ShopeeReportingSummary;
+  shopeePending: PendingSettlement;
+  lazadaPending: PendingSettlement;
+};
+
+/** Same freshness as the Daily Operations cards next to this widget (DailyOperationsDashboard.tsx). */
+const CHANNEL_SUMMARY_CACHE_TTL_SECONDS = 60;
+
+const loadChannelSummaryData = async (monthStart: Date): Promise<ChannelSummaryData> => {
+  const [summary, shopeePending, lazadaPending] = await Promise.all([
+    getShopeeReportingSummary({ from: monthStart, to: new Date() }),
+    loadPendingSettlement("SHOPEE"),
+    loadPendingSettlement("LAZADA"),
+  ]);
+  return { summary, shopeePending, lazadaPending };
+};
+
+/**
+ * Month-to-date figures for the three channel cards (8 queries), cached for
+ * 60 s like the rest of the Daily tab. Only a fully successful load is cached:
+ * if anything throws, the widget falls back to the uncached path, which keeps
+ * the previous behaviour (a settlement error shows "โหลดข้อมูลไม่สำเร็จ" on that
+ * card, a sales-summary error propagates as before).
+ */
+const getChannelSummaryData = async (todayKey: string, monthStart: Date): Promise<ChannelSummaryData> => {
+  try {
+    return await unstable_cache(
+      () => loadChannelSummaryData(monthStart),
+      ["dashboard-channel-summary", todayKey],
+      { revalidate: CHANNEL_SUMMARY_CACHE_TTL_SECONDS, tags: ["dashboard-aggregates"] },
+    )();
+  } catch (error) {
+    console.error("[dashboard] channel summary cache load failed, retrying uncached", error);
+    const [summary, shopeePending, lazadaPending] = await Promise.all([
+      getShopeeReportingSummary({ from: monthStart, to: new Date() }),
+      getPendingSettlement("SHOPEE"),
+      getPendingSettlement("LAZADA"),
+    ]);
+    return { summary, shopeePending, lazadaPending };
   }
 };
 
@@ -115,13 +167,12 @@ const MarketplaceFeeLines = ({ netFee, profitAfterFee }: MarketplaceFeeLinesProp
 );
 
 const ShopeeChannelSummary = async () => {
-  const [year, month] = getThailandDateKey().split("-");
+  const todayKey = getThailandDateKey();
+  const [year, month] = todayKey.split("-");
   const monthStart = parseDateOnlyToStartOfDay(`${year}-${month}-01`);
 
-  const [summary, shopeePending, lazadaPending, { role, permissions }] = await Promise.all([
-    getShopeeReportingSummary({ from: monthStart, to: new Date() }),
-    getPendingSettlement("SHOPEE"),
-    getPendingSettlement("LAZADA"),
+  const [{ summary, shopeePending, lazadaPending }, { role, permissions }] = await Promise.all([
+    getChannelSummaryData(todayKey, monthStart),
     getSessionPermissionContext(),
   ]);
 

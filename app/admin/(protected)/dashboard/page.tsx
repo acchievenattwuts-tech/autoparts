@@ -24,9 +24,33 @@ type AdminDashboardPageProps = {
   }>;
 };
 
-const resolveInitialTab = (tab: string | undefined): DashboardTabKey => {
-  if (tab === "profit" || tab === "budget") return tab;
+type DashboardSearchParams = NonNullable<Awaited<AdminDashboardPageProps["searchParams"]>>;
+
+/** Query keys the dashboard reads; switching tabs keeps them so the profit filters survive a round trip. */
+const PRESERVED_QUERY_KEYS = [
+  "profitFrom",
+  "profitTo",
+  "profitBasis",
+  "profitStockPage",
+  "profitCustomerPage",
+  "profitInvoicePage",
+  "profitAlertPage",
+] as const satisfies readonly (keyof DashboardSearchParams)[];
+
+const resolveActiveTab = (tab: string | undefined, canViewBudget: boolean): DashboardTabKey => {
+  if (tab === "profit") return "profit";
+  if (tab === "budget" && canViewBudget) return "budget";
   return "daily";
+};
+
+const buildTabHref = (tab: DashboardTabKey, searchParams: DashboardSearchParams | undefined): string => {
+  const params = new URLSearchParams({ tab });
+  for (const key of PRESERVED_QUERY_KEYS) {
+    const value = searchParams?.[key];
+    // A repeated query key arrives as an array at runtime; keep only plain values.
+    if (typeof value === "string" && value) params.set(key, value);
+  }
+  return `/admin/dashboard?${params.toString()}`;
 };
 
 const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => {
@@ -35,17 +59,25 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const { role, permissions } = await getSessionPermissionContext();
   const canViewBudget = hasPermissionAccess(role, permissions, "purchase_budget.view");
+  const activeTab = resolveActiveTab(resolvedSearchParams?.tab, canViewBudget);
 
+  // Only the open tab is rendered, so only its queries run.
   return (
     <DashboardTabs
-      initialTab={resolveInitialTab(resolvedSearchParams?.tab)}
-      dailyContent={
+      activeTab={activeTab}
+      hrefs={{
+        daily: buildTabHref("daily", resolvedSearchParams),
+        profit: buildTabHref("profit", resolvedSearchParams),
+        ...(canViewBudget ? { budget: buildTabHref("budget", resolvedSearchParams) } : {}),
+      }}
+    >
+      {activeTab === "daily" ? (
         <div className="space-y-4">
           <ShopeeChannelSummary />
           <DailyOperationsDashboard />
         </div>
-      }
-      profitContent={
+      ) : null}
+      {activeTab === "profit" ? (
         <ProfitDashboard
           /* key มีเฉพาะช่วงวิเคราะห์ ไม่รวมเลขหน้าของตาราง เพราะการใส่เลขหน้าไว้ด้วย
              ทำให้กดเปลี่ยนหน้าตารางเดียวแล้ว React unmount ทั้ง dashboard ทิ้ง กราฟ
@@ -63,19 +95,17 @@ const AdminDashboardPage = async ({ searchParams }: AdminDashboardPageProps) => 
           profitInvoicePage={resolvedSearchParams?.profitInvoicePage}
           profitAlertPage={resolvedSearchParams?.profitAlertPage}
         />
-      }
-      budgetContent={
-        canViewBudget ? (
-          <Suspense fallback={<PurchaseBudgetTabSkeleton />}>
-            <PurchaseBudgetTab
-              canManage={hasPermissionAccess(role, permissions, "purchase_budget.manage")}
-              canViewCash={hasPermissionAccess(role, permissions, "cash_bank.view")}
-              canViewAuditLog={hasPermissionAccess(role, permissions, "audit_log.view")}
-            />
-          </Suspense>
-        ) : undefined
-      }
-    />
+      ) : null}
+      {activeTab === "budget" ? (
+        <Suspense fallback={<PurchaseBudgetTabSkeleton />}>
+          <PurchaseBudgetTab
+            canManage={hasPermissionAccess(role, permissions, "purchase_budget.manage")}
+            canViewCash={hasPermissionAccess(role, permissions, "cash_bank.view")}
+            canViewAuditLog={hasPermissionAccess(role, permissions, "audit_log.view")}
+          />
+        </Suspense>
+      ) : null}
+    </DashboardTabs>
   );
 };
 
