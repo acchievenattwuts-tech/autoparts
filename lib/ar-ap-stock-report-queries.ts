@@ -480,8 +480,24 @@ export type StockRow = {
   unitName: string;
 };
 
-export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRow[]> {
-  const rows = await db.product.findMany({
+/**
+ * Most products the stock-on-hand report (page, CSV and Excel) loads. It used to
+ * be a silent `take: 1000` applied BEFORE the stock > 0 filter: once the shop
+ * passed 1,000 active products (1,229 on 2026-11-12), the last categories in
+ * name order disappeared from the table, the total-value card and the exports
+ * (320,752 THB missing that day). The cap now sits far above the catalogue and
+ * the page says so if it is ever reached.
+ */
+export const STOCK_REPORT_MAX_PRODUCTS = 5_000;
+
+export type StockReportResult = {
+  rows: StockRow[];
+  /** True when more active products matched than STOCK_REPORT_MAX_PRODUCTS. */
+  truncated: boolean;
+};
+
+export async function queryStockReport(filters: ARAPStockFilters): Promise<StockReportResult> {
+  const loaded = await db.product.findMany({
     where: {
       isActive: true,
       ...(filters.categoryId ? { categoryId: filters.categoryId } : {}),
@@ -495,7 +511,8 @@ export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRo
         : {}),
     },
     orderBy: [{ category: { name: "asc" } }, { code: "asc" }],
-    take: 1000,
+    // One extra row tells us whether the cap cut anything off.
+    take: STOCK_REPORT_MAX_PRODUCTS + 1,
     select: {
       id: true,
       code: true,
@@ -509,9 +526,11 @@ export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRo
     },
   });
 
-  const latestBalanceMap = await getLatestStockBalances(rows.map((row) => row.id));
+  const truncated = loaded.length > STOCK_REPORT_MAX_PRODUCTS;
+  const products = truncated ? loaded.slice(0, STOCK_REPORT_MAX_PRODUCTS) : loaded;
+  const latestBalanceMap = await getLatestStockBalances(products.map((row) => row.id));
 
-  return rows
+  const rows = products
     .map((r) => {
       const latestBalance = latestBalanceMap.get(r.id);
       const { unitName, scale } = resolveReportUnit({
@@ -533,6 +552,14 @@ export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRo
       };
     })
     .filter((row) => filters.showAll || row.stock > 0);
+
+  return { rows, truncated };
+}
+
+/** Rows only, for the CSV and Excel exports. */
+export async function queryStockRows(filters: ARAPStockFilters): Promise<StockRow[]> {
+  const { rows } = await queryStockReport(filters);
+  return rows;
 }
 
 export function buildStockCsv(rows: StockRow[]): string {

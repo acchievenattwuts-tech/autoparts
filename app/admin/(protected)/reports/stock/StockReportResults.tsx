@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import {
-  queryStockRows,
+  queryStockReport,
+  STOCK_REPORT_MAX_PRODUCTS,
   type ARAPStockFilters,
 } from "@/lib/ar-ap-stock-report-queries";
 
@@ -25,13 +26,23 @@ function formatQty(value: number): string {
 }
 
 export default async function StockReportResults({ filters }: { filters: ARAPStockFilters }) {
-  const products = await queryStockRows(filters);
+  const { rows: products, truncated } = await queryStockReport(filters);
 
   const totalValue = products.reduce((sum, product) => sum + product.stockValue, 0);
   const zeroStockCount = products.filter((product) => product.stock === 0).length;
 
   return (
     <>
+      {truncated ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-300/30 dark:bg-amber-950/30 dark:text-amber-100"
+        >
+          สินค้าที่ตรงเงื่อนไขมีมากกว่า {STOCK_REPORT_MAX_PRODUCTS.toLocaleString("th-TH")} รายการ
+          รายงานนี้จึงแสดงเพียง {STOCK_REPORT_MAX_PRODUCTS.toLocaleString("th-TH")} รายการแรก
+          และมูลค่ารวมยังไม่ครบ กรุณากรองตามหมวดหมู่หรือค้นหาเพื่อดูส่วนที่เหลือ
+        </div>
+      ) : null}
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-slate-950">
           <p className="text-xs text-gray-500 dark:text-slate-400">จำนวน SKU</p>
