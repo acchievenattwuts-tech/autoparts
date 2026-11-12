@@ -429,7 +429,41 @@ async function retryUnsentFailureNotifications(): Promise<number> {
   return sentCount;
 }
 
-export async function processStorefrontSyncQueue(): Promise<{
+/**
+ * Idle fast-path for the every-minute cron: one statement whose condition is
+ * exactly the OR of the three reads below (stock outbox rows, due sync
+ * candidates, FAILED rows without a Telegram alert). When it is false those
+ * reads would all return zero rows, so the cron can return the zero result
+ * without them. A failed check falls through to the full path so error
+ * behaviour stays exactly as before.
+ */
+export async function hasStorefrontSyncWork(now: Date): Promise<boolean> {
+  try {
+    const rows = await db.$queryRaw<Array<{ hasWork: boolean }>>`
+      SELECT (
+        EXISTS (SELECT 1 FROM "ProductStorefrontStockInvalidation")
+        OR EXISTS (
+          SELECT 1 FROM "ProductStorefrontSyncState"
+          WHERE status IN (
+              'PENDING'::"ProductStorefrontSyncStatus",
+              'RETRYING'::"ProductStorefrontSyncStatus",
+              'PROCESSING'::"ProductStorefrontSyncStatus"
+            )
+            AND "nextAttemptAt" <= ${now}
+        )
+        OR EXISTS (
+          SELECT 1 FROM "ProductStorefrontSyncState"
+          WHERE status = 'FAILED'::"ProductStorefrontSyncStatus"
+            AND "telegramNotifiedAt" IS NULL
+        )
+      ) AS "hasWork"`;
+    return rows[0]?.hasWork !== false;
+  } catch {
+    return true;
+  }
+}
+
+export type StorefrontSyncQueueResult = {
   stockInvalidated: number;
   verified: number;
   current: number;
@@ -437,7 +471,12 @@ export async function processStorefrontSyncQueue(): Promise<{
   retrying: number;
   failed: number;
   telegramSent: number;
-}> {
+};
+
+export async function processStorefrontSyncQueue(): Promise<StorefrontSyncQueueResult> {
+  if (!(await hasStorefrontSyncWork(new Date()))) {
+    return { stockInvalidated: 0, verified: 0, current: 0, repaired: 0, retrying: 0, failed: 0, telegramSent: 0 };
+  }
   const stockInvalidated = await drainStockInvalidations();
   const now = new Date();
   const candidates = await db.productStorefrontSyncState.findMany({

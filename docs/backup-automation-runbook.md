@@ -277,12 +277,54 @@ deploy ใหม่หนึ่งครั้ง แล้วปุ่มใน
 
 ### กู้คืนฐานข้อมูล
 
-```powershell
-rclone copy gdrive:autoparts-backup/db/postgres-2026-08-17.dump .
+workflow สร้าง dump ด้วย `pg_dump --format=custom --no-owner --no-acl --schema=public` (`pg_dump` 17 ตาม `PG_MAJOR` ใน [backup.yml](../.github/workflows/backup.yml)) จึงต้องใช้ `pg_restore` 17 ขึ้นไป และต้องรู้ 2 เรื่องก่อนกู้:
 
-$newDbUrl = "postgresql://postgres:<PASSWORD>@db.<NEW-PROJECT-REF>.supabase.co:5432/postgres"
-pg_restore --dbname $newDbUrl --no-owner --no-acl --clean --if-exists .\postgres-2026-08-17.dump
-```
+- **ไฟล์ไม่มีคำสั่ง `CREATE EXTENSION`** — เมื่อเลือก schema ด้วย `--schema` pg_dump จะไม่ใส่ extension ลงไฟล์ แต่ฐานข้อมูลนี้ใช้ `vector`, `pg_trgm` และ `unaccent` ที่ติดตั้งไว้ใน schema `public` (ฟังก์ชัน `f_unaccent` เรียก `public.unaccent` ตรง ๆ) ถ้าไม่สร้างทั้งสามตัวใน `public` ก่อน ตาราง `product_search_documents`, `knowledge_documents`, index trigram และ `f_unaccent` จะสร้างไม่ได้
+- **ไฟล์มีรายการสร้าง schema `public`** — pg_dump ใส่ `CREATE SCHEMA public` (และอาจมี `COMMENT ON SCHEMA public`) ให้ schema ที่เลือกด้วย `--schema` แต่ project ใหม่มี `public` อยู่แล้ว ถ้าไม่ตัดออก `--exit-on-error` จะหยุดทันทีที่คำสั่งนั้น (schema already exists) ขั้นที่ 3 ข้างล่างตัดสองรายการนี้ออกด้วยไฟล์รายการ (`--use-list`)
+
+1. ดึงไฟล์ dump ลงเครื่อง (มีข้อมูลลูกค้า เก็บในที่ปลอดภัย แล้วลบทิ้งเมื่อเสร็จ):
+
+   ```powershell
+   rclone copy gdrive:autoparts-backup/db/postgres-2026-08-17.dump .
+   ```
+
+2. ใน SQL Editor ของ project ใหม่ สร้าง extension ทั้งสามตัวใน schema `public`:
+
+   ```sql
+   create extension if not exists vector with schema public;
+   create extension if not exists pg_trgm with schema public;
+   create extension if not exists unaccent with schema public;
+
+   -- ต้องได้ 3 แถว และคอลัมน์ schema เป็น public ทุกแถว
+   -- ถ้าตัวไหนอยู่ schema อื่น (เช่น extensions) ให้รัน: alter extension <ชื่อ> set schema public;
+   select extname, extnamespace::regnamespace as schema
+   from pg_extension
+   where extname in ('vector', 'pg_trgm', 'unaccent')
+   order by extname;
+   ```
+
+3. ทำไฟล์รายการที่ตัดรายการ schema `public` ออก (pg_restore อ่านแค่เลขรายการก่อน `;` ของแต่ละบรรทัด ข้อความหลัง `;` จึงไม่มีผล แต่ไฟล์ต้องไม่ใช่ UTF-16 ซึ่งเป็นค่าเริ่มต้นของ `>` ใน Windows PowerShell จึงใช้ `Set-Content -Encoding ascii`):
+
+   ```powershell
+   pg_restore --list .\postgres-2026-08-17.dump |
+     Where-Object { $_ -notmatch '^\d+; \d+ \d+ (SCHEMA - public|COMMENT - SCHEMA public)( |$)' } |
+     Set-Content -Encoding ascii .\restore.list
+
+   # ต้องไม่มีผลลัพธ์ = ตัดออกครบแล้ว
+   Select-String -Path .\restore.list -Pattern 'SCHEMA - public( |$)', 'COMMENT - SCHEMA public( |$)'
+   ```
+
+4. กู้คืนแบบ transaction เดียว — ถ้าคำสั่งไหนพัง จะหยุดทันทีและย้อนทั้งหมด ฐานข้อมูลใหม่จึงยังว่างและรันซ้ำได้ ไม่ต้องใช้ `--clean`:
+
+   ```powershell
+   $newDbUrl = "postgresql://postgres:<PASSWORD>@db.<NEW-PROJECT-REF>.supabase.co:5432/postgres"
+   pg_restore --dbname $newDbUrl --no-owner --no-acl --single-transaction --exit-on-error `
+     --use-list .\restore.list .\postgres-2026-08-17.dump
+   ```
+
+   host แบบต่อตรง (`db.<ref>.supabase.co`) ใช้ได้เฉพาะ IPv6 ถ้าเครื่องต่อไม่ได้ ให้ใช้ URL ของ **Session pooler** (พอร์ต 5432) จากปุ่ม Connect ของ project ใหม่แทน ห้ามใช้ transaction pooler พอร์ต 6543
+
+5. ตรวจผล: เทียบจำนวนแถวของตารางหลัก (`Sale`, `Product`, `product_search_documents` ฯลฯ) กับหัวข้อ `approximate row counts` ใน `reports/REPORT-<วันที่>.txt` (เป็นค่าประมาณ ควรใกล้เคียง ไม่จำเป็นต้องเท่าเป๊ะ) และลอง `select f_unaccent('ทดสอบ é');` ว่าเรียกได้
 
 ถ้าต้องการกู้แค่ตารางเดียว:
 
@@ -428,5 +470,5 @@ GitHub ปิด scheduled workflow อัตโนมัติเมื่อ r
 ## สิ่งที่ควรทำต่อเนื่อง
 
 - **ซ้อมกู้คืนจริงไตรมาสละครั้ง** — restore เข้า Supabase project ใหม่แล้วเปิดหน้าเว็บดูว่ารูปขึ้นครบ backup ที่ไม่เคยกู้คืน คือ backup ที่ยังไม่รู้ว่าใช้ได้จริงหรือเปล่า
-- เปิด backup อัตโนมัติฝั่ง Supabase ควบคู่กันไว้เป็นด่านแรกสำหรับกู้เร็ว ระบบนี้เป็นด่านสองที่รอดแม้บัญชี Supabase มีปัญหา
+- ตั้งแต่ 2026-10-24 project อยู่บนแพ็กเกจ Free ซึ่งไม่มี backup รายวันของ Supabase ให้กดกู้คืนแล้ว **dump จาก GitHub Actions ชุดนี้จึงเป็น backup ฐานข้อมูลทางเดียว** การซ้อมกู้คืนข้างบนจึงเป็นทางเดียวที่จะรู้ว่ากู้ได้จริง (ถ้ากลับไปใช้แพ็กเกจที่มี backup รายวัน ระบบนี้จะกลับเป็นด่านสองที่รอดแม้บัญชี Supabase มีปัญหา)
 - ทบทวนวันหมดอายุของ PAT และ refresh token ของ Google Drive ปีละครั้ง

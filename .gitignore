@@ -31,6 +31,7 @@
 /.claude/launch.json
 /.codex-*.log
 /.codex-*.err.log
+/.codex-*.pid
 /.tmp-*.log
 /.tmp-*.err.log
 /.tmp-*.out.log

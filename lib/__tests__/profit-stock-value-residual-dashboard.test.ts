@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { before, mock } from "node:test";
+import { Prisma } from "@/lib/generated/prisma";
 import type { ProfitDashboardData, ProfitSummary } from "@/lib/profit-dashboard";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -44,6 +45,14 @@ before(async () => {
     withDbRetry: <T>(operation: () => Promise<T>): Promise<T> => operation(),
     db: {
       factProfit: { groupBy: async (args: GroupByArgs) => groupBy(args) },
+      // The section's row count is COUNT(*) over the same GROUP BY in SQL; answered with groupBy()'s group count.
+      $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const query = Prisma.sql(strings, ...values);
+        const by = [...(query.text.match(/GROUP BY ([^\n]+)/)?.[1] ?? "").matchAll(/f\."(\w+)"/g)].map((match) => match[1] as keyof Fact);
+        const [gte, lte] = query.values.filter((value): value is Date => value instanceof Date);
+        const types = query.values.filter((value): value is string => typeof value === "string");
+        return [{ count: groupBy({ by, where: { isActive: true, sourceType: { in: types }, businessDate: { gte, lte } } }).length }];
+      },
       supplierDebitNote: { findMany: async () => { debitNameQueries += 1; return []; } },
     },
   } });

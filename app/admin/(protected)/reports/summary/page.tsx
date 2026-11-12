@@ -5,7 +5,7 @@ import Link from "next/link";
 import AdminSearchForm from "@/components/shared/AdminSearchForm";
 import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton";
 import { requirePermission } from "@/lib/require-auth";
-import { getReportsData, parseReportFilters } from "@/lib/reports";
+import { getReportsSummaryData, parseReportFilters } from "@/lib/reports";
 import CashBankSnapshot from "../CashBankSnapshot";
 import ReportsContent from "../ReportsContent";
 
@@ -31,7 +31,7 @@ function SectionUnavailable({
 async function getSummaryReportsData(from?: string, to?: string) {
   try {
     const filters = parseReportFilters({ from, to });
-    return await getReportsData(filters);
+    return await getReportsSummaryData(filters);
   } catch {
     return null;
   }

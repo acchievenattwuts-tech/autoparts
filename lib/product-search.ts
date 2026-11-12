@@ -945,12 +945,16 @@ const buildCorrelatedVehicleYearSome = (
 
 const getFallbackOrderBy = (
   order: ProductSearchOrder,
-): PrismaTypes.ProductOrderByWithRelationInput => {
+): PrismaTypes.ProductOrderByWithRelationInput[] => {
   if (order === "codeDesc") {
-    return { code: "desc" };
+    // `code` is unique, so it is already a total order.
+    return [{ code: "desc" }];
   }
 
-  return { createdAt: "desc" };
+  // `id` breaks ties (bulk imports can share createdAt) so skip/take cannot
+  // repeat or drop a product between pages — same tiebreaker as the V2 SQL
+  // (`product_created_at DESC, product_id DESC`).
+  return [{ createdAt: "desc" }, { id: "desc" }];
 };
 
 const coerceCount = (value: bigint | number | string): number => {

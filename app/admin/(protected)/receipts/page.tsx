@@ -77,7 +77,15 @@ const ReceiptsPage = async ({
       orderBy: [{ receiptDate: "desc" }, { receiptNo: "desc" }],
       take: PAGE_SIZE,
       skip: (pageNum - 1) * PAGE_SIZE,
-      include: {
+      // Only the columns this page renders.
+      select: {
+        id: true,
+        receiptNo: true,
+        receiptDate: true,
+        customerName: true,
+        totalAmount: true,
+        paymentMethod: true,
+        status: true,
         customer: { select: { name: true } },
         _count:   { select: { items: true } },
       },

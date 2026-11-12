@@ -79,7 +79,20 @@ const CustomersPage = async ({
   const [customers, total] = await Promise.all([
     db.customer.findMany({
       where: whereClause,
-      include: {
+      // Only the columns this page renders (shippingAddress and source feed
+      // isLineCustomerProfileIncomplete).
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        address: true,
+        shippingAddress: true,
+        source: true,
+        lineUserId: true,
+        defaultLatitude: true,
+        defaultLongitude: true,
+        isActive: true,
         _count: { select: { sales: true } },
         customerType: {
           select: {

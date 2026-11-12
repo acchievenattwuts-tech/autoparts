@@ -196,8 +196,23 @@ const SalesPage = async ({
       orderBy: [{ saleDate: "desc" }, { saleNo: "desc" }],
       take: PAGE_SIZE,
       skip: (pageNum - 1) * PAGE_SIZE,
-      include: {
-        _count: { select: { items: true } },
+      // Only the columns this page renders. The item count is items.length (the same
+      // unfiltered SaleItem rows _count.items counted), and the settlement lines are only
+      // tested for existence, so their settlement relation is not loaded.
+      select: {
+        id: true,
+        saleNo: true,
+        saleDate: true,
+        status: true,
+        channel: true,
+        channelRefNo: true,
+        customerName: true,
+        paymentType: true,
+        paymentMethod: true,
+        amountRemain: true,
+        netAmount: true,
+        fulfillmentType: true,
+        shippingStatus: true,
         items: { select: { id: true, productId: true, quantity: true } },
         creditNotes: {
           where: { status: DocStatus.ACTIVE, type: CreditNoteType.RETURN },
@@ -211,10 +226,7 @@ const SalesPage = async ({
         marketplaceSettlementLines: {
           where: { activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
           take: 1,
-          select: {
-            id: true,
-            settlement: { select: { id: true, settlementNo: true } },
-          },
+          select: { id: true },
         },
       },
     }),
@@ -393,7 +405,7 @@ const SalesPage = async ({
                         <AdminStatusBadge tone={SHIPPING_STATUS_TONE[s.shippingStatus] ?? "neutral"}>{SHIPPING_STATUS_LABEL[s.shippingStatus]}</AdminStatusBadge>
                       ) : null}
                     </td>
-                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{s._count.items} รายการ</td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{s.items.length} รายการ</td>
                     <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(s.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{s.paymentMethod ? (paymentMethodLabel[s.paymentMethod] ?? s.paymentMethod) : "-"}</td>
                     <td className="px-4 py-3">

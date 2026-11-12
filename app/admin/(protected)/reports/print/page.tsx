@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import BrowserPrintButton from "@/components/shared/BrowserPrintButton";
-import { getReportsData, parseReportFilters } from "@/lib/reports";
+import { getReportsSummaryData, parseReportFilters } from "@/lib/reports";
 import { requirePermission } from "@/lib/require-auth";
 import CashBankSnapshot from "../CashBankSnapshot";
 import ReportsContent from "../ReportsContent";
@@ -26,7 +26,7 @@ const ReportsPrintPage = async ({ searchParams }: ReportsPrintPageProps) => {
   await requirePermission("reports.view");
   const params = await searchParams;
   const filters = parseReportFilters(params);
-  const data = await getReportsData(filters);
+  const data = await getReportsSummaryData(filters);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 bg-white p-4 print:p-0">

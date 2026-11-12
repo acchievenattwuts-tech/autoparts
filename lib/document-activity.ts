@@ -254,35 +254,38 @@ async function getAuditEvents(
 async function getSaleRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  // Sequential reads on the shared client — concurrent queries (Promise.all) on the
-  // pg adapter emit the "client.query() while already executing" deprecation warning.
-  const receipts = await db.receiptItem.findMany({
-    where: { saleId: id, receipt: { status: "ACTIVE" } },
-    select: {
-      paidAmount: true,
-      receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true,
+  // Independent reads run concurrently. Outside a transaction each query gets its own pool
+  // connection (lib/db-pool.ts), so there is no shared-client warning; the event list is
+  // assembled in the same order and sorted by sortDocumentActivityEvents as before.
+  const [receipts, creditNotes, claims, settlements, commissionItems] = await Promise.all([
+    db.receiptItem.findMany({
+      where: { saleId: id, receipt: { status: "ACTIVE" } },
+      select: {
+        paidAmount: true,
+        receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true,
+          },
         },
       },
-    },
-  });
-  const creditNotes = await db.creditNote.findMany({
-    where: { saleId: id, status: "ACTIVE" },
-    select: { id: true, cnNo: true, cnDate: true, createdAt: true, totalAmount: true,
-    },
-  });
-  const claims = await db.warrantyClaim.findMany({
-    where: { warranty: { saleId: id } },
-    select: { id: true, claimNo: true, claimDate: true, createdAt: true },
-  });
-  const settlements = await db.marketplaceSettlementLine.findMany({
-    where: { saleId: id, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
-    select: { amount: true, settlement: { select: { id: true, settlementNo: true, settlementDate: true, createdAt: true } } },
-  });
-  // Same "held by an ACTIVE run" condition as the Sale mutation guard.
-  const commissionItems = await db.deliveryCommissionItem.findMany({
-    where: { saleId: id, activeSaleId: { not: null }, run: { status: "ACTIVE" } },
-    select: { commissionAmount: true, run: { select: { id: true, runNo: true, payDate: true, createdAt: true } } },
-  });
+    }),
+    db.creditNote.findMany({
+      where: { saleId: id, status: "ACTIVE" },
+      select: { id: true, cnNo: true, cnDate: true, createdAt: true, totalAmount: true,
+      },
+    }),
+    db.warrantyClaim.findMany({
+      where: { warranty: { saleId: id } },
+      select: { id: true, claimNo: true, claimDate: true, createdAt: true },
+    }),
+    db.marketplaceSettlementLine.findMany({
+      where: { saleId: id, activeSaleId: { not: null }, settlement: { status: "ACTIVE" } },
+      select: { amount: true, settlement: { select: { id: true, settlementNo: true, settlementDate: true, createdAt: true } } },
+    }),
+    // Same "held by an ACTIVE run" condition as the Sale mutation guard.
+    db.deliveryCommissionItem.findMany({
+      where: { saleId: id, activeSaleId: { not: null }, run: { status: "ACTIVE" } },
+      select: { commissionAmount: true, run: { select: { id: true, runNo: true, payDate: true, createdAt: true } } },
+    }),
+  ]);
 
   return [
     ...receipts.map((item) => buildRelationActivityEvent({
@@ -343,26 +346,27 @@ async function getSaleRelationEvents(id: string,
 async function getPurchaseRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  // Sequential reads — see getSaleRelationEvents.
-  const returns = await db.purchaseReturn.findMany({
-    where: { purchaseId: id, status: "ACTIVE" },
-    select: { id: true, returnNo: true, returnDate: true, createdAt: true, totalAmount: true,
-    },
-  });
-  const payments = await db.supplierPaymentItem.findMany({
-    where: { purchaseId: id, payment: { status: "ACTIVE" } },
-    select: {
-      paidAmount: true,
-      payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true,
+  // Independent reads run concurrently — see getSaleRelationEvents.
+  const [returns, payments, debits] = await Promise.all([
+    db.purchaseReturn.findMany({
+      where: { purchaseId: id, status: "ACTIVE" },
+      select: { id: true, returnNo: true, returnDate: true, createdAt: true, totalAmount: true,
+      },
+    }),
+    db.supplierPaymentItem.findMany({
+      where: { purchaseId: id, payment: { status: "ACTIVE" } },
+      select: {
+        paidAmount: true,
+        payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true,
+          },
         },
       },
-    },
-  });
-
-  const debits = await db.supplierDebitNote.findMany({
-    where: { purchaseId: id, status: "ACTIVE" },
-    select: { id: true, debitNo: true, createdAt: true, netAmount: true },
-  });
+    }),
+    db.supplierDebitNote.findMany({
+      where: { purchaseId: id, status: "ACTIVE" },
+      select: { id: true, debitNo: true, createdAt: true, netAmount: true },
+    }),
+  ]);
 
   return [
     ...debits.map((debit) => buildRelationActivityEvent({
@@ -461,41 +465,43 @@ async function getReceiptRelationEvents(id: string,
 async function getCreditNoteRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  // Sequential reads — see getSaleRelationEvents.
-  const cn = await db.creditNote.findUnique({
-    where: { id },
-    select: {
-      sale: { select: { id: true, saleNo: true, saleDate: true, createdAt: true },
-      },
-    },
-  });
-  const receipts = await db.receiptItem.findMany({
-    where: { cnId: id, receipt: { status: "ACTIVE" } },
-    select: {
-      paidAmount: true,
-      receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true,
+  // Independent reads run concurrently — see getSaleRelationEvents.
+  const [cn, receipts, returnExpenses, cutWarranties] = await Promise.all([
+    db.creditNote.findUnique({
+      where: { id },
+      select: {
+        sale: { select: { id: true, saleNo: true, saleDate: true, createdAt: true },
         },
       },
-    },
-  });
-  const returnExpenses = await db.expense.findMany({
-    where: { marketplaceReturnCreditNoteId: id },
-    orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
-    select: {
-      id: true,
-      expenseNo: true,
-      expenseDate: true,
-      createdAt: true,
-      netAmount: true,
-      status: true,
-    },
-  });
-  // Warranties of the returned units this RETURN CN cancelled (restored when the CN is cancelled).
-  const cutWarranties = await db.warranty.findMany({
-    where: { cancelledByCreditNoteId: id },
-    orderBy: { cancelledAt: "desc" },
-    select: { cancelledAt: true },
-  });
+    }),
+    db.receiptItem.findMany({
+      where: { cnId: id, receipt: { status: "ACTIVE" } },
+      select: {
+        paidAmount: true,
+        receipt: { select: { id: true, receiptNo: true, receiptDate: true, createdAt: true,
+          },
+        },
+      },
+    }),
+    db.expense.findMany({
+      where: { marketplaceReturnCreditNoteId: id },
+      orderBy: [{ expenseDate: "asc" }, { expenseNo: "asc" }],
+      select: {
+        id: true,
+        expenseNo: true,
+        expenseDate: true,
+        createdAt: true,
+        netAmount: true,
+        status: true,
+      },
+    }),
+    // Warranties of the returned units this RETURN CN cancelled (restored when the CN is cancelled).
+    db.warranty.findMany({
+      where: { cancelledByCreditNoteId: id },
+      orderBy: { cancelledAt: "desc" },
+      select: { cancelledAt: true },
+    }),
+  ]);
   const lastWarrantyCutAt = cutWarranties[0]?.cancelledAt ?? null;
 
   return [
@@ -550,31 +556,38 @@ async function getCreditNoteRelationEvents(id: string,
 async function getPurchaseReturnRelationEvents(id: string,
 ): Promise<DocumentActivityEvent[]> {
   const db = await getDb();
-  // Sequential reads — see getSaleRelationEvents.
-  const ret = await db.purchaseReturn.findUnique({
-    where: { id },
-    select: {
-      returnNo: true,
-      purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true,
+  // The allowance rows need the return's number, so they follow the return read; the
+  // payments read is independent and runs alongside — see getSaleRelationEvents.
+  const loadReturnWithAllowanceRows = async () => {
+    const ret = await db.purchaseReturn.findUnique({
+      where: { id },
+      select: {
+        returnNo: true,
+        purchase: { select: { id: true, purchaseNo: true, purchaseDate: true, createdAt: true,
+          },
         },
       },
-    },
-  });
-  const allowanceRows = ret ? await db.stockCard.findMany({
-    where: { docNo: ret.returnNo, source: PURCHASE_ALLOWANCE_SOURCE },
-    orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
-    select: { id: true, productId: true, createdAt: true, valueAdjustment: true, costVariance: true,
-      product: { select: { code: true, name: true } } },
-  }) : [];
-  const payments = await db.supplierPaymentItem.findMany({
-    where: { purchaseReturnId: id, payment: { status: "ACTIVE" } },
-    select: {
-      paidAmount: true,
-      payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true,
+    });
+    const allowanceRows = ret ? await db.stockCard.findMany({
+      where: { docNo: ret.returnNo, source: PURCHASE_ALLOWANCE_SOURCE },
+      orderBy: [{ docDate: "asc" }, { sorder: "asc" }],
+      select: { id: true, productId: true, createdAt: true, valueAdjustment: true, costVariance: true,
+        product: { select: { code: true, name: true } } },
+    }) : [];
+    return { ret, allowanceRows };
+  };
+  const [{ ret, allowanceRows }, payments] = await Promise.all([
+    loadReturnWithAllowanceRows(),
+    db.supplierPaymentItem.findMany({
+      where: { purchaseReturnId: id, payment: { status: "ACTIVE" } },
+      select: {
+        paidAmount: true,
+        payment: { select: { id: true, paymentNo: true, paymentDate: true, createdAt: true,
+          },
         },
       },
-    },
-  });
+    }),
+  ]);
 
   return [
     ...(ret?.purchase ? [buildRelationActivityEvent({
@@ -627,18 +640,21 @@ async function getSupplierDebitRelationEvents(id: string): Promise<DocumentActiv
       adjustsDebitNote: { select: { id: true, debitNo: true, createdAt: true } } },
   });
   if (!debit) return [];
-  // Sequential reads — see getSaleRelationEvents.
-  const payments = await db.supplierPaymentItem.findMany({
-    where: { debitNoteId: id, payment: { status: "ACTIVE" } },
-    select: { paidAmount: true, payment: { select: { id: true, paymentNo: true, createdAt: true } } },
-  });
-  const adjustments = await db.supplierDebitNote.findMany({
-    where: { adjustsDebitNoteId: id, status: "ACTIVE" }, orderBy: { createdAt: "asc" },
-    select: { id: true, debitNo: true, createdAt: true, netAmount: true },
-  });
-  const refunds = debit.adjustsDebitNote ? await db.documentPayment.findMany({
-    where: { docType: "SUPPLIER_DEBIT_REFUND", docId: id }, select: { id: true, amount: true, createdAt: true },
-  }) : [];
+  // Independent reads run concurrently (same reads as before, still only when the DN
+  // exists) — see getSaleRelationEvents.
+  const [payments, adjustments, refunds] = await Promise.all([
+    db.supplierPaymentItem.findMany({
+      where: { debitNoteId: id, payment: { status: "ACTIVE" } },
+      select: { paidAmount: true, payment: { select: { id: true, paymentNo: true, createdAt: true } } },
+    }),
+    db.supplierDebitNote.findMany({
+      where: { adjustsDebitNoteId: id, status: "ACTIVE" }, orderBy: { createdAt: "asc" },
+      select: { id: true, debitNo: true, createdAt: true, netAmount: true },
+    }),
+    debit.adjustsDebitNote ? db.documentPayment.findMany({
+      where: { docType: "SUPPLIER_DEBIT_REFUND", docId: id }, select: { id: true, amount: true, createdAt: true },
+    }) : Promise.resolve([]),
+  ]);
   const credit = Number(debit.netAmount) < 0;
   return [
     buildRelationActivityEvent({
@@ -1000,9 +1016,11 @@ async function getRelationEvents(
     return sales.map((sale) => buildRelationActivityEvent({ id: `quotation-${id}-sale-${sale.id}`, kind: "USED_BY", occurredAt: sale.createdAt, title: sale.status === "CANCELLED" ? "เคยอ้างอิงโดยใบขาย (ยกเลิกแล้ว)" : "อ้างอิงโดยใบขาย", href: `/admin/sales/${sale.id}`, hrefLabel: sale.saleNo, tone: "used" }));
   }
   if (entityType === "Sale") {
-    const events = await getSaleRelationEvents(id);
     const db = await getDb();
-    const sale = await db.sale.findUnique({ where: { id }, select: { createdAt: true, quotation: { select: { id: true, quotationNo: true } } } });
+    const [events, sale] = await Promise.all([
+      getSaleRelationEvents(id),
+      db.sale.findUnique({ where: { id }, select: { createdAt: true, quotation: { select: { id: true, quotationNo: true } } } }),
+    ]);
     if (sale?.quotation) events.push(buildRelationActivityEvent({ id: `sale-${id}-quotation`, kind: "USES_SOURCE", occurredAt: sale.createdAt, title: "อ้างอิงใบเสนอราคา", href: `/admin/sales-quotations/${sale.quotation.id}`, hrefLabel: sale.quotation.quotationNo, tone: "used" }));
     return events;
   }
@@ -1027,11 +1045,12 @@ export async function getDocumentActivityTimeline(
   entityType: DocumentActivityEntityType,
   entityId: string,
 ): Promise<DocumentActivityEvent[]> {
-  // Sequential — each helper issues its own DB reads on the shared pg client;
-  // running them concurrently triggers the "client.query() while already executing"
-  // deprecation warning.
-  const auditEvents = await getAuditEvents(entityType, entityId);
-  const relationEvents = await getRelationEvents(entityType, entityId);
+  // Concurrent: outside a transaction each read gets its own pool connection
+  // (lib/db-pool.ts). The merge order and the sort are unchanged.
+  const [auditEvents, relationEvents] = await Promise.all([
+    getAuditEvents(entityType, entityId),
+    getRelationEvents(entityType, entityId),
+  ]);
 
   return sortDocumentActivityEvents([...auditEvents, ...relationEvents]);
 }

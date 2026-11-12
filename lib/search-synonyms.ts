@@ -12,6 +12,7 @@
 
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
+import { Prisma } from "@/lib/generated/prisma";
 import { buildSearchVariants, normalizeSearchText, tokenizeSearchVariants } from "@/lib/search-normalization";
 
 const SYNONYM_CACHE_TAG = "search-synonyms";
@@ -48,16 +49,89 @@ export type SynonymRow = {
   synonyms: string[];
 };
 
-/**
- * Load active synonyms from DB. Cached for 5 minutes; revalidate via
- * `revalidateTag("search-synonyms")` after admin mutations.
- */
-const loadActiveSynonymsUncached = (): Promise<SynonymRow[]> =>
+/** Reads the active rows straight from the table (the query every path used before). */
+const findActiveSynonymRows = (): Promise<SynonymRow[]> =>
   db.searchSynonym.findMany({
     where: { isActive: true },
     select: { term: true, synonyms: true },
   });
 
+/**
+ * Identity of the active row versions: every physical tuple (ctid) and the
+ * transaction that wrote it (xmin). Postgres never changes a tuple in place —
+ * any UPDATE (even to the same values), INSERT, DELETE or isActive toggle, by
+ * the app, a script or raw SQL, replaces or removes a tuple — so an equal value
+ * means the same tuples in the same heap order, i.e. the same rows in the same
+ * order as findActiveSynonymRows(). One 32-character value instead of the table.
+ */
+const ACTIVE_SYNONYM_VERSION_SQL = Prisma.sql`
+  SELECT md5(coalesce(string_agg(xmin::text || ':' || ctid::text, ',' ORDER BY ctid), ''))
+  FROM "SearchSynonym"
+  WHERE "isActive" = true
+`;
+
+type ActiveSynonymSnapshot = { version: string; rows: SynonymRow[] };
+
+/** Per-instance copy of the last full read, re-used while the table is unchanged. */
+let activeSynonymSnapshot: ActiveSynonymSnapshot | null = null;
+
+const copySynonymRows = (rows: SynonymRow[]): SynonymRow[] =>
+  rows.map((row) => ({ term: row.term, synonyms: [...row.synonyms] }));
+
+const readActiveSynonymVersion = async (): Promise<string | null> => {
+  const rows = await db.$queryRaw<Array<{ version: string | null }>>(
+    Prisma.sql`SELECT (${ACTIVE_SYNONYM_VERSION_SQL}) AS "version"`,
+  );
+  return rows[0]?.version ?? null;
+};
+
+/**
+ * The same rows, in the same (heap) order, as findActiveSynonymRows() — same table,
+ * same filter, no ORDER BY — plus the version, taken by the same statement so both
+ * come from one snapshot and the stored pair can never describe two table states.
+ */
+const readActiveSynonymSnapshot = async (): Promise<ActiveSynonymSnapshot | null> => {
+  const rows = await db.$queryRaw<Array<SynonymRow & { version: string }>>(Prisma.sql`
+    SELECT "term", "synonyms", (${ACTIVE_SYNONYM_VERSION_SQL}) AS "version"
+    FROM "SearchSynonym"
+    WHERE "isActive" = true
+  `);
+  if (rows.length === 0) return null;
+  return { version: rows[0].version, rows: rows.map((row) => ({ term: row.term, synonyms: row.synonyms })) };
+};
+
+/**
+ * Same result as {@link findActiveSynonymRows}, but a repeat read on this instance
+ * costs a 1-row version check instead of the full table.
+ *
+ * Product search calls this from inside its own `unstable_cache`, where Next skips
+ * reading the nested synonym cache and runs this every time (see
+ * `node_modules/next/dist/server/web/spec-extension/unstable-cache.js`). Checking
+ * the version on every call keeps that path exactly as fresh as the direct read it
+ * replaces — no TTL, no extra staleness.
+ */
+const loadActiveSynonymsUncached = async (): Promise<SynonymRow[]> => {
+  if (activeSynonymSnapshot) {
+    const currentVersion = await readActiveSynonymVersion();
+    if (currentVersion === activeSynonymSnapshot.version) {
+      return copySynonymRows(activeSynonymSnapshot.rows);
+    }
+  }
+
+  const snapshot = await readActiveSynonymSnapshot();
+  activeSynonymSnapshot = snapshot ? { version: snapshot.version, rows: copySynonymRows(snapshot.rows) } : null;
+  return snapshot?.rows ?? [];
+};
+
+/** Test seam: forget the per-instance snapshot. */
+export const resetActiveSynonymSnapshotForTest = (): void => {
+  activeSynonymSnapshot = null;
+};
+
+/**
+ * Load active synonyms from DB. Cached for 5 minutes; revalidate via
+ * `revalidateTag("search-synonyms")` after admin mutations.
+ */
 const loadActiveSynonyms = unstable_cache(
   loadActiveSynonymsUncached,
   SYNONYM_CACHE_KEY,
@@ -66,7 +140,7 @@ const loadActiveSynonyms = unstable_cache(
 
 /** Shared active-row source for every search consumer, including chat guards. */
 export const loadActiveSynonymRows = (options: { bypassCache?: boolean } = {}): Promise<SynonymRow[]> =>
-  options.bypassCache ? loadActiveSynonymsUncached() : loadActiveSynonyms();
+  options.bypassCache ? findActiveSynonymRows() : loadActiveSynonyms();
 
 /**
  * Build a bi-directional expansion map: every input token (term or synonym)

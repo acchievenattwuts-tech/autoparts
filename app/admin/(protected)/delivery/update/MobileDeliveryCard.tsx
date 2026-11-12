@@ -21,7 +21,6 @@ import {
   Truck,
   UserCheck,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
@@ -169,7 +168,6 @@ const MobileDeliveryCard = ({
   onOpenProof,
   onOpenPin,
 }: Props) => {
-  const router = useRouter();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: saleId,
     disabled: mode !== "reorder",
@@ -234,11 +232,11 @@ const MobileDeliveryCard = ({
         trackingNo: trackingInput.trim(),
         shippingMethod: shippingMethodInput,
       });
+      // No router.refresh(): updateShippingStatus calls revalidatePath on its only success
+      // path, so the action response already carries the re-rendered page.
       if (result?.error) {
         setError(result.error);
-        return;
       }
-      router.refresh();
     });
   };
 

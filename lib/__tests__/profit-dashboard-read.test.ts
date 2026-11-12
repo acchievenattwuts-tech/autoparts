@@ -70,17 +70,23 @@ test("daily and profit dashboard reads use the same limiter instance", () => {
     /\bdb\.factProfit\.(?:aggregate|findMany|groupBy)\(/g,
   );
 
-  assert.equal(dailyDbReads?.length, 18);
+  assert.equal(dailyDbReads?.length, 16);
   assert.equal(
     dailySource.match(/runAdminDashboardRead\(\(\) =>\s*db\./g)?.length,
-    18,
+    16,
   );
-  assert.equal(profitDbReads?.length, 14);
+  // Both storefront visitor numbers come from one COUNT(DISTINCT) read (R5, 2026-11-12).
+  assert.match(dailySource, /runAdminDashboardRead\(\(\) =>\s*countStorefrontVisitors\(/);
+  assert.equal(profitDbReads?.length, 10);
   assert.equal(
     profitSource.match(/runAdminDashboardRead\(\(\) =>\s*db\.factProfit\./g)
       ?.length,
-    14,
+    10,
   );
+  // Group and bill counts are SQL COUNTs (R6, 2026-11-12); they go through the limiter too.
+  const profitRawReads = profitSource.match(/\bdb\.\$queryRaw\b/g)?.length ?? 0;
+  assert.equal(profitRawReads, 2);
+  assert.equal(profitSource.match(/runAdminDashboardRead\(\(\) =>\s*db\.\$queryRaw\b/g)?.length, profitRawReads);
 });
 
 test("profit dashboard read limiter releases a slot after a failed read", async () => {

@@ -10,6 +10,9 @@ type LineConversationMessagePollerProps = {
 };
 
 type LatestMessagesResponse = {
+  latestMessageId?: string | null;
+  // Full-read shape, kept so a tab on a newer bundle still works against a
+  // server that predates the latestOnly mode (e.g. right after a rollback).
   messages?: Array<{ id?: string | null }>;
 };
 
@@ -34,13 +37,14 @@ export default function LineConversationMessagePoller({
 
       inFlightRef.current = true;
       try {
-        const response = await fetch(`/api/admin/line-conversations/${conversationId}/messages?take=1`, {
-          cache: "no-store",
-        });
+        const response = await fetch(
+          `/api/admin/line-conversations/${conversationId}/messages?take=1&latestOnly=1`,
+          { cache: "no-store" },
+        );
         if (!response.ok) return;
 
         const payload = (await response.json()) as LatestMessagesResponse;
-        const latestId = payload.messages?.at(-1)?.id ?? null;
+        const latestId = payload.latestMessageId ?? payload.messages?.at(-1)?.id ?? null;
 
         if (latestId && latestId !== latestMessageIdRef.current) {
           latestMessageIdRef.current = latestId;

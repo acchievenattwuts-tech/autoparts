@@ -1,6 +1,6 @@
 import { unstable_cache } from "next/cache";
 import { db } from "@/lib/db";
-import { ProfitSourceType } from "@/lib/generated/prisma";
+import { Prisma, ProfitSourceType } from "@/lib/generated/prisma";
 import { PROFIT_DASHBOARD_CACHE_TAG } from "@/lib/profit-cache";
 import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
 import { PURCHASE_ALLOWANCE_SOURCE } from "@/lib/stock-value-only-source";
@@ -136,6 +136,8 @@ type ProfitDashboardQueryInput = Partial<ProfitDashboardFilters> & {
 const PRODUCT_PROFIT_SOURCE_TYPES: ProfitSourceType[] = [
   ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN, ProfitSourceType.PURCHASE_COST_VARIANCE, ProfitSourceType.STOCK_VALUE_RESIDUAL,
 ];
+/** Facts of the customer analysis: sales and their returns. */
+const CUSTOMER_PROFIT_SOURCE_TYPES: ProfitSourceType[] = [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN];
 
 const ANALYSIS_PAGE_SIZE = 10;
 const ALERT_PAGE_SIZE = 6;
@@ -189,6 +191,100 @@ function buildPagination(
     totalItems,
     totalPages,
   };
+}
+
+/** The `where` of a dashboard section's factProfit.groupBy, written as SQL. */
+type FactProfitSectionFilter = {
+  sourceTypes: readonly ProfitSourceType[];
+  fromDate: Date;
+  toDate: Date;
+  /** Product sections keep only facts with a productId and a productName. */
+  namedProductOnly: boolean;
+};
+
+/**
+ * Same rows as `{ isActive: true, sourceType: { in }, businessDate: { gte, lte }[, productId: { not: null },
+ * productName: { not: null }] }`. The source types are enum values from this module, never user input.
+ */
+function factProfitSectionFilterSql(filter: FactProfitSectionFilter): Prisma.Sql {
+  return Prisma.sql`f."isActive" = true
+    AND f."sourceType" IN (${Prisma.join(filter.sourceTypes.map((type) => Prisma.sql`${type}::"ProfitSourceType"`))})
+    AND f."businessDate" >= ${filter.fromDate} AND f."businessDate" <= ${filter.toDate}
+    ${filter.namedProductOnly ? Prisma.sql`AND f."productId" IS NOT NULL AND f."productName" IS NOT NULL` : Prisma.empty}`;
+}
+
+/**
+ * Number of groups a section's paginated groupBy can return — what `(await groupBy({ by, where })).length`
+ * gave — counted in SQL over the same filter and the same GROUP BY columns, so only one number is read
+ * instead of every group. `groupColumns` is a fixed column list from this module.
+ */
+async function countFactProfitGroups(filter: FactProfitSectionFilter, groupColumns: Prisma.Sql): Promise<number> {
+  try {
+    const rows = await runAdminDashboardRead(() => db.$queryRaw<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count"
+      FROM (
+        SELECT 1 FROM "FactProfit" f
+        WHERE ${factProfitSectionFilterSql(filter)}
+        GROUP BY ${groupColumns}
+      ) grouped
+    `);
+    return Number(rows[0]?.count ?? 0);
+  } catch (error) {
+    throw new Error("Failed to count the profit dashboard groups", { cause: error });
+  }
+}
+
+/** Characters String.prototype.trim() removes: a guest name made only of these trims to "". */
+const JS_TRIM_WHITESPACE =
+  "\u0009\u000A\u000B\u000C\u000D             " +
+  "     　﻿";
+const UNKNOWN_CUSTOMER_NAME = "ลูกค้าไม่ระบุ";
+
+/**
+ * Bills per customer for the customers on the page, keyed like buildCustomerKey(). It used to load
+ * every (customerId, customerName, sourceId) group of the range and count them per key. Now SQL
+ * counts the distinct sourceIds per (customerId, customerName) — the number of those groups — for
+ * the page's customers only, and the counts are added per key the same way. A guest key is matched in
+ * SQL by a wider net (the trimmed name inside the raw name; null or blank names for
+ * "ลูกค้าไม่ระบุ") and exactly in JS by buildCustomerKey(), so names such as "ร้าน ก" and "ร้าน ก "
+ * still share one count.
+ */
+async function countCustomerInvoices(
+  fromDate: Date,
+  toDate: Date,
+  pageRows: ReadonlyArray<{ customerId: string | null; customerName: string | null }>,
+): Promise<Map<string, number>> {
+  const customerIds = [...new Set(pageRows.flatMap((row) => (row.customerId ? [row.customerId] : [])))];
+  const guestNames = [...new Set(pageRows.flatMap((row) =>
+    row.customerId ? [] : [row.customerName?.trim() || UNKNOWN_CUSTOMER_NAME]))];
+  const invoiceCountMap = new Map<string, number>();
+  if (customerIds.length === 0 && guestNames.length === 0) return invoiceCountMap;
+
+  const guestConditions = guestNames.map((name) => name === UNKNOWN_CUSTOMER_NAME
+    ? Prisma.sql`(f."customerName" IS NULL OR translate(f."customerName", ${JS_TRIM_WHITESPACE}, '') = ''
+        OR strpos(f."customerName", ${name}) > 0)`
+    : Prisma.sql`strpos(f."customerName", ${name}) > 0`);
+  try {
+    const rows = await runAdminDashboardRead(() => db.$queryRaw<
+      Array<{ customerId: string | null; customerName: string | null; invoiceCount: number }>
+    >`
+      SELECT f."customerId", f."customerName", COUNT(DISTINCT f."sourceId")::int AS "invoiceCount"
+      FROM "FactProfit" f
+      WHERE ${factProfitSectionFilterSql({ sourceTypes: CUSTOMER_PROFIT_SOURCE_TYPES, fromDate, toDate, namedProductOnly: false })}
+        AND (
+          ${customerIds.length > 0 ? Prisma.sql`f."customerId" IN (${Prisma.join(customerIds)})` : Prisma.sql`FALSE`}
+          OR (f."customerId" IS NULL AND (${guestConditions.length > 0 ? Prisma.join(guestConditions, " OR ") : Prisma.sql`FALSE`}))
+        )
+      GROUP BY f."customerId", f."customerName"
+    `);
+    for (const row of rows) {
+      const key = buildCustomerKey(row.customerId ?? null, row.customerName ?? null);
+      invoiceCountMap.set(key, (invoiceCountMap.get(key) ?? 0) + Number(row.invoiceCount));
+    }
+    return invoiceCountMap;
+  } catch (error) {
+    throw new Error("Failed to count the customers' bills", { cause: error });
+  }
 }
 
 export async function aggregateProfitSummary(start: Date, end: Date): Promise<ProfitSummary> {
@@ -379,12 +475,10 @@ async function getProductAnalysis(
     productName: { not: null as string | null },
   };
 
-  const totalItems = (
-    await runAdminDashboardRead(() => db.factProfit.groupBy({
-      by: ["productId", "productCode", "productName"],
-      where,
-    }))
-  ).length;
+  const totalItems = await countFactProfitGroups(
+    { sourceTypes: PRODUCT_PROFIT_SOURCE_TYPES, fromDate, toDate, namedProductOnly: true },
+    Prisma.sql`f."productId", f."productCode", f."productName"`,
+  );
   const pagination = buildPagination(page, totalItems);
   const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["productId", "productCode", "productName"],
@@ -437,7 +531,7 @@ async function getAllProductAnalysis(fromDate: Date, toDate: Date): Promise<Prof
 }
 
 function buildCustomerKey(customerId: string | null, customerName: string | null): string {
-  return customerId ?? `guest:${customerName?.trim() || "ลูกค้าไม่ระบุ"}`;
+  return customerId ?? `guest:${customerName?.trim() || UNKNOWN_CUSTOMER_NAME}`;
 }
 
 async function getCustomerAnalysis(
@@ -447,16 +541,14 @@ async function getCustomerAnalysis(
 ): Promise<PaginatedSection<ProfitCustomerRow>> {
   const where = {
     isActive: true,
-    sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+    sourceType: { in: CUSTOMER_PROFIT_SOURCE_TYPES },
     businessDate: { gte: fromDate, lte: toDate },
   };
 
-  const totalItems = (
-    await runAdminDashboardRead(() => db.factProfit.groupBy({
-      by: ["customerId", "customerName"],
-      where,
-    }))
-  ).length;
+  const totalItems = await countFactProfitGroups(
+    { sourceTypes: CUSTOMER_PROFIT_SOURCE_TYPES, fromDate, toDate, namedProductOnly: false },
+    Prisma.sql`f."customerId", f."customerName"`,
+  );
   const pagination = buildPagination(page, totalItems);
   const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["customerId", "customerName"],
@@ -477,16 +569,7 @@ async function getCustomerAnalysis(
     take: pagination.pageSize,
   }));
 
-  const invoiceGroupRows = await runAdminDashboardRead(() => db.factProfit.groupBy({
-    by: ["customerId", "customerName", "sourceId"],
-    where,
-  }));
-
-  const invoiceCountMap = new Map<string, number>();
-  for (const row of invoiceGroupRows) {
-    const key = buildCustomerKey(row.customerId ?? null, row.customerName ?? null);
-    invoiceCountMap.set(key, (invoiceCountMap.get(key) ?? 0) + 1);
-  }
+  const invoiceCountMap = await countCustomerInvoices(fromDate, toDate, grouped);
 
   return {
     items: grouped.map((row) => {
@@ -561,12 +644,10 @@ async function getInvoiceAnalysis(
   // One row per document: SALE facts carry a per-line supplier (and shipping has none), so
   // grouping by supplierName would split one sale into several rows with the same doc number.
   // sourceSubtype is uniform within a document's active version (the CN type for returns).
-  const totalItems = (
-    await runAdminDashboardRead(() => db.factProfit.groupBy({
-      by: ["sourceId", "sourceType", "sourceSubtype", "sourceDocNo", "businessDate", "customerName"],
-      where,
-    }))
-  ).length;
+  const totalItems = await countFactProfitGroups(
+    { sourceTypes: PRODUCT_PROFIT_SOURCE_TYPES, fromDate, toDate, namedProductOnly: false },
+    Prisma.sql`f."sourceId", f."sourceType", f."sourceSubtype", f."sourceDocNo", f."businessDate", f."customerName"`,
+  );
   const pagination = buildPagination(page, totalItems);
   const grouped = await runAdminDashboardRead(() => db.factProfit.groupBy({
     by: ["sourceId", "sourceType", "sourceSubtype", "sourceDocNo", "businessDate", "customerName"],
@@ -644,18 +725,43 @@ function getSeverityRank(severity: ProfitAlertSeverity): number {
 }
 
 async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]> {
-  const products = await getAllProductAnalysis(fromDate, toDate);
+  const todayKey = getThailandDateKey();
+  const todayStart = parseDateOnlyToStartOfDay(todayKey);
+  const recentBoundary = addThailandDays(todayStart, -6);
+  const previousBoundary = addThailandDays(recentBoundary, -7);
+  // The three reads are independent, so they run together instead of one after another.
+  const [products, invoiceRows, recentRows] = await Promise.all([
+    getAllProductAnalysis(fromDate, toDate),
+    runAdminDashboardRead(() => db.factProfit.groupBy({
+      by: ["productId", "sourceId"],
+      where: {
+        isActive: true,
+        sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
+        businessDate: { gte: fromDate, lte: toDate },
+        productId: { not: null },
+      },
+    })),
+    runAdminDashboardRead(() => db.factProfit.findMany({
+      where: {
+        isActive: true,
+        sourceType: ProfitSourceType.SALE,
+        businessDate: {
+          gte: previousBoundary,
+          lte: toDate > todayStart ? parseDateOnlyToEndOfDay(todayKey) : toDate,
+        },
+        productId: { not: null },
+        productName: { not: null },
+      },
+      select: {
+        productId: true,
+        productName: true,
+        businessDate: true,
+        quantity: true,
+        unitCostPrice: true,
+      },
+    })),
+  ]);
   const alertCandidates: Array<ProfitAlert & { score: number }> = [];
-
-  const invoiceRows = await runAdminDashboardRead(() => db.factProfit.groupBy({
-    by: ["productId", "sourceId"],
-    where: {
-      isActive: true,
-      sourceType: { in: [ProfitSourceType.SALE, ProfitSourceType.SALE_RETURN] as ProfitSourceType[] },
-      businessDate: { gte: fromDate, lte: toDate },
-      productId: { not: null },
-    },
-  }));
   const invoiceCountMap = buildProductInvoiceCountMap(invoiceRows);
 
   for (const product of products) {
@@ -709,30 +815,6 @@ async function buildAlerts(fromDate: Date, toDate: Date): Promise<ProfitAlert[]>
       });
     }
   }
-
-  const todayKey = getThailandDateKey();
-  const todayStart = parseDateOnlyToStartOfDay(todayKey);
-  const recentBoundary = addThailandDays(todayStart, -6);
-  const previousBoundary = addThailandDays(recentBoundary, -7);
-  const recentRows = await runAdminDashboardRead(() => db.factProfit.findMany({
-    where: {
-      isActive: true,
-      sourceType: ProfitSourceType.SALE,
-      businessDate: {
-        gte: previousBoundary,
-        lte: toDate > todayStart ? parseDateOnlyToEndOfDay(todayKey) : toDate,
-      },
-      productId: { not: null },
-      productName: { not: null },
-    },
-    select: {
-      productId: true,
-      productName: true,
-      businessDate: true,
-      quantity: true,
-      unitCostPrice: true,
-    },
-  }));
 
   const recentCostMap = new Map<string, { recentQty: number; recentCost: number }>();
   const previousCostMap = new Map<string, { previousQty: number; previousCost: number }>();

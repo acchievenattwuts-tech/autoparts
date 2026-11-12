@@ -28,6 +28,7 @@ import { loadProductShelfLocationViews } from "@/lib/shelf-map";
 
 import MobileProductSearchForm from "./MobileProductSearchForm";
 import ProductCardImage from "./ProductCardImage";
+import { loadProductCardAliases } from "./product-card-aliases";
 
 const PAGE_SIZE = 20;
 
@@ -137,7 +138,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
     path: "/admin/products/search",
   });
 
-  const [productRows, shelfLocationsByProduct] = await Promise.all([
+  const [productRows, shelfLocationsByProduct, aliasesByProduct] = await Promise.all([
     db.product.findMany({
       where: {
         id: { in: searchResult.ids.length > 0 ? searchResult.ids : ["__no-results__"] },
@@ -164,7 +165,6 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
         inventoryTracking: true,
         category: { select: { name: true } },
         brand: { select: { name: true } },
-        aliases: { orderBy: { id: "asc" }, take: 4, select: { alias: true } },
         carModels: {
           where: { fitmentType: "DIRECT" },
           select: {
@@ -182,6 +182,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
       },
     }),
     loadProductShelfLocationViews(db, searchResult.ids),
+    loadProductCardAliases(searchResult.ids),
   ]);
   const products = sortProductsByIds(productRows, searchResult.ids);
 
@@ -259,6 +260,7 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
               const shelfLocations = (shelfLocationsByProduct.get(product.id) ?? []).map(
                 ({ id, code, isPrimary, note }): ShelfLocationBadgeItem => ({ id, code, isPrimary, note }),
               );
+              const aliases = aliasesByProduct.get(product.id) ?? [];
 
               return (
                 <article
@@ -383,9 +385,9 @@ const ProductsMobileSearchPage = async ({ searchParams }: ProductsSearchPageProp
                         />
                       </div>
 
-                      {product.aliases.length > 0 ? (
+                      {aliases.length > 0 ? (
                         <div className="mt-2 flex flex-wrap gap-1">
-                          {product.aliases.map((alias, index) => (
+                          {aliases.map((alias, index) => (
                             <span key={`${product.id}-${alias.alias}-${index}`} className="rounded-full bg-sky-50 px-2 py-0.5 font-mono text-[10px] text-sky-700 dark:bg-sky-500/10 dark:text-sky-200">
                               {alias.alias}
                             </span>

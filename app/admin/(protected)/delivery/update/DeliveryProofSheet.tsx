@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import type SignaturePad from "signature_pad";
 import { useEffect, useRef, useState, useTransition } from "react";
 import {
@@ -107,7 +106,6 @@ const formatFileSize = (size: number) => {
 };
 
 const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Props) => {
-  const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
@@ -328,7 +326,8 @@ const DeliveryProofSheet = ({ selectedSale, canUpdate: _canUpdate, onClose }: Pr
 
       resetForm();
       onClose();
-      router.refresh();
+      // No router.refresh(): saveDeliveryProof calls revalidatePath on its only success
+      // path, so the action response already carries the re-rendered page.
     });
   };
 

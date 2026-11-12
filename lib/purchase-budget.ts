@@ -66,9 +66,14 @@ export async function loadPurchaseBudgetEffects(startedAt: Date, registeredFromK
   }
 }
 
-/** The current budget, or null while none is set. */
-export async function getPurchaseBudgetSnapshot(): Promise<PurchaseBudgetSnapshot | null> {
-  const settings = await getPurchaseBudgetSettings();
+/**
+ * The current budget, or null while none is set. A caller that has just read the settings
+ * passes them in, so the same SiteContent rows are not read a second time.
+ */
+export async function getPurchaseBudgetSnapshot(
+  loadedSettings?: PurchaseBudgetSettings,
+): Promise<PurchaseBudgetSnapshot | null> {
+  const settings = loadedSettings ?? await getPurchaseBudgetSettings();
   if (settings.budget === null || settings.startedOn === null) return null;
   const registeredFromKey = await getPurchaseBudgetRegisteredFromKey();
   const effects = await loadPurchaseBudgetEffects(parseDateOnlyToStartOfDay(settings.startedOn), registeredFromKey);

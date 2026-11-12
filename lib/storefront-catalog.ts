@@ -79,7 +79,8 @@ const getStorefrontProductsLandingPageProducts = unstable_cache(
           take: 6,
         },
       },
-      orderBy: { createdAt: "desc" },
+      // `id` breaks ties (bulk imports can share createdAt).
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: PRODUCTS_PER_PAGE,
       }),
     ),

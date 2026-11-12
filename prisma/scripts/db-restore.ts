@@ -6,10 +6,22 @@
  *   npx tsx prisma/scripts/db-restore.ts backup-YYYY-MM-DDTHH-mm-ss.json
  *
  * The snapshot file must be in prisma/scripts/snapshots/
+ *
+ * TEST DATABASES ONLY. Refuses to run against the production Supabase project,
+ * and against any other remote database unless it is named explicitly
+ * (see lib/destructive-db-script-guard.ts). `npm run db:restore` loads `.env`,
+ * which points at production, so it is refused before the snapshot is read.
+ *
+ * Remote disposable database: set ALLOW_DESTRUCTIVE_DB_SCRIPT to the exact
+ * target string the refusal message prints.
  */
 
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../lib/generated/prisma";
+import {
+  DESTRUCTIVE_DB_OVERRIDE_ENV,
+  checkDestructiveDbTarget,
+} from "../../lib/destructive-db-script-guard";
 import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
@@ -53,7 +65,17 @@ function deserialize(obj: any): any {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
-async function main() {
+async function main(): Promise<void> {
+  // Before the snapshot is read and before the first query or delete.
+  const check = checkDestructiveDbTarget(
+    process.env.DATABASE_URL,
+    process.env[DESTRUCTIVE_DB_OVERRIDE_ENV],
+  );
+  if (!check.allowed) {
+    console.error(`\nREFUSED — ${check.reason}\nNothing was read or deleted.\n`);
+    process.exit(1);
+  }
+
   const fileName = process.argv[2];
   if (!fileName) {
     console.error("❌ Usage: npx tsx prisma/scripts/db-restore.ts <backup-file.json>");

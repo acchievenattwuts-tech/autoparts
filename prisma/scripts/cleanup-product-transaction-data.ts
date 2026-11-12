@@ -1,6 +1,28 @@
+/**
+ * cleanup-product-transaction-data.ts
+ * Delete transaction, customer, supplier and product rows and reset
+ * CashBankAccount.openingBalance to 0.
+ *
+ * TEST DATABASES ONLY. Refuses to run against the production Supabase project,
+ * and against any other remote database unless it is named explicitly
+ * (see lib/destructive-db-script-guard.ts). `dotenv/config` loads `.env`,
+ * which points at production, so a bare run is refused before connecting.
+ *
+ * Usage:
+ *   npx tsx prisma/scripts/cleanup-product-transaction-data.ts             # dry run: print row counts only
+ *   npx tsx prisma/scripts/cleanup-product-transaction-data.ts --execute   # actually delete
+ *
+ * Remote disposable database: set ALLOW_DESTRUCTIVE_DB_SCRIPT to the exact
+ * target string the refusal message prints.
+ */
+
 import "dotenv/config";
 
 import { Client } from "pg";
+import {
+  DESTRUCTIVE_DB_OVERRIDE_ENV,
+  checkDestructiveDbTarget,
+} from "../../lib/destructive-db-script-guard";
 
 const TARGET_TABLES = [
   "WarrantyClaimLot",
@@ -107,12 +129,20 @@ async function countRows(client: Client, table: string): Promise<number> {
   return Number(result.rows[0]?.n ?? 0);
 }
 
-async function main() {
+async function main(): Promise<void> {
   const execute = process.argv.includes("--execute");
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
     throw new Error("DATABASE_URL is not set");
+  }
+
+  // Before connecting: even the dry run's row counts are never read from production.
+  const check = checkDestructiveDbTarget(connectionString, process.env[DESTRUCTIVE_DB_OVERRIDE_ENV]);
+  if (!check.allowed) {
+    console.error(`\nREFUSED — ${check.reason}\nNothing was read or deleted.\n`);
+    process.exitCode = 1;
+    return;
   }
 
   const client = new Client({ connectionString });

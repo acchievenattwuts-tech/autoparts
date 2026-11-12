@@ -9,6 +9,7 @@ import AdminSearchSubmitButton from "@/components/shared/AdminSearchSubmitButton
 import Pagination from "@/components/shared/Pagination";
 import LinkPendingIndicator from "@/components/shared/LinkPendingIndicator";
 import CancelWarrantyButton from "./CancelWarrantyButton";
+import { loadWarrantySummaryCounts } from "./warranty-summary-counts";
 import { hasPermissionAccess } from "@/lib/access-control";
 import { getSessionPermissionContext, requirePermission } from "@/lib/require-auth";
 import { isOnSiteWarranty } from "@/lib/warranty-claim-policy";
@@ -90,7 +91,7 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     AND: [dateWhere, searchWhere, buildWarrantyStatusWhere(status, now, soonDate)],
   };
 
-  const [warrantyRows, filteredCount, summaryRows] = await Promise.all([
+  const [warrantyRows, filteredCount, counts] = await Promise.all([
     db.warranty.findMany({
       where: filteredWhere,
       orderBy: [{ startDate: "desc" }, { unitSeq: "asc" }],
@@ -118,9 +119,12 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
       },
     }),
     db.warranty.count({ where: filteredWhere }),
-    db.warranty.findMany({
-      where: { AND: [dateWhere] },
-      select: { endDate: true, status: true },
+    // The four summary cards: same date range (dateWhere) and same buckets, counted in SQL.
+    loadWarrantySummaryCounts({
+      now,
+      soonDate,
+      startDateFrom: from ? parseDateOnlyToStartOfDay(from) : null,
+      startDateTo: to ? parseDateOnlyToEndOfDay(to) : null,
     }),
   ]);
 
@@ -131,22 +135,6 @@ const WarrantyPage = async ({ searchParams }: WarrantyPageProps) => {
     return { ...w, wStatus };
   });
   const filtered = { length: filteredCount };
-
-  const counts = summaryRows.reduce(
-    (acc, row) => {
-      if (row.status === "CANCELLED") {
-        acc.cancelled += 1;
-      } else if (row.endDate < now) {
-        acc.expired += 1;
-      } else if (row.endDate <= soonDate) {
-        acc.soon += 1;
-      } else {
-        acc.active += 1;
-      }
-      return acc;
-    },
-    { active: 0, soon: 0, expired: 0, cancelled: 0 },
-  );
 
   const totalPages = Math.max(1, Math.ceil(filteredCount / PAGE_SIZE));
 

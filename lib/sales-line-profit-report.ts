@@ -588,7 +588,11 @@ export async function querySalesLineProfitData(
   const completeSaleLineIds = completeLineFacts
     ?.filter((row) => row.sourceType === ProfitSourceType.SALE && row.sourceLineId !== null)
     .map((row) => row.sourceLineId as string);
-  const completeSaleItems = completeSaleLineIds
+  // When the visible facts are the complete set, their SALE line ids are exactly the ids `saleItems`
+  // was read with above (same rows, a superset of the columns), so they are not read a second time.
+  const completeSaleItems = completeSaleLineIds && canReuseVisibleFacts
+    ? saleItems
+    : completeSaleLineIds
     ? await db.saleItem.findMany({
         where: { id: { in: completeSaleLineIds } },
         select: {

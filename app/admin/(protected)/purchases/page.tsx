@@ -82,9 +82,20 @@ const PurchasesPage = async ({
       orderBy: [{ purchaseDate: "desc" }, { purchaseNo: "desc" }],
       take: PAGE_SIZE,
       skip: (pageNum - 1) * PAGE_SIZE,
-      include: {
+      // Only the columns this page renders; the item rows were only counted, so count them
+      // in SQL (same unfiltered PurchaseItem rows) instead of loading their ids.
+      select: {
+        id: true,
+        purchaseNo: true,
+        purchaseDate: true,
+        purchaseType: true,
+        paymentMethod: true,
+        cashBankAccountId: true,
+        netAmount: true,
+        amountRemain: true,
+        status: true,
         supplier: { select: { name: true } },
-        items:    { orderBy: { lineNo: "asc" }, select: { id: true } },
+        _count: { select: { items: true } },
       },
     }),
     db.purchase.count({ where: whereClause }),
@@ -165,7 +176,7 @@ const PurchasesPage = async ({
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{formatDateThai(p.purchaseDate)}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{p.supplier?.name ?? "-"}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{purchaseTypeLabel[p.purchaseType] ?? p.purchaseType}{p.cashBankAccountId ? ` โดย ${paymentMethodLabel[p.paymentMethod] ?? p.paymentMethod}` : ""}</td>
-                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{p.items.length} รายการ</td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">{p._count.items} รายการ</td>
                     <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{Number(p.netAmount).toLocaleString("th-TH", { minimumFractionDigits: 2 })}</td>
                     <td className="px-4 py-3">
                       {p.status === "CANCELLED" ? (

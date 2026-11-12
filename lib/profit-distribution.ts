@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { DocStatus, RetainedProfitMode } from "@/lib/generated/prisma";
+import { DocStatus, Prisma, RetainedProfitMode } from "@/lib/generated/prisma";
 import { aggregateProfitSummary, type ProfitSummary } from "@/lib/profit-dashboard";
 import {
   estimatePendingChannelFees,
@@ -440,17 +440,49 @@ export type CashHealth = {
   stockValue: number;
 };
 
+type LatestCashBankBalanceRow = { accountId: string; balanceAfter: Prisma.Decimal };
+
+/**
+ * Latest balance of every active cash/bank account, summed (an account without a movement counts
+ * its opening balance) — the cashBankBalance of getCashHealth(), also shown on the purchase budget
+ * tab. One DISTINCT ON statement picks, per account, the movement a findFirst ordered by txnDate,
+ * sorder, createdAt and id (all descending) used to return; id is unique, so the pick is the same.
+ * The total is added up in the order of the accounts, as before.
+ */
+export async function getCashBankBalanceTotal(): Promise<number> {
+  try {
+    const accounts = await db.cashBankAccount.findMany({
+      where: { isActive: true },
+      select: { id: true, openingBalance: true },
+    });
+    const latestRows = accounts.length === 0
+      ? []
+      : await db.$queryRaw<LatestCashBankBalanceRow[]>`
+          SELECT DISTINCT ON (m."accountId") m."accountId", m."balanceAfter"
+          FROM "CashBankMovement" m
+          WHERE m."accountId" IN (${Prisma.join(accounts.map((account) => account.id))})
+          ORDER BY m."accountId" ASC, m."txnDate" DESC, m."sorder" DESC, m."createdAt" DESC, m."id" DESC
+        `;
+    const latestByAccount = new Map(latestRows.map((row) => [row.accountId, row.balanceAfter]));
+    const cashBankBalance = accounts.reduce(
+      (sum, account) => sum + Number(latestByAccount.get(account.id) ?? account.openingBalance),
+      0,
+    );
+    return roundMoney(cashBankBalance);
+  } catch (error) {
+    console.error("[profit-distribution] cash/bank balance total failed", error instanceof Error ? error.name : "UNKNOWN_ERROR");
+    throw error;
+  }
+}
+
 /**
  * Context shown before confirming a payout: accounting profit is not cash.
  * Most of it is usually tied up in stock and receivables, so distributing the
  * full net profit every month can drain the shop while the P&L still looks good.
  */
 export async function getCashHealth(): Promise<CashHealth> {
-  const [accounts, receivable, stockValueRows] = await Promise.all([
-    db.cashBankAccount.findMany({
-      where: { isActive: true },
-      select: { id: true, openingBalance: true },
-    }),
+  const [cashBankBalance, receivable, stockValueRows] = await Promise.all([
+    getCashBankBalanceTotal(),
     db.sale.aggregate({
       _sum: { amountRemain: true },
       where: { status: DocStatus.ACTIVE, amountRemain: { gt: 0 } },
@@ -462,28 +494,8 @@ export async function getCashHealth(): Promise<CashHealth> {
     `,
   ]);
 
-  const latestMovements = await Promise.all(
-    accounts.map((account) =>
-      db.cashBankMovement.findFirst({
-        where: { accountId: account.id },
-        orderBy: [
-          { txnDate: "desc" },
-          { sorder: "desc" },
-          { createdAt: "desc" },
-          { id: "desc" },
-        ],
-        select: { balanceAfter: true },
-      }),
-    ),
-  );
-
-  const cashBankBalance = accounts.reduce((sum, account, index) => {
-    const latest = latestMovements[index];
-    return sum + Number(latest?.balanceAfter ?? account.openingBalance);
-  }, 0);
-
   return {
-    cashBankBalance: roundMoney(cashBankBalance),
+    cashBankBalance,
     arOutstanding: roundMoney(Number(receivable._sum.amountRemain ?? 0)),
     stockValue: roundMoney(stockValueRows[0]?.value ?? 0),
   };

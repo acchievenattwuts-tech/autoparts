@@ -67,6 +67,63 @@ const workerDependencies: LineWebhookProcessorDependencies = {
   pushLineMessages,
 };
 
+/** A PENDING job older than this is claimed by the cron (the webhook normally runs it inline). */
+const LINE_AI_PENDING_STALE_MS = 60_000;
+/** A PROCESSING job started longer ago than this is failed as STALE_PROCESSING_TIMEOUT. */
+const LINE_AI_PROCESSING_STALE_MS = 2 * 60_000;
+/** Quiet window passed to the coalescing recovery scan (equals its own default). */
+export const LINE_COALESCE_RECOVERY_QUIET_MS = 90_000;
+
+export type LineAiJobSummary = {
+  picked: number;
+  completed: number;
+  failed: number;
+  staleProcessingFailed: number;
+  skipped: number;
+  replied: number;
+};
+
+/**
+ * Idle fast-path for the every-minute cron: one statement whose condition is
+ * exactly the OR of the stale-PROCESSING timeout UPDATE, the PENDING claim
+ * UPDATE and the coalescing recovery scan below. When it is false all three
+ * would touch zero rows, so the cron returns the zero summary without them (and
+ * without reading the AI toggles, which are only used for picked jobs or
+ * recovered conversations). A failed check falls through to the full path so
+ * error behaviour stays exactly as before.
+ */
+export async function hasLineAiJobWork(nowMs: number): Promise<boolean> {
+  const staleProcessingBefore = new Date(nowMs - LINE_AI_PROCESSING_STALE_MS);
+  const stalePendingBefore = new Date(nowMs - LINE_AI_PENDING_STALE_MS);
+  const quietBefore = new Date(nowMs - LINE_COALESCE_RECOVERY_QUIET_MS);
+  try {
+    const rows = await db.$queryRaw<Array<{ hasWork: boolean }>>`
+      SELECT (
+        EXISTS (
+          SELECT 1 FROM "LineAiJob"
+          WHERE status = 'PROCESSING'::"LineAiJobStatus"
+            AND "finishedAt" IS NULL
+            AND COALESCE("startedAt", "createdAt") < ${staleProcessingBefore}
+        )
+        OR EXISTS (
+          SELECT 1 FROM "LineAiJob"
+          WHERE status = 'PENDING'::"LineAiJobStatus"
+            AND "createdAt" < ${stalePendingBefore}
+        )
+        OR EXISTS (
+          SELECT 1 FROM "LineConversation"
+          WHERE "lastInboundSeq" > "lastProcessedSeq"
+            AND ("processingOwner" IS NULL OR "processingLeaseUntil" < NOW())
+            AND "lastCustomerMessageAt" IS NOT NULL
+            AND "lastCustomerMessageAt" < ${quietBefore}
+        )
+      ) AS "hasWork"`;
+    return rows[0]?.hasWork !== false;
+  } catch {
+    return true;
+  }
+}
+
 function parseQueuedPayload(payload: unknown): ValidQueuedLineAiJobPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const candidate = payload as QueuedLineAiJobPayload;
@@ -79,11 +136,16 @@ export async function processPendingLineAiJobs(input?: {
   channelAccessToken?: string | null;
   config?: Partial<LineWebhookProcessorConfig>;
   dependencies?: LineWebhookProcessorDependencies;
-}) {
+}): Promise<LineAiJobSummary> {
   const take = Math.min(Math.max(input?.take ?? 10, 1), 25);
+  // Injected dependencies may replace the recovery scan, so only the default
+  // (database-backed) worker can prove from the database that it is idle.
+  if (!input?.dependencies && !(await hasLineAiJobWork(Date.now()))) {
+    return { picked: 0, completed: 0, failed: 0, staleProcessingFailed: 0, skipped: 0, replied: 0 };
+  }
   const aiSettings = await getLineAiSettings();
-  const stalePendingBefore = new Date(Date.now() - 60_000);
-  const staleProcessingBefore = new Date(Date.now() - 2 * 60_000);
+  const stalePendingBefore = new Date(Date.now() - LINE_AI_PENDING_STALE_MS);
+  const staleProcessingBefore = new Date(Date.now() - LINE_AI_PROCESSING_STALE_MS);
 
   const staleProcessing = await db.$queryRaw<Array<{ id: string }>>`
     UPDATE "LineAiJob"
@@ -128,7 +190,7 @@ export async function processPendingLineAiJobs(input?: {
       })
     : [];
 
-  const summary = {
+  const summary: LineAiJobSummary = {
     picked: jobs.length,
     completed: 0,
     failed: 0,
@@ -198,6 +260,7 @@ export async function processPendingLineAiJobs(input?: {
       coalesce: true,
     },
     input?.dependencies ?? workerDependencies,
+    { quietForMs: LINE_COALESCE_RECOVERY_QUIET_MS },
   ).catch((error) => {
     console.error("[line-ai-job-worker] coalesce recovery failed", error);
     return { scanned: 0, replied: 0 };

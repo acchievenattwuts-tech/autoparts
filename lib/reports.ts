@@ -179,6 +179,10 @@ type DailyPaymentRow = {
   note: string;
 };
 
+/**
+ * What the Summary and Print pages render (ReportsContent) — getReportsSummaryData(). The P&L, warranty,
+ * expense and per-period sales sections are only in ReportsFullData.
+ */
 export type ReportsData = {
   range: { from: string; to: string };
   filters: {
@@ -198,27 +202,6 @@ export type ReportsData = {
     netSaleAmount: number;
     /** Memo: total line-level discount granted (already excluded from netSaleAmount). */
     lineDiscountTotal: number;
-    byDay: SalesBucket[];
-    byWeek: SalesBucket[];
-    byMonth: SalesBucket[];
-  };
-  profitLoss: {
-    grossSales: number;
-    /** Pre-VAT subtotal of every active credit note type (RETURN, DISCOUNT, OTHER). */
-    salesReturns: number;
-    netRevenue: number;
-    costOfGoodsSold: number;
-    purchaseCostVariance?: number;
-    /** Stock value written off when on-hand reached zero (STOCK_VALUE_RESIDUAL facts); already inside costOfGoodsSold. */
-    stockValueResidual?: number;
-    grossProfit: number;
-    expenseTotal: number;
-    netProfit: number;
-    salesVat: number;
-    creditNoteVat: number;
-    purchaseVat: number;
-    expenseVat: number;
-    vatPayable: number;
   };
   stock: {
     activeProductCount: number;
@@ -227,11 +210,6 @@ export type ReportsData = {
     lowStockCount: number;
     lowStockItems: StockRow[];
     highestValueItems: StockRow[];
-  };
-  warranties: {
-    expiringSoonCount: number;
-    expiredCount: number;
-    expiringItems: WarrantyRow[];
   };
   openClaims: {
     totalOpenCount: number;
@@ -263,13 +241,6 @@ export type ReportsData = {
     totalOutstandingAmount: number;
     items: CustomerSummaryRow[];
   };
-  expenses: {
-    totalAmount: number;
-    totalVatAmount: number;
-    totalNetAmount: number;
-    items: ExpenseSummaryRow[];
-    documents: ExpenseDocumentRow[];
-  };
   dailyReceipts: {
     totalAmount: number;
     cashSaleAmount: number;
@@ -291,6 +262,134 @@ export type ReportsData = {
     items: DailyPaymentRow[];
   };
 };
+
+/**
+ * Everything getReportsData() returns: the rendered sections plus the P&L, the expiring warranties, the
+ * expense summary and the per-day/week/month sales buckets, which only buildReportsCsv(), the tests and
+ * prisma/scripts/reconcile-fact-profit.ts read.
+ */
+export type ReportsFullData = ReportsData & {
+  salesSummary: {
+    byDay: SalesBucket[];
+    byWeek: SalesBucket[];
+    byMonth: SalesBucket[];
+  };
+  profitLoss: {
+    grossSales: number;
+    /** Pre-VAT subtotal of every active credit note type (RETURN, DISCOUNT, OTHER). */
+    salesReturns: number;
+    netRevenue: number;
+    costOfGoodsSold: number;
+    purchaseCostVariance?: number;
+    /** Stock value written off when on-hand reached zero (STOCK_VALUE_RESIDUAL facts); already inside costOfGoodsSold. */
+    stockValueResidual?: number;
+    grossProfit: number;
+    expenseTotal: number;
+    netProfit: number;
+    salesVat: number;
+    creditNoteVat: number;
+    purchaseVat: number;
+    expenseVat: number;
+    vatPayable: number;
+  };
+  warranties: {
+    expiringSoonCount: number;
+    expiredCount: number;
+    expiringItems: WarrantyRow[];
+  };
+  expenses: {
+    totalAmount: number;
+    totalVatAmount: number;
+    totalNetAmount: number;
+    items: ExpenseSummaryRow[];
+    documents: ExpenseDocumentRow[];
+  };
+};
+
+/**
+ * "full" builds every section (getReportsData). "summary" builds only what ReportsContent renders
+ * (getReportsSummaryData): it skips the P&L inputs (sale and credit-note lines, the purchase a return
+ * inherits its VAT from, the FactProfit variance sums, the VAT registration setting), the expiring
+ * warranties, the expense summary and the per-period sales buckets.
+ */
+type ReportsDataScope = "summary" | "full";
+
+/** Sale columns every section reads; the full scope adds the lines (REPORT_SALE_WITH_LINES_SELECT). */
+const REPORT_SALE_SELECT = {
+  id: true,
+  saleNo: true,
+  saleDate: true,
+  customerName: true,
+  netAmount: true,
+  subtotalAmount: true,
+  vatAmount: true,
+  amountRemain: true,
+  paymentType: true,
+  paymentMethod: true,
+  note: true,
+  cashBankAccount: { select: { name: true } },
+  customer: { select: { code: true, name: true } },
+} satisfies Prisma.SaleSelect;
+const REPORT_SALE_WITH_LINES_SELECT = {
+  ...REPORT_SALE_SELECT,
+  items: { orderBy: { lineNo: "asc" }, select: { quantity: true, costPrice: true, lineDiscount: true } },
+} satisfies Prisma.SaleSelect;
+type ReportSaleRow = Prisma.SaleGetPayload<{ select: typeof REPORT_SALE_SELECT }>;
+type ReportSaleRowWithLines = Prisma.SaleGetPayload<{ select: typeof REPORT_SALE_WITH_LINES_SELECT }>;
+const hasSaleLines = (sale: ReportSaleRow | ReportSaleRowWithLines): sale is ReportSaleRowWithLines => "items" in sale;
+
+/** Credit-note columns every section reads; the full scope adds the lines that price the P&L cost reversal. */
+const REPORT_CREDIT_NOTE_SELECT = {
+  id: true,
+  cnNo: true,
+  cnDate: true,
+  type: true,
+  customerName: true,
+  totalAmount: true,
+  subtotalAmount: true,
+  vatAmount: true,
+  note: true,
+  settlementType: true,
+  refundMethod: true,
+  cashBankAccount: { select: { name: true } },
+  customer: { select: { code: true, name: true } },
+} satisfies Prisma.CreditNoteSelect;
+const REPORT_CREDIT_NOTE_WITH_LINES_SELECT = {
+  ...REPORT_CREDIT_NOTE_SELECT,
+  sale: {
+    select: {
+      items: {
+        orderBy: { lineNo: "asc" },
+        select: {
+          id: true,
+          productId: true,
+          quantity: true,
+          costPrice: true,
+        },
+      },
+    },
+  },
+  items: {
+    orderBy: { lineNo: "asc" },
+    select: {
+      saleItemId: true,
+      productId: true,
+      qty: true,
+      amount: true,
+      stockDisposition: true,
+      product: {
+        select: {
+          avgCost: true,
+        },
+      },
+    },
+  },
+} satisfies Prisma.CreditNoteSelect;
+type ReportCreditNoteRow = Prisma.CreditNoteGetPayload<{ select: typeof REPORT_CREDIT_NOTE_SELECT }>;
+type ReportCreditNoteRowWithLines = Prisma.CreditNoteGetPayload<{ select: typeof REPORT_CREDIT_NOTE_WITH_LINES_SELECT }>;
+const hasCreditNoteLines = (
+  creditNote: ReportCreditNoteRow | ReportCreditNoteRowWithLines,
+): creditNote is ReportCreditNoteRowWithLines => "items" in creditNote;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -674,8 +773,24 @@ export function buildReportQuery(filters: ParsedReportFilters): string {
   return params.toString();
 }
 
-export async function getReportsData(filters: ParsedReportFilters,
-): Promise<ReportsData> {
+/** Every section, the P&L included: buildReportsCsv(), the tests and the FactProfit reconciliation script. */
+export async function getReportsData(filters: ParsedReportFilters): Promise<ReportsFullData> {
+  return loadReportsData(filters, "full");
+}
+
+/**
+ * The sections the Summary and Print pages render. Each one is computed by the same code and from the
+ * same rows as getReportsData(); only the sections those pages never show, and their reads, are left out.
+ */
+export async function getReportsSummaryData(filters: ParsedReportFilters): Promise<ReportsData> {
+  return loadReportsData(filters, "summary");
+}
+
+async function loadReportsData(filters: ParsedReportFilters, scope: "full"): Promise<ReportsFullData>;
+async function loadReportsData(filters: ParsedReportFilters, scope: "summary"): Promise<ReportsData>;
+async function loadReportsData(filters: ParsedReportFilters, scope: ReportsDataScope,
+): Promise<ReportsData | ReportsFullData> {
+  const withUnrenderedSections = scope === "full";
   const now = new Date();
   const soonDate = addThailandDays(startOfDay(now), 30);
   const customerCodeRange = buildStringRange(filters.customerCodeFrom, filters.customerCodeTo,
@@ -766,74 +881,22 @@ export async function getReportsData(filters: ParsedReportFilters,
     ...(productCodeRange ? { items: { some: { product: { code: productCodeRange } } } } : {}),
   };
 
-  const salesPromise = db.sale.findMany({
-        where: saleWhere,
-        orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }],
-        select: {
-          id: true,
-          saleNo: true,
-          saleDate: true,
-          customerName: true,
-          netAmount: true,
-          subtotalAmount: true,
-          vatAmount: true,
-          amountRemain: true,
-          paymentType: true,
-          paymentMethod: true,
-          note: true,
-          cashBankAccount: { select: { name: true } },
-          customer: { select: { code: true, name: true } },
-          items: { orderBy: { lineNo: "asc" }, select: { quantity: true, costPrice: true, lineDiscount: true },
-      },
-        },
-      });
-  const creditNotesPromise = db.creditNote.findMany({
+  // The lines feed the P&L cost of goods sold and the line-discount memo. The summary scope does not
+  // load them: it sums lineDiscount over the same sales' lines in SQL (lineDiscountSumPromise).
+  const salesPromise: Promise<Array<ReportSaleRow | ReportSaleRowWithLines>> = withUnrenderedSections
+    ? db.sale.findMany({ where: saleWhere, orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }], select: REPORT_SALE_WITH_LINES_SELECT })
+    : db.sale.findMany({ where: saleWhere, orderBy: [{ saleDate: "asc" }, { saleNo: "asc" }], select: REPORT_SALE_SELECT });
+  const lineDiscountSumPromise = withUnrenderedSections
+    ? Promise.resolve(null)
+    : db.saleItem.aggregate({ where: { sale: saleWhere }, _sum: { lineDiscount: true } });
+  // The sale's lines and the CN's own lines only price the P&L cost reversal of returned goods.
+  const creditNotesPromise: Promise<Array<ReportCreditNoteRow | ReportCreditNoteRowWithLines>> = withUnrenderedSections
+    ? db.creditNote.findMany({
         where: creditNoteWhere,
         orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }],
-        select: {
-          id: true,
-          cnNo: true,
-          cnDate: true,
-          type: true,
-          customerName: true,
-          totalAmount: true,
-          subtotalAmount: true,
-          vatAmount: true,
-          note: true,
-          settlementType: true,
-          refundMethod: true,
-          cashBankAccount: { select: { name: true } },
-          customer: { select: { code: true, name: true } },
-          sale: {
-            select: {
-              items: {
-                orderBy: { lineNo: "asc" },
-                select: {
-                  id: true,
-                  productId: true,
-                  quantity: true,
-                  costPrice: true,
-                },
-              },
-            },
-          },
-          items: {
-            orderBy: { lineNo: "asc" },
-            select: {
-              saleItemId: true,
-              productId: true,
-              qty: true,
-              amount: true,
-              stockDisposition: true,
-              product: {
-                select: {
-                  avgCost: true,
-                },
-              },
-            },
-          },
-        },
-      });
+        select: REPORT_CREDIT_NOTE_WITH_LINES_SELECT,
+      })
+    : db.creditNote.findMany({ where: creditNoteWhere, orderBy: [{ cnDate: "asc" }, { cnNo: "asc" }], select: REPORT_CREDIT_NOTE_SELECT });
   const supplierDebitsPromise = db.supplierDebitNote.findMany({
     where: { status: "ACTIVE", postingDate: { gte: filters.from, lte: filters.to },
       ...(supplierCodeRange ? { supplier: { code: supplierCodeRange } } : {}),
@@ -843,7 +906,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       // Per-supplier purchase summary: DN document total (incl. VAT), dated by postingDate.
       supplierId: true, netAmount: true, supplier: { select: { code: true, name: true } },
       // With a product filter only the matching lines' variance belongs in the P&L.
-      items: productCodeRange
+      items: withUnrenderedSections && productCodeRange
         ? { where: { product: { code: productCodeRange } }, select: { varianceAmount: true } }
         : false,
     },
@@ -851,7 +914,8 @@ export async function getReportsData(filters: ParsedReportFilters,
   // T3: stock value written off when on-hand reached zero (lib/stock-card.ts). The fact carries no supplier,
   // so a supplier filter leaves it out; a product filter keeps the matching SKUs, like the DN variance lines.
   // Summed in SQL over the [businessDate, isActive] index; the enum value is a SQL literal, never user input.
-  const stockValueResidualPromise: Promise<Array<{ total: Prisma.Decimal | number | null }>> = supplierCodeRange
+  // P&L only: the summary scope skips it.
+  const stockValueResidualPromise: Promise<Array<{ total: Prisma.Decimal | number | null }>> = supplierCodeRange || !withUnrenderedSections
     ? Promise.resolve([])
     : db.$queryRaw<Array<{ total: Prisma.Decimal | number | null }>>`
         SELECT SUM(f."costAmount") AS "total"
@@ -864,9 +928,9 @@ export async function getReportsData(filters: ParsedReportFilters,
   // V8: the uncovered part of a DISCOUNT/OTHER purchase return ("ลดราคาซื้อ") is a negative purchase cost variance on its
   // posting date, read from its PURCHASE_COST_VARIANCE facts (subtype PURCHASE_ALLOWANCE) over the [businessDate,
   // isActive] index. A supplier filter joins the fact's supplier, a product filter its product code; enum values are
-  // SQL literals, never user input.
+  // SQL literals, never user input. P&L only: the summary scope skips it.
   const purchaseAllowanceVariancePromise: Promise<Array<{ total: Prisma.Decimal | number | null }>> =
-    db.$queryRaw<Array<{ total: Prisma.Decimal | number | null }>>`
+    !withUnrenderedSections ? Promise.resolve([]) : db.$queryRaw<Array<{ total: Prisma.Decimal | number | null }>>`
       SELECT SUM(f."costAmount") AS "total"
       FROM "FactProfit" f
       ${supplierCodeRange ? Prisma.sql`JOIN "Supplier" s ON s."id" = f."supplierId"` : Prisma.empty}
@@ -942,8 +1006,9 @@ export async function getReportsData(filters: ParsedReportFilters,
           vatType: true,
           vatRate: true,
           taxInvoiceDate: true,
-          // V3: a return that references a purchase inherits the purchase's input-VAT recoverability.
-          purchase: { select: { vatType: true, vatRate: true, taxInvoiceDate: true } },
+          // V3: a return that references a purchase inherits the purchase's input-VAT recoverability (P&L only,
+          // read solely by the full scope's purchaseVat).
+          purchase: withUnrenderedSections ? { select: { vatType: true, vatRate: true, taxInvoiceDate: true } } : false,
         },
       });
   const expensesPromise = db.expense.findMany({
@@ -1120,6 +1185,8 @@ export async function getReportsData(filters: ParsedReportFilters,
           (SELECT json_agg(row_to_json(l)) FROM low_stock l) AS "lowStockItems",
           (SELECT json_agg(row_to_json(h)) FROM highest_value h) AS "highestValueItems"
       `;
+  // Expiring warranties are not shown on the Summary / Print pages: the summary scope never runs this
+  // (lazy) query — see expiringWarrantiesPromise in the batches below.
   const warrantiesPromise = db.warranty.findMany({
         where: {
           // Cancelled (on-site) warranties are no longer in cover — never "expiring".
@@ -1197,6 +1264,8 @@ export async function getReportsData(filters: ParsedReportFilters,
           customer: { select: { code: true, name: true } },
         },
       });
+  // A PrismaPromise runs only when awaited, so leaving it out of the batches skips the read.
+  const expiringWarrantiesPromise = withUnrenderedSections ? warrantiesPromise : Promise.resolve([]);
 
   const [
     sales,
@@ -1219,6 +1288,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     stockValueResidualRows,
     supplierDebitRefunds,
     purchaseAllowanceVarianceRows,
+    lineDiscountSum,
   ] = (await runQueryBatches([
     [salesPromise, creditNotesPromise, purchasesPromise, purchaseReturnsPromise, expensesPromise,
     ],
@@ -1226,7 +1296,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       supplierAdvancesPromise,
       supplierPaymentsPromise,
       stockSectionPromise,
-      warrantiesPromise,
+      expiringWarrantiesPromise,
       openClaimsPromise,
     ],
     [outstandingSalesPromise, receiptsPromise, customerAdvancesPromise,
@@ -1237,6 +1307,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       stockValueResidualPromise,
       supplierDebitRefundsPromise,
       purchaseAllowanceVariancePromise,
+      lineDiscountSumPromise,
     ],
   ])) as [
     Awaited<typeof salesPromise>,
@@ -1247,7 +1318,7 @@ export async function getReportsData(filters: ParsedReportFilters,
     Awaited<typeof supplierAdvancesPromise>,
     Awaited<typeof supplierPaymentsPromise>,
     Awaited<typeof stockSectionPromise>,
-    Awaited<typeof warrantiesPromise>,
+    Awaited<typeof expiringWarrantiesPromise>,
     Awaited<typeof openClaimsPromise>,
     Awaited<typeof outstandingSalesPromise>,
     Awaited<typeof receiptsPromise>,
@@ -1259,9 +1330,11 @@ export async function getReportsData(filters: ParsedReportFilters,
     Awaited<typeof stockValueResidualPromise>,
     Awaited<typeof supplierDebitRefundsPromise>,
     Awaited<typeof purchaseAllowanceVariancePromise>,
+    Awaited<typeof lineDiscountSumPromise>,
   ];
   const supplierDebitRefundReceiptRows = await buildSupplierDebitRefundReceiptRows(supplierDebitRefunds);
 
+  // Only the full scope's sale and credit-note rows carry their lines (hasSaleLines / hasCreditNoteLines).
   const normalizedSales = sales.map((sale) => ({
     id: sale.id,
     saleNo: sale.saleNo,
@@ -1276,23 +1349,27 @@ export async function getReportsData(filters: ParsedReportFilters,
     paymentMethod: sale.paymentMethod,
     accountName: sale.cashBankAccount?.name ?? "-",
     note: sale.note ?? "",
-    cogs: sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0,
-    ),
+    // P&L only (the summary scope loads no lines).
+    cogs: hasSaleLines(sale) ? sale.items.reduce((sum, item) => sum + Number(item.quantity) * toNumber(item.costPrice), 0,
+    ) : 0,
     // Memo only: total line-level discount granted on this sale. Never feeds
     // revenue/COGS/profit — netAmount is already net of it.
-    lineDiscount: sale.items.reduce((sum, item) => sum + toNumber(item.lineDiscount), 0,
-    ),
+    lineDiscount: hasSaleLines(sale) ? sale.items.reduce((sum, item) => sum + toNumber(item.lineDiscount), 0,
+    ) : 0,
   }));
   const normalizedCreditNotes = creditNotes.map((creditNote) => {
+    // P&L only: the sale's and the CN's lines price the cost reversal; the summary scope loads neither.
+    const originalSaleItems = hasCreditNoteLines(creditNote) ? creditNote.sale?.items ?? [] : [];
+    const returnedItems = hasCreditNoteLines(creditNote) ? creditNote.items : [];
     const saleCostMap = buildWeightedSaleCostMap(
-      (creditNote.sale?.items ?? []).map((saleItem) => ({
+      originalSaleItems.map((saleItem) => ({
         productId: saleItem.productId,
         quantity: Number(saleItem.quantity),
         costPrice: toNumber(saleItem.costPrice),
       })),
     );
     const saleItemCostMap = new Map(
-      (creditNote.sale?.items ?? []).map((item) => [item.id, toNumber(item.costPrice)]),
+      originalSaleItems.map((item) => [item.id, toNumber(item.costPrice)]),
     );
 
     const isReturn = creditNote.type === CreditNoteType.RETURN;
@@ -1313,7 +1390,7 @@ export async function getReportsData(filters: ParsedReportFilters,
       accountName: creditNote.cashBankAccount?.name ?? "-",
       note: creditNote.note ?? "",
       // DISCOUNT/OTHER never return goods, so they never reverse cost of goods sold.
-      cogsReversal: creditNote.items.reduce((sum, item) => {
+      cogsReversal: returnedItems.reduce((sum, item) => {
         if (!isReturn || !returnDispositionReversesStockCost(item.stockDisposition)) return sum;
         const resolvedCost = resolveReturnUnitCost({
           saleItemId: item.saleItemId,
@@ -1365,7 +1442,8 @@ export async function getReportsData(filters: ParsedReportFilters,
   }));
   // Sales and customer summaries stay on return credit notes ("ยอดคืนขาย"); CN cash refunds cover every type.
   const returnCreditNotes = normalizedCreditNotes.filter((creditNote) => creditNote.isReturn);
-  const salesTransactions = [
+  // Per-day/week/month sales buckets: full scope only.
+  const salesTransactions = !withUnrenderedSections ? [] : [
     ...normalizedSales.map((sale) => ({
       docDate: sale.saleDate,
       grossSalesAmount: sale.grossSalesAmount,
@@ -1382,50 +1460,74 @@ export async function getReportsData(filters: ParsedReportFilters,
     })),
   ];
 
-  const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.salesAmountExVat, 0,
-  );
   const grossSalesIncVat = normalizedSales.reduce((sum, sale) => sum + sale.grossSalesAmount, 0);
   const salesReturnsIncVat = returnCreditNotes.reduce((sum, note) => sum + note.returnAmount, 0);
-  const lineDiscountTotal = normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0,
-  );
+  // The full scope adds up the loaded lines; the summary scope reads the SUM of the same sales' lines.
+  const lineDiscountTotal = lineDiscountSum
+    ? toNumber(lineDiscountSum._sum.lineDiscount)
+    : normalizedSales.reduce((sum, sale) => sum + sale.lineDiscount, 0,
+    );
   const totalInvoices = normalizedSales.length;
-  const creditNoteCostReversal = normalizedCreditNotes.reduce(
-    (sum, creditNote) => sum + creditNote.cogsReversal,
-    0,
-  );
-  // Supplier DN variance plus (V8) the negative ลดราคาซื้อ variance of DISCOUNT/OTHER purchase returns.
-  const purchaseCostVariance = sumSupplierDebitVariance(supplierDebits, Boolean(productCodeRange)) +
-    toNumber(purchaseAllowanceVarianceRows[0]?.total);
-  const stockValueResidual = toNumber(stockValueResidualRows[0]?.total);
-  const costOfGoodsSold = normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal +
-    purchaseCostVariance + stockValueResidual;
-  const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0,
-  );
-  // P&L revenue reduction and output-VAT reversal: every active CN type (RETURN, DISCOUNT, OTHER).
-  const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmountExVat, 0,
-  );
-  const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0,
-  );
-  // V7 (lib/input-vat.ts): only recoverable VAT is input tax. Purchases and expenses are decided by their
-  // tax-invoice date; a purchase return by its purchase's (V3), or its own when it has none; a DN and its
-  // signed adjustments carry the recoverability stored when posted (V1/V3).
-  const purchaseReturnVatDocs = purchaseReturns.map(toPurchaseReturnInputVatDocument);
-  const registeredFrom = await readVatRegistrationForReport([...purchases, ...purchaseReturnVatDocs, ...expenses]);
-  const purchaseVat = sumRecoverableInputVat(purchases, registeredFrom) - sumRecoverableInputVat(purchaseReturnVatDocs, registeredFrom)
-    + supplierDebits.reduce((sum, debit) => sum + (debit.vatRecoverable ? toNumber(debit.vatAmount) : 0), 0);
-  // Matches the expense profit facts: recoverable VAT is input tax, so it is not also counted as expense.
-  const expenseTotal = expenses.reduce((sum, expense) =>
-    sum + toNumber(isRecoverableInputVat(expense, registeredFrom) ? expense.subtotalAmount : expense.netAmount), 0);
-  const expenseVat = sumRecoverableInputVat(expenses, registeredFrom);
   const totalPurchaseAmount = purchases.reduce((sum, purchase) => sum + toNumber(purchase.netAmount), 0,
   );
   const totalReturnAmount = normalizedPurchaseReturns.reduce((sum, doc) => sum + doc.totalAmount, 0,
   );
   const totalDebitAmount = supplierDebits.reduce((sum, debit) => sum + toNumber(debit.netAmount), 0);
-  const netRevenue = grossSales - salesReturns;
-  const grossProfit = netRevenue - costOfGoodsSold;
-  const netProfit = grossProfit - expenseTotal;
-  const vatPayable = salesVat - creditNoteVat - purchaseVat - expenseVat;
+
+  // P&L: full scope only (the Summary / Print pages do not show it).
+  const computeProfitLoss = async (): Promise<ReportsFullData["profitLoss"]> => {
+    const grossSales = normalizedSales.reduce((sum, sale) => sum + sale.salesAmountExVat, 0,
+    );
+    const creditNoteCostReversal = normalizedCreditNotes.reduce(
+      (sum, creditNote) => sum + creditNote.cogsReversal,
+      0,
+    );
+    // Supplier DN variance plus (V8) the negative ลดราคาซื้อ variance of DISCOUNT/OTHER purchase returns.
+    const purchaseCostVariance = sumSupplierDebitVariance(supplierDebits, Boolean(productCodeRange)) +
+      toNumber(purchaseAllowanceVarianceRows[0]?.total);
+    const stockValueResidual = toNumber(stockValueResidualRows[0]?.total);
+    const costOfGoodsSold = normalizedSales.reduce((sum, sale) => sum + sale.cogs, 0) - creditNoteCostReversal +
+      purchaseCostVariance + stockValueResidual;
+    const salesVat = normalizedSales.reduce((sum, sale) => sum + sale.vatAmount, 0,
+    );
+    // P&L revenue reduction and output-VAT reversal: every active CN type (RETURN, DISCOUNT, OTHER).
+    const salesReturns = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.returnAmountExVat, 0,
+    );
+    const creditNoteVat = normalizedCreditNotes.reduce((sum, creditNote) => sum + creditNote.vatAmount, 0,
+    );
+    // V7 (lib/input-vat.ts): only recoverable VAT is input tax. Purchases and expenses are decided by their
+    // tax-invoice date; a purchase return by its purchase's (V3), or its own when it has none; a DN and its
+    // signed adjustments carry the recoverability stored when posted (V1/V3).
+    const purchaseReturnVatDocs = purchaseReturns.map(toPurchaseReturnInputVatDocument);
+    const registeredFrom = await readVatRegistrationForReport([...purchases, ...purchaseReturnVatDocs, ...expenses]);
+    const purchaseVat = sumRecoverableInputVat(purchases, registeredFrom) - sumRecoverableInputVat(purchaseReturnVatDocs, registeredFrom)
+      + supplierDebits.reduce((sum, debit) => sum + (debit.vatRecoverable ? toNumber(debit.vatAmount) : 0), 0);
+    // Matches the expense profit facts: recoverable VAT is input tax, so it is not also counted as expense.
+    const expenseTotal = expenses.reduce((sum, expense) =>
+      sum + toNumber(isRecoverableInputVat(expense, registeredFrom) ? expense.subtotalAmount : expense.netAmount), 0);
+    const expenseVat = sumRecoverableInputVat(expenses, registeredFrom);
+    const netRevenue = grossSales - salesReturns;
+    const grossProfit = netRevenue - costOfGoodsSold;
+    const netProfit = grossProfit - expenseTotal;
+    const vatPayable = salesVat - creditNoteVat - purchaseVat - expenseVat;
+    return {
+      grossSales,
+      salesReturns,
+      netRevenue,
+      costOfGoodsSold,
+      purchaseCostVariance,
+      stockValueResidual,
+      grossProfit,
+      expenseTotal,
+      netProfit,
+      salesVat,
+      creditNoteVat,
+      purchaseVat,
+      expenseVat,
+      vatPayable,
+    };
+  };
+  const profitLoss = withUnrenderedSections ? await computeProfitLoss() : null;
 
   const stockSection = stockSectionRows[0];
   const lowStockItems: StockRow[] = stockSection?.lowStockItems ?? [];
@@ -1560,7 +1662,8 @@ export async function getReportsData(filters: ParsedReportFilters,
 
   const expenseSummaryMap = new Map<string, ExpenseSummaryRow>();
   const expenseDocumentRows: ExpenseDocumentRow[] = [];
-  for (const expense of expenses) {
+  // The expense summary: full scope only (the expense rows themselves still feed the daily payments).
+  for (const expense of withUnrenderedSections ? expenses : []) {
     const itemCount = Math.max(expense.items.length, 1);
     const vatShare = toNumber(expense.vatAmount) / itemCount;
     for (const item of expense.items) {
@@ -1760,26 +1863,16 @@ export async function getReportsData(filters: ParsedReportFilters,
       returnAmount: salesReturnsIncVat,
       netSaleAmount: grossSalesIncVat - salesReturnsIncVat,
       lineDiscountTotal,
-      byDay: buildSalesBuckets(salesTransactions, "day"),
-      byWeek: buildSalesBuckets(salesTransactions, "week"),
-      byMonth: buildSalesBuckets(salesTransactions, "month"),
+      // The sections below that only the full scope builds keep their place (and key order) in its result.
+      ...(withUnrenderedSections
+        ? {
+            byDay: buildSalesBuckets(salesTransactions, "day"),
+            byWeek: buildSalesBuckets(salesTransactions, "week"),
+            byMonth: buildSalesBuckets(salesTransactions, "month"),
+          }
+        : {}),
     },
-    profitLoss: {
-      grossSales,
-      salesReturns,
-      netRevenue,
-      costOfGoodsSold,
-      purchaseCostVariance,
-      stockValueResidual,
-      grossProfit,
-      expenseTotal,
-      netProfit,
-      salesVat,
-      creditNoteVat,
-      purchaseVat,
-      expenseVat,
-      vatPayable,
-    },
+    ...(profitLoss ? { profitLoss } : {}),
     stock: {
       activeProductCount: toNumber(stockSection?.totals.activeProductCount),
       totalUnitsOnHand: toNumber(stockSection?.totals.totalUnitsOnHand),
@@ -1788,11 +1881,15 @@ export async function getReportsData(filters: ParsedReportFilters,
       lowStockItems,
       highestValueItems,
     },
-    warranties: {
-      expiringSoonCount: expiringItems.filter((item) => item.daysLeft >= 0).length,
-      expiredCount: expiringItems.filter((item) => item.daysLeft < 0).length,
-      expiringItems,
-    },
+    ...(withUnrenderedSections
+      ? {
+          warranties: {
+            expiringSoonCount: expiringItems.filter((item) => item.daysLeft >= 0).length,
+            expiredCount: expiringItems.filter((item) => item.daysLeft < 0).length,
+            expiringItems,
+          },
+        }
+      : {}),
     openClaims: {
       totalOpenCount: openClaimItems.length,
       items: openClaimItems,
@@ -1833,19 +1930,23 @@ export async function getReportsData(filters: ParsedReportFilters,
       ),
       items: [...customerMap.values()].sort((a, b) => b.netSalesAmount - a.netSalesAmount).slice(0, 50),
     },
-    expenses: {
-      totalAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.totalAmount), 0,
-      ),
-      totalVatAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
-      ),
-      totalNetAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
-      ),
-      items: [...expenseSummaryMap.values()].sort((a, b) => b.netAmount - a.netAmount).slice(0, 50),
-      documents: expenseDocumentRows
-        .sort((a, b) => a.expenseDate.getTime() - b.expenseDate.getTime() || a.expenseNo.localeCompare(b.expenseNo),
-        )
-        .slice(0, 100),
-    },
+    ...(withUnrenderedSections
+      ? {
+          expenses: {
+            totalAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.totalAmount), 0,
+            ),
+            totalVatAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.vatAmount), 0,
+            ),
+            totalNetAmount: expenses.reduce((sum, expense) => sum + toNumber(expense.netAmount), 0,
+            ),
+            items: [...expenseSummaryMap.values()].sort((a, b) => b.netAmount - a.netAmount).slice(0, 50),
+            documents: expenseDocumentRows
+              .sort((a, b) => a.expenseDate.getTime() - b.expenseDate.getTime() || a.expenseNo.localeCompare(b.expenseNo),
+              )
+              .slice(0, 100),
+          },
+        }
+      : {}),
     dailyReceipts: {
       totalAmount: dailyReceiptRows.reduce((sum, item) => sum + item.amount, 0),
       cashSaleAmount: dailyReceiptRows.filter((item) => item.source === "SALE").reduce((sum, item) => sum + item.amount, 0),
@@ -1883,7 +1984,7 @@ export async function getReportsData(filters: ParsedReportFilters,
   };
 }
 
-export function buildReportsCsv(data: ReportsData): string {
+export function buildReportsCsv(data: ReportsFullData): string {
   const lines: string[] = [];
   const pushRow = (values: Array<string | number>) => {
     lines.push(values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","),

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Truck, CheckCircle, RotateCcw, Save, UserRound } from "lucide-react";
 import { updateShippingStatus } from "../sales/actions";
 import { SHIPPING_METHOD_OPTIONS } from "@/lib/shipping";
@@ -34,7 +33,6 @@ const DeliveryUpdateButton = ({
   currentDeliveryStaffId,
   staffOptions,
 }: Props) => {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [trackingNo, setTrackingNo]       = useState(currentTrackingNo ?? "");
   const [shippingMethod, setShippingMethod] = useState(currentShippingMethod);
@@ -44,6 +42,8 @@ const DeliveryUpdateButton = ({
 
   const requiresTracking = shippingMethod !== "NONE" && shippingMethod !== "SELF";
 
+  // No router.refresh() after a save: updateShippingStatus calls revalidatePath on its only
+  // success path, so the action response already carries the re-rendered page.
   const handleSave = () => {
     setError("");
     startTransition(async () => {
@@ -54,9 +54,7 @@ const DeliveryUpdateButton = ({
       });
       if (result?.error) {
         setError(result.error);
-        return;
       }
-      router.refresh();
     });
   };
 
@@ -74,9 +72,7 @@ const DeliveryUpdateButton = ({
       });
       if (result?.error) {
         setError(result.error);
-        return;
       }
-      router.refresh();
     });
   };
 
@@ -108,7 +104,6 @@ const DeliveryUpdateButton = ({
         return;
       }
       setStaffDialogMode(null);
-      router.refresh();
     });
   };
 
@@ -124,9 +119,7 @@ const DeliveryUpdateButton = ({
       });
       if (result?.error) {
         setError(result.error);
-        return;
       }
-      router.refresh();
     });
   };
 

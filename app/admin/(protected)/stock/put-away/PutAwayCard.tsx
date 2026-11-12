@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { CheckCircle2, History, MapPinned, Sparkles } from "lucide-react";
 
 import {
@@ -93,7 +92,6 @@ const QuickChoices = ({ item, recent, racks, target, onPick, disabled }: QuickCh
 
 /** One product waiting to be put away, with the actions of its tab. */
 const PutAwayCard = ({ item, tab, racks, recent, selected, onToggleSelected, onSaved }: PutAwayCardProps) => {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [target, setTarget] = useState<PutAwayTarget | null>(null);
   const [pickerOpen, setPickerOpen] = useState(tab === "unlocated" && !item.suggestion && recent.length === 0);
@@ -117,7 +115,8 @@ const PutAwayCard = ({ item, tab, racks, recent, selected, onToggleSelected, onS
       }
       setDone(result.message);
       onSaved(savedTarget);
-      router.refresh();
+      // No router.refresh(): changeShelfLocationAction calls revalidatePath on every ok
+      // result, so its response already carries the re-rendered page.
     });
   };
 

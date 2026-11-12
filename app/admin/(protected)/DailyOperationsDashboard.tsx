@@ -4,6 +4,7 @@ import { TrendingUp, Banknote, Users, ShoppingCart, Receipt, Globe, SearchX } fr
 
 import AdminPageHeader from "@/components/shared/AdminPageHeader";
 import { hasPermissionAccess } from "@/lib/access-control";
+import { countStorefrontVisitors } from "@/lib/dashboard-visitor-counts";
 import { db } from "@/lib/db";
 import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
 import { getSessionPermissionContext } from "@/lib/require-auth";
@@ -120,15 +121,7 @@ const fetchDashboardAggregates = (params: {
         runAdminDashboardRead(() => db.storefrontVisitDaily.count({
           where: { visitDay: bangkokToday },
         })),
-        runAdminDashboardRead(() => db.storefrontVisitDaily.findMany({
-          distinct: ["visitorKey"],
-          where: { visitDay: { gte: bangkokMonthStart, lte: bangkokToday } },
-          select: { visitorKey: true },
-        })),
-        runAdminDashboardRead(() => db.storefrontVisitDaily.findMany({
-          distinct: ["visitorKey"],
-          select: { visitorKey: true },
-        })),
+        runAdminDashboardRead(() => countStorefrontVisitors(bangkokMonthStart, bangkokToday)),
         canViewProductSearchReport
           ? runAdminDashboardRead(() => db.productSearchLog.findMany({
               where: { resultCount: 0 },
@@ -201,8 +194,7 @@ const DailyOperationsDashboard = async () => {
     supplierAdvanceOutstandingAgg,
     purchaseReturnCreditOutstandingAgg,
     storefrontVisitorsToday,
-    storefrontVisitorsMonthRows,
-    storefrontVisitorsTotalRows,
+    storefrontVisitorCounts,
     recentNoResultSearches,
     recentSales,
     topProductGroups,
@@ -248,8 +240,8 @@ const DailyOperationsDashboard = async () => {
     amount,
   }));
 
-  const storefrontVisitorsMonth = storefrontVisitorsMonthRows.length;
-  const storefrontVisitorsTotal = storefrontVisitorsTotalRows.length;
+  const storefrontVisitorsMonth = storefrontVisitorCounts.month;
+  const storefrontVisitorsTotal = storefrontVisitorCounts.total;
   const productNameMap = new Map(
     (
       await runAdminDashboardRead(() => db.product.findMany({

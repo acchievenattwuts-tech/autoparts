@@ -61,22 +61,21 @@ export function hasGeminiKeysConfigured(): boolean {
   return getConfiguredGeminiKeys().length > 0;
 }
 
+// One INSERT … ON CONFLICT DO NOTHING for the whole key set. Existing rows are
+// left untouched, exactly like the previous per-key upsert whose `update: {}`
+// never wrote (Prisma read the row back without an UPDATE); missing rows get the
+// same `{ keyRef, provider }` create data and column defaults.
 async function ensureKeyRows(keyRefs: string[]): Promise<void> {
-  await Promise.all(
-    keyRefs.map((keyRef) =>
-      db.aiApiKeyState.upsert({
-        where: { keyRef },
-        create: { keyRef, provider: PROVIDER },
-        update: {},
-      }),
-    ),
-  );
+  await db.aiApiKeyState.createMany({
+    data: keyRefs.map((keyRef) => ({ keyRef, provider: PROVIDER })),
+    skipDuplicates: true,
+  });
 }
 
 // State rows only ever need to be created once — they are never deleted. Doing
-// the upsert sweep on every Gemini call cost one DB round-trip per configured
-// key (15+ upserts) on the chat hot path, so remember which key set has been
-// ensured by this process and skip the sweep afterwards.
+// the ensure sweep on every Gemini call cost DB round-trips on the chat hot path
+// (it used to be one upsert per configured key, 15+), so remember which key set
+// has been ensured by this process and skip the sweep afterwards.
 let ensuredKeyRowsSignature: string | null = null;
 
 /**

@@ -1,8 +1,8 @@
 import { db } from "@/lib/db";
 import { DocStatus, PurchaseType, SalePaymentType, type Prisma } from "@/lib/generated/prisma";
-import { getCashHealth } from "@/lib/profit-distribution";
+import { getCashBankBalanceTotal } from "@/lib/profit-distribution";
 import { runAdminDashboardRead } from "@/lib/profit-dashboard-read";
-import { getPurchaseBudgetSnapshot, getPurchaseBudgetSettings } from "@/lib/purchase-budget";
+import { getPurchaseBudgetSnapshot, getPurchaseBudgetSettings, type PurchaseBudgetSnapshot } from "@/lib/purchase-budget";
 import {
   PURCHASE_BUDGET_AUDIT_ENTITY,
   roundBaht,
@@ -130,7 +130,7 @@ async function loadHistory(): Promise<PurchaseBudgetHistoryRow[]> {
 }
 
 async function loadCashView(canViewCash: boolean): Promise<PurchaseBudgetCashView> {
-  const [purchases, debitNotes, receivables, cashHealth] = await Promise.all([
+  const [purchases, debitNotes, receivables, cashBankBalance] = await Promise.all([
     runAdminDashboardRead(() => db.purchase.aggregate({
       _sum: { amountRemain: true },
       where: { status: DocStatus.ACTIVE, purchaseType: PurchaseType.CREDIT_PURCHASE, amountRemain: { gt: 0 } },
@@ -144,20 +144,30 @@ async function loadCashView(canViewCash: boolean): Promise<PurchaseBudgetCashVie
       _sum: { amountRemain: true },
       where: { status: DocStatus.ACTIVE, paymentType: SalePaymentType.CREDIT_SALE, amountRemain: { gt: 0 } },
     })),
-    canViewCash ? runAdminDashboardRead(() => getCashHealth()) : Promise.resolve(null),
+    // Only the cash/bank total of the cash-health block is shown on this tab.
+    canViewCash ? runAdminDashboardRead(() => getCashBankBalanceTotal()) : Promise.resolve(null),
   ]);
   return {
-    cashBankBalance: cashHealth ? cashHealth.cashBankBalance : null,
+    cashBankBalance,
     apOutstanding: roundBaht(Number(purchases._sum.amountRemain ?? 0) + Number(debitNotes._sum.amountRemain ?? 0)),
     arOutstanding: roundBaht(Number(receivables._sum.amountRemain ?? 0)),
   };
 }
 
+/**
+ * The settings are read once and handed to the snapshot, which used to read the same rows again in a
+ * parallel slot. The chain (settings, VAT registration, effects) is the one the snapshot always ran,
+ * held in one read slot from the start as before.
+ */
+async function loadSettingsAndSnapshot(): Promise<{ settings: PurchaseBudgetSettings; snapshot: PurchaseBudgetSnapshot | null }> {
+  const settings = await getPurchaseBudgetSettings();
+  return { settings, snapshot: await getPurchaseBudgetSnapshot(settings) };
+}
+
 export async function getPurchaseBudgetDashboardData(options: { canViewCash: boolean; now?: Date }): Promise<PurchaseBudgetDashboardData> {
   const now = options.now ?? new Date();
-  const [settings, snapshot, deposits, cash, history] = await Promise.all([
-    runAdminDashboardRead(() => getPurchaseBudgetSettings()),
-    runAdminDashboardRead(() => getPurchaseBudgetSnapshot()),
+  const [{ settings, snapshot }, deposits, cash, history] = await Promise.all([
+    runAdminDashboardRead(() => loadSettingsAndSnapshot()),
     runAdminDashboardRead(() => loadDeposits()),
     loadCashView(options.canViewCash),
     runAdminDashboardRead(() => loadHistory()),

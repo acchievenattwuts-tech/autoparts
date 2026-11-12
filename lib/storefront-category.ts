@@ -111,7 +111,9 @@ const fetchCategoryProductPage = unstable_cache(
             take: 6,
           },
         },
-        orderBy: [{ stock: "desc" }, { createdAt: "desc" }],
+        // `id` breaks ties (bulk imports can share stock and createdAt) so
+        // skip/take cannot repeat or drop a product between pages.
+        orderBy: [{ stock: "desc" }, { createdAt: "desc" }, { id: "desc" }],
         skip,
         take: PAGE_SIZE,
       }),

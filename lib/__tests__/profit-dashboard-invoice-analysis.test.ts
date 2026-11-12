@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { before, mock } from "node:test";
 
+import { Prisma } from "@/lib/generated/prisma";
 import type { ProfitDashboardData, ProfitSummary } from "@/lib/profit-dashboard";
 import { parseDateOnlyToDate } from "@/lib/th-date";
 
@@ -98,6 +99,16 @@ before(async () => {
       withDbRetry: <T>(operation: () => Promise<T>): Promise<T> => operation(),
       db: {
         factProfit: { groupBy: async (args: GroupByArgs) => fakeGroupBy(args) },
+        // The section's row count is COUNT(*) over the same GROUP BY in SQL; answered here with the
+        // number of groups fakeGroupBy builds for those columns and bound values.
+        $queryRaw: async (strings: TemplateStringsArray, ...values: unknown[]) => {
+          const query = Prisma.sql(strings, ...values);
+          const groupBy = query.text.match(/GROUP BY ([^\n]+)/)?.[1] ?? "";
+          const by = [...groupBy.matchAll(/f\."(\w+)"/g)].map((match) => match[1] as keyof FakeFact);
+          const [gte, lte] = query.values.filter((value): value is Date => value instanceof Date);
+          const types = query.values.filter((value): value is string => typeof value === "string");
+          return [{ count: fakeGroupBy({ by, where: { isActive: true, sourceType: { in: types }, businessDate: { gte, lte } } }).length }];
+        },
         supplierDebitNote: {
           findMany: async (args: FindManyArgs) => {
             debitNoteFindManyCalls.push(args);

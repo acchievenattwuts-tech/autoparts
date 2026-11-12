@@ -208,6 +208,22 @@ export async function getLineConversationMessages(input: {
   return { conversation, messages };
 }
 
+/**
+ * Id of the conversation's newest message — the same row
+ * `getLineConversationMessages({ take: 1 })` returns as `messages.at(-1)` (same
+ * where and `createdAt desc` order) — in one query. The admin chat poller only
+ * compares this id, so it skips the conversation, customer and suggestion reads.
+ * An unknown conversation has no messages and yields null.
+ */
+export async function getLineConversationLatestMessageId(conversationId: string): Promise<string | null> {
+  const latest = await db.lineMessage.findFirst({
+    where: { conversationId },
+    select: { id: true },
+    orderBy: { createdAt: "desc" },
+  });
+  return latest?.id ?? null;
+}
+
 export async function pauseLineConversation(input: {
   conversationId: string;
   adminUserId: string;
