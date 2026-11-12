@@ -5,7 +5,8 @@ import {
   WhtFilingSubmissionType,
   WhtFormType,
 } from "@/lib/generated/prisma";
-import { getThailandDateKey } from "@/lib/th-date";
+import { generateWhtFilingNo } from "@/lib/doc-number";
+import { getUniqueViolationFields } from "@/lib/doc-number-retry";
 import { roundAmount } from "@/lib/wht";
 
 /**
@@ -17,7 +18,28 @@ import { roundAmount } from "@/lib/wht";
 
 type TxClient = Prisma.TransactionClient;
 
-const FILING_PREFIX = "WF";
+/** ข้อความเดิมของ action เมื่อแบบ / เดือนภาษี / ครั้งที่ ซ้ำกับรอบยื่นที่ยังไม่ยกเลิก */
+export const WHT_FILING_PERIOD_TAKEN_MESSAGE = "มีรอบยื่นของแบบ เดือนภาษี และครั้งที่นี้อยู่แล้ว";
+
+/** รอบที่บันทึกว่ายื่นแบบแล้วต้องยกเลิกไม่ได้ เพราะใบ 50 ทวิ จะกลับมาแก้ได้และยอดจะไม่ตรงกับที่ยื่นไป */
+export const buildFiledWhtFilingCancelMessage = (filingNo: string): string =>
+  `รอบยื่น ${filingNo} บันทึกว่ายื่นแบบแล้ว ยกเลิกไม่ได้`;
+
+export class WhtFilingFiledCancelError extends Error {
+  constructor(filingNo: string) {
+    super(buildFiledWhtFilingCancelMessage(filingNo));
+    this.name = "WhtFilingFiledCancelError";
+  }
+}
+
+/**
+ * P2002 จาก index "WhtFiling_active_period_key" (หรือ unique index เดิมก่อน Phase C) — ยังจับข้อความ
+ * "Unique constraint" แบบเดิมไว้ด้วย เพื่อให้ผลเหมือนเดิมทุกกรณีที่ action เคยแปลงเป็นข้อความนี้
+ */
+export function isWhtFilingPeriodConflict(error: unknown): boolean {
+  if (getUniqueViolationFields(error) !== null) return true;
+  return error instanceof Error && error.message.includes("Unique constraint");
+}
 
 export interface CreateFilingArgs {
   formType: WhtFormType;
@@ -30,16 +52,9 @@ export interface CreateFilingArgs {
   userId: string;
 }
 
-export async function generateFilingNo(tx: TxClient, date = new Date()): Promise<string> {
-  const [year, month] = getThailandDateKey(date).split("-");
-  const pattern = `${FILING_PREFIX}${year.slice(-2)}${month}`;
-  const last = await tx.whtFiling.findFirst({
-    where: { filingNo: { startsWith: pattern } },
-    orderBy: { filingNo: "desc" },
-    select: { filingNo: true },
-  });
-  const sequence = last ? parseInt(last.filingNo.slice(pattern.length), 10) + 1 : 1;
-  return `${pattern}${String(sequence).padStart(4, "0")}`;
+/** เลขรอบยื่น WF{YYMM}{4 หลัก} ตามเดือนภาษีของรอบ (ไม่ใช่วันที่สร้าง) — ออกเลขผ่าน lib/doc-number.ts */
+export async function generateFilingNo(tx: TxClient, taxYear: number, taxMonth: number): Promise<string> {
+  return generateWhtFilingNo(tx, taxYear, taxMonth);
 }
 
 /** หนังสือรับรองที่เข้าเงื่อนไขของรอบยื่นและยังไม่ถูกผูกกับรอบใด */
@@ -85,7 +100,7 @@ export async function createWhtFiling(
   );
   const surcharge = roundAmount(surchargeAmount);
 
-  const filingNo = await generateFilingNo(tx);
+  const filingNo = await generateFilingNo(tx, taxYear, taxMonth);
   const filing = await tx.whtFiling.create({
     data: {
       filingNo,
@@ -113,7 +128,10 @@ export async function createWhtFiling(
   return { ...filing, certificateCount: certificates.length };
 }
 
-/** ยกเลิกรอบยื่น — ปล่อยหนังสือรับรองกลับไปเป็น "ยังไม่ยื่น" เพื่อจัดรอบใหม่ได้ */
+/**
+ * ยกเลิกรอบยื่น — ปล่อยหนังสือรับรองกลับไปเป็น "ยังไม่ยื่น" เพื่อจัดรอบใหม่ได้
+ * รอบที่บันทึกว่ายื่นแบบแล้ว (FILED) ยกเลิกไม่ได้ — ตรวจที่ server ก่อนแตะข้อมูลใด ๆ
+ */
 export async function cancelWhtFiling(
   tx: TxClient,
   filingId: string,
@@ -121,10 +139,11 @@ export async function cancelWhtFiling(
 ): Promise<void> {
   const filing = await tx.whtFiling.findUnique({
     where: { id: filingId },
-    select: { status: true },
+    select: { status: true, filingNo: true },
   });
   if (!filing) throw new Error("ไม่พบรอบยื่นแบบ");
   if (filing.status === WhtFilingStatus.CANCELLED) return;
+  if (filing.status === WhtFilingStatus.FILED) throw new WhtFilingFiledCancelError(filing.filingNo);
 
   await tx.whtCertificate.updateMany({ where: { filingId }, data: { filingId: null } });
   await tx.whtFiling.update({

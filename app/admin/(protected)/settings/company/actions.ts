@@ -15,6 +15,7 @@ import { requirePermission } from "@/lib/require-auth";
 import { uploadProductsBucketObject } from "@/lib/products-bucket-storage";
 import { sniffImageMimeType } from "@/lib/image-upload-validation";
 import { VAT_REGISTERED_FROM_KEY } from "@/lib/input-vat";
+import { getTaxIdCheckDigitError } from "@/lib/tax-id";
 import { isDateOnlyString } from "@/lib/th-date";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -198,6 +199,9 @@ export async function updateCompanySettings(formData: FormData) {
         existingEntries.find((entry) => entry.key === key)?.value ?? null,
       ]),
     );
+    // Only a new or changed tax payer id must pass the check digit; the stored one may be saved again as it is.
+    const taxPayerIdError = getTaxIdCheckDigitError(parsed.data.tax_payer_id, beforeState.tax_payer_id);
+    if (taxPayerIdError) return { error: taxPayerIdError };
 
     const lineDispatchesSkipped = await dbTx(async (tx): Promise<number> => {
       for (const [key, value] of entries) {

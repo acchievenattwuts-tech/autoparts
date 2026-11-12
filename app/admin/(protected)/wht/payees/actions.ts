@@ -12,6 +12,7 @@ import {
 } from "@/lib/audit-log";
 import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
+import { getTaxIdCheckDigitError } from "@/lib/tax-id";
 
 /**
  * ข้อมูลภาษีของผู้ถูกหักภาษี ณ ที่จ่าย — เก็บแยกจากตาราง Supplier
@@ -97,6 +98,9 @@ export async function saveWhtPayeeProfile(
     if (!supplier) return { error: "ไม่พบผู้จำหน่าย" };
 
     const before = supplier.whtPayeeProfile;
+    // Only a new or changed 13-digit id must pass the check digit; the stored one may be saved again as it is.
+    const taxIdError = getTaxIdCheckDigitError(profile.taxId13, before?.taxId13 ?? null);
+    if (taxIdError) return { error: taxIdError };
     const data = { ...profile, isActive: isActive === "true" };
 
     await db.whtPayeeProfile.upsert({

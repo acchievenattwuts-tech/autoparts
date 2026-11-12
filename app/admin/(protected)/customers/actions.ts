@@ -13,7 +13,13 @@ import { invalidateTransactionCustomerOptions } from "@/lib/transaction-options"
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateCustomerCode } from "@/lib/entity-code";
-import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
+import {
+  getTaxIdCheckDigitError,
+  normalizeOptionalTaxId,
+  TAX_ID_INVALID_MESSAGE,
+  TAX_ID_LENGTH,
+  TAX_ID_MAX_MESSAGE,
+} from "@/lib/tax-id";
 import { CUSTOMER_PHONE_EXAMPLE, normalizeCustomerPhone } from "@/lib/customer-phone";
 
 const customerSchema = z.object({
@@ -32,7 +38,7 @@ const customerSchema = z.object({
   ),
   address:          z.string().max(300).optional(),
   shippingAddress:  z.string().max(500).optional(),
-  taxId:            z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
+  taxId:            z.string().max(TAX_ID_LENGTH, TAX_ID_MAX_MESSAGE).regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
   note:             z.string().max(500).optional(),
   creditTerm:       z.coerce.number().int().min(0).max(365).optional(),
   defaultLatitude:  z.coerce.number().finite().gte(-90).lte(90).optional(),
@@ -96,6 +102,8 @@ export async function createCustomer(
   if (!parsed.success) return { error: parsed.error.issues[0].message };
 
   const { name, phone, address, shippingAddress, taxId, note, creditTerm, defaultLatitude, defaultLongitude, customerTypeId } = parsed.data;
+  const taxIdError = getTaxIdCheckDigitError(taxId, null);
+  if (taxIdError) return { error: taxIdError };
   const code = await generateCustomerCode();
 
   try {
@@ -199,6 +207,9 @@ export async function updateCustomer(
     if (!existingCustomer) {
       return { error: "Customer not found" };
     }
+    // Only a new or changed tax ID must pass the check digit; the stored one may be saved again as it is.
+    const taxIdError = getTaxIdCheckDigitError(taxId, existingCustomer.taxId);
+    if (taxIdError) return { error: taxIdError };
 
     const updatedCustomer = await db.customer.update({
       where: { id },

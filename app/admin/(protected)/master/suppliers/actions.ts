@@ -12,7 +12,13 @@ import { db } from "@/lib/db";
 import { AuditAction } from "@/lib/generated/prisma";
 import { requirePermission } from "@/lib/require-auth";
 import { generateSupplierCode } from "@/lib/entity-code";
-import { normalizeOptionalTaxId, TAX_ID_INVALID_MESSAGE } from "@/lib/tax-id";
+import {
+  getTaxIdCheckDigitError,
+  normalizeOptionalTaxId,
+  TAX_ID_INVALID_MESSAGE,
+  TAX_ID_LENGTH,
+  TAX_ID_MAX_MESSAGE,
+} from "@/lib/tax-id";
 import { invalidateTransactionSupplierOptions } from "@/lib/transaction-options";
 
 const supplierSchema = z.object({
@@ -20,7 +26,7 @@ const supplierSchema = z.object({
   contactName: z.string().max(100).optional(),
   phone: z.string().max(20).optional(),
   address: z.string().max(500).optional(),
-  taxId: z.string().regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
+  taxId: z.string().max(TAX_ID_LENGTH, TAX_ID_MAX_MESSAGE).regex(/^\d{13}$/, TAX_ID_INVALID_MESSAGE).optional(),
   creditTerm: z.coerce.number().int().min(0).max(365).optional(),
 });
 
@@ -65,6 +71,8 @@ export const createSupplier = async (formData: FormData): Promise<{ error?: stri
     creditTerm: formData.get("creditTerm") || undefined,
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const taxIdError = getTaxIdCheckDigitError(parsed.data.taxId, null);
+  if (taxIdError) return { error: taxIdError };
 
   const code = await generateSupplierCode();
 
@@ -153,6 +161,9 @@ export const updateSupplier = async (
     if (!existingSupplier) {
       return { error: "Supplier not found" };
     }
+    // Only a new or changed tax ID must pass the check digit; the stored one may be saved again as it is.
+    const taxIdError = getTaxIdCheckDigitError(parsed.data.taxId, existingSupplier.taxId);
+    if (taxIdError) return { error: taxIdError };
 
     const updatedSupplier = await db.supplier.update({
       where: { id },

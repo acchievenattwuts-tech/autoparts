@@ -105,12 +105,6 @@ DROP INDEX "idx_knowledge_documents_search_document";
 DROP INDEX "idx_knowledge_documents_search_text_trgm";
 
 -- DropIndex
-DROP INDEX "idx_product_search_documents_keyword_trgm";
-
--- DropIndex
-DROP INDEX "idx_product_search_documents_oem_trgm";
-
--- DropIndex
 DROP INDEX "idx_psd_embedding_hnsw";
 
 -- AlterTable
@@ -139,6 +133,14 @@ test("an empty diff has no statements and reports every known item as missing", 
 test("any other statement is reported as unexpected drift", () => {
   const extra = `${KNOWN_DIFF}\n-- AlterTable\nALTER TABLE "Sale" ADD COLUMN   "note" TEXT;\n`;
   assert.deepEqual(classifyDriftStatements(extra).unexpected, ['ALTER TABLE "Sale" ADD COLUMN "note" TEXT']);
+});
+
+test("D2: the retired raw-column trigram indexes are no longer expected drift", () => {
+  // Dropped by prisma/migrations/20261112_review_round3/indexes/05-07.sql; if one is still in the
+  // database, the diff proposes dropping it and the check must say so.
+  const leftover = `${KNOWN_DIFF}\n-- DropIndex\nDROP INDEX "idx_product_search_documents_keyword_trgm";\n`;
+  assert.deepEqual(classifyDriftStatements(leftover).unexpected, ['DROP INDEX "idx_product_search_documents_keyword_trgm"']);
+  assert.ok(!KNOWN_SEARCH_DRIFT_STATEMENTS.some((statement) => /_(keyword|oem|text)_trgm"/.test(statement) && statement.includes("product_search_documents")));
 });
 
 test("an extra column dropped from product_search_documents is not hidden by the trgm_text allowance", () => {

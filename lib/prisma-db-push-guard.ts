@@ -30,12 +30,14 @@ const HELP_FLAGS: ReadonlySet<string> = new Set(["-h", "--help"]);
  * Statements `prisma migrate diff --from-config-datasource --to-schema
  * prisma/schema.prisma --script` emits for the intentional search drift,
  * normalized with `normalizeSqlStatement()`.
+ *
+ * D2 (2026-11-12): idx_product_search_documents_keyword_trgm / _oem_trgm (and the
+ * modeled _text_trgm) are dropped by prisma/migrations/20261112_review_round3/indexes/05-07.sql
+ * and no longer created by setup-search-v2.ts, so they are no longer expected drift.
  */
 export const KNOWN_SEARCH_DRIFT_STATEMENTS: readonly string[] = [
   'DROP INDEX "idx_knowledge_documents_search_document"',
   'DROP INDEX "idx_knowledge_documents_search_text_trgm"',
-  'DROP INDEX "idx_product_search_documents_keyword_trgm"',
-  'DROP INDEX "idx_product_search_documents_oem_trgm"',
   'DROP INDEX "idx_psd_embedding_hnsw"',
   'ALTER TABLE "product_search_documents" DROP COLUMN "trgm_text"',
 ];
@@ -108,11 +110,11 @@ export const buildDbPushBlockedMessage = (target: string | null, detail: string)
     `  target: ${target ?? "(unknown)"}`,
     `  detail: ${detail}`,
     "",
-    "  TH: ฐานข้อมูลมี index ค้นหา 5 ตัวและคอลัมน์ product_search_documents.trgm_text ที่สร้างโดย",
+    "  TH: ฐานข้อมูลมี index ค้นหา 3 ตัวและคอลัมน์ product_search_documents.trgm_text ที่สร้างโดย",
     "      prisma/scripts/setup-search-v2.ts / setup-knowledge-rag.ts และไม่อยู่ใน prisma/schema.prisma",
     "      db push จะ DROP ทั้งหมด ทำให้การค้นหาสินค้า/คลังความรู้เสีย",
     "      และ index SupplierDebitNote_active_supplier_reference_key ที่กันเลขใบ DN ของ supplier ซ้ำ",
-    "  EN: The database holds 5 search indexes and product_search_documents.trgm_text that live outside",
+    "  EN: The database holds 3 search indexes and product_search_documents.trgm_text that live outside",
     "      prisma/schema.prisma. db push DROPS them and breaks product / knowledge search, plus the",
     "      SupplierDebitNote_active_supplier_reference_key index that blocks duplicate supplier DN numbers.",
     "",

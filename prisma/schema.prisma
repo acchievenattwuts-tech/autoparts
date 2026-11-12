@@ -87,7 +87,6 @@ model User {
   whtFilings                     WhtFiling[]
   whtReceivedAttachments         WhtReceivedAttachment[]
 
-  @@index([username])
   @@index([appRoleId])
   @@index([userType])
 }
@@ -131,8 +130,6 @@ model UserLineRecipient {
   updatedAt   DateTime      @updatedAt @db.Timestamptz(3)
   recipient   LineRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([recipientId])
 }
 
 model LineDailySummaryDispatch {
@@ -1123,7 +1120,6 @@ model Product {
   warranties          Warranty[]
   shelfLocations      ProductShelfLocation[]
 
-  @@index([categoryId])
   @@index([brandId])
   // Storefront category listing + related-products: filter on
   // (categoryId, isActive, isStorefrontVisible) then order by stock desc.
@@ -1282,7 +1278,6 @@ model SearchKeyword {
   updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   @@unique([normalized, kind])
-  @@index([normalized])
   @@index([popularity(sort: Desc)])
 }
 
@@ -1762,10 +1757,12 @@ model Sale {
   marketplaceSettlementLines MarketplaceSettlementLine[]
   whtReceived                WhtReceived?
 
-  @@unique([channel, channelRefNo])
+  // M9 (2026-11-12): marketplace order numbers are unique among ACTIVE sales only, compared upper-case and trimmed —
+  // the partial expression index "Sale_active_channel_ref_key" (prisma/migrations/20261112_review_round3) which
+  // schema.prisma cannot express; this plain index serves the lookups.
+  @@index([channel, channelRefNo])
   @@index([quotationId])
   @@index([cashBankAccountId])
-  @@index([trackingToken])
   @@index([trackingExpiry])
   @@index([deliveryStaffId, shippingStatus, status])
   @@index([deliveryStaffId, fulfillmentType, status, shippingStatus, saleDate, saleNo])
@@ -1831,7 +1828,6 @@ model DeliveryTracking {
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
   sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
-  @@index([saleId])
   @@index([updatedAt])
 }
 
@@ -1950,7 +1946,6 @@ model WarrantyClaim {
   warranty            Warranty             @relation(fields: [warrantyId], references: [id])
   claimLots           WarrantyClaimLot[]
 
-  @@index([warrantyId])
   @@index([claimDate])
   @@index([status])
   @@index([warrantyId, claimDate(sort: Desc)])
@@ -1970,7 +1965,6 @@ model ClaimStockBalance {
 
   @@unique([claimId, productId, lotNo])
   @@index([productId])
-  @@index([claimId])
 }
 
 model ClaimStockMovement {
@@ -2067,7 +2061,6 @@ model Expense {
   whtCertificates               WhtCertificate[]       @relation("WhtCertificateExpense")
   whtCertificateActive          WhtCertificate?        @relation("WhtCertificateActiveExpense")
 
-  @@index([cashBankAccountId])
   @@index([supplierId, expenseDate(sort: Desc)])
   @@index([taxInvoiceDate])
   @@index([expenseDate(sort: Desc), status])
@@ -2105,7 +2098,6 @@ model DeliveryCommissionRun {
 
   @@index([payDate, status])
   @@index([deliveryStaffId, status, payDate])
-  @@index([expenseId])
 }
 
 model DeliveryCommissionItem {
@@ -2273,7 +2265,6 @@ model CreditNote {
   cancelledWarranties        Warranty[]
 
   @@unique([channel, marketplaceReturnRef])
-  @@index([cashBankAccountId])
   @@index([cnDate(sort: Desc), status])
   @@index([cashBankAccountId, cnDate(sort: Desc), status])
   @@index([channel, status, cnDate(sort: Desc)])
@@ -2343,7 +2334,6 @@ model PurchaseReturn {
   items                PurchaseReturnItem[]
   supplierPaymentItems SupplierPaymentItem[]
 
-  @@index([cashBankAccountId])
   @@index([claimId])
   @@index([taxInvoiceDate])
   @@index([returnDate(sort: Desc), status])
@@ -2421,7 +2411,6 @@ model Receipt {
   items              ReceiptItem[]
   whtReceived        WhtReceived?
 
-  @@index([cashBankAccountId])
   @@index([receiptDate(sort: Desc), status])
   @@index([cashBankAccountId, receiptDate(sort: Desc), status])
 }
@@ -2464,7 +2453,6 @@ model CashBankAccount {
   customerAdvanceRefunds   CustomerAdvanceRefund[]
   supplierAdvanceRefunds   SupplierAdvanceRefund[]
 
-  @@index([type, isActive])
   @@index([name])
   @@index([type, isActive, isPrimaryTransferAccount])
 }
@@ -2720,7 +2708,6 @@ model CustomerAdvance {
   @@index([advanceDate(sort: Desc), status])
   @@index([cashBankAccountId, advanceDate(sort: Desc), status])
   @@index([customerId, status])
-  @@index([cashBankAccountId])
   @@index([userId])
 }
 
@@ -2749,7 +2736,6 @@ model CustomerAdvanceRefund {
   @@index([refundDate(sort: Desc), status])
   @@index([customerAdvanceId, status])
   @@index([cashBankAccountId, refundDate(sort: Desc), status])
-  @@index([cashBankAccountId])
   @@index([userId])
 }
 
@@ -2779,7 +2765,6 @@ model SupplierAdvance {
   @@index([advanceDate(sort: Desc), status])
   @@index([cashBankAccountId, advanceDate(sort: Desc), status])
   @@index([supplierId, status])
-  @@index([cashBankAccountId])
   @@index([userId])
 }
 
@@ -2805,7 +2790,6 @@ model SupplierAdvanceRefund {
   @@index([refundDate(sort: Desc), status])
   @@index([supplierAdvanceId, status])
   @@index([cashBankAccountId, refundDate(sort: Desc), status])
-  @@index([cashBankAccountId])
   @@index([userId])
 }
 
@@ -2837,7 +2821,6 @@ model SupplierPayment {
   @@index([paymentDate(sort: Desc), status])
   @@index([cashBankAccountId, paymentDate(sort: Desc), status])
   @@index([supplierId, status])
-  @@index([cashBankAccountId])
   @@index([userId])
 }
 
@@ -2982,7 +2965,6 @@ model LotBalance {
   product   Product @relation(fields: [productId], references: [id])
 
   @@unique([productId, lotNo])
-  @@index([productId])
 }
 
 model StockMovementLot {
@@ -3077,7 +3059,6 @@ model product_search_documents {
   @@index([product_created_at(sort: Desc)], map: "idx_product_search_documents_created_at")
   @@index([search_document], map: "idx_product_search_documents_document", type: Gin)
   @@index([is_active], map: "idx_product_search_documents_is_active")
-  @@index([search_text(ops: raw("gin_trgm_ops"))], map: "idx_product_search_documents_text_trgm", type: Gin)
 }
 
 enum AliasKind {
@@ -3966,6 +3947,7 @@ enum NotificationType {
   PURCHASE_BUDGET_LOW
   PURCHASE_BUDGET_EXCEEDED
   PAYMENT_SLIP_FLAGGED
+  SALE_BELOW_COST
 }
 
 enum NotificationSeverity {
@@ -4248,7 +4230,10 @@ model WhtFiling {
   user             User                    @relation(fields: [userId], references: [id])
   certificates     WhtCertificate[]
 
-  @@unique([formType, taxYear, taxMonth, submissionType, additionalSeq])
+  // M5 (2026-11-12): one non-cancelled filing per form / tax month / submission — the partial unique index
+  // "WhtFiling_active_period_key" (WHERE status <> 'CANCELLED', prisma/migrations/20261112_review_round3), which
+  // schema.prisma cannot express, so a cancelled filing can be redone; this plain index serves the lookups.
+  @@index([formType, taxYear, taxMonth, submissionType, additionalSeq])
   @@index([taxYear, taxMonth, formType])
   @@index([status, filedAt])
   @@index([userId])

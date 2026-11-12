@@ -48,7 +48,8 @@ ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS keyword_text text NOT NULL DEFAULT '';
 -- Phase Q7: popularity / availability ranking signals.
 -- stock is refreshed in real time via build_product_search_text (Product
--- updates fire the refresh trigger). sales_count is a rolling 90-day units-
+-- updates fire the refresh trigger; a stock-only change writes just stock and
+-- updated_at, see trg_refresh_product_search_document). sales_count is a rolling 90-day units-
 -- sold figure maintained out-of-band by the refresh-search-popularity script
 -- (cron) -- the build function deliberately never overwrites it.
 ALTER TABLE product_search_documents
@@ -68,6 +69,12 @@ ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS embedding_source_hash text;
 ALTER TABLE product_search_documents
   ADD COLUMN IF NOT EXISTS embedded_at timestamptz(3);
+-- D1 (2026-11-12): leave room on each heap page so the trigger's stock-only
+-- update (every sale and purchase line) can be a HOT update: same page, no new
+-- entry in any of the table's indexes. Storage only, no rewrite; it applies to
+-- pages written from now on. Same statement as
+-- prisma/migrations/20261112_review_round3/storage/01-search-documents-fillfactor.sql.
+ALTER TABLE product_search_documents SET (fillfactor = 70);
 
 -- Compact trigram probe target (2026-08-03). The candidate clause's fuzzy arm
 -- used to run "search_text % query AND similarity(search_text, query) >= 0.12",
@@ -167,17 +174,15 @@ CREATE INDEX IF NOT EXISTS idx_product_search_documents_document
   ON product_search_documents
   USING GIN (search_document);
 
-CREATE INDEX IF NOT EXISTS idx_product_search_documents_text_trgm
-  ON product_search_documents
-  USING GIN (search_text gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS idx_product_search_documents_oem_trgm
-  ON product_search_documents
-  USING GIN (oem_text gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS idx_product_search_documents_keyword_trgm
-  ON product_search_documents
-  USING GIN (keyword_text gin_trgm_ops);
+-- D2 (2026-11-12): trigram indexes on the RAW search_text / oem_text / keyword_text
+-- columns are retired. Every search clause compares f_unaccent(lower(col)), which
+-- only the idx_psd_*_unaccent_trgm indexes below can serve, so these were written
+-- on every document change and never used (production: 0, 0 and 8 scans). Dropped
+-- in production with prisma/migrations/20261112_review_round3/indexes/05-07.sql;
+-- the DROPs here keep any other database in line with schema.prisma.
+DROP INDEX IF EXISTS idx_product_search_documents_text_trgm;
+DROP INDEX IF EXISTS idx_product_search_documents_oem_trgm;
+DROP INDEX IF EXISTS idx_product_search_documents_keyword_trgm;
 
 -- Phase 1 (hybrid search): HNSW index for cosine similarity over the embedding.
 -- Safe to create while the column is all-NULL; it simply starts empty.
@@ -479,21 +484,60 @@ BEGIN
     RETURN OLD;
   END IF;
 
+  -- build_product_search_text reads these Product columns: id, isActive, code,
+  -- name, description, categoryId, brandId, stock and createdAt. When none but
+  -- stock changed (every sale, purchase, return and stock adjustment), the full
+  -- refresh would rewrite each other column with the value it already holds and
+  -- set updated_at = now(), so write exactly stock and updated_at. Without a
+  -- document row yet, fall through to the full refresh, which inserts it.
+  IF TG_OP = 'UPDATE'
+     AND NEW.id IS NOT DISTINCT FROM OLD.id
+     AND NEW."isActive" IS NOT DISTINCT FROM OLD."isActive"
+     AND NEW.code IS NOT DISTINCT FROM OLD.code
+     AND NEW.name IS NOT DISTINCT FROM OLD.name
+     AND NEW.description IS NOT DISTINCT FROM OLD.description
+     AND NEW."categoryId" IS NOT DISTINCT FROM OLD."categoryId"
+     AND NEW."brandId" IS NOT DISTINCT FROM OLD."brandId"
+     AND NEW."createdAt" IS NOT DISTINCT FROM OLD."createdAt"
+  THEN
+    UPDATE product_search_documents
+    SET stock = NEW.stock,
+        updated_at = now()
+    WHERE product_id = NEW.id;
+    IF FOUND THEN
+      RETURN NEW;
+    END IF;
+  END IF;
+
   PERFORM refresh_product_search_document(NEW.id);
   RETURN NEW;
 END;
 $$;
 
+-- Statement-level: one refresh per affected product per statement. An UPDATE
+-- refreshes the product before and after the change, so a row moved to another
+-- product also refreshes the product it left.
 CREATE OR REPLACE FUNCTION trg_refresh_product_search_alias()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  target_product_id text;
 BEGIN
-  target_product_id := COALESCE(NEW."productId", OLD."productId");
-  PERFORM refresh_product_search_document(target_product_id);
-  RETURN COALESCE(NEW, OLD);
+  IF TG_OP = 'INSERT' THEN
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT DISTINCT changed."productId" FROM product_search_new_rows changed
+    ));
+  ELSIF TG_OP = 'UPDATE' THEN
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT changed."productId" FROM product_search_new_rows changed
+      UNION
+      SELECT changed."productId" FROM product_search_old_rows changed
+    ));
+  ELSE
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT DISTINCT changed."productId" FROM product_search_old_rows changed
+    ));
+  END IF;
+  RETURN NULL;
 END;
 $$;
 
@@ -501,12 +545,23 @@ CREATE OR REPLACE FUNCTION trg_refresh_product_search_fitment()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
-DECLARE
-  target_product_id text;
 BEGIN
-  target_product_id := COALESCE(NEW."productId", OLD."productId");
-  PERFORM refresh_product_search_document(target_product_id);
-  RETURN COALESCE(NEW, OLD);
+  IF TG_OP = 'INSERT' THEN
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT DISTINCT changed."productId" FROM product_search_new_rows changed
+    ));
+  ELSIF TG_OP = 'UPDATE' THEN
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT changed."productId" FROM product_search_new_rows changed
+      UNION
+      SELECT changed."productId" FROM product_search_old_rows changed
+    ));
+  ELSE
+    PERFORM refresh_product_search_documents_for_products(ARRAY(
+      SELECT DISTINCT changed."productId" FROM product_search_old_rows changed
+    ));
+  END IF;
+  RETURN NULL;
 END;
 $$;
 
@@ -581,16 +636,48 @@ AFTER INSERT OR UPDATE OR DELETE ON "Product"
 FOR EACH ROW
 EXECUTE FUNCTION trg_refresh_product_search_document();
 
+-- D1 (2026-11-12): statement-level with transition tables (see the functions above).
+-- Transition tables allow one event per trigger, hence three triggers per table.
+-- The function + trigger SQL is byte-identical to
+-- prisma/migrations/20261112_review_round3/triggers/01-search-document-triggers.sql.
 DROP TRIGGER IF EXISTS product_search_document_refresh_on_alias ON "ProductAlias";
-CREATE TRIGGER product_search_document_refresh_on_alias
-AFTER INSERT OR UPDATE OR DELETE ON "ProductAlias"
-FOR EACH ROW
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_alias_insert ON "ProductAlias";
+CREATE TRIGGER product_search_document_refresh_on_alias_insert
+AFTER INSERT ON "ProductAlias"
+REFERENCING NEW TABLE AS product_search_new_rows
+FOR EACH STATEMENT
+EXECUTE FUNCTION trg_refresh_product_search_alias();
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_alias_update ON "ProductAlias";
+CREATE TRIGGER product_search_document_refresh_on_alias_update
+AFTER UPDATE ON "ProductAlias"
+REFERENCING OLD TABLE AS product_search_old_rows NEW TABLE AS product_search_new_rows
+FOR EACH STATEMENT
+EXECUTE FUNCTION trg_refresh_product_search_alias();
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_alias_delete ON "ProductAlias";
+CREATE TRIGGER product_search_document_refresh_on_alias_delete
+AFTER DELETE ON "ProductAlias"
+REFERENCING OLD TABLE AS product_search_old_rows
+FOR EACH STATEMENT
 EXECUTE FUNCTION trg_refresh_product_search_alias();
 
 DROP TRIGGER IF EXISTS product_search_document_refresh_on_fitment ON "ProductCarModel";
-CREATE TRIGGER product_search_document_refresh_on_fitment
-AFTER INSERT OR UPDATE OR DELETE ON "ProductCarModel"
-FOR EACH ROW
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_fitment_insert ON "ProductCarModel";
+CREATE TRIGGER product_search_document_refresh_on_fitment_insert
+AFTER INSERT ON "ProductCarModel"
+REFERENCING NEW TABLE AS product_search_new_rows
+FOR EACH STATEMENT
+EXECUTE FUNCTION trg_refresh_product_search_fitment();
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_fitment_update ON "ProductCarModel";
+CREATE TRIGGER product_search_document_refresh_on_fitment_update
+AFTER UPDATE ON "ProductCarModel"
+REFERENCING OLD TABLE AS product_search_old_rows NEW TABLE AS product_search_new_rows
+FOR EACH STATEMENT
+EXECUTE FUNCTION trg_refresh_product_search_fitment();
+DROP TRIGGER IF EXISTS product_search_document_refresh_on_fitment_delete ON "ProductCarModel";
+CREATE TRIGGER product_search_document_refresh_on_fitment_delete
+AFTER DELETE ON "ProductCarModel"
+REFERENCING OLD TABLE AS product_search_old_rows
+FOR EACH STATEMENT
 EXECUTE FUNCTION trg_refresh_product_search_fitment();
 
 DROP TRIGGER IF EXISTS product_search_document_refresh_on_category ON "Category";

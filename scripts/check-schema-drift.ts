@@ -7,7 +7,7 @@
  * introspects the database — it never writes.
  *
  * The output is the SQL that would bring the database in line with the schema.
- * Six statements are known, intentional drift (search indexes and
+ * Four statements are known, intentional drift (search indexes and
  * product_search_documents.trgm_text created by prisma/scripts/setup-search-v2.ts
  * and setup-knowledge-rag.ts outside schema.prisma) and are filtered out; see
  * KNOWN_SEARCH_DRIFT_STATEMENTS in lib/prisma-db-push-guard.ts. Objects that
@@ -33,10 +33,17 @@ import { classifyDriftStatements, type DriftClassification } from "../lib/prisma
  * - "ProductShelfLocation_one_primary_per_product_key" (shelf map, 2026-10-19,
  *   prisma/migrations/20261019_shelf_map/indexes/05.sql): partial unique index allowing at most one primary
  *   location per product. The diff proposes dropping it; like the DN index, its absence is not reported as missing.
+ * - "WhtFiling_active_period_key" (M5, 2026-11-12, prisma/migrations/20261112_review_round3/indexes/01.sql): partial
+ *   unique index, one non-cancelled filing per form / tax month / submission type / additional sequence.
+ * - "Sale_active_channel_ref_key" (M9, 2026-11-12, prisma/migrations/20261112_review_round3/indexes/03.sql): partial
+ *   expression unique index, one ACTIVE sale per channel and upper(btrim(channelRefNo)).
+ *   Like the DN index, the absence of either from the diff is not reported as missing.
  */
 export const KNOWN_UNMODELED_DRIFT_STATEMENTS: readonly string[] = [
   'DROP INDEX "SupplierDebitNote_active_supplier_reference_key"',
   'DROP INDEX "ProductShelfLocation_one_primary_per_product_key"',
+  'DROP INDEX "WhtFiling_active_period_key"',
+  'DROP INDEX "Sale_active_channel_ref_key"',
 ];
 
 export type SchemaDriftReport = DriftClassification & { unmodeledPresent: string[] };

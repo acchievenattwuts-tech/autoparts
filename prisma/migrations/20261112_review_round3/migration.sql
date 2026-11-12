@@ -1,0 +1,51 @@
+-- Review round 3 (2026-11-12) schema group, approved by the owner on the condition that search results, report
+-- numbers and existing rows stay identical. Items: D1, D2, R12, M5, M9 (schema part) + NotificationType.SALE_BELOW_COST.
+--
+-- Every command is `npx prisma db execute --file <path>`, run from the repo root, one file at a time, in this order.
+-- indexes/*.sql each hold ONE statement that must run outside a transaction (CONCURRENTLY): never concatenate them.
+-- checks/*.sql are read-only guards: they fail (RAISE EXCEPTION, nothing written) when the next step is not safe.
+-- Prefix every path below with prisma/migrations/20261112_review_round3/
+--
+-- PHASE A - before the code deploy. The deployed code keeps working unchanged:
+--   A1  migration.sql (this file)            enum value only, unused by the deployed code.
+--   A2  triggers/01-search-document-triggers.sql
+--                                            D1, one transaction. Database-internal, no code calls these triggers.
+--                                            Documents stay identical (lib/__tests__/search-document-triggers.golden.test.ts).
+--   A3  triggers/02-resync-stale-search-documents.sql
+--                                            D1, rewrites only documents that differ from a full rebuild (expected: none).
+--   A4  checks/01-sale-channel-ref-duplicates.sql
+--                                            M9 guard. If it fails, stop before A7 and ask the owner.
+--   A5  indexes/01.sql                       M5 partial unique "WhtFiling_active_period_key" (0 WhtFiling rows in
+--                                            production). The old, stricter unique index stays, so nothing changes yet.
+--   A6  indexes/02.sql                       M5 plain lookup index.
+--   A7  indexes/03.sql                       M9 partial unique "Sale_active_channel_ref_key". The old unique index stays.
+--                                            Only new effect for the deployed code: an ACTIVE sale whose order number
+--                                            differs from another ACTIVE sale of the channel only by letter case or
+--                                            surrounding spaces is refused (approved M9 rule). The deployed code may show
+--                                            its generic save error for that case until the new code is live.
+--   A8  indexes/04.sql                       M9 plain lookup index (must exist before C1 drops the old unique index).
+--
+-- PHASE B - any time (before or after the deploy). Only storage and redundant / unused indexes change:
+--   B1  storage/01-search-documents-fillfactor.sql
+--                                            D1 storage only (HOT room for the stock-only update), no rewrite.
+--   B2  indexes/05.sql, 06.sql, 07.sql       D2: raw-column trigram indexes no query can use.
+--   B3  checks/02-redundant-index-coverage.sql
+--                                            R12 guard: every index dropped in B4 has a covering index in the live DB.
+--   B4  indexes/08.sql ... 27.sql            R12: 20 indexes that duplicate a unique index or are a strict left prefix of
+--                                            another btree index (each file names the index that covers it).
+--
+-- PHASE C - only AFTER the new code is live (it normalizes order numbers and no longer relies on the old keys):
+--   C1  indexes/28.sql                       M9: drop old unique "Sale_channel_channelRefNo_key".
+--   C2  indexes/29.sql                       M5: drop old unique "WhtFiling_formType_taxYear_taxMonth_submissionType_addition_key".
+--
+-- Then `npx tsx scripts/check-schema-drift.ts` must report no unexpected drift. Run before B/C finish, it lists the
+-- pending steps as unexpected: DROP INDEX for every B2/B4/C index still present, CREATE INDEX for A6/A8 if missing.
+--
+-- Rollback: D1 -> triggers/rollback-search-document-triggers.sql. Indexes -> recreate with the CREATE INDEX statement
+-- `npx prisma migrate diff --from-empty --to-schema <old schema.prisma> --script` prints for that name.
+-- Not part of this folder: lib/doc-number.ts gains generateWhtFilingNo (code only, no DDL).
+
+-- NotificationType.SALE_BELOW_COST: added to schema.prisma by the coordinator for the below-cost sale alert
+-- (bell + Telegram via createNotification). Inside a transaction is fine on PostgreSQL 12+; the value is only used
+-- by the new code.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'SALE_BELOW_COST';

@@ -114,50 +114,53 @@ const FilingStatusPanel = ({ filingId, status, canManage }: Props) => {
         </>
       )}
 
-      <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/5">
-        {confirmingCancel ? (
-          <div className="space-y-2">
-            <input
-              type="text"
-              maxLength={200}
-              value={cancelNote}
-              disabled={isPending}
-              onChange={(event) => setCancelNote(event.target.value)}
-              className={inputClass}
-              placeholder="เหตุผลที่ยกเลิกรอบยื่น"
-            />
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              ยกเลิกแล้วหนังสือรับรองทุกใบในรอบจะกลับไปเป็น &ldquo;ยังไม่ยื่น&rdquo; และนำไปจัดรอบใหม่ได้
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
+      {/* A FILED round cannot be cancelled (the server refuses it too), so no cancel control. */}
+      {status !== "FILED" && (
+        <div className="mt-4 border-t border-slate-100 pt-3 dark:border-white/5">
+          {confirmingCancel ? (
+            <div className="space-y-2">
+              <input
+                type="text"
+                maxLength={200}
+                value={cancelNote}
                 disabled={isPending}
-                onClick={submitCancel}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-              >
-                {isPending ? "กำลังยกเลิก..." : "ยืนยันยกเลิกรอบยื่น"}
-              </button>
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => setConfirmingCancel(false)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-              >
-                ไม่ยกเลิก
-              </button>
+                onChange={(event) => setCancelNote(event.target.value)}
+                className={inputClass}
+                placeholder="เหตุผลที่ยกเลิกรอบยื่น"
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                ยกเลิกแล้วหนังสือรับรองทุกใบในรอบจะกลับไปเป็น &ldquo;ยังไม่ยื่น&rdquo; และนำไปจัดรอบใหม่ได้
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={submitCancel}
+                  className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+                >
+                  {isPending ? "กำลังยกเลิก..." : "ยืนยันยกเลิกรอบยื่น"}
+                </button>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setConfirmingCancel(false)}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                >
+                  ไม่ยกเลิก
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setConfirmingCancel(true)}
-            className="text-xs font-medium text-red-600 transition-colors hover:text-red-700 dark:text-red-400"
-          >
-            ยกเลิกรอบยื่นนี้
-          </button>
-        )}
-      </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirmingCancel(true)}
+              className="text-xs font-medium text-red-600 transition-colors hover:text-red-700 dark:text-red-400"
+            >
+              ยกเลิกรอบยื่นนี้
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <p className="mt-2 text-xs text-red-600 dark:text-red-300">{error}</p>}
     </div>

@@ -8,12 +8,36 @@ import {
 
 const T4_INDEX_DROP = 'DROP INDEX "SupplierDebitNote_active_supplier_reference_key"';
 const SHELF_PRIMARY_INDEX_DROP = 'DROP INDEX "ProductShelfLocation_one_primary_per_product_key"';
+const WHT_FILING_ACTIVE_INDEX_DROP = 'DROP INDEX "WhtFiling_active_period_key"';
+const SALE_ACTIVE_REF_INDEX_DROP = 'DROP INDEX "Sale_active_channel_ref_key"';
 const script = (...statements: string[]): string =>
   ["-- DropIndex", ...statements.map((statement) => `${statement};`)].join("\n");
 const searchDrift = (): string[] => [...KNOWN_SEARCH_DRIFT_STATEMENTS];
 
-test("T4: the allowlist holds exactly the two partial index drops", () => {
-  assert.deepEqual(KNOWN_UNMODELED_DRIFT_STATEMENTS, [T4_INDEX_DROP, SHELF_PRIMARY_INDEX_DROP]);
+test("T4: the allowlist holds exactly the four partial index drops", () => {
+  assert.deepEqual(KNOWN_UNMODELED_DRIFT_STATEMENTS, [
+    T4_INDEX_DROP,
+    SHELF_PRIMARY_INDEX_DROP,
+    WHT_FILING_ACTIVE_INDEX_DROP,
+    SALE_ACTIVE_REF_INDEX_DROP,
+  ]);
+});
+
+test("M5 / M9: the WhtFiling and Sale partial unique index drops are expected and exit 0", () => {
+  const report = classifySchemaDrift(script(...searchDrift(), WHT_FILING_ACTIVE_INDEX_DROP, SALE_ACTIVE_REF_INDEX_DROP));
+  assert.deepEqual(report.unexpected, []);
+  assert.deepEqual(report.unmodeledPresent, [WHT_FILING_ACTIVE_INDEX_DROP, SALE_ACTIVE_REF_INDEX_DROP]);
+  assert.equal(driftExitCode(report), EXIT_OK);
+});
+
+test("M5 / M9: the old full unique indexes still present (Phase C not run) are reported", () => {
+  const leftovers = [
+    'DROP INDEX "Sale_channel_channelRefNo_key"',
+    'DROP INDEX "WhtFiling_formType_taxYear_taxMonth_submissionType_addition_key"',
+  ];
+  const report = classifySchemaDrift(script(...searchDrift(), ...leftovers));
+  assert.deepEqual(report.unexpected, leftovers);
+  assert.equal(driftExitCode(report), EXIT_UNEXPECTED_DRIFT);
 });
 
 test("shelf map: the one-primary-per-product partial index drop is expected and exits 0", () => {

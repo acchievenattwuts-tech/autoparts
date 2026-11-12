@@ -31,7 +31,8 @@ const TaxIdInput = ({
     messageState.rawValue === sanitizedDefaultValue ? messageState.text : "";
 
   const applyValidity = (nextRawValue: string, input: HTMLInputElement) => {
-    const nextMessage = getTaxIdValidationMessage(nextRawValue);
+    // defaultValue is the saved tax ID of the record being edited: keeping it unchanged is always allowed.
+    const nextMessage = getTaxIdValidationMessage(nextRawValue, defaultValue);
     input.setCustomValidity(nextMessage);
     setMessageState({
       rawValue: sanitizeTaxId(nextRawValue),

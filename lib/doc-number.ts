@@ -51,6 +51,39 @@ export async function generateSupplierDebitNo(tx: Prisma.TransactionClient, date
   return `${pattern}${String(next).padStart(4, "0")}`;
 }
 
+const WHT_FILING_PREFIX = "WF";
+/** พ.ศ. − 543 = ค.ศ. (WhtFiling.taxYear is the Buddhist-era tax year). */
+const WHT_TAX_YEAR_BUDDHIST_OFFSET = 543;
+const FIRST_TAX_MONTH = 1;
+const LAST_TAX_MONTH = 12;
+
+/**
+ * WHT filing (รอบยื่น ภ.ง.ด.) number: WF{YYMM}{4-digit}, where YYMM is the filing's TAX month
+ * (Buddhist-era taxYear converted to the Gregorian year, like every other document number), not
+ * the day the filing is created. The sequence runs per tax month; allocation is serialized with
+ * the month lock, like the other generators that receive `tx`.
+ */
+export async function generateWhtFilingNo(
+  tx: Prisma.TransactionClient,
+  taxYear: number,
+  taxMonth: number,
+): Promise<string> {
+  if (!Number.isInteger(taxYear) || !Number.isInteger(taxMonth) || taxMonth < FIRST_TAX_MONTH || taxMonth > LAST_TAX_MONTH) {
+    throw new Error(`Invalid WHT tax period ${taxYear}/${taxMonth}`);
+  }
+  const yy = String(taxYear - WHT_TAX_YEAR_BUDDHIST_OFFSET).slice(-2);
+  const mm = String(taxMonth).padStart(2, "0");
+  const pattern = `${WHT_FILING_PREFIX}${yy}${mm}`;
+  await lockDocNumberSequence(tx, pattern);
+  const last = await tx.whtFiling.findFirst({
+    where: { filingNo: { startsWith: pattern } },
+    orderBy: { filingNo: "desc" },
+    select: { filingNo: true },
+  });
+  const seq = last ? parseInt(last.filingNo.slice(pattern.length), 10) + 1 : 1;
+  return `${pattern}${String(seq).padStart(4, "0")}`;
+}
+
 /**
  * Generate BF number using BalanceForward table (not StockCard)
  * Because cancelled BFs delete their StockCard rows but keep the BalanceForward record.

@@ -293,7 +293,10 @@ CREATE INDEX "WhtFiling_status_filedAt_idx" ON "WhtFiling"("status", "filedAt");
 CREATE INDEX "WhtFiling_userId_idx" ON "WhtFiling"("userId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "WhtFiling_formType_taxYear_taxMonth_submissionType_addition_key" ON "WhtFiling"("formType", "taxYear", "taxMonth", "submissionType", "additionalSeq");
+-- M5 (2026-11-12, prisma/migrations/20261112_review_round3): a CANCELLED filing frees its period, so the
+-- period key is unique among non-cancelled filings only, plus a plain index for lookups.
+CREATE UNIQUE INDEX "WhtFiling_active_period_key" ON "WhtFiling"("formType", "taxYear", "taxMonth", "submissionType", "additionalSeq") WHERE "status" <> 'CANCELLED';
+CREATE INDEX "WhtFiling_formType_taxYear_taxMonth_submissionType_addition_idx" ON "WhtFiling"("formType", "taxYear", "taxMonth", "submissionType", "additionalSeq");
 
 -- AddForeignKey
 ALTER TABLE "WhtReceived" ADD CONSTRAINT "WhtReceived_receiptId_fkey" FOREIGN KEY ("receiptId") REFERENCES "Receipt"("id") ON DELETE SET NULL ON UPDATE CASCADE;

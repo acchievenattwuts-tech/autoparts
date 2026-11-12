@@ -6,6 +6,7 @@ import { db, dbTx } from "@/lib/db";
 import {
   AuditAction,
   WhtFilingChannel,
+  WhtFilingStatus,
   WhtFilingSubmissionType,
   WhtFormType,
 } from "@/lib/generated/prisma";
@@ -18,7 +19,15 @@ import {
 import { reportCriticalError } from "@/lib/error-reporting";
 import { requirePermission } from "@/lib/require-auth";
 import { parseDateOnlyToDate } from "@/lib/th-date";
-import { cancelWhtFiling, createWhtFiling, markWhtFilingFiled } from "@/lib/wht-filing";
+import {
+  buildFiledWhtFilingCancelMessage,
+  cancelWhtFiling,
+  createWhtFiling,
+  isWhtFilingPeriodConflict,
+  markWhtFilingFiled,
+  WHT_FILING_PERIOD_TAKEN_MESSAGE,
+  WhtFilingFiledCancelError,
+} from "@/lib/wht-filing";
 
 const createSchema = z
   .object({
@@ -82,8 +91,8 @@ export async function createFiling(
     if (err instanceof Error && err.message.includes("ไม่มีหนังสือรับรอง")) {
       return { error: err.message };
     }
-    if (err instanceof Error && err.message.includes("Unique constraint")) {
-      return { error: "มีรอบยื่นของแบบ เดือนภาษี และครั้งที่นี้อยู่แล้ว" };
+    if (isWhtFilingPeriodConflict(err)) {
+      return { error: WHT_FILING_PERIOD_TAKEN_MESSAGE };
     }
     await reportCriticalError(err, { scope: "wht.createFiling" });
     return { error: "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
@@ -188,6 +197,7 @@ export async function cancelFiling(
     });
     if (!before) return { error: "ไม่พบรอบยื่นแบบ" };
     if (before.status === "CANCELLED") return { error: "รอบยื่นนี้ถูกยกเลิกไปแล้ว" };
+    if (before.status === WhtFilingStatus.FILED) return { error: buildFiledWhtFilingCancelMessage(before.filingNo) };
 
     await dbTx(async (tx) => cancelWhtFiling(tx, filingId, cancelNote));
 
@@ -209,6 +219,8 @@ export async function cancelFiling(
     revalidatePath("/admin/wht/certificates");
     return { success: true };
   } catch (err) {
+    // Marked FILED between the check above and the transaction: the same refusal, not a system error.
+    if (err instanceof WhtFilingFiledCancelError) return { error: err.message };
     await reportCriticalError(err, { scope: "wht.cancelFiling" });
     return { error: err instanceof Error ? err.message : "เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง" };
   }
