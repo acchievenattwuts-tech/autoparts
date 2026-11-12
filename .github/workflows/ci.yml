@@ -43,6 +43,13 @@ jobs:
       - name: Thai encoding guard
         run: npm run check:mojibake
 
+      # Production dependencies only (dev tooling such as the shadcn CLI never
+      # ships in the deployment). Fails on high or critical advisories so a new
+      # one shows up on the next push instead of waiting for a manual review.
+      # Moderate advisories (uuid via exceljs on 2026-11-12) are reported only.
+      - name: Dependency audit
+        run: npm audit --omit=dev --audit-level=high
+
 # `next build` is deliberately not run here. The storefront pages are statically
 # generated (`export const revalidate`), so a build queries the production
 # database — which CI should not have credentials for. Vercel already builds
