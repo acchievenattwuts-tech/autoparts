@@ -16,7 +16,7 @@
  *   enhanced="mobile"  → tap-to-open full-screen slide-in modal
  */
 
-import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -31,6 +31,7 @@ import { HIDE_STOREFRONT_PRICE, STOREFRONT_PRICE_INQUIRY_LABEL } from "@/lib/sto
 import {
   decideProductLookup,
   nextFocusSession,
+  resolveProductLookupOnSubmit,
   type ProductLookupResultMark,
 } from "@/components/shared/product-autocomplete-lookup";
 
@@ -136,6 +137,10 @@ const ProductAutocomplete = ({
   // Product (admin) lookup bookkeeping — see decideProductLookup.
   const productRequestRef = useRef<{ query: string; controller: AbortController } | null>(null);
   const productResultRef = useRef<ProductLookupResultMark | null>(null);
+  // Debounce timer of a product lookup not sent yet, and the query last submitted
+  // to the results page — see cancelProductLookupOnSubmit.
+  const productTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const productSubmittedRef = useRef<ProductLookupResultMark | null>(null);
   const focusSessionRef = useRef(0);
   // Latest "dropdown may open" state: a request can outlive a blur/focus change.
   const autoOpenRef = useRef(false);
@@ -224,6 +229,7 @@ const ProductAutocomplete = ({
       productRequestRef.current?.controller.abort();
       productRequestRef.current = null;
       productResultRef.current = null;
+      productSubmittedRef.current = null;
       return;
     }
 
@@ -287,8 +293,13 @@ const ProductAutocomplete = ({
       focusSession: focusSessionRef.current,
       inFlightQuery: productRequestRef.current?.query ?? null,
       lastResult: productResultRef.current,
+      submitted: productSubmittedRef.current,
     });
     if (decision === "keep-in-flight") return;
+    // Already sent to the results page, which runs this same search.
+    if (decision === "keep-submitted") return;
+    // The text or the focus session moved on, so that submit no longer applies.
+    productSubmittedRef.current = null;
     // A request still running for a different query is now outdated.
     if (productRequestRef.current) {
       productRequestRef.current.controller.abort();
@@ -306,6 +317,7 @@ const ProductAutocomplete = ({
     }
 
     const timer = setTimeout(async () => {
+      productTimerRef.current = null;
       const controller = new AbortController();
       productRequestRef.current = { query: lookupKey, controller };
       setLoading(true);
@@ -332,8 +344,12 @@ const ProductAutocomplete = ({
         }
       }
     }, DEBOUNCE_MS);
+    productTimerRef.current = timer;
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (productTimerRef.current === timer) productTimerRef.current = null;
+    };
   }, [value, modalOpen, hasInlineFocus, mode, keywordMode]);
 
   // Abort a product lookup still running when the field unmounts.
@@ -344,6 +360,55 @@ const ProductAutocomplete = ({
       requests.current = null;
     };
   }, []);
+
+  // Product (admin) mode: submitting the search hands the query to the results
+  // page, which runs the same heavy search. Drop the dropdown lookup for it — the
+  // one still waiting on the debounce timer and the one already running — so the
+  // two never overlap on the database (see product-autocomplete-lookup.ts).
+  const cancelProductLookupOnSubmit = useCallback(
+    (submittedQuery: string) => {
+      if (productTimerRef.current) {
+        clearTimeout(productTimerRef.current);
+        productTimerRef.current = null;
+      }
+      if (productRequestRef.current) {
+        productRequestRef.current.controller.abort();
+        productRequestRef.current = null;
+      }
+      setLoading(false);
+      setOpen(false);
+      setActiveIndex(-1);
+      if (submittedQuery.length < MIN_QUERY_LEN) return;
+
+      const { submitted, keepResults } = resolveProductLookupOnSubmit({
+        query: `${mode}:${submittedQuery}`,
+        focusSession: focusSessionRef.current,
+        lastResult: productResultRef.current,
+      });
+      productSubmittedRef.current = submitted;
+      if (!keepResults) {
+        // The list on screen belongs to an earlier query; never re-open it under
+        // the submitted text.
+        setItems([]);
+        setTotalCount(null);
+        productResultRef.current = null;
+      }
+    },
+    [mode],
+  );
+
+  // The admin product filter has no onSubmit: Enter and the search button submit
+  // the surrounding form, so the submit is observed on the form itself.
+  useEffect(() => {
+    if (keywordMode) return;
+    const form = inputRef.current?.form;
+    if (!form) return;
+    const handleFormSubmit = () => {
+      cancelProductLookupOnSubmit((inputRef.current?.value ?? "").trim());
+    };
+    form.addEventListener("submit", handleFormSubmit);
+    return () => form.removeEventListener("submit", handleFormSubmit);
+  }, [keywordMode, cancelProductLookupOnSubmit]);
 
   // Close on outside click (skip when modal is open — modal has its own handlers)
   useEffect(() => {
@@ -423,6 +488,7 @@ const ProductAutocomplete = ({
     setModalOpen(false);
     if (onSubmit) {
       const query = (overrideQuery ?? value).trim();
+      if (!keywordMode) cancelProductLookupOnSubmit(query);
       if (isStorefrontSearchField) {
         // ค้นหาแล้วไม่ต้องคา cursor ไว้ในช่อง — ลูกค้าจะได้อ่านผลลัพธ์ได้เลย
         // (บนมือถือยังช่วยปิดคีย์บอร์ดก่อน modal ปิดด้วย)
