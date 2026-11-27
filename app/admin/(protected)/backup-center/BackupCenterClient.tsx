@@ -18,6 +18,7 @@ type GithubBackupRun = {
   id: number;
   status: GithubRunStatus;
   event: string;
+  trigger: "manual" | "scheduled";
   htmlUrl: string;
   createdAt: string;
   updatedAt: string;
@@ -248,7 +249,7 @@ function AutoBackupPanel({
             </h2>
             <p className="text-sm text-slate-600 dark:text-slate-300">
               สำรองฐานข้อมูล รูปสาธารณะ และไฟล์ส่วนตัว (สลิปโอนเงิน เอกสารแนบค่าใช้จ่าย หลักฐานการส่งของ)
-              ขึ้น Google Drive โดยอัตโนมัติทุกวันจันทร์ พุธ ศุกร์ เวลา 00:00 น. (เที่ยงคืน)
+              ขึ้น Google Drive โดยอัตโนมัติทุกวันจันทร์ พุธ ศุกร์ เริ่ม 00:00 น. (เที่ยงคืน) ปกติเสร็จภายใน 30 นาที
               หรือกดปุ่มนี้เพื่อสั่งสำรองทันที งานจะไปทำงานบนเครื่องของ GitHub ไม่ต้องเปิดคอมพิวเตอร์ทิ้งไว้
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -344,7 +345,7 @@ function AutoBackupPanel({
                     </span>
                     <span className="text-slate-600 dark:text-slate-300">{formatDate(run.createdAt)}</span>
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {run.event === "schedule" ? "อัตโนมัติ" : "สั่งเอง"}
+                      {run.trigger === "scheduled" ? "อัตโนมัติ" : "สั่งเอง"}
                     </span>
                   </div>
                   <a

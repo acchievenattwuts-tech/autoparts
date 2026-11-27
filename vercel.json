@@ -56,6 +56,10 @@
     {
       "path": "/api/purchase-budget/cron/check",
       "schedule": "5 1-13 * * *"
+    },
+    {
+      "path": "/api/backup/cron/dispatch",
+      "schedule": "0 17 * * 0,2,4"
     }
   ]
 }

@@ -20,8 +20,18 @@ const WORKFLOW_FILE = "backup.yml";
 const GITHUB_API_ROOT = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
 const RECENT_RUNS_LIMIT = 5;
+/**
+ * Title the workflow's `run-name` gives a run dispatched by the Vercel cron
+ * (.github/workflows/backup.yml). The cron dispatches through the same API as
+ * the Backup Center button, so GitHub reports both as `workflow_dispatch`; this
+ * title is the only thing that tells them apart afterwards.
+ */
+export const SCHEDULED_RUN_TITLE = "Weekly Backup (scheduled)";
 /** GitHub is a third-party dependency of a button click — never let it hang the request. */
 const REQUEST_TIMEOUT_MS = 10_000;
+
+/** Who started a run: the Vercel cron (`scheduled`) or a person (`manual`). */
+export type GithubBackupTrigger = "manual" | "scheduled";
 
 export type GithubBackupRunStatus = "QUEUED" | "RUNNING" | "SUCCESS" | "FAILED" | "CANCELLED" | "UNKNOWN";
 
@@ -29,6 +39,7 @@ export interface GithubBackupRun {
   id: number;
   status: GithubBackupRunStatus;
   event: string;
+  trigger: GithubBackupTrigger;
   htmlUrl: string;
   createdAt: string;
   updatedAt: string;
@@ -41,6 +52,7 @@ const workflowRunSchema = z.object({
   status: z.string().nullable(),
   conclusion: z.string().nullable(),
   event: z.string(),
+  display_title: z.string().nullish(),
   html_url: z.string(),
   created_at: z.string(),
   updated_at: z.string(),
@@ -113,15 +125,23 @@ const toRunStatus = (status: string | null, conclusion: string | null): GithubBa
   return "UNKNOWN";
 };
 
+/**
+ * Runs before 2026-11-27 came from GitHub's own `schedule` event, which GitHub
+ * started 2–8 hours late. Later scheduled runs are dispatched by the Vercel cron
+ * and carry SCHEDULED_RUN_TITLE.
+ */
+const toRunTrigger = (event: string, displayTitle: string | null | undefined): GithubBackupTrigger =>
+  event === "schedule" || displayTitle === SCHEDULED_RUN_TITLE ? "scheduled" : "manual";
+
 /** Starts a backup run. Resolves once GitHub has queued it — not when it finishes. */
-export const dispatchGithubBackup = async (): Promise<void> => {
+export const dispatchGithubBackup = async (trigger: GithubBackupTrigger = "manual"): Promise<void> => {
   const config = readConfig();
   if (!config) throw new Error("GITHUB_BACKUP_NOT_CONFIGURED");
 
   const response = await githubFetch(
     config,
     `/repos/${config.owner}/${config.repo}/actions/workflows/${WORKFLOW_FILE}/dispatches`,
-    { method: "POST", body: JSON.stringify({ ref: config.ref }) },
+    { method: "POST", body: JSON.stringify({ ref: config.ref, inputs: { trigger } }) },
   );
 
   // A dispatch returns 204 with no body, so there is no run id to hand back —
@@ -151,6 +171,7 @@ export const getGithubBackupRuns = async (): Promise<GithubBackupRun[]> => {
     id: run.id,
     status: toRunStatus(run.status, run.conclusion),
     event: run.event,
+    trigger: toRunTrigger(run.event, run.display_title),
     htmlUrl: run.html_url,
     createdAt: run.created_at,
     updatedAt: run.updated_at,

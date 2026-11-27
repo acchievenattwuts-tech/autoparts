@@ -9,7 +9,7 @@
 | หัวข้อ | ค่า |
 |---|---|
 | ตัวรันงาน | GitHub Actions — [.github/workflows/backup.yml](../.github/workflows/backup.yml) |
-| ตารางเวลา | ทุกวันจันทร์ พุธ ศุกร์ 00:00 น. (เที่ยงคืน) เวลาไทย (cron `0 17 * * 0,2,4` UTC = อาทิตย์ อังคาร พฤหัส 17:00 UTC) · เปลี่ยนจากสัปดาห์ละครั้งเมื่อ 2026-10-23 · เลื่อนจาก 02:00 เป็น 00:00 น. เมื่อ 2026-11-20 · GitHub มักเริ่มงานช้ากว่าเวลาที่ตั้ง 2–4 ชม. (เดิมเริ่มจริง 04:00–05:45 น.) |
+| ตารางเวลา | ทุกวันจันทร์ พุธ ศุกร์ 00:00 น. (เที่ยงคืน) เวลาไทย ปกติเสร็จภายใน 30 นาที · **Vercel Cron** ([vercel.json](../vercel.json) `0 17 * * 0,2,4` UTC = อาทิตย์ อังคาร พฤหัส 17:00 UTC) เรียก [/api/backup/cron/dispatch](../app/api/backup/cron/dispatch/route.ts) ซึ่งสั่ง `workflow_dispatch` พร้อม `trigger=scheduled` — workflow ไม่มี `schedule:` ของ GitHub แล้ว · เปลี่ยนจากสัปดาห์ละครั้งเมื่อ 2026-10-23 · เลื่อนจาก 02:00 เป็น 00:00 น. เมื่อ 2026-11-20 · ย้ายตัวตั้งเวลาจาก GitHub มา Vercel เมื่อ 2026-11-27 เพราะ GitHub เริ่มงาน schedule ช้า 5–8 ชม. (ตั้ง 00:00 แต่เริ่มจริง 05:16–08:14 น.) ส่วน `workflow_dispatch` เริ่มภายในไม่กี่วินาที |
 | สั่งเอง | ปุ่ม "สำรองข้อมูลเดี๋ยวนี้" ในหน้า Backup Center หรือปุ่ม Run workflow บน GitHub |
 | ปลายทาง | Google Drive ผ่าน `rclone` |
 | แจ้งเตือน | รองรับ Telegram ทั้งกรณีสำเร็จและล้มเหลว; ต้องตั้ง GitHub Secrets ก่อน (ยังไม่ได้ตั้ง ณ 2026-08-28) |
@@ -454,7 +454,14 @@ refresh token ของ Google หมดอายุ สาเหตุที่
 
 ### ตารางอัตโนมัติหยุดไปเอง
 
-GitHub ปิด scheduled workflow อัตโนมัติเมื่อ repo ไม่มี commit ใหม่ติดต่อกัน 60 วัน ถ้าเกิดขึ้นจะมีอีเมลแจ้ง เข้าไปกด Enable workflow ในแท็บ Actions
+ตั้งแต่ 2026-11-27 ตัวตั้งเวลาคือ Vercel Cron ไม่ใช่ GitHub ถ้าสั่งรันไม่สำเร็จ (ลองซ้ำ 1 ครั้งแล้ว) Telegram จะแจ้งข้อผิดพลาด scope `cron.backup_dispatch` เพราะ run ไม่ได้เริ่ม ข้อความ Telegram ของ workflow เองจึงไม่มา ให้ไล่ตามนี้:
+
+- `GITHUB_BACKUP_UNAUTHORIZED` — `GITHUB_BACKUP_TOKEN` บน Vercel หมดอายุหรือถูกเพิกถอน สร้าง PAT ใหม่ (สิทธิ์ Actions: Read and write) แล้วอัปเดต env บน Vercel
+- `GITHUB_BACKUP_NOT_CONFIGURED` — ไม่มี `GITHUB_BACKUP_TOKEN` / `GITHUB_BACKUP_REPO` บน Vercel
+- `GITHUB_BACKUP_WORKFLOW_NOT_FOUND` — ไฟล์ workflow ถูกย้าย/เปลี่ยนชื่อ หรือ workflow ถูกปิดในแท็บ Actions (กด Enable workflow)
+- สั่งรันเองได้ทันทีด้วยปุ่ม "สำรองข้อมูลเดี๋ยวนี้" ใน Backup Center
+
+กฎ "GitHub ปิด scheduled workflow เมื่อ repo ไม่มี commit 60 วัน" ใช้กับ `schedule:` เท่านั้น จึงไม่กระทบตัวตั้งเวลาแบบใหม่ แต่ถ้า workflow ถูกปิดด้วยมือ dispatch จะล้มด้วย `GITHUB_BACKUP_WORKFLOW_NOT_FOUND`
 
 ### เนื้อที่ Google Drive เต็ม
 

@@ -1,10 +1,19 @@
 name: Weekly Backup
+run-name: ${{ inputs.trigger == 'scheduled' && 'Weekly Backup (scheduled)' || 'Weekly Backup' }}
 
 # Runs on GitHub's own runner, so nothing needs to stay powered on locally.
 #
-#  - schedule        : Monday, Wednesday and Friday 00:00 (midnight) Asia/Bangkok
-#                      (17:00 UTC on Sunday, Tuesday and Thursday — cron days are UTC)
-#  - workflow_dispatch: the one-click button in Backup Center posts here
+# Only workflow_dispatch starts it, from two places:
+#  - Vercel Cron      : Monday, Wednesday and Friday 00:00 (midnight) Asia/Bangkok
+#                       (vercel.json "0 17 * * 0,2,4" UTC → app/api/backup/cron/dispatch)
+#                       with trigger=scheduled
+#  - Backup Center    : the one-click button, trigger=manual
+#
+# There is deliberately no `schedule:` trigger. GitHub started scheduled runs
+# 5–8 hours late (a 00:00 schedule ran at 05:16–08:14 in November 2026), so the
+# backup did not finish before 06:00. A dispatch starts within seconds. The
+# run-name above is how Backup Center tells a scheduled run from a manual one
+# (SCHEDULED_RUN_TITLE in lib/github-backup.ts — keep the two in sync).
 #
 # Artifacts land on Google Drive via rclone — a different provider from both
 # Supabase (database) and Vercel Blob (public images + the PRIVATE store holding
@@ -12,9 +21,15 @@ name: Weekly Backup
 # point of a backup. See docs/backup-automation-runbook.md for setup and restore.
 
 on:
-  schedule:
-    - cron: "0 17 * * 0,2,4"
   workflow_dispatch:
+    inputs:
+      trigger:
+        description: Who started this run
+        type: choice
+        options:
+          - manual
+          - scheduled
+        default: manual
 
 # Two backups running at once would fight over the Drive state file.
 concurrency:
@@ -220,7 +235,7 @@ jobs:
           {
             echo "Autoparts backup ${{ steps.meta.outputs.date }}"
             echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "trigger: ${{ github.event_name }}"
+            echo "trigger: ${{ inputs.trigger || github.event_name }}"
             echo
             echo "postgres dump bytes: ${DUMP_SIZE}"
             echo "blob summary:"
